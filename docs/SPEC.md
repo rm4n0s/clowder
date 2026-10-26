@@ -153,7 +153,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 | `Session` | `TokenHash` (unique), `UserID`, `ExpiresAt`, `LastSeenAt` | |
 | `Room` | `Name` (unique), `Description`, `Visibility` (visible, private), `CreatedBy` | |
 | `RoomMember` | `RoomID`, `UserID`, `AddedBy` | unique (room, user) |
-| `Post` | `RoomID`, `AuthorID`, `ParentID` (null for a post), `RootID` (the post a comment belongs to), `Format` (text, markdown), `Body`, `EditedAt` | comments are posts with a parent (D16) |
+| `Post` | `RoomID`, `AuthorID`, `ParentID` (null for a post), `RootID` (the post a comment belongs to), `Format` (text, markdown), `Body`, `EditedAt`, `DeletedAt` | comments are posts with a parent (D16); `DeletedAt` marks a deleted post kept for its replies (D21), not GORM's soft delete |
 | `Tag` | `Name` (unique, normalized: lower case, no leading `#`) | |
 | `PostTag` | `PostID`, `TagID` | |
 | `Attachment` | `PostID`, `UploaderID`, `FileName`, `ContentType`, `Size`, `StorageKey`, `Width`, `Height` (images) | |

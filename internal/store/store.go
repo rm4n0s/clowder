@@ -47,11 +47,11 @@ type options struct {
 	slowQuery time.Duration
 }
 
-// defaultOptions are the options of Open. The models are filled in by step 1.2
-// and the raw migrations by the steps that need them (the FTS5 index, 10.1).
+// defaultOptions are the options of Open. The raw migrations are added by the
+// steps that need them (the FTS5 index, 10.1).
 func defaultOptions() options {
 	return options{
-		models:     []any{},
+		models:     allModels(),
 		migrations: []migration{},
 		slowQuery:  slowQueryThreshold,
 	}
