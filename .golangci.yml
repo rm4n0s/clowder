@@ -1,0 +1,24 @@
+version: "2"
+
+run:
+  go: "1.27"
+
+linters:
+  # Keep the default linters (errcheck, govet, ineffassign, staticcheck,
+  # unused) and add the ones the project requires.
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+  settings:
+    revive:
+      rules:
+        # Exported identifiers need a doc comment (CLAUDE.md "Definition of done").
+        - name: exported
+        - name: package-comments
+
+formatters:
+  enable:
+    - gofmt

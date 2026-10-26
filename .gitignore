@@ -31,3 +31,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# The briefs the managing session writes for its worker agents (docs/IMPLEMENTATION.md, "Who does the work")
+/.claude/briefs/
