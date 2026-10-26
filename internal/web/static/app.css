@@ -398,3 +398,160 @@ table.audit-details-table thead th { color: var(--fg-muted); }
 .pager { display: flex; gap: 1rem; align-items: center; margin-bottom: 2rem; }
 
 .pager .hint { margin: 0; }
+
+/* The post editor: the body, the Text / Markdown switch, the tags with their
+   suggestions, the preview. */
+.post-editor {
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.post-editor textarea { min-height: 7rem; font-family: var(--font); }
+
+input[type="radio"], input[type="checkbox"] { width: auto; margin: 0 0.375rem 0 0; }
+
+.format-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  align-items: center;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 0;
+}
+
+.format-switch legend { float: left; margin-right: 1rem; padding: 0; font-weight: 600; }
+
+.format-switch .choice { display: inline-flex; align-items: center; margin: 0; font-weight: 400; }
+
+.format-switch .field-error { flex-basis: 100%; margin: 0; }
+
+/* Suggestions sit right under the tags field. */
+.tag-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: -0.5rem 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.tag-suggest:empty { display: none; }
+
+button.tag-option {
+  padding: 0.125rem 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 400;
+  border-radius: 999px;
+}
+
+.post-preview {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-sidebar);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.post-preview[hidden] { display: none; }
+
+.post-preview-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
+
+.post-preview-bar .hint { margin: 0; }
+
+.post-preview-bar button { padding: 0.125rem 0.625rem; font-size: 0.875rem; }
+
+.post-editor-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; }
+
+.join-note { margin: 0 0 1.5rem; padding: 0.5rem 0.75rem; border: 1px dashed var(--border); border-radius: 6px; }
+
+/* The feed and its posts. */
+.feed-posts { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.post {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.post-editing { padding: 0; border: 0; }
+
+.post-editing .post-editor { margin-bottom: 0; }
+
+.post-meta { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; align-items: baseline; margin-bottom: 0.5rem; }
+
+.post-author { font-weight: 700; }
+
+.post-username, .post-time, .post-edited { font-size: 0.875rem; color: var(--fg-muted); }
+
+.post-time { text-decoration: none; }
+
+.post-time:hover { text-decoration: underline; }
+
+.post-edited { font-style: italic; }
+
+.post-body { overflow-wrap: anywhere; }
+
+.post-body > :first-child { margin-top: 0; }
+
+.post-body > :last-child { margin-bottom: 0; }
+
+.post-body h3, .post-body h4, .post-body h5, .post-body h6 { margin: 1rem 0 0.5rem; }
+
+.post-body pre {
+  overflow-x: auto;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-sidebar);
+  border-radius: 6px;
+}
+
+.post-body :not(pre) > code { padding: 0.0625rem 0.25rem; background: var(--bg-sidebar); border-radius: 4px; }
+
+.post-body blockquote { margin: 0.75rem 0; padding-left: 0.75rem; color: var(--fg-muted); border-left: 3px solid var(--border); }
+
+.post-body table { border-collapse: collapse; margin: 0.75rem 0; }
+
+.post-body th, .post-body td { padding: 0.25rem 0.625rem; text-align: left; border: 1px solid var(--border); }
+
+.post-body img { max-width: 100%; height: auto; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin: 0.5rem 0 0; padding: 0; list-style: none; }
+
+a.tag {
+  display: inline-block;
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.875rem;
+  text-decoration: none;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+a.tag:hover { border-color: var(--accent); }
+
+.post-footer { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin-top: 0.5rem; font-size: 0.875rem; }
+
+.post-footer form.action { margin: 0 0 0 auto; }
+
+.post-footer a { color: var(--fg-muted); }
+
+.post-footer a:hover { color: var(--accent); }
+
+.post-deleted-note { margin: 0; color: var(--fg-muted); font-style: italic; }
+
+.post-deleted { background: var(--bg-sidebar); }
+
+.feed-more { margin: 1rem 0 2rem; text-align: center; }
+
+.feed-more:empty { margin: 0; }
+
+.feed-newest { margin: 0 0 0.75rem; }
+
+/* "No posts yet" shows only while the feed holds no post. */
+.feed-posts:has(.post) ~ #feed-empty { display: none; }
+
+.post-room { margin: 0 0 0.75rem; }
+
+.comments { margin-top: 2rem; }

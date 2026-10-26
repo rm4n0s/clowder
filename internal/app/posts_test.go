@@ -932,3 +932,71 @@ func TestPostsGetMissing(t *testing.T) {
 	_, err := e.posts.Get(t.Context(), e.as("admin"), 9999)
 	_ = requireTag(t, err, app.TagNotFound, "Posts.Get->Store.PostByID.NotFound")
 }
+
+func TestPostsPreview(t *testing.T) {
+	e := newPostsEnv(t)
+	tests := []struct {
+		name       string
+		actor      app.Actor
+		format     app.Format
+		body       string
+		want       string // a part of the HTML
+		not        string
+		wantEmpty  bool
+		wantTag    string
+		wantRoute  string
+		wantFields map[string]string
+	}{
+		{name: "an admin previews markdown", actor: e.as("admin"), format: app.FormatMarkdown, body: "**bold**", want: "<strong>bold</strong>"},
+		{name: "a member previews markdown", actor: e.as("dave"), format: app.FormatMarkdown, body: "**bold**", want: "<strong>bold</strong>"},
+		{name: "a member of no room previews text", actor: e.as("carol"), format: app.FormatText, body: "<b>x</b>\nnext", want: "&lt;b&gt;x&lt;/b&gt;<br>", not: "<b>"},
+		{name: "markdown drops scripts", actor: e.as("bob"), format: app.FormatMarkdown, body: "<script>alert(1)</script>", not: "<script>"},
+		{name: "an empty body is an empty preview", actor: e.as("bob"), format: app.FormatMarkdown, body: " \n ", wantEmpty: true},
+		{name: "a body at the limit", actor: e.as("bob"), format: app.FormatText, body: strings.Repeat("é", 20_000), want: "é"},
+		{
+			name: "too long", actor: e.as("bob"), format: app.FormatText, body: strings.Repeat("a", 20_001),
+			wantTag: app.TagInvalidInput, wantRoute: "Posts.Preview.InvalidInput",
+			wantFields: map[string]string{app.FieldBody: "Use at most 20,000 characters."},
+		},
+		{
+			name: "not valid text", actor: e.as("bob"), format: app.FormatText, body: "a\xffb",
+			wantTag: app.TagInvalidInput, wantRoute: "Posts.Preview.InvalidInput",
+			wantFields: map[string]string{app.FieldBody: "Use valid text."},
+		},
+		{
+			name: "unknown format", actor: e.as("bob"), format: app.Format("html"), body: "x",
+			wantTag: app.TagInvalidInput, wantRoute: "Posts.Preview.InvalidInput",
+			wantFields: map[string]string{app.FieldFormat: "Choose text or markdown."},
+		},
+		{
+			name: "nobody", actor: app.Actor{}, format: app.FormatText, body: "x",
+			wantTag: app.TagUnauthenticated, wantRoute: "Posts.Preview.Unauthenticated",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := e.posts.Preview(t.Context(), tt.actor, tt.format, tt.body)
+			if tt.wantTag != "" {
+				appErr := requireTag(t, err, tt.wantTag, tt.wantRoute)
+				if tt.wantFields != nil {
+					if fields := fieldsOf(t, appErr); !reflect.DeepEqual(fields, tt.wantFields) {
+						t.Errorf("fields = %q, want %q", fields, tt.wantFields)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Preview: %+v", err)
+			}
+			if tt.wantEmpty && got != "" {
+				t.Errorf("Preview = %q, want empty", got)
+			}
+			if tt.want != "" && !strings.Contains(string(got), tt.want) {
+				t.Errorf("Preview = %q, want it to contain %q", got, tt.want)
+			}
+			if tt.not != "" && strings.Contains(string(got), tt.not) {
+				t.Errorf("Preview = %q, must not contain %q", got, tt.not)
+			}
+		})
+	}
+}

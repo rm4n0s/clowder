@@ -13,17 +13,37 @@ const maxFormBytes = 64 << 10
 // messageBadRequest is the page of a request that cannot be read.
 const messageBadRequest = "That request could not be read"
 
+// maxPostFormBytes bounds the body of a form post that carries the body of a
+// post: 20,000 characters of up to four bytes, each written as three characters
+// of the urlencoded form, with room for the other fields.
+const maxPostFormBytes = 512 << 10
+
 // parseForm reads the form of a POST, at most maxFormBytes of it. When it
 // cannot, it has answered with the 400 page and returns false.
 func (s *Server) parseForm(w http.ResponseWriter, r *http.Request) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
 	if err := r.ParseForm(); err != nil {
-		appErr := errors.NewErr(tagFormInvalid, err)
-		s.logger.Info("form rejected", "pattern", r.Pattern, "err", appErr)
-		s.render(w, r, http.StatusBadRequest, views.ErrorPage(http.StatusBadRequest, messageBadRequest))
+		s.rejectForm(w, r, errors.NewErr(tagFormInvalid, err))
 		return false
 	}
 	return true
+}
+
+// parseBodyForm is parseForm for the forms that carry the body of a post, which
+// may be larger: at most maxPostFormBytes.
+func (s *Server) parseBodyForm(w http.ResponseWriter, r *http.Request) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxPostFormBytes)
+	if err := r.ParseForm(); err != nil {
+		s.rejectForm(w, r, errors.NewErr(tagFormInvalid, err))
+		return false
+	}
+	return true
+}
+
+// rejectForm logs a form that could not be read and answers with the 400 page.
+func (s *Server) rejectForm(w http.ResponseWriter, r *http.Request, appErr *errors.Error) {
+	s.logger.Info("form rejected", "pattern", r.Pattern, "err", appErr)
+	s.render(w, r, http.StatusBadRequest, views.ErrorPage(http.StatusBadRequest, messageBadRequest))
 }
 
 // loginPage answers GET /login: the login form, or a redirect to the home page

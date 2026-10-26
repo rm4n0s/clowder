@@ -21,6 +21,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/store/storetest"
 	"github.com/rm4n0s/clowder/internal/web/static"
@@ -91,6 +92,7 @@ type testEnv struct {
 	accounts *app.Accounts
 	rooms    *app.Rooms
 	audit    *app.Audit
+	posts    *app.Posts
 	st       *store.Store
 	clk      *clock.Fake
 }
@@ -113,11 +115,12 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	})
 	rooms := app.NewRooms(st)
 	audit := app.NewAudit(st)
-	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit}, static.FS, extra...)
+	posts := app.NewPosts(st, clk, markdown.New())
+	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, st: st, clk: clk}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, st: st, clk: clk}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.
@@ -158,7 +161,7 @@ func TestHandlerPages(t *testing.T) {
 			wantBody:   []string{"<h1>404</h1>", "Page not found", "<title>404 Not Found · Clowder</title>"},
 		},
 		{
-			name: "unknown nested path", method: http.MethodGet, path: "/rooms/1/posts",
+			name: "unknown nested path", method: http.MethodGet, path: "/rooms/1/nothing",
 			wantStatus: http.StatusNotFound,
 			wantBody:   []string{"<h1>404</h1>"},
 		},

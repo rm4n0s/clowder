@@ -404,6 +404,36 @@ func (p *Posts) SuggestTags(ctx context.Context, actor Actor, prefix string) ([]
 	return p.st.SuggestTagNames(ctx, actor.UserID, prefix, tagSuggestLimit)
 }
 
+// Preview renders a body the way a post would show it, for the preview of the
+// editor. Any logged-in actor may preview; an actor with no ID fails with
+// TagUnauthenticated. It fails with TagInvalidInput, with the problems in the
+// metadata "fields", for a format that is neither text nor markdown, a body
+// that is not valid text and a body longer than 20,000 characters. An empty
+// body previews as an empty result.
+func (p *Posts) Preview(_ context.Context, actor Actor, format Format, body string) (template.HTML, error) {
+	if actor.UserID == 0 {
+		return "", errors.New(TagUnauthenticated, "a preview needs a login", "reason", "none")
+	}
+	fields := map[string]string{}
+	if format != FormatText && format != FormatMarkdown {
+		fields[FieldFormat] = "Choose text or markdown."
+	}
+	switch {
+	case !utf8.ValidString(body):
+		fields[FieldBody] = "Use valid text."
+	case utf8.RuneCountInString(body) > postBodyMaxLength:
+		fields[FieldBody] = "Use at most 20,000 characters."
+	}
+	if len(fields) > 0 {
+		return "", errors.New(TagInvalidInput, "the preview has mistakes", "fields", fields)
+	}
+	body = strings.TrimRightFunc(body, unicode.IsSpace)
+	if body == "" {
+		return "", nil
+	}
+	return p.md.Render(markdown.Format(format), body)
+}
+
 // viewOne reads the post postID, which is in room, and makes its view.
 func (p *Posts) viewOne(ctx context.Context, actor Actor, room store.Room, postID uint64) (Post, error) {
 	row, err := p.st.PostByID(ctx, postID)

@@ -1,0 +1,254 @@
+package views
+
+import "html/template"
+
+// PostEditor is the editor of a post: the body with the Text / Markdown
+// switch, the tags field with its suggestions, the preview, and the submit
+// button. The server sends it alone as a Datastar patch to show the problems of
+// a failed submit; what the person typed is kept. The comments, attachments
+// and tasks of later steps reuse it.
+templ PostEditor(d PostEditorData) {
+	<form id={ "post-editor-" + d.ID } class="post-editor" method="post" action={ templ.SafeURL(d.Action) } data-on:submit={ FormPost(d.Action) }>
+		@formProblem(d.Errors.Form)
+		<input type="hidden" name="editor" value={ d.ID }/>
+		if d.From != "" {
+			<input type="hidden" name="from" value={ d.From }/>
+		}
+		<div class="field">
+			<label for={ "post-body-" + d.ID }>Message</label>
+			<textarea
+				id={ "post-body-" + d.ID }
+				name="body"
+				rows="5"
+				if d.Errors.Fields["body"] != "" {
+					aria-invalid="true"
+					aria-describedby={ "post-body-" + d.ID + "-error" }
+				}
+			>{ d.Body }</textarea>
+			if d.Errors.Fields["body"] != "" {
+				<p class="field-error" id={ "post-body-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["body"] }</p>
+			}
+		</div>
+		<fieldset class="format-switch">
+			<legend>Format</legend>
+			<label class="choice">
+				<input type="radio" name="format" value="markdown" checked?={ d.Format != "text" }/>
+				Markdown
+			</label>
+			<label class="choice">
+				<input type="radio" name="format" value="text" checked?={ d.Format == "text" }/>
+				Text
+			</label>
+			if d.Errors.Fields["format"] != "" {
+				<p class="field-error" id={ "post-format-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["format"] }</p>
+			}
+		</fieldset>
+		<div class="field">
+			<label for={ "post-tags-" + d.ID }>Tags</label>
+			<input
+				id={ "post-tags-" + d.ID }
+				name="tags"
+				type="text"
+				value={ d.Tags }
+				autocomplete="off"
+				placeholder="design release"
+				data-on:input__debounce.200ms={ suggestAction(d.ID) }
+				if d.Errors.Fields["tags"] != "" {
+					aria-invalid="true"
+					aria-describedby={ "post-tags-" + d.ID + "-error" }
+				}
+			/>
+			@TagSuggestions(d.ID, nil)
+			if d.Errors.Fields["tags"] != "" {
+				<p class="field-error" id={ "post-tags-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["tags"] }</p>
+			} else {
+				<p class="hint">Separate tags with spaces or commas: up to 10 of letters, digits, - and _.</p>
+			}
+		</div>
+		@PostPreview(PostPreviewData{EditorID: d.ID, Hidden: true})
+		<div class="post-editor-actions">
+			<button type="submit">{ d.SubmitLabel }</button>
+			<button type="button" class="secondary" data-on:click={ previewAction }>Preview</button>
+			if d.CancelPath != "" {
+				<a class="button-link" href={ templ.SafeURL(d.CancelHref) } data-on:click__prevent={ "@get('" + escapeQuote(d.CancelPath) + "')" }>Cancel</a>
+			}
+		</div>
+	</form>
+}
+
+// PostPreviewData is what the preview box of an editor shows.
+type PostPreviewData struct {
+	// EditorID is the ID of the editor the box belongs to.
+	EditorID string
+	// HTML is the rendered body, which comes from internal/markdown; empty for
+	// an empty body.
+	HTML template.HTML
+	// Message is the problem that stopped the preview (a body that is too
+	// long); empty shows none.
+	Message string
+	// Hidden is true for the box before the first preview.
+	Hidden bool
+}
+
+// PostPreview is the preview box of an editor. The server sends it alone as a
+// Datastar patch when the person asks for a preview.
+templ PostPreview(d PostPreviewData) {
+	<div id={ "post-preview-" + d.EditorID } class="post-preview" hidden?={ d.Hidden }>
+		if !d.Hidden {
+			<div class="post-preview-bar">
+				<span class="hint">Preview</span>
+				<button type="button" class="secondary" data-on:click={ closePreviewAction }>Close</button>
+			</div>
+			if d.Message != "" {
+				<p class="field-error" role="alert">{ d.Message }</p>
+			} else if d.HTML == "" {
+				<p class="empty">Nothing to preview.</p>
+			} else {
+				<div class="post-body">
+					@templ.Raw(string(d.HTML))
+				</div>
+			}
+		}
+	</div>
+}
+
+// TagSuggestions is the list of suggested tags under the tags field of an
+// editor. The server sends it alone as a Datastar patch while the person types;
+// a suggestion completes the tag being typed.
+templ TagSuggestions(editorID string, tags []string) {
+	<ul id={ "post-tag-suggest-" + editorID } class="tag-suggest" aria-label="Tag suggestions">
+		for _, tag := range tags {
+			<li>
+				<button type="button" class="secondary tag-option" data-tag={ tag } data-on:click={ pickTagAction }>{ "#" + tag }</button>
+			</li>
+		}
+	</ul>
+}
+
+// postElementID is the id of the element of a post.
+func postElementID(id uint64) string {
+	return "post-" + roomIDText(id)
+}
+
+// PostCard is a post: author, time, "edited", the body, the tags as links to
+// their search, the comment count that links to the post page, and Edit and
+// Delete for the person who may. A post that was deleted but stays because it
+// has replies is the placeholder "This post was deleted." The server sends it
+// alone as a Datastar patch after an edit, a cancel or a failed action.
+templ PostCard(d PostCardData) {
+	<article id={ postElementID(d.Post.ID) } class={ "post", templ.KV("post-deleted", d.Post.Deleted) } data-post={ roomIDText(d.Post.ID) }>
+		@formProblem(d.Message)
+		if d.Post.Deleted {
+			<p class="post-deleted-note">This post was deleted.</p>
+		} else {
+			<header class="post-meta">
+				<span class="post-author">{ d.Post.Author.DisplayName }</span>
+				<span class="post-username">{ "@" + d.Post.Author.Username }</span>
+				<a class="post-time" href={ templ.SafeURL(PostPath(d.Post.ID)) }>
+					<time datetime={ postTimeStamp(d.Post.CreatedAt) } title={ postTimeStamp(d.Post.CreatedAt) }>{ postTimeText(d.Post.CreatedAt) }</time>
+				</a>
+				if d.Post.EditedAt != nil {
+					<span class="post-edited" title={ postTimeStamp(*d.Post.EditedAt) }>edited</span>
+				}
+			</header>
+			<div class="post-body">
+				@templ.Raw(string(d.Post.HTML))
+			</div>
+			if len(d.Post.Tags) > 0 {
+				<ul class="tags" aria-label="Tags">
+					for _, tag := range d.Post.Tags {
+						<li><a class="tag" href={ templ.SafeURL(TagSearchPath(tag)) }>{ "#" + tag }</a></li>
+					}
+				</ul>
+			}
+		}
+		<footer class="post-footer">
+			<a class="post-comments" href={ templ.SafeURL(PostPath(d.Post.ID)) }>{ commentCountText(d.Post.CommentCount) }</a>
+			if d.Post.CanEdit {
+				<a class="post-edit" href={ templ.SafeURL(postActionPath(d.Post.ID, "edit", d.From)) } data-on:click__prevent={ "@get('" + escapeQuote(postActionPath(d.Post.ID, "edit", d.From)) + "')" }>Edit</a>
+			}
+			if d.Post.CanDelete {
+				<form class="action post-delete" method="post" action={ templ.SafeURL(PostPath(d.Post.ID) + "/delete") } data-on:submit={ FormPostConfirm(PostPath(d.Post.ID)+"/delete", "Delete this post? This cannot be undone.") }>
+					if d.From != "" {
+						<input type="hidden" name="from" value={ d.From }/>
+					}
+					<button type="submit" class="danger">Delete</button>
+				</form>
+			}
+		</footer>
+	</article>
+}
+
+// PostEdit is a post replaced by its editor, for the edit in place.
+templ PostEdit(d PostEditData) {
+	<article id={ postElementID(d.Post.ID) } class="post post-editing" data-post={ roomIDText(d.Post.ID) }>
+		@PostEditor(d.Editor)
+	</article>
+}
+
+// FeedPosts is the posts of a page of the feed, newest first, one after the
+// other.
+templ FeedPosts(d FeedData) {
+	for _, p := range d.Page.Posts {
+		@PostCard(PostCardData{Post: p})
+	}
+}
+
+// FeedMore is the end of the feed. When older posts exist it is the sentinel:
+// when it scrolls into view, Datastar loads the next page (the server answers
+// with the posts to append and a new sentinel); without JavaScript the link
+// "Older posts" opens the older page. With no older posts it is empty.
+templ FeedMore(d FeedData) {
+	if d.Page.HasNext {
+		<div id="feed-more" class="feed-more" data-on-intersect__once={ loadMoreAction(d.RoomID, d.Page.NextBefore) }>
+			<a href={ templ.SafeURL(OlderPostsPath(d.RoomID, d.Page.NextBefore)) }>Older posts</a>
+		</div>
+	} else {
+		<div id="feed-more" class="feed-more"></div>
+	}
+}
+
+// Feed is the feed of a room: the posts of the page, the empty message (shown
+// by the stylesheet only while there is no post), and the end of the feed.
+templ Feed(d FeedData) {
+	<div id="feed" class="feed">
+		if d.Before != 0 {
+			<p class="hint feed-newest"><a href={ templ.SafeURL(RoomPath(d.RoomID)) }>Back to the newest posts</a></p>
+		}
+		<div id="feed-posts" class="feed-posts">
+			@FeedPosts(d)
+		</div>
+		<p id="feed-empty" class="empty">No posts yet</p>
+		@FeedMore(d)
+	</div>
+}
+
+// postTitle is the title of the page of a post.
+func postTitle(d PostPageData) string {
+	if d.Post.Deleted {
+		return "Deleted post in " + d.Post.RoomName
+	}
+	return "Post by " + d.Post.Author.DisplayName + " in " + d.Post.RoomName
+}
+
+// PostPage is the page of a post, in the layout with the sidebar: the room it
+// was written in, the post and the place of its comments.
+// TODO(step 5.2): the thread
+templ PostPage(d PostPageData) {
+	@Layout(postTitle(d), Sidebar(d.Sidebar)) {
+		<p class="post-room hint">in <a href={ templ.SafeURL(RoomPath(d.Post.RoomID)) }>{ d.Post.RoomName }</a></p>
+		if d.Editing {
+			@PostEdit(PostEditData{Post: d.Post, Editor: d.Editor})
+		} else {
+			@PostCard(PostCardData{Post: d.Post, From: FromPost, Message: d.Message})
+		}
+		<section id="comments" class="comments">
+			<h2>Comments</h2>
+			if d.Post.CommentCount == 0 {
+				<p class="empty">No comments yet.</p>
+			} else {
+				<p class="empty">{ commentCountText(d.Post.CommentCount) }; they are not shown here yet.</p>
+			}
+		</section>
+	}
+}

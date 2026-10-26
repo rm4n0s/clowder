@@ -95,13 +95,31 @@ func (s *Server) roomData(w http.ResponseWriter, r *http.Request, id uint64) (vi
 		s.roomFail(w, r, err, id)
 		return views.RoomData{}, false
 	}
-	d := views.RoomData{Sidebar: sb, Viewer: sb.User, Room: room, Members: members}
+	d := views.RoomData{Sidebar: sb, Viewer: sb.User, Room: room, Members: members, Editor: views.NewPostEditorData(id)}
 	if room.IsMember {
 		if d.Candidates, err = s.svc.Rooms.Candidates(r.Context(), actor, id); err != nil {
 			s.roomFail(w, r, err, id)
 			return views.RoomData{}, false
 		}
 	}
+	return d, true
+}
+
+// roomPageData is roomData with the page of the feed that starts after the
+// post before (0 for the newest). When a read fails it has answered (see
+// roomFail) and returns false.
+func (s *Server) roomPageData(w http.ResponseWriter, r *http.Request, id, before uint64) (views.RoomData, bool) {
+	d, ok := s.roomData(w, r, id)
+	if !ok {
+		return views.RoomData{}, false
+	}
+	actor, _ := actorFrom(r.Context())
+	page, err := s.svc.Posts.Feed(r.Context(), actor, id, before, 0)
+	if err != nil {
+		s.roomFail(w, r, err, id)
+		return views.RoomData{}, false
+	}
+	d.Feed = views.FeedData{RoomID: id, Page: page, Before: before}
 	return d, true
 }
 
@@ -157,14 +175,16 @@ func (s *Server) roomCreate(w http.ResponseWriter, r *http.Request) {
 	s.redirect(w, r, views.RoomPath(room.ID), http.StatusSeeOther)
 }
 
-// roomPage answers GET /rooms/{id}: the room, for a person who may read it,
-// else the 404 page.
+// roomPage answers GET /rooms/{id}: the room with the editor and the newest
+// page of the feed, for a person who may read it, else the 404 page. The query
+// "before" shows the posts older than that post, which is what the link "Older
+// posts" asks for.
 func (s *Server) roomPage(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.roomID(w, r)
 	if !ok {
 		return
 	}
-	d, ok := s.roomData(w, r, id)
+	d, ok := s.roomPageData(w, r, id, beforeOf(r))
 	if !ok {
 		return
 	}
@@ -236,7 +256,16 @@ func (s *Server) roomActionFailed(w http.ResponseWriter, r *http.Request, err er
 		s.render(w, r, status, views.RoomsBrowsePage(d))
 		return
 	}
-	d, ok := s.roomData(w, r, id)
+	var (
+		d  views.RoomData
+		ok bool
+	)
+	if isDatastar(r) {
+		d, ok = s.roomData(w, r, id)
+	} else {
+		// A plain post gets the whole page back, feed included.
+		d, ok = s.roomPageData(w, r, id, 0)
+	}
 	if !ok {
 		return
 	}
@@ -317,7 +346,12 @@ func (s *Server) roomRename(w http.ResponseWriter, r *http.Request) {
 		s.roomActionFailed(w, r, err, id, target)
 		return
 	}
-	d, ok := s.roomData(w, r, id)
+	var d views.RoomData
+	if isDatastar(r) {
+		d, ok = s.roomData(w, r, id)
+	} else {
+		d, ok = s.roomPageData(w, r, id, 0)
+	}
 	if !ok {
 		return
 	}

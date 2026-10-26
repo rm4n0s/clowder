@@ -14,6 +14,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/web"
 	"github.com/rm4n0s/errors"
@@ -49,7 +50,12 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
 	})
-	srv, err := web.New(cfg, logger, web.Services{Accounts: accounts, Rooms: app.NewRooms(st), Audit: app.NewAudit(st)})
+	srv, err := web.New(cfg, logger, web.Services{
+		Accounts: accounts,
+		Rooms:    app.NewRooms(st),
+		Audit:    app.NewAudit(st),
+		Posts:    app.NewPosts(st, clock.Real(), markdown.New()),
+	})
 	if err != nil {
 		return err
 	}

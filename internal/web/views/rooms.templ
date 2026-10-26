@@ -180,17 +180,26 @@ type RoomData struct {
 	MembersMessage string
 	// Edit is the state of the rename form.
 	Edit RoomEditData
+	// Editor is the editor of a new post, shown to a member.
+	Editor PostEditorData
+	// Feed is the page of the feed that the page shows.
+	Feed FeedData
 }
 
-// RoomPage is the page of a room: the header, the feed and the members panel.
-// TODO(step 4.3): the feed
+// RoomPage is the page of a room: the header, the editor of a new post (for a
+// member; others are told to join), the feed and the members panel.
 templ RoomPage(d RoomData) {
 	@Layout(d.Room.Name, Sidebar(d.Sidebar)) {
 		@RoomHeader(d)
 		<div class="room-body">
 			<section id="room-feed" class="room-feed">
 				<h2>Posts</h2>
-				<p class="empty">No posts yet</p>
+				if d.Room.IsMember {
+					@PostEditor(d.Editor)
+				} else {
+					<p id="join-to-post" class="hint join-note">Join this room to post</p>
+				}
+				@Feed(d.Feed)
 			</section>
 			@MembersPanel(d)
 		</div>

@@ -42,6 +42,8 @@ type Services struct {
 	Rooms *app.Rooms
 	// Audit is the service that reads the audit log.
 	Audit *app.Audit
+	// Posts is the service of posts, their tags and their feeds.
+	Posts *app.Posts
 }
 
 // Server is the HTTP server of Clowder: the routes, the middleware and the
@@ -121,6 +123,15 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /rooms/{id}/delete", handler: http.HandlerFunc(s.roomDelete)},
 		{pattern: "POST /rooms/{id}/members", handler: http.HandlerFunc(s.memberAdd)},
 		{pattern: "POST /rooms/{id}/members/{userID}/remove", handler: http.HandlerFunc(s.memberRemove)},
+		{pattern: "GET /rooms/{id}/feed", handler: http.HandlerFunc(s.roomFeed)},
+		{pattern: "POST /rooms/{id}/posts", handler: http.HandlerFunc(s.postCreate)},
+		{pattern: "GET /posts/{id}", handler: http.HandlerFunc(s.postPage)},
+		{pattern: "GET /posts/{id}/edit", handler: http.HandlerFunc(s.postEditForm)},
+		{pattern: "POST /posts/{id}/edit", handler: http.HandlerFunc(s.postEditSave)},
+		{pattern: "GET /posts/{id}/view", handler: http.HandlerFunc(s.postView)},
+		{pattern: "POST /posts/{id}/delete", handler: http.HandlerFunc(s.postDelete)},
+		{pattern: "POST /preview", handler: http.HandlerFunc(s.postPreview)},
+		{pattern: "GET /tags/suggest", handler: http.HandlerFunc(s.tagSuggest)},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
 	}
 	mux := http.NewServeMux()
