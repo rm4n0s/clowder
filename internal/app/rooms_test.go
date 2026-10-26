@@ -675,6 +675,81 @@ func TestRoomsAllRoomsPermissions(t *testing.T) {
 	}
 }
 
+func TestRoomsAdminMembersPermissions(t *testing.T) {
+	// Admins list the members of every room, private ones they are not in
+	// included (D29); anyone else is forbidden, whatever the room.
+	routes := map[string]string{app.TagForbidden: "Rooms.AdminMembers.Forbidden"}
+	cases := []permCase{
+		{"admin", "lobby", ""}, {"root", "lobby", ""},
+		{"alice", "lobby", app.TagForbidden}, {"bob", "lobby", app.TagForbidden}, {"carol", "lobby", app.TagForbidden},
+		{"admin", "den", ""}, {"root", "den", ""},
+		{"alice", "den", app.TagForbidden}, {"bob", "den", app.TagForbidden}, {"carol", "den", app.TagForbidden},
+	}
+	runPermissions(t, func(e *roomsEnv, a app.Actor, r app.Room) error {
+		members, err := e.rooms.AdminMembers(t.Context(), a, r.ID)
+		if err != nil && members != nil {
+			t.Errorf("members = %v with an error, want none", members)
+		}
+		return err
+	}, routes, cases)
+}
+
+func TestRoomsAdminMembers(t *testing.T) {
+	e := newRoomsEnv(t)
+	aliceID, bobID := e.users["alice"].ID, e.users["bob"].ID
+
+	// root is in neither room and reads the members of the private one.
+	members, err := e.rooms.AdminMembers(t.Context(), e.as("root"), e.den.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []app.Member{
+		{UserID: aliceID, Username: "alice", DisplayName: "Alice", JoinedAt: e.clk.Now()},
+		{UserID: bobID, Username: "bob", DisplayName: "Bob", AddedBy: &aliceID, AddedByDisplayName: "Alice", JoinedAt: e.clk.Now()},
+	}
+	if !reflect.DeepEqual(members, want) {
+		t.Errorf("members of den = %+v, want %+v", members, want)
+	}
+	// The same members as the ones a member of the room sees.
+	asMember, err := e.rooms.Members(t.Context(), e.as("bob"), e.den.ID)
+	if err != nil || !reflect.DeepEqual(asMember, members) {
+		t.Errorf("Members = %+v, %v; want the same as AdminMembers", asMember, err)
+	}
+
+	members, err = e.rooms.AdminMembers(t.Context(), e.as("root"), e.lobby.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, m := range members {
+		names = append(names, m.Username)
+	}
+	if !reflect.DeepEqual(names, []string{"admin", "bob"}) {
+		t.Errorf("members of lobby = %v, want admin and bob", names)
+	}
+
+	// A private room with no members is listed empty, not as an error.
+	for _, who := range []string{"alice", "bob"} {
+		if err := e.rooms.Leave(t.Context(), e.as(who), e.den.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	members, err = e.rooms.AdminMembers(t.Context(), e.as("root"), e.den.ID)
+	if err != nil || len(members) != 0 {
+		t.Errorf("members of the empty room = %v, %v; want none", members, err)
+	}
+
+	// A room that does not exist is TagNotFound for an admin; a member is
+	// forbidden before the room is looked up.
+	_, err = e.rooms.AdminMembers(t.Context(), e.as("root"), 9999)
+	appErr := requireTag(t, err, app.TagNotFound, "Rooms.AdminMembers->Store.RoomByID.NotFound")
+	if appErr.Metadata["op"] != "roomByID" {
+		t.Errorf("metadata = %v", appErr.Metadata)
+	}
+	_, err = e.rooms.AdminMembers(t.Context(), e.as("bob"), 9999)
+	_ = requireTag(t, err, app.TagForbidden, "Rooms.AdminMembers.Forbidden")
+}
+
 func TestRoomsJoin(t *testing.T) {
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []permCase{
@@ -1356,6 +1431,7 @@ func TestRoomsDatabaseFailuresPassThrough(t *testing.T) {
 		{"Update", func() error { return e.rooms.Update(ctx, a, e.lobby.ID, in) }, tagTxFailed, "Rooms.Update->Store.Tx.TransactionFailed"},
 		{"Delete", func() error { return e.rooms.Delete(ctx, a, e.lobby.ID) }, tagTxFailed, "Rooms.Delete->Store.Tx.TransactionFailed"},
 		{"AllRooms", func() error { _, err := e.rooms.AllRooms(ctx, a); return err }, store.TagQueryFailed, "Rooms.AllRooms->Store.ListRooms.QueryFailed"},
+		{"AdminMembers", func() error { _, err := e.rooms.AdminMembers(ctx, a, e.lobby.ID); return err }, store.TagQueryFailed, "Rooms.AdminMembers->Store.RoomByID.QueryFailed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -294,3 +294,107 @@ textarea { resize: vertical; }
 .member-list form.action { margin: 0 0 0 auto; }
 
 .add-member select { margin-bottom: 0.5rem; }
+
+/* The tab bar that the admin pages share. */
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-tabs a {
+  padding: 0.375rem 0.875rem;
+  margin-bottom: -1px;
+  color: var(--fg-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 6px 6px 0 0;
+}
+
+.admin-tabs a:hover { color: var(--fg); }
+
+.admin-tabs a.current {
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--bg);
+  border-color: var(--border);
+  border-bottom-color: var(--bg);
+}
+
+/* The admin rooms page: one card per room. */
+.admin-room-list { margin: 0 0 2rem; padding: 0; list-style: none; }
+
+.admin-room {
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.admin-room:target { border-color: var(--accent); }
+
+.admin-room h2 { margin: 0; font-size: 1.125rem; }
+
+.admin-room .room-title { margin-bottom: 0.25rem; }
+
+.admin-room .hint { margin: 0 0 0.5rem; }
+
+.admin-room .room-actions { margin-bottom: 0.25rem; }
+
+.admin-room details { margin-top: 0.5rem; }
+
+.admin-room summary { cursor: pointer; color: var(--accent); }
+
+.admin-room details form.room-form,
+.admin-room-members .member-list { margin-top: 0.75rem; }
+
+/* The audit log: the filters, the table of events and the pager. */
+.audit-filter { margin-bottom: 1.5rem; }
+
+.audit-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0 1rem;
+}
+
+.audit-filter-actions { display: flex; gap: 0.75rem; align-items: center; }
+
+.audit-table-wrap { overflow-x: auto; }
+
+table.audit { width: 100%; margin-bottom: 1rem; border-collapse: collapse; }
+
+table.audit > thead > tr > th,
+table.audit > tbody > tr > td {
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+table.audit > thead > tr > th { font-size: 0.875rem; color: var(--fg-muted); }
+
+table.audit td.audit-time { white-space: nowrap; }
+
+.deleted-room { color: var(--fg-muted); }
+
+.audit-details { margin-top: 0.25rem; }
+
+.audit-details summary { cursor: pointer; font-size: 0.875rem; color: var(--accent); }
+
+table.audit-details-table { margin: 0.5rem 0; border-collapse: collapse; font-size: 0.875rem; }
+
+table.audit-details-table th,
+table.audit-details-table td {
+  padding: 0.25rem 0.625rem;
+  text-align: left;
+  vertical-align: top;
+  border: 1px solid var(--border);
+}
+
+table.audit-details-table thead th { color: var(--fg-muted); }
+
+.pager { display: flex; gap: 1rem; align-items: center; margin-bottom: 2rem; }
+
+.pager .hint { margin: 0; }

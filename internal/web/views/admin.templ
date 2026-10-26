@@ -39,10 +39,40 @@ type InviteData struct {
 // admins get it.
 templ AdminUsersPage(d AdminUsersData) {
 	@Layout("Users", Sidebar(d.Sidebar)) {
+		@AdminTabs("users")
 		<h1>Users</h1>
 		@UsersPanel(d)
 		@InviteSection(d.Invite)
 	}
+}
+
+// AdminTabs is the tab bar that the admin pages share: Users, Rooms and Audit
+// log. current is the tab of the page that is shown: "users", "rooms" or
+// "audit".
+templ AdminTabs(current string) {
+	<nav class="admin-tabs" aria-label="Admin">
+		<a
+			href="/admin/users"
+			class={ templ.KV("current", current == "users") }
+			if current == "users" {
+				aria-current="page"
+			}
+		>Users</a>
+		<a
+			href="/admin/rooms"
+			class={ templ.KV("current", current == "rooms") }
+			if current == "rooms" {
+				aria-current="page"
+			}
+		>Rooms</a>
+		<a
+			href="/admin/audit"
+			class={ templ.KV("current", current == "audit") }
+			if current == "audit" {
+				aria-current="page"
+			}
+		>Audit log</a>
+	</nav>
 }
 
 // UsersPanel is the table of users with the message of the last action above

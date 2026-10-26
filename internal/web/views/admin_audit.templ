@@ -1,0 +1,217 @@
+package views
+
+import (
+	"strconv"
+
+	"github.com/rm4n0s/clowder/internal/app"
+)
+
+// AuditRow is one event of the audit log with what the page shows around it.
+type AuditRow struct {
+	// Event is the event.
+	Event app.AuditView
+	// RoomName is the name of the room of the event: the current name while
+	// the room exists, else the name it had in the event; empty when the event
+	// does not tell.
+	RoomName string
+	// RoomExists is true when the room still exists, so that the row links to
+	// it.
+	RoomExists bool
+}
+
+// AuditData is what the audit log page shows.
+type AuditData struct {
+	// Sidebar is the sidebar of the page.
+	Sidebar SidebarData
+	// Filter is the state of the filter form.
+	Filter AuditFilterForm
+	// Rooms are all the rooms, for the room filter.
+	Rooms []app.Room
+	// MissingRoom is true when the room of the filter is not in Rooms (it was
+	// deleted); the room filter then offers it by its ID.
+	MissingRoom bool
+	// Users are all the users, for the actor filter.
+	Users []app.User
+	// Entities and Actions are the values of the entity type and action
+	// filters.
+	Entities []string
+	Actions  []string
+	// Rows are the events of the page, newest first.
+	Rows []AuditRow
+	// Page is the number of the page, starting at 1.
+	Page int
+	// HasNext is true when an older page exists.
+	HasNext bool
+}
+
+// AuditPage is the page of the audit log: the filter form and the events.
+// Only admins get it.
+templ AuditPage(d AuditData) {
+	@Layout("Audit log", Sidebar(d.Sidebar)) {
+		@AdminTabs("audit")
+		<h1>Audit log</h1>
+		@AuditFilters(d)
+		@AuditPanel(d)
+	}
+}
+
+// AuditFilters is the form of the filters. It is a plain GET form, so the
+// result can be shared by its URL; with Datastar it fetches the events and
+// patches the table in place.
+templ AuditFilters(d AuditData) {
+	<form id="audit-filter" class="audit-filter" method="get" action="/admin/audit" data-on:submit="@get('/admin/audit', {contentType: 'form'})">
+		<div class="audit-filter-fields">
+			<div class="field">
+				<label for="audit-room">Room</label>
+				<select id="audit-room" name="room">
+					<option value="" selected?={ d.Filter.Room == 0 }>Any room</option>
+					if d.MissingRoom {
+						<option value={ roomIDText(d.Filter.Room) } selected>{ "Deleted room (" + roomIDText(d.Filter.Room) + ")" }</option>
+					}
+					for _, room := range d.Rooms {
+						<option value={ roomIDText(room.ID) } selected?={ d.Filter.Room == room.ID }>{ room.Name }</option>
+					}
+				</select>
+			</div>
+			<div class="field">
+				<label for="audit-actor">Actor</label>
+				<select id="audit-actor" name="actor">
+					<option value="" selected?={ d.Filter.Actor == 0 }>Anyone</option>
+					for _, u := range d.Users {
+						<option value={ roomIDText(u.ID) } selected?={ d.Filter.Actor == u.ID }>{ u.DisplayName } ({ "@" + u.Username })</option>
+					}
+				</select>
+			</div>
+			<div class="field">
+				<label for="audit-entity">Entity type</label>
+				<select id="audit-entity" name="entity">
+					<option value="" selected?={ d.Filter.Entity == "" }>Any type</option>
+					for _, e := range d.Entities {
+						<option value={ e } selected?={ d.Filter.Entity == e }>{ e }</option>
+					}
+				</select>
+			</div>
+			<div class="field">
+				<label for="audit-action">Action</label>
+				<select id="audit-action" name="action">
+					<option value="" selected?={ d.Filter.Action == "" }>Any action</option>
+					for _, a := range d.Actions {
+						<option value={ a } selected?={ d.Filter.Action == a }>{ a }</option>
+					}
+				</select>
+			</div>
+			<div class="field">
+				<label for="audit-from">From (UTC)</label>
+				<input id="audit-from" name="from" type="date" value={ d.Filter.From }/>
+			</div>
+			<div class="field">
+				<label for="audit-to">To (UTC)</label>
+				<input id="audit-to" name="to" type="date" value={ d.Filter.To }/>
+			</div>
+		</div>
+		<div class="audit-filter-actions">
+			<button type="submit">Filter</button>
+			<a class="button-link" href="/admin/audit">Clear</a>
+		</div>
+	</form>
+}
+
+// AuditPanel is the message about the filters, the table of events and the
+// links to the newer and older page. The server sends it alone as a Datastar
+// patch when the filters or the page change.
+templ AuditPanel(d AuditData) {
+	<section id="audit-panel">
+		@formProblem(d.Filter.Message)
+		if len(d.Rows) == 0 {
+			<p class="empty">No events match.</p>
+		} else {
+			<div class="audit-table-wrap">
+				<table class="audit">
+					<thead>
+						<tr>
+							<th scope="col">Time (UTC)</th>
+							<th scope="col">Actor</th>
+							<th scope="col">Room</th>
+							<th scope="col">Action</th>
+							<th scope="col">Summary</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, row := range d.Rows {
+							@auditRow(row)
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+		<nav class="pager" aria-label="Pages">
+			if d.Page > 1 {
+				<a class="newer" href={ templ.SafeURL(d.Filter.AuditPath(d.Page - 1)) } data-on:click__prevent={ auditGet(d.Filter.AuditPath(d.Page - 1)) }>Newer</a>
+			}
+			<span class="hint">Page { strconv.Itoa(d.Page) }</span>
+			if d.HasNext {
+				<a class="older" href={ templ.SafeURL(d.Filter.AuditPath(d.Page + 1)) } data-on:click__prevent={ auditGet(d.Filter.AuditPath(d.Page + 1)) }>Older</a>
+			}
+		</nav>
+	</section>
+}
+
+// auditGet returns the Datastar action that fetches the audit log page at
+// path.
+func auditGet(path string) string {
+	return "@get('" + escapeQuote(path) + "')"
+}
+
+// auditRow is one event: a row of the table, with the details table in an
+// expandable element under the summary.
+templ auditRow(row AuditRow) {
+	<tr id={ "event-" + roomIDText(row.Event.ID) } data-action={ string(row.Event.Action) }>
+		<td class="audit-time"><time datetime={ row.Event.CreatedAt.UTC().Format("2006-01-02T15:04:05Z") }>{ row.Event.CreatedAt.UTC().Format("2006-01-02 15:04") }</time></td>
+		<td class="audit-actor">{ row.Event.ActorDisplayName } <span class="member-username">{ "@" + row.Event.ActorUsername }</span></td>
+		<td class="audit-room">
+			if row.RoomExists {
+				<a href={ templ.SafeURL(adminRoomLink(row.Event.RoomID)) }>{ auditRoomLabel(row.RoomName) }</a>
+			} else if row.RoomName != "" {
+				<span class="deleted-room">{ auditRoomLabel(row.RoomName) } <span class="hint">(deleted)</span></span>
+			} else {
+				<span class="deleted-room">Room { roomIDText(row.Event.RoomID) } <span class="hint">(deleted)</span></span>
+			}
+		</td>
+		<td class="audit-action"><code>{ string(row.Event.Action) }</code></td>
+		<td class="audit-summary">
+			<span>{ row.Event.Summary }</span>
+			@auditDetails(AuditDetails(row.Event.Details))
+		</td>
+	</tr>
+}
+
+// auditDetails is the expandable table of the changed fields of an event.
+templ auditDetails(rows []AuditDetail) {
+	if len(rows) > 0 {
+		<details class="audit-details">
+			<summary>Details</summary>
+			<table class="audit-details-table">
+				<thead>
+					<tr>
+						<th scope="col">Field</th>
+						<th scope="col">Old</th>
+						<th scope="col">New</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, r := range rows {
+						<tr>
+							<th scope="row">{ r.Key }</th>
+							if r.Text != "" {
+								<td colspan="2">{ r.Text }</td>
+							} else {
+								<td>{ r.Old }</td>
+								<td>{ r.New }</td>
+							}
+						</tr>
+					}
+				</tbody>
+			</table>
+		</details>
+	}
+}

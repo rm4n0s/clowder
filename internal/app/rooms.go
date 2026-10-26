@@ -224,7 +224,27 @@ func (r *Rooms) Members(ctx context.Context, actor Actor, roomID uint64) ([]Memb
 	if _, err := loadReadableRoom(ctx, r.st, actor, roomID); err != nil {
 		return nil, err
 	}
-	rows, err := r.st.ListRoomMembers(ctx, roomID)
+	return memberViews(ctx, r.st, roomID)
+}
+
+// AdminMembers returns the members of any room, private ones included,
+// ordered by display name, for the admin rooms page (D29). It needs no
+// membership: only admins may, and anyone else gets TagForbidden. A room that
+// does not exist fails with TagNotFound.
+func (r *Rooms) AdminMembers(ctx context.Context, actor Actor, roomID uint64) ([]Member, error) {
+	if !actor.IsAdmin() {
+		return nil, errors.New(TagForbidden, "only admins list the members of any room",
+			"userID", actor.UserID, "roomID", roomID)
+	}
+	if _, err := r.st.RoomByID(ctx, roomID); err != nil {
+		return nil, err
+	}
+	return memberViews(ctx, r.st, roomID)
+}
+
+// memberViews reads the members of the room and makes their views.
+func memberViews(ctx context.Context, st *store.Store, roomID uint64) ([]Member, error) {
+	rows, err := st.ListRoomMembers(ctx, roomID)
 	if err != nil {
 		return nil, err
 	}

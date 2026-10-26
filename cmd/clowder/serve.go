@@ -49,7 +49,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
 	})
-	srv, err := web.New(cfg, logger, web.Services{Accounts: accounts, Rooms: app.NewRooms(st)})
+	srv, err := web.New(cfg, logger, web.Services{Accounts: accounts, Rooms: app.NewRooms(st), Audit: app.NewAudit(st)})
 	if err != nil {
 		return err
 	}

@@ -40,6 +40,8 @@ type Services struct {
 	Accounts *app.Accounts
 	// Rooms is the service of rooms and their memberships.
 	Rooms *app.Rooms
+	// Audit is the service that reads the audit log.
+	Audit *app.Audit
 }
 
 // Server is the HTTP server of Clowder: the routes, the middleware and the
@@ -103,6 +105,12 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /admin/users/{id}/role", handler: http.HandlerFunc(s.setRole)},
 		{pattern: "POST /admin/users/{id}/disabled", handler: http.HandlerFunc(s.setDisabled)},
 		{pattern: "POST /admin/invitations", handler: http.HandlerFunc(s.invite)},
+		{pattern: "GET /admin/rooms", handler: http.HandlerFunc(s.adminRooms)},
+		{pattern: "POST /admin/rooms/{id}/rename", handler: http.HandlerFunc(s.adminRoomRename)},
+		{pattern: "POST /admin/rooms/{id}/delete", handler: http.HandlerFunc(s.adminRoomDelete)},
+		{pattern: "GET /admin/rooms/{id}/members", handler: http.HandlerFunc(s.adminRoomMembers)},
+		{pattern: "POST /admin/rooms/{id}/members/{userID}/remove", handler: http.HandlerFunc(s.adminMemberRemove)},
+		{pattern: "GET /admin/audit", handler: http.HandlerFunc(s.adminAudit)},
 		{pattern: "GET /rooms", handler: http.HandlerFunc(s.roomsBrowse)},
 		{pattern: "GET /rooms/new", handler: http.HandlerFunc(s.roomNewPage)},
 		{pattern: "POST /rooms", handler: http.HandlerFunc(s.roomCreate)},

@@ -441,3 +441,121 @@ func TestBrowseAndJoinARoom(t *testing.T) {
 		t.Errorf("random is not in the sidebar: %v", err)
 	}
 }
+
+// TestAdminAuditAndRooms logs in as the admin, filters the audit log by alice
+// (the table is patched in place and the address keeps the filter), opens the
+// admin rooms page, removes bob from the private room "secret" through its
+// members list, and finds "Admin removed Bob from #secret" in the audit log.
+func TestAdminAuditAndRooms(t *testing.T) {
+	srv := browsertest.Start(t)
+	browser := browsertest.Browser(t, srv)
+	ctx, cancel := context.WithTimeout(browser, pageTimeout)
+	defer cancel()
+
+	if err := browsertest.LogIn(ctx, srv, "admin"); err != nil {
+		t.Fatalf("LogIn: %+v", err)
+	}
+	err := chromedp.Do(ctx, chromedp.Navigate(srv.URL+"/admin/audit"), chromedp.WaitVisible("#audit-panel table.audit"))
+	if err != nil {
+		t.Fatalf("open the audit log: %v", err)
+	}
+	// The demo's log has events of several people.
+	const actors = `[...document.querySelectorAll('#audit-panel td.audit-actor')]`
+	all, err := chromedp.Run(ctx, chromedp.Evaluate[int](actors+`.length`))
+	if err != nil || all == 0 {
+		t.Fatalf("events in the log = %d, %v; want some", all, err)
+	}
+	if err := waitFor(ctx, actors+`.some(td => !td.textContent.includes('@alice'))`); err != nil {
+		t.Fatalf("the demo log has events of someone other than alice: %v", err)
+	}
+
+	// Filter by alice: Datastar patches the table, the address gets the filter.
+	aliceID, err := chromedp.Run(ctx, chromedp.Evaluate[string](
+		`[...document.querySelectorAll('#audit-actor option')].find(o => o.textContent.includes('@alice')).value`))
+	if err != nil {
+		t.Fatalf("find alice in the actor filter: %v", err)
+	}
+	err = chromedp.Do(ctx, chromedp.SetValue("#audit-actor", aliceID), chromedp.Click(`#audit-filter button[type="submit"]`))
+	if err != nil {
+		t.Fatalf("filter by alice: %v", err)
+	}
+	if err := waitFor(ctx, actors+`.length > 0 && `+actors+`.every(td => td.textContent.includes('@alice'))`); err != nil {
+		t.Fatalf("the table does not show only alice: %v", err)
+	}
+	if err := waitFor(ctx, `location.search === '?actor=`+aliceID+`'`); err != nil {
+		t.Errorf("the address does not keep the filter: %v", err)
+	}
+	// The form is not patched, so the choice stays.
+	if got, err := chromedp.Run(ctx, chromedp.Evaluate[string](`document.getElementById('audit-actor').selectedOptions[0].textContent`)); err != nil || !strings.Contains(got, "@alice") {
+		t.Errorf("the actor filter shows %q, %v after the patch", got, err)
+	}
+
+	// The rooms page: the tab bar leads there, and shows every room.
+	err = chromedp.Do(ctx, chromedp.Click(`.admin-tabs a[href="/admin/rooms"]`), chromedp.WaitVisible("#admin-rooms"))
+	if err != nil {
+		t.Fatalf("open the admin rooms page: %v", err)
+	}
+	secret := `li.admin-room[data-room="secret"]`
+	if err := waitFor(ctx, `document.querySelector('`+secret+` .badge-private') !== null`); err != nil {
+		t.Fatalf("the private room secret is not listed as private: %v", err)
+	}
+	// The members list loads when the toggle is opened.
+	err = chromedp.Do(ctx, chromedp.Click(secret+` details.admin-room-members summary`))
+	if err != nil {
+		t.Fatalf("open the members of secret: %v", err)
+	}
+	bob := secret + ` li[data-username="bob"]`
+	if err := waitFor(ctx, `document.querySelector('`+bob+`') !== null`); err != nil {
+		t.Fatalf("bob did not appear in the members of secret: %v", err)
+	}
+	if got := textOf(t, ctx, secret+" .room-members-count"); got != "2 members" {
+		t.Errorf("member count = %q, want 2 members", got)
+	}
+	// Remove bob; the dialog that asks is answered yes.
+	if _, err := chromedp.Run(ctx, chromedp.Evaluate[bool](`(window.confirm = () => true, true)`)); err != nil {
+		t.Fatalf("answer the dialog: %v", err)
+	}
+	if err := chromedp.Do(ctx, chromedp.Click(bob+` button`)); err != nil {
+		t.Fatalf("click Remove: %v", err)
+	}
+	if err := waitFor(ctx, `document.querySelector('`+bob+`') === null && document.querySelector('`+secret+` li[data-username="alice"]') !== null`); err != nil {
+		t.Fatalf("bob is still in the list, or alice is gone: %v", err)
+	}
+	if err := waitFor(ctx, `document.querySelector('`+secret+` .room-members-count').textContent === '1 member'`); err != nil {
+		t.Errorf("the member count did not drop: %v", err)
+	}
+
+	// The audit log tells who did it.
+	err = chromedp.Do(ctx, chromedp.Click(`.admin-tabs a[href="/admin/audit"]`), chromedp.WaitVisible("#audit-panel table.audit"))
+	if err != nil {
+		t.Fatalf("open the audit log again: %v", err)
+	}
+	if err := waitFor(ctx, `[...document.querySelectorAll('#audit-panel td.audit-summary > span')].some(s => s.textContent === 'Admin removed Bob from #secret')`); err != nil {
+		t.Fatalf("the audit log does not say that the admin removed bob from #secret: %v", err)
+	}
+	// Its room links to the row on the rooms page.
+	if err := waitFor(ctx, `document.querySelector('#audit-panel tr[data-action="member.removed"] td.audit-room a[href^="/admin/rooms#room-"]') !== null`); err != nil {
+		t.Errorf("the room of the event is not a link to the rooms page: %v", err)
+	}
+}
+
+// TestAdminPagesForAMemberInTheBrowser logs in as alice: the admin pages are
+// the 404 page.
+func TestAdminPagesForAMemberInTheBrowser(t *testing.T) {
+	srv := browsertest.Start(t)
+	browser := browsertest.Browser(t, srv)
+	ctx, cancel := context.WithTimeout(browser, pageTimeout)
+	defer cancel()
+
+	if err := browsertest.LogIn(ctx, srv, "alice"); err != nil {
+		t.Fatalf("LogIn: %+v", err)
+	}
+	for _, path := range []string{"/admin/rooms", "/admin/audit"} {
+		if err := chromedp.Do(ctx, chromedp.Navigate(srv.URL+path), chromedp.WaitVisible("h1")); err != nil {
+			t.Fatalf("open %s: %v", path, err)
+		}
+		if got := textOf(t, ctx, "h1"); got != "404" {
+			t.Errorf("heading of %s for a member = %q, want 404", path, got)
+		}
+	}
+}

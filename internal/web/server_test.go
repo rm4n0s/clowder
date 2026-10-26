@@ -21,6 +21,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/store/storetest"
 	"github.com/rm4n0s/clowder/internal/web/static"
 	"github.com/rm4n0s/errors"
@@ -89,6 +90,8 @@ type testEnv struct {
 	log      *syncBuffer
 	accounts *app.Accounts
 	rooms    *app.Rooms
+	audit    *app.Audit
+	st       *store.Store
 	clk      *clock.Fake
 }
 
@@ -109,11 +112,12 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		SessionLifetime:    cfg.SessionLifetime,
 	})
 	rooms := app.NewRooms(st)
-	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms}, static.FS, extra...)
+	audit := app.NewAudit(st)
+	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, clk: clk}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, st: st, clk: clk}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

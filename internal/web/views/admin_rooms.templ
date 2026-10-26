@@ -1,0 +1,129 @@
+package views
+
+import "github.com/rm4n0s/clowder/internal/app"
+
+// AdminRoomRow is one room on the admin rooms page with the state of its
+// forms.
+type AdminRoomRow struct {
+	// Room is the room.
+	Room app.Room
+	// Creator is the display name of the user who made the room; empty when
+	// that user is not known.
+	Creator string
+	// MembersOpen is true when the members list is open; Members are then the
+	// members of the room.
+	MembersOpen bool
+	Members     []app.Member
+	// Message is the problem of the last action on the room (rename, delete),
+	// shown in the row; empty shows none.
+	Message string
+	// MembersMessage is the problem of the last action on the members, shown
+	// above the list; empty shows none.
+	MembersMessage string
+	// Edit is the state of the rename form. Open is true after a failed
+	// submit.
+	Edit RoomEditData
+}
+
+// AdminRoomsData is what the admin rooms page shows.
+type AdminRoomsData struct {
+	// Sidebar is the sidebar of the page.
+	Sidebar SidebarData
+	// Rooms are all the rooms, ordered by name.
+	Rooms []AdminRoomRow
+}
+
+// AdminRoomsPage is the page of every room, with the forms that rename and
+// delete a room and the list of its members. Only admins get it.
+templ AdminRoomsPage(d AdminRoomsData) {
+	@Layout("Rooms", Sidebar(d.Sidebar)) {
+		@AdminTabs("rooms")
+		<h1>Rooms</h1>
+		<section id="admin-rooms">
+			if len(d.Rooms) == 0 {
+				<p class="empty">There are no rooms yet.</p>
+			}
+			<ul class="admin-room-list">
+				for _, row := range d.Rooms {
+					@AdminRoom(row)
+				}
+			</ul>
+		</section>
+	}
+}
+
+// AdminRoom is the row of one room: its name, visibility, member count,
+// creator and creation date, and the forms that rename it, delete it and show
+// its members. The id of the row is room-<id>, so that other pages link to
+// it. The server sends it alone as a Datastar patch after an action.
+templ AdminRoom(row AdminRoomRow) {
+	<li class="admin-room" id={ "room-" + roomIDText(row.Room.ID) } data-room={ row.Room.Name }>
+		<div class="room-title">
+			<h2>{ row.Room.Name }</h2>
+			if row.Room.Visibility == app.VisibilityPrivate {
+				<span class="badge badge-private">@lockIcon() Private</span>
+			} else {
+				<span class="badge badge-visible">Visible</span>
+			}
+		</div>
+		if row.Room.Description != "" {
+			<p class="room-description">{ row.Room.Description }</p>
+		}
+		<p class="hint admin-room-meta">
+			<span class="room-members-count">{ memberCountText(row.Room.MemberCount) }</span>
+			· created
+			if row.Creator != "" {
+				by <span class="room-creator">{ row.Creator }</span>
+			}
+			on <time class="room-created" datetime={ row.Room.CreatedAt.UTC().Format("2006-01-02") }>{ row.Room.CreatedAt.UTC().Format("2006-01-02") }</time>
+		</p>
+		@formProblem(row.Message)
+		<div class="room-actions">
+			<form class="action" method="post" action={ templ.SafeURL(AdminRoomPath(row.Room.ID) + "/delete") } data-on:submit={ FormPostConfirm(AdminRoomPath(row.Room.ID)+"/delete", "Delete this room and everything in it? This cannot be undone.") }>
+				<button type="submit" class="danger">Delete</button>
+			</form>
+		</div>
+		<details class="room-edit" open?={ row.Edit.Open }>
+			<summary>Rename or describe</summary>
+			<form class="room-form" method="post" action={ templ.SafeURL(AdminRoomPath(row.Room.ID) + "/rename") } data-on:submit={ FormPost(AdminRoomPath(row.Room.ID) + "/rename") }>
+				@formProblem(row.Edit.Errors.Form)
+				@inputField(formField{ID: "room-" + roomIDText(row.Room.ID) + "-name", Name: "name", Label: "Name", Type: "text", Value: editValue(row.Edit, row.Room.Name, row.Edit.Name), Error: row.Edit.Errors.Fields["name"]})
+				@textareaField("room-"+roomIDText(row.Room.ID)+"-description", "description", "Description", editValue(row.Edit, row.Room.Description, row.Edit.Description), row.Edit.Errors.Fields["description"])
+				<button type="submit">Save</button>
+			</form>
+		</details>
+		<details
+			class="admin-room-members"
+			id={ "room-" + roomIDText(row.Room.ID) + "-members" }
+			open?={ row.MembersOpen }
+			data-on:toggle={ "el.open && @get('" + escapeQuote(AdminRoomPath(row.Room.ID)+"/members") + "')" }
+		>
+			<summary>Members</summary>
+			@formProblem(row.MembersMessage)
+			if row.MembersOpen {
+				if len(row.Members) == 0 {
+					<p class="empty">This room has no members.</p>
+				}
+				<ul class="member-list">
+					for _, m := range row.Members {
+						<li id={ "room-" + roomIDText(row.Room.ID) + "-member-" + roomIDText(m.UserID) } data-username={ m.Username }>
+							<span class="member-name">{ m.DisplayName }</span>
+							<span class="member-username">{ "@" + m.Username }</span>
+							<form class="action" method="post" action={ templ.SafeURL(adminMemberRemovePath(row.Room.ID, m.UserID)) } data-on:submit={ FormPostConfirm(adminMemberRemovePath(row.Room.ID, m.UserID), "Remove this member from the room?") }>
+								<button type="submit" class="secondary">Remove</button>
+							</form>
+						</li>
+					}
+				</ul>
+			} else {
+				<p class="hint">Loading the members…</p>
+			}
+		</details>
+	</li>
+}
+
+// adminMemberRemovePath returns the path that removes a user from a room on
+// the admin rooms page.
+func adminMemberRemovePath(roomID, userID uint64) string {
+	return AdminRoomPath(roomID) + "/members/" + roomIDText(userID) + "/remove"
+}
