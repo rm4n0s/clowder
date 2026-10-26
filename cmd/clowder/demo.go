@@ -34,8 +34,9 @@ var demoUsers = []struct {
 // runDemo prepares the data directory of the demo. The directory is made if it
 // is missing and must otherwise be empty, so that demo never touches the data
 // of a real instance. It then makes the database and the demo users in it,
-// through the accounts service (an invitation and a sign-up for each), and
-// prints the directory and the users with their password to stdout.
+// through the accounts service (an invitation and a sign-up for each), then
+// the rooms through the rooms service, and prints the directory, the users
+// with their password and the rooms to stdout.
 // Later steps add their own demo data here.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	var dataDir string
@@ -78,6 +79,7 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	}()
 	accounts := app.NewAccounts(st, clock.Real(), hasher, app.AccountsConfig{InvitationLifetime: config.DefaultInvitationLifetime, SessionLifetime: config.DefaultSessionLifetime})
 	_, _ = fmt.Fprintf(stdout, "demo users (password %s):\n", demoPassword)
+	actors := map[string]app.Actor{}
 	for _, d := range demoUsers {
 		inv, err := accounts.CreateSystemInvitation(ctx, d.role)
 		if err != nil {
@@ -87,9 +89,47 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 		if err != nil {
 			return err
 		}
+		actors[u.Username] = app.Actor{UserID: u.ID, Username: u.Username, Role: u.Role}
 		_, _ = fmt.Fprintf(stdout, "  %-6s %-6s %s\n", u.Username, u.Role, u.DisplayName)
 	}
-	return nil
+	return makeDemoRooms(ctx, app.NewRooms(st), actors, stdout)
+}
+
+// makeDemoRooms makes the rooms of the demo through the rooms service, as the
+// users who would make them: admin makes the visible rooms general and random,
+// everyone joins general, alice and bob join random, and alice makes the
+// private room secret and adds bob. actors holds the demo users by username.
+func makeDemoRooms(ctx context.Context, rooms *app.Rooms, actors map[string]app.Actor, stdout io.Writer) error {
+	_, _ = fmt.Fprintln(stdout, "demo rooms:")
+	made := map[string]app.Room{}
+	for _, d := range []struct {
+		owner       string
+		name        string
+		description string
+		visibility  app.Visibility
+	}{
+		{"admin", "general", "Everything", app.VisibilityVisible},
+		{"admin", "random", "Off topic", app.VisibilityVisible},
+		{"alice", "secret", "Just for a few of us", app.VisibilityPrivate},
+	} {
+		room, err := rooms.Create(ctx, actors[d.owner], app.RoomInput{Name: d.name, Description: d.description, Visibility: d.visibility})
+		if err != nil {
+			return err
+		}
+		made[d.name] = room
+		_, _ = fmt.Fprintf(stdout, "  %-8s %-7s %s\n", room.Name, room.Visibility, room.Description)
+	}
+	for _, d := range demoUsers {
+		if err := rooms.Join(ctx, actors[d.username], made["general"].ID); err != nil {
+			return err
+		}
+	}
+	for _, username := range []string{"alice", "bob"} {
+		if err := rooms.Join(ctx, actors[username], made["random"].ID); err != nil {
+			return err
+		}
+	}
+	return rooms.AddMember(ctx, actors["alice"], made["secret"].ID, actors["bob"].UserID)
 }
 
 const (

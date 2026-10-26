@@ -84,6 +84,7 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 | D26 | A visible room is readable by every user before joining; joining is for posting, reacting, changing the board and being notified | The owner's answer, 2026-10-26. §7.2 |
 | D27 | Rooms are audited too: `room.created`, `room.renamed` (and description changes), `room.deleted` | The owner's answer, 2026-10-26. §7.10 |
 | D28 | **Private messages** are conversations between users, separate from rooms: a stream of messages, not posts (no comments, tasks, tags or board). A conversation with one other user is unique for the pair; a group conversation has up to 50 members | The owner's request, 2026-10-26. §7.11 |
+| D29 | Admins see every room, private ones included, in the admin rooms list (`/admin/rooms`: name, visibility, members, creation date), where they rename and delete rooms and remove members. Reading a private room's posts, board and members page still needs membership, admins included | Decided by the manager, 2026-10-27, from §7.2 (admins manage any room; an empty private room is kept for admins to delete); the owner may revise. §7.2 |
 
 ## 5. Size estimate
 

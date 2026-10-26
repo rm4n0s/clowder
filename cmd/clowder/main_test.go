@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -530,6 +531,94 @@ func TestRunDemoMakesTheDemoUsers(t *testing.T) {
 	appErr, ok := errors.FromError(err)
 	if !ok || appErr.Tag != tagDataDirNotEmpty || !appErr.HasRoute("run->runDemo.DataDirNotEmpty") {
 		t.Errorf("second demo: %v", err)
+	}
+}
+
+func TestRunDemoMakesTheDemoRooms(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	for _, line := range []string{"demo rooms:", "general  visible Everything", "random   visible Off topic", "secret   private Just for a few of us"} {
+		if !strings.Contains(stdout.String(), line) {
+			t.Errorf("stdout lacks %q:\n%s", line, stdout.String())
+		}
+	}
+
+	_, st := openAccounts(t, dir)
+	rooms := app.NewRooms(st)
+	actors := map[string]app.Actor{}
+	for _, d := range demoUsers {
+		row, err := st.UserByUsername(t.Context(), d.username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actors[d.username] = app.Actor{UserID: row.ID, Username: row.Username, Role: row.Role}
+	}
+
+	type row struct {
+		name       string
+		visibility app.Visibility
+		count      int
+	}
+	rowsOf := func(list []app.Room, err error) []row {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("%+v", err)
+		}
+		out := []row{}
+		for _, r := range list {
+			out = append(out, row{r.Name, r.Visibility, r.MemberCount})
+		}
+		return out
+	}
+	general := row{"general", app.VisibilityVisible, 4}
+	random := row{"random", app.VisibilityVisible, 3}
+	secret := row{"secret", app.VisibilityPrivate, 2}
+	tests := []struct {
+		name string
+		got  []row
+		want []row
+	}{
+		{"admin sees the visible rooms", rowsOf(rooms.Visible(t.Context(), actors["admin"])), []row{general, random}},
+		{"admin is in general and random", rowsOf(rooms.Mine(t.Context(), actors["admin"])), []row{general, random}},
+		{"alice is in all three", rowsOf(rooms.Mine(t.Context(), actors["alice"])), []row{general, random, secret}},
+		{"bob is in all three", rowsOf(rooms.Mine(t.Context(), actors["bob"])), []row{general, random, secret}},
+		{"carol is in general only", rowsOf(rooms.Mine(t.Context(), actors["carol"])), []row{general}},
+		{"admin lists every room", rowsOf(rooms.AllRooms(t.Context(), actors["admin"])), []row{general, random, secret}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !reflect.DeepEqual(tt.got, tt.want) {
+				t.Errorf("rooms = %v, want %v", tt.got, tt.want)
+			}
+		})
+	}
+
+	// secret was made by alice, who added bob; the three columns exist.
+	all, err := rooms.AllRooms(t.Context(), actors["admin"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range all {
+		cols, err := st.ListBoardColumns(t.Context(), r.ID)
+		if err != nil || len(cols) != 3 {
+			t.Errorf("%s: columns = %v, %v, want 3", r.Name, cols, err)
+		}
+		if r.Name == "secret" && r.CreatedBy != actors["alice"].UserID {
+			t.Errorf("secret was made by user %d, want alice", r.CreatedBy)
+		}
+		if r.Name != "secret" && r.CreatedBy != actors["admin"].UserID {
+			t.Errorf("%s was made by user %d, want admin", r.Name, r.CreatedBy)
+		}
+	}
+	members, err := rooms.Members(t.Context(), actors["bob"], all[2].ID)
+	if err != nil || len(members) != 2 || members[1].AddedByDisplayName != "Alice" {
+		t.Errorf("secret members = %+v, %v, want alice and bob (added by Alice)", members, err)
+	}
+	if _, err := rooms.Get(t.Context(), actors["carol"], all[2].ID); err == nil {
+		t.Error("carol reads the private room")
 	}
 }
 

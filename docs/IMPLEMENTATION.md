@@ -285,10 +285,11 @@ SPEC D22.
 **Done when:** the standard checks pass and the proof is verified.
 
 ### 3.4 Audit log page
-**Goal:** admins read the audit log.
+**Goal:** admins read the audit log and manage every room.
 **Read:** SPEC §7.10.
 **Tasks:**
-1. `/admin/audit`: the table of events (time, actor, room, action, summary, expandable details), filters of §7.10 as a form that updates the table with Datastar, pagination, links to entities that still exist.
+1. `/admin/rooms` (SPEC D29): every room with visibility, member count and creation date; rename, delete and a members list with remove, for admins. Members get 404.
+2. `/admin/audit`: the table of events (time, actor, room, action, summary, expandable details), filters of §7.10 as a form that updates the table with Datastar, pagination, links to entities that still exist.
 **Tests:** handler tests with filters; members get 404.
 **Proof:** method A: `3.4-audit.png` as `admin`, showing the demo's room and member events.
 **Done when:** the standard checks pass and the proof is verified.
