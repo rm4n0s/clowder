@@ -8,5 +8,7 @@
 // for a new member and puts its token where -page says {invite}), -fill
 // selector=value (repeatable: types into a field) and -click selector (clicks,
 // then waits for the page to settle), so that a proof can show a page after a
-// form was submitted.
+// form was submitted. With -as, {room:name} in -page stands for the path of the
+// room of that name (the whole path, /rooms/<id>), found in the sidebar of the
+// user: -page {room:secret}.
 package main

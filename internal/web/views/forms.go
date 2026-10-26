@@ -63,3 +63,15 @@ func invitePath(token string) string {
 func userPath(id uint64, action string) string {
 	return "/admin/users/" + strconv.FormatUint(id, 10) + "/" + action
 }
+
+// RoomPath returns the path of the page of a room, /rooms/<id>. Its actions
+// are RoomPath + "/join", "/leave", "/rename", "/delete" and "/members".
+func RoomPath(id uint64) string {
+	return "/rooms/" + strconv.FormatUint(id, 10)
+}
+
+// FormPostConfirm is FormPost behind a confirm dialog: the form is sent only
+// when the person agrees. The message is escaped like the path.
+func FormPostConfirm(path, message string) string {
+	return "confirm('" + escapeQuote(message) + "') && " + FormPost(path)
+}

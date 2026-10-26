@@ -165,3 +165,132 @@ form.action button { padding: 0.25rem 0.625rem; font-size: 0.875rem; }
 .invitation-box input { font-family: var(--mono); }
 
 #invite-form { max-width: 20rem; }
+
+/* Sidebar rooms: the rooms of the user, then the links to browse and make
+   rooms. A padlock marks a private room. */
+.sidebar-heading {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+aside nav ul.sidebar-room-list { margin-bottom: 0.5rem; }
+
+aside nav a { display: block; padding: 0.125rem 0.375rem; border-radius: 4px; text-decoration: none; }
+
+aside nav a:hover { text-decoration: underline; }
+
+aside nav a.current {
+  font-weight: 700;
+  color: var(--accent-fg);
+  background: var(--accent);
+}
+
+.lock { vertical-align: -1px; margin-right: 0.125rem; }
+
+.sidebar-room-links a { font-size: 0.875rem; }
+
+/* The page of the visible rooms. */
+.room-list { margin: 0 0 2rem; padding: 0; list-style: none; }
+
+.room-card {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.room-card h2 { margin: 0 0 0.25rem; font-size: 1.125rem; }
+
+.room-card p { margin: 0; }
+
+.room-card .hint { margin: 0.25rem 0 0; }
+
+.room-card-actions { display: flex; gap: 0.75rem; align-items: center; white-space: nowrap; }
+
+.joined { color: var(--fg-muted); font-weight: 600; }
+
+.button-link {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fg);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.empty { color: var(--fg-muted); }
+
+/* The form that makes a room, and the rename form. */
+.room-form { max-width: 28rem; }
+
+textarea { resize: vertical; }
+
+.visibility-note { margin-top: 0; }
+
+/* The page of a room: header, feed and members side by side. */
+.room-header { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+
+.room-title { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 0.5rem; }
+
+.room-title h1 { margin: 0; }
+
+.badge {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.room-description { margin: 0 0 0.5rem; }
+
+.room-header .hint { margin: 0 0 0.75rem; }
+
+.room-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+
+.room-actions form.action { margin-right: 0; }
+
+.room-edit { margin-top: 0.5rem; }
+
+.room-edit summary { cursor: pointer; color: var(--accent); }
+
+.room-edit form { margin-top: 0.75rem; }
+
+.room-body { display: flex; flex-wrap: wrap; gap: 2rem; }
+
+.room-feed { flex: 2 1 20rem; min-width: 0; }
+
+.members-panel { flex: 1 1 16rem; min-width: 0; }
+
+.member-list { margin: 0 0 1rem; padding: 0; list-style: none; }
+
+.member-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.member-name { font-weight: 600; }
+
+.member-username, .member-added { color: var(--fg-muted); font-size: 0.875rem; }
+
+.member-added { margin: 0; }
+
+.member-list form.action { margin: 0 0 0 auto; }
+
+.add-member select { margin-bottom: 0.5rem; }

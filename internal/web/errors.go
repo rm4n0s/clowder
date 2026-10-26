@@ -107,6 +107,7 @@ type formView struct {
 //   - TagInvalidInput shows the messages of the metadata "fields" next to
 //     their inputs, and the one named FieldForm above the form;
 //   - TagRateLimited shows messageRateLimited above the form;
+//   - TagForbidden and TagConflict show messageForbidden and messageConflict;
 //   - any other error shows messageTryAgain (a 500 is logged with its route);
 //   - TagUnauthenticated redirects to the login page.
 //
@@ -124,6 +125,10 @@ func (s *Server) formFailed(w http.ResponseWriter, r *http.Request, err error, b
 		problems = formErrorsOf(err)
 	case isTag(err, app.TagRateLimited):
 		problems.Form = messageRateLimited
+	case isTag(err, app.TagForbidden):
+		problems.Form = messageForbidden
+	case isTag(err, app.TagConflict):
+		problems.Form = messageConflict
 	default:
 		if status == http.StatusInternalServerError {
 			s.logFailure(r, err)

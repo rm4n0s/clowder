@@ -367,6 +367,44 @@ func (r *Rooms) AddMember(ctx context.Context, actor Actor, roomID, userID uint6
 	})
 }
 
+// Candidates returns the active users who are not members of the room, ordered
+// by username: the people the actor can add with AddMember. The rules are those
+// of AddMember: a private room that the actor is not a member of fails with
+// TagNotFound, a visible room that the actor has not joined with TagForbidden.
+func (r *Rooms) Candidates(ctx context.Context, actor Actor, roomID uint64) ([]User, error) {
+	room, err := loadReadableRoom(ctx, r.st, actor, roomID)
+	if err != nil {
+		return nil, err
+	}
+	member, err := isMember(ctx, r.st, actor.UserID, room.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !member {
+		return nil, errors.New(TagForbidden, "only members add members",
+			"userID", actor.UserID, "roomID", room.ID)
+	}
+	members, err := r.st.ListRoomMembers(ctx, room.ID)
+	if err != nil {
+		return nil, err
+	}
+	taken := make(map[uint64]bool, len(members))
+	for _, m := range members {
+		taken[m.UserID] = true
+	}
+	rows, err := r.st.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users := []User{}
+	for _, row := range rows {
+		if row.DisabledAt == nil && !taken[row.ID] {
+			users = append(users, viewOf(row))
+		}
+	}
+	return users, nil
+}
+
 // RemoveMember removes a user from a room and writes member.removed. Only
 // admins may, in any room, private ones too (D29); anyone else gets
 // TagForbidden, or TagNotFound for a private room they are not a member of.

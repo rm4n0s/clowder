@@ -1,0 +1,312 @@
+package views
+
+import (
+	"github.com/rm4n0s/clowder/internal/app"
+	"strconv"
+)
+
+// RoomsBrowseData is what the page of the visible rooms shows.
+type RoomsBrowseData struct {
+	// Sidebar is the sidebar of the page.
+	Sidebar SidebarData
+	// Rooms are the visible rooms.
+	Rooms []app.Room
+	// Message is the problem of the last action, shown above the list; empty
+	// shows none.
+	Message string
+}
+
+// RoomsBrowsePage is the page that lists the visible rooms with a Join button
+// for each room the person has not joined.
+templ RoomsBrowsePage(d RoomsBrowseData) {
+	@Layout("Rooms", Sidebar(d.Sidebar)) {
+		<h1>Browse rooms</h1>
+		@RoomsPanel(d)
+	}
+}
+
+// RoomsPanel is the list of the visible rooms with the message of the last
+// action above it. The server sends it alone as a Datastar patch when a join
+// fails.
+templ RoomsPanel(d RoomsBrowseData) {
+	<section id="rooms-panel">
+		@formProblem(d.Message)
+		if len(d.Rooms) == 0 {
+			<p class="empty">There are no visible rooms yet.</p>
+		}
+		<ul class="room-list">
+			for _, room := range d.Rooms {
+				<li class="room-card" id={ "room-" + roomIDText(room.ID) } data-room={ room.Name }>
+					<div class="room-card-text">
+						<h2><a href={ templ.SafeURL(RoomPath(room.ID)) }>{ room.Name }</a></h2>
+						if room.Description != "" {
+							<p class="room-description">{ room.Description }</p>
+						}
+						<p class="hint room-members-count">{ memberCountText(room.MemberCount) }</p>
+					</div>
+					<div class="room-card-actions">
+						if room.IsMember {
+							<span class="joined">Joined</span>
+							<a class="button-link" href={ templ.SafeURL(RoomPath(room.ID)) }>Open</a>
+						} else {
+							@roomJoinForm(room.ID, "browse")
+						}
+					</div>
+				</li>
+			}
+		</ul>
+	</section>
+}
+
+// roomJoinForm is the one-button form that joins a room. from says which page
+// it is on, so that a failure is shown there.
+templ roomJoinForm(id uint64, from string) {
+	<form class="action join-form" method="post" action={ templ.SafeURL(RoomPath(id) + "/join") } data-on:submit={ FormPost(RoomPath(id) + "/join") }>
+		<input type="hidden" name="from" value={ from }/>
+		<button type="submit">Join</button>
+	</form>
+}
+
+// memberCountText is "1 member" or "3 members".
+func memberCountText(n int) string {
+	if n == 1 {
+		return "1 member"
+	}
+	return strconv.Itoa(n) + " members"
+}
+
+// RoomNewData is what the page of the new room form shows.
+type RoomNewData struct {
+	// Sidebar is the sidebar of the page.
+	Sidebar SidebarData
+	// Admin is true when the person is an admin and so chooses the
+	// visibility; members always make private rooms.
+	Admin bool
+	// Name, Description and Visibility are the values of the last submit.
+	Name        string
+	Description string
+	Visibility  string
+	// Errors are the problems of the last submit.
+	Errors FormErrors
+}
+
+// RoomNewPage is the page of the form that makes a room.
+templ RoomNewPage(d RoomNewData) {
+	@Layout("New room", Sidebar(d.Sidebar)) {
+		<h1>New room</h1>
+		@RoomNewForm(d)
+	}
+}
+
+// RoomNewForm is the form that makes a room. The server sends it alone as a
+// Datastar patch to show the problems of a failed submit.
+templ RoomNewForm(d RoomNewData) {
+	<form id="room-new-form" class="room-form" method="post" action="/rooms" data-on:submit={ FormPost("/rooms") }>
+		@formProblem(d.Errors.Form)
+		@inputField(formField{ID: "room-name", Name: "name", Label: "Name", Type: "text", Value: d.Name, Error: d.Errors.Fields["name"], Autofocus: true, Hint: "1 to 64 characters."})
+		@textareaField("room-description", "description", "Description", d.Description, d.Errors.Fields["description"])
+		if d.Admin {
+			<div class="field">
+				<label for="room-visibility">Visibility</label>
+				<select id="room-visibility" name="visibility">
+					<option value="private" selected?={ d.Visibility != "visible" }>Private: only the people added to it see it</option>
+					<option value="visible" selected?={ d.Visibility == "visible" }>Visible: everyone sees and reads it</option>
+				</select>
+				if d.Errors.Fields["visibility"] != "" {
+					<p class="field-error" role="alert">{ d.Errors.Fields["visibility"] }</p>
+				}
+			</div>
+		} else {
+			<input type="hidden" name="visibility" value="private"/>
+			<p class="hint visibility-note">Rooms you make are private: only the people you add can see them.</p>
+			if d.Errors.Fields["visibility"] != "" {
+				<p class="field-error" role="alert">{ d.Errors.Fields["visibility"] }</p>
+			}
+		}
+		<button type="submit">Create room</button>
+	</form>
+}
+
+// textareaField is a label, a text area and, when it has one, the message of
+// its problem next to it.
+templ textareaField(id, name, label, value, problem string) {
+	<div class="field">
+		<label for={ id }>{ label }</label>
+		<textarea
+			id={ id }
+			name={ name }
+			rows="3"
+			if problem != "" {
+				aria-invalid="true"
+				aria-describedby={ id + "-error" }
+			}
+		>{ value }</textarea>
+		if problem != "" {
+			<p class="field-error" id={ id + "-error" } role="alert">{ problem }</p>
+		}
+	</div>
+}
+
+// RoomEditData is the state of the rename form.
+type RoomEditData struct {
+	// Name and Description are the values in the form. Empty Name means the
+	// current values of the room.
+	Name        string
+	Description string
+	// Open is true when the form is shown open (after a failed submit).
+	Open bool
+	// Errors are the problems of the last submit.
+	Errors FormErrors
+}
+
+// RoomData is what the page of a room shows.
+type RoomData struct {
+	// Sidebar is the sidebar of the page.
+	Sidebar SidebarData
+	// Viewer is the person who looks at the page.
+	Viewer app.User
+	// Room is the room.
+	Room app.Room
+	// Members are the members of the room.
+	Members []app.Member
+	// Candidates are the users the viewer can add; empty for a viewer who is
+	// not a member.
+	Candidates []app.User
+	// Message is the problem of the last action on the room (join, leave,
+	// delete), shown in the header; empty shows none.
+	Message string
+	// MembersMessage is the problem of the last action on the members, shown in
+	// the members panel; empty shows none.
+	MembersMessage string
+	// Edit is the state of the rename form.
+	Edit RoomEditData
+}
+
+// RoomPage is the page of a room: the header, the feed and the members panel.
+// TODO(step 4.3): the feed
+templ RoomPage(d RoomData) {
+	@Layout(d.Room.Name, Sidebar(d.Sidebar)) {
+		@RoomHeader(d)
+		<div class="room-body">
+			<section id="room-feed" class="room-feed">
+				<h2>Posts</h2>
+				<p class="empty">No posts yet</p>
+			</section>
+			@MembersPanel(d)
+		</div>
+	}
+}
+
+// RoomHeader is the header of a room: its name, visibility, description and
+// member count, the join, leave and delete buttons, the message of the last
+// action and the rename form. The server sends it alone as a Datastar patch
+// when an action on the room fails.
+templ RoomHeader(d RoomData) {
+	<header id="room-header" class="room-header">
+		<div class="room-title">
+			<h1>{ d.Room.Name }</h1>
+			if d.Room.Visibility == app.VisibilityPrivate {
+				<span class="badge badge-private">@lockIcon() Private</span>
+			} else {
+				<span class="badge badge-visible">Visible</span>
+			}
+		</div>
+		if d.Room.Description != "" {
+			<p class="room-description">{ d.Room.Description }</p>
+		}
+		<p class="hint room-members-count">{ memberCountText(d.Room.MemberCount) }</p>
+		@formProblem(d.Message)
+		<div class="room-actions">
+			if d.Room.IsMember {
+				<form class="action" id="leave-form" method="post" action={ templ.SafeURL(RoomPath(d.Room.ID) + "/leave") } data-on:submit={ FormPostConfirm(RoomPath(d.Room.ID)+"/leave", "Leave this room?") }>
+					<button type="submit" class="secondary">Leave</button>
+				</form>
+			} else {
+				@roomJoinForm(d.Room.ID, "room")
+			}
+			if d.Room.CanManage {
+				<form class="action" id="delete-form" method="post" action={ templ.SafeURL(RoomPath(d.Room.ID) + "/delete") } data-on:submit={ FormPostConfirm(RoomPath(d.Room.ID)+"/delete", "Delete this room and everything in it? This cannot be undone.") }>
+					<button type="submit" class="danger">Delete</button>
+				</form>
+			}
+		</div>
+		if d.Room.CanManage {
+			@RoomEditForm(d)
+		}
+	</header>
+}
+
+// RoomEditForm is the rename form of a room, in a details element that opens
+// after a failed submit. The server sends it alone as a Datastar patch to show
+// the problems.
+templ RoomEditForm(d RoomData) {
+	<details id="room-edit" class="room-edit" open?={ d.Edit.Open }>
+		<summary>Rename or describe</summary>
+		<form id="room-edit-form" class="room-form" method="post" action={ templ.SafeURL(RoomPath(d.Room.ID) + "/rename") } data-on:submit={ FormPost(RoomPath(d.Room.ID) + "/rename") }>
+			@formProblem(d.Edit.Errors.Form)
+			@inputField(formField{ID: "edit-name", Name: "name", Label: "Name", Type: "text", Value: editValue(d.Edit, d.Room.Name, d.Edit.Name), Error: d.Edit.Errors.Fields["name"]})
+			@textareaField("edit-description", "description", "Description", editValue(d.Edit, d.Room.Description, d.Edit.Description), d.Edit.Errors.Fields["description"])
+			<button type="submit">Save</button>
+		</form>
+	</details>
+}
+
+// editValue returns the value typed in the form after a failed submit, and the
+// current value of the room otherwise.
+func editValue(e RoomEditData, current, typed string) string {
+	if e.Open {
+		return typed
+	}
+	return current
+}
+
+// MembersPanel is the members of a room with the "Add member" form, for a
+// member, and the Remove buttons, for an admin. The server sends it alone as a
+// Datastar patch after an action on the members.
+templ MembersPanel(d RoomData) {
+	<section id="members-panel" class="members-panel">
+		<h2>Members</h2>
+		@formProblem(d.MembersMessage)
+		<ul class="member-list">
+			for _, m := range d.Members {
+				<li id={ "member-" + roomIDText(m.UserID) } data-username={ m.Username }>
+					<span class="member-name">{ m.DisplayName }</span>
+					<span class="member-username">{ "@" + m.Username }</span>
+					<span class="hint member-added">
+						if m.AddedBy != nil {
+							added by { m.AddedByDisplayName }
+						} else {
+							joined
+						}
+					</span>
+					if d.Viewer.IsAdmin() {
+						<form class="action" method="post" action={ templ.SafeURL(memberRemovePath(d.Room.ID, m.UserID)) } data-on:submit={ FormPostConfirm(memberRemovePath(d.Room.ID, m.UserID), "Remove this member from the room?") }>
+							<button type="submit" class="secondary">Remove</button>
+						</form>
+					}
+				</li>
+			}
+		</ul>
+		if d.Room.IsMember {
+			if len(d.Candidates) == 0 {
+				<p class="hint">Everyone is a member already.</p>
+			} else {
+				<form id="add-member-form" class="add-member" method="post" action={ templ.SafeURL(RoomPath(d.Room.ID) + "/members") } data-on:submit={ FormPost(RoomPath(d.Room.ID) + "/members") }>
+					<label for="add-member-user">Add member</label>
+					<select id="add-member-user" name="user">
+						<option value="">Choose a user</option>
+						for _, u := range d.Candidates {
+							<option value={ roomIDText(u.ID) }>{ u.DisplayName } ({ "@" + u.Username })</option>
+						}
+					</select>
+					<button type="submit">Add member</button>
+				</form>
+			}
+		}
+	</section>
+}
+
+// memberRemovePath returns the path that removes a user from a room.
+func memberRemovePath(roomID, userID uint64) string {
+	return RoomPath(roomID) + "/members/" + roomIDText(userID) + "/remove"
+}

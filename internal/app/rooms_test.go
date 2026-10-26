@@ -802,6 +802,55 @@ func TestRoomsAddMember(t *testing.T) {
 	}, routes, cases)
 }
 
+func TestRoomsCandidatesPermissions(t *testing.T) {
+	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.Candidates.Forbidden"}
+	cases := []permCase{
+		{"admin", "lobby", ""}, {"bob", "lobby", ""},
+		{"root", "lobby", app.TagForbidden}, {"alice", "lobby", app.TagForbidden}, {"carol", "lobby", app.TagForbidden},
+		{"alice", "den", ""}, {"bob", "den", ""},
+		{"admin", "den", app.TagNotFound}, {"root", "den", app.TagNotFound}, {"carol", "den", app.TagNotFound},
+	}
+	runPermissions(t, func(e *roomsEnv, a app.Actor, r app.Room) error {
+		_, err := e.rooms.Candidates(t.Context(), a, r.ID)
+		return err
+	}, routes, cases)
+}
+
+func TestRoomsCandidates(t *testing.T) {
+	tests := []struct {
+		name  string
+		actor string
+		room  string
+		off   []string // users disabled before the call
+		want  []string
+	}{
+		{name: "den without its members", actor: "alice", room: "den", want: []string{"admin", "carol", "dave", "root"}},
+		{name: "lobby without its members", actor: "bob", room: "lobby", want: []string{"alice", "carol", "dave", "root"}},
+		{name: "disabled users are left out", actor: "alice", room: "den", off: []string{"carol"}, want: []string{"admin", "dave", "root"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newRoomsEnv(t)
+			for _, name := range tt.off {
+				if err := e.svc.SetDisabled(t.Context(), e.as("admin"), e.users[name].ID, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			users, err := e.rooms.Candidates(t.Context(), e.as(tt.actor), e.room(tt.room).ID)
+			if err != nil {
+				t.Fatalf("Candidates: %+v", err)
+			}
+			got := []string{}
+			for _, u := range users {
+				got = append(got, u.Username)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("candidates = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRoomsAddMemberAudit(t *testing.T) {
 	e := newRoomsEnv(t)
 	before := len(e.events())
@@ -1299,6 +1348,7 @@ func TestRoomsDatabaseFailuresPassThrough(t *testing.T) {
 		{"Mine", func() error { _, err := e.rooms.Mine(ctx, a); return err }, store.TagQueryFailed, "Rooms.Mine->Store.ListRoomsOfUser.QueryFailed"},
 		{"Get", func() error { _, err := e.rooms.Get(ctx, a, e.lobby.ID); return err }, store.TagQueryFailed, "Rooms.Get->loadReadableRoom->Store.RoomByID.QueryFailed"},
 		{"Members", func() error { _, err := e.rooms.Members(ctx, a, e.lobby.ID); return err }, store.TagQueryFailed, "Rooms.Members->loadReadableRoom->Store.RoomByID.QueryFailed"},
+		{"Candidates", func() error { _, err := e.rooms.Candidates(ctx, a, e.lobby.ID); return err }, store.TagQueryFailed, "Rooms.Candidates->loadReadableRoom->Store.RoomByID.QueryFailed"},
 		{"Join", func() error { return e.rooms.Join(ctx, a, e.lobby.ID) }, tagTxFailed, "Rooms.Join->Store.Tx.TransactionFailed"},
 		{"Leave", func() error { return e.rooms.Leave(ctx, a, e.lobby.ID) }, tagTxFailed, "Rooms.Leave->Store.Tx.TransactionFailed"},
 		{"AddMember", func() error { return e.rooms.AddMember(ctx, a, e.lobby.ID, 2) }, tagTxFailed, "Rooms.AddMember->Store.Tx.TransactionFailed"},

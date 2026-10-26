@@ -38,6 +38,8 @@ const (
 type Services struct {
 	// Accounts is the service of login, sessions, invitations and users.
 	Accounts *app.Accounts
+	// Rooms is the service of rooms and their memberships.
+	Rooms *app.Rooms
 }
 
 // Server is the HTTP server of Clowder: the routes, the middleware and the
@@ -101,6 +103,16 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /admin/users/{id}/role", handler: http.HandlerFunc(s.setRole)},
 		{pattern: "POST /admin/users/{id}/disabled", handler: http.HandlerFunc(s.setDisabled)},
 		{pattern: "POST /admin/invitations", handler: http.HandlerFunc(s.invite)},
+		{pattern: "GET /rooms", handler: http.HandlerFunc(s.roomsBrowse)},
+		{pattern: "GET /rooms/new", handler: http.HandlerFunc(s.roomNewPage)},
+		{pattern: "POST /rooms", handler: http.HandlerFunc(s.roomCreate)},
+		{pattern: "GET /rooms/{id}", handler: http.HandlerFunc(s.roomPage)},
+		{pattern: "POST /rooms/{id}/join", handler: http.HandlerFunc(s.roomJoin)},
+		{pattern: "POST /rooms/{id}/leave", handler: http.HandlerFunc(s.roomLeave)},
+		{pattern: "POST /rooms/{id}/rename", handler: http.HandlerFunc(s.roomRename)},
+		{pattern: "POST /rooms/{id}/delete", handler: http.HandlerFunc(s.roomDelete)},
+		{pattern: "POST /rooms/{id}/members", handler: http.HandlerFunc(s.memberAdd)},
+		{pattern: "POST /rooms/{id}/members/{userID}/remove", handler: http.HandlerFunc(s.memberRemove)},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
 	}
 	mux := http.NewServeMux()
@@ -174,8 +186,11 @@ func (s *Server) serve(ctx context.Context, ln net.Listener) error {
 
 // home answers GET /{$}. The route needs a login.
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
-	user, _ := userFrom(r.Context())
-	s.render(w, r, http.StatusOK, views.Home(user))
+	sb, ok := s.sidebarFor(w, r, 0)
+	if !ok {
+		return
+	}
+	s.render(w, r, http.StatusOK, views.Home(sb))
 }
 
 // notFound answers with the 404 page.

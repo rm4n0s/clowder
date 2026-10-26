@@ -11,6 +11,8 @@ import (
 type AdminUsersData struct {
 	// Viewer is the admin who looks at the page.
 	Viewer app.User
+	// Sidebar is the sidebar of the page.
+	Sidebar SidebarData
 	// Users are all the users.
 	Users []app.User
 	// Message is the problem of the last action on a user, shown above the
@@ -36,7 +38,7 @@ type InviteData struct {
 // AdminUsersPage is the page of the users and of the invitation form. Only
 // admins get it.
 templ AdminUsersPage(d AdminUsersData) {
-	@Layout("Users", Sidebar(d.Viewer)) {
+	@Layout("Users", Sidebar(d.Sidebar)) {
 		<h1>Users</h1>
 		@UsersPanel(d)
 		@InviteSection(d.Invite)

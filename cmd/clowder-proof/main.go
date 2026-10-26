@@ -4,12 +4,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -42,6 +44,13 @@ func main() {
 // invitePlaceholder in -page stands for the token of the invitation that
 // -invite makes.
 const invitePlaceholder = "{invite}"
+
+// roomPlaceholder in -page stands for the whole path of the room with the
+// name, as the sidebar of the logged-in user links it: -page {room:secret}
+// opens /rooms/<id>. It needs -as. The tool finds the room by following the
+// sidebar link of that name, so the proof does not depend on the IDs of the
+// demo rooms.
+var roomPlaceholder = regexp.MustCompile(`\{room:([^{}]+)\}`)
 
 // fill is one -fill flag: type value into the first element that matches
 // selector.
@@ -157,7 +166,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	var o options
 	fs := flag.NewFlagSet("clowder-proof", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1")
+	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1; {room:name} is the path of the room of that name in the sidebar of the -as user")
 	fs.StringVar(&o.out, "o", "", "path of the PNG to write (required)")
 	fs.StringVar(&o.as, "as", "", "demo user to log in as through /login before the page is opened, such as admin or alice")
 	fs.IntVar(&o.width, "width", 1280, "viewport width in pixels")
@@ -174,13 +183,16 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "unexpected arguments", "args", fs.Args())
 	case o.out == "":
 		return options{}, errors.New(tagFlagsInvalid, "-o is required", "flag", "o")
-	case !strings.HasPrefix(o.page, "/"):
-		return options{}, errors.New(tagFlagsInvalid, "-page must start with /", "page", o.page)
+	case !strings.HasPrefix(o.page, "/") && !strings.HasPrefix(o.page, "{room:"):
+		return options{}, errors.New(tagFlagsInvalid, "-page must start with / or {room:name}", "page", o.page)
 	case o.width <= 0 || o.height <= 0:
 		return options{}, errors.New(tagFlagsInvalid, "-width and -height must be positive",
 			"width", o.width, "height", o.height)
 	case o.wait < 0:
 		return options{}, errors.New(tagFlagsInvalid, "-wait must not be negative", "wait", o.wait.String())
+	case o.as == "" && roomPlaceholder.MatchString(o.page):
+		return options{}, errors.New(tagFlagsInvalid, "{room:name} in -page needs -as: the room is found in the sidebar of a user",
+			"page", o.page)
 	case o.invite != strings.Contains(o.page, invitePlaceholder):
 		return options{}, errors.New(tagFlagsInvalid, "-invite and "+invitePlaceholder+" in -page go together",
 			"invite", o.invite, "page", o.page)
@@ -198,7 +210,6 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 	}
 	defer cancel()
 
-	url := srv.URL + o.page
 	// The first run started the browser; this timeout limits the login and the
 	// page.
 	pageCtx, cancelPage := context.WithTimeout(browser, pageTimeout)
@@ -208,6 +219,11 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 			return nil, err
 		}
 	}
+	page, err := resolveRooms(pageCtx, o.page)
+	if err != nil {
+		return nil, err
+	}
+	url := srv.URL + page
 	err = chromedp.Do(pageCtx,
 		chromedp.EmulateViewport(int64(o.width), int64(o.height)),
 		chromedp.Navigate(url),
@@ -243,6 +259,44 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 	return shot, nil
 }
 
+// resolveRooms replaces every {room:name} in page with the path of the room of
+// that name, read from the link in the sidebar of the page the browser shows
+// (the home page, right after the login). It fails with a RoomNotFound error
+// when the sidebar has no link with that name.
+func resolveRooms(ctx context.Context, page string) (string, error) {
+	var out strings.Builder
+	last := 0
+	for _, m := range roomPlaceholder.FindAllStringSubmatchIndex(page, -1) {
+		href, err := roomHref(ctx, page[m[2]:m[3]])
+		if err != nil {
+			return "", err
+		}
+		out.WriteString(page[last:m[0]])
+		out.WriteString(href)
+		last = m[1]
+	}
+	out.WriteString(page[last:])
+	return out.String(), nil
+}
+
+// roomHref returns the href of the sidebar link of the room with the name. It
+// fails with a RoomNotFound error when there is none.
+func roomHref(ctx context.Context, name string) (string, error) {
+	quoted, err := json.Marshal(name)
+	if err != nil {
+		return "", errors.NewErr(tagRoomNotFound, err).SetMetadata("room", name)
+	}
+	js := `(() => { for (const a of document.querySelectorAll('aside a[data-room]')) { if (a.dataset.room === ` + string(quoted) + `) { return a.getAttribute('href'); } } return ""; })()`
+	href, err := chromedp.Run(ctx, chromedp.Evaluate[string](js))
+	if err != nil {
+		return "", errors.NewErr(tagRoomNotFound, err).SetMetadata("room", name)
+	}
+	if href == "" {
+		return "", errors.New(tagRoomNotFound, "the sidebar has no link to a room with this name", "room", name)
+	}
+	return href, nil
+}
+
 // pageTimeout bounds loading the page and taking the screenshot.
 const pageTimeout = time.Minute
 
@@ -253,4 +307,5 @@ const (
 	tagFillFailed        = "FillFailed"
 	tagClickFailed       = "ClickFailed"
 	tagScreenshotFailed  = "ScreenshotFailed"
+	tagRoomNotFound      = "RoomNotFound"
 )

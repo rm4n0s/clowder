@@ -316,9 +316,7 @@ func TestProtectedRoutesNeedASession(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := newTestEnv(t, nil, route{pattern: "GET /rooms/{id}", handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte("ROOM-HANDLER"))
-			})}, route{pattern: "GET /rooms/{id}/stream", handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			e := newTestEnv(t, nil, route{pattern: "GET /rooms/{id}/stream", handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("STREAM-HANDLER"))
 			})})
 			e.addUser("alice", "Alice", store.RoleMember)
@@ -334,7 +332,7 @@ func TestProtectedRoutesNeedASession(t *testing.T) {
 			}
 			if tt.wantScript != "" {
 				requireSSE(t, rec)
-				requireBody(t, rec, []string{tt.wantScript}, "ROOM-HANDLER", "STREAM-HANDLER")
+				requireBody(t, rec, []string{tt.wantScript}, "STREAM-HANDLER")
 			}
 			c := sessionCookieOf(rec)
 			if tt.wantCleared != (c != nil) {
@@ -1287,8 +1285,8 @@ func TestFormFailedWithOtherErrors(t *testing.T) {
 		wantMsg    string
 		wantLogged bool
 	}{
-		{"conflict", errors.New(app.TagConflict, "x"), http.StatusConflict, messageTryAgain, false},
-		{"forbidden", errors.New(app.TagForbidden, "x"), http.StatusForbidden, messageTryAgain, false},
+		{"conflict", errors.New(app.TagConflict, "x"), http.StatusConflict, messageConflict, false},
+		{"forbidden", errors.New(app.TagForbidden, "x"), http.StatusForbidden, messageForbidden, false},
 		{"unexpected", errors.New("Boom", "x"), http.StatusInternalServerError, messageTryAgain, true},
 		{"rate limited", errors.New(app.TagRateLimited, "x"), http.StatusTooManyRequests, messageRateLimited, false},
 		{"invalid input without fields", errors.New(app.TagInvalidInput, "x"), http.StatusUnprocessableEntity, "", false},

@@ -88,6 +88,7 @@ type testEnv struct {
 	srv      *Server
 	log      *syncBuffer
 	accounts *app.Accounts
+	rooms    *app.Rooms
 	clk      *clock.Fake
 }
 
@@ -107,11 +108,12 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
 	})
-	s, err := newServer(cfg, logger, Services{Accounts: accounts}, static.FS, extra...)
+	rooms := app.NewRooms(st)
+	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, clk: clk}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, clk: clk}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.
@@ -506,7 +508,9 @@ func TestRenderFailures(t *testing.T) {
 			defer cancel()
 			w := tt.w()
 			req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
-			s.home(w, req)
+			// The 404 page needs no session and no database, so only the render
+			// can fail.
+			s.notFound(w, req)
 
 			var entry *logEntry
 			for _, e := range logEntries(t, buf) {

@@ -45,10 +45,14 @@ func (s *Server) usersData(w http.ResponseWriter, r *http.Request, actor app.Act
 		s.fail(w, r, err)
 		return views.AdminUsersData{}, false
 	}
+	sb, ok := s.sidebarFor(w, r, 0)
+	if !ok {
+		return views.AdminUsersData{}, false
+	}
 	if invite.Role == "" {
 		invite.Role = string(app.RoleMember)
 	}
-	return views.AdminUsersData{Viewer: viewer, Users: users, Invite: invite}, true
+	return views.AdminUsersData{Viewer: viewer, Sidebar: sb, Users: users, Invite: invite}, true
 }
 
 // adminUsers answers GET /admin/users: the users and the invitation form.
@@ -181,12 +185,12 @@ func (s *Server) invite(w http.ResponseWriter, r *http.Request) {
 	role := r.PostFormValue("role")
 	inv, err := s.svc.Accounts.CreateInvitation(r.Context(), actor, app.Role(role))
 	if err != nil {
-		// A plain post gets the whole page back, so it needs the users.
-		var users []app.User
+		// A plain post gets the whole page back, so it needs the users and
+		// the sidebar.
+		var base views.AdminUsersData
 		if !isDatastar(r) && !isTag(err, app.TagUnauthenticated) {
-			var usersErr error
-			if users, usersErr = s.svc.Accounts.Users(r.Context(), actor); usersErr != nil {
-				s.fail(w, r, usersErr)
+			var ok bool
+			if base, ok = s.usersData(w, r, actor, viewer, views.InviteData{}); !ok {
 				return
 			}
 		}
@@ -194,7 +198,7 @@ func (s *Server) invite(w http.ResponseWriter, r *http.Request) {
 			invite := views.InviteData{Role: role, Errors: problems}
 			return formView{
 				fragment: views.InviteSection(invite),
-				page:     views.AdminUsersPage(views.AdminUsersData{Viewer: viewer, Users: users, Invite: invite}),
+				page:     views.AdminUsersPage(views.AdminUsersData{Viewer: viewer, Sidebar: base.Sidebar, Users: base.Users, Invite: invite}),
 			}
 		})
 		return

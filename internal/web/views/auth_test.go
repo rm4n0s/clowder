@@ -115,13 +115,13 @@ func TestAuthViews(t *testing.T) {
 		},
 		{
 			name:    "sidebar of a member",
-			c:       views.Sidebar(app.User{DisplayName: "Alice", Role: app.RoleMember}),
-			want:    []string{`id="sidebar-user">Alice</p>`, `<a href="/">Home</a>`, `<form id="logout-form" method="post" action="/logout"`, "Log out</button>"},
+			c:       views.Sidebar(views.SidebarData{User: app.User{DisplayName: "Alice", Role: app.RoleMember}}),
+			want:    []string{`id="sidebar-user">Alice</p>`, `<a href="/">Home</a>`, `<a href="/rooms">Browse rooms</a>`, `<a href="/rooms/new">New room</a>`, `<form id="logout-form" method="post" action="/logout"`, "Log out</button>"},
 			notWant: []string{"Admin</a>", "/admin/users"},
 		},
 		{
 			name: "sidebar of an admin",
-			c:    views.Sidebar(app.User{DisplayName: "Ada", Role: app.RoleAdmin}),
+			c:    views.Sidebar(views.SidebarData{User: app.User{DisplayName: "Ada", Role: app.RoleAdmin}}),
 			want: []string{`id="sidebar-user">Ada</p>`, `<a href="/">Home</a>`, `<a href="/admin/users">Admin</a>`, "Log out</button>"},
 		},
 	}

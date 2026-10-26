@@ -300,3 +300,144 @@ func TestAdminDisablesAUser(t *testing.T) {
 		t.Fatalf("open the invitation link: %v", err)
 	}
 }
+
+// TestAlicePlansARoom logs in as alice, makes the private room "plans" through
+// the form, adds bob to it and sees him in the members panel; then bob logs in
+// in a second browser and finds "plans" in his sidebar and can open it.
+func TestAlicePlansARoom(t *testing.T) {
+	srv := browsertest.Start(t)
+	browser := browsertest.Browser(t, srv)
+	ctx, cancel := context.WithTimeout(browser, pageTimeout)
+	defer cancel()
+
+	if err := browsertest.LogIn(ctx, srv, "alice"); err != nil {
+		t.Fatalf("LogIn: %+v", err)
+	}
+	// The sidebar lists her rooms, the private one with a lock, and the links.
+	if err := waitFor(ctx, `document.querySelector('aside a[data-room="secret"] svg.lock') !== null`); err != nil {
+		t.Fatalf("the private room has no lock in the sidebar: %v", err)
+	}
+	err := chromedp.Do(ctx, chromedp.Click(`aside a[href="/rooms/new"]`), chromedp.WaitVisible("#room-new-form"))
+	if err != nil {
+		t.Fatalf("open the new room form: %v", err)
+	}
+	// A member makes private rooms: there is no visibility choice.
+	if err := waitFor(ctx, `document.querySelector('#room-new-form select') === null`); err != nil {
+		t.Errorf("a member is offered the visibility: %v", err)
+	}
+
+	// An empty name shows the problem in the form, without leaving the page.
+	err = chromedp.Do(ctx, browsertest.Fill("#room-name", " "), chromedp.Click(`#room-new-form button[type="submit"]`))
+	if err != nil {
+		t.Fatalf("submit the empty form: %v", err)
+	}
+	if err := waitFor(ctx, `document.getElementById('room-name-error') !== null`); err != nil {
+		t.Fatalf("the field error did not appear: %v", err)
+	}
+	if got := textOf(t, ctx, "#room-name-error"); got != "Use 1 to 64 characters." {
+		t.Errorf("name error = %q", got)
+	}
+
+	err = chromedp.Do(ctx,
+		browsertest.Fill("#room-name", "plans"),
+		browsertest.Fill("#room-description", "What we do next"),
+		chromedp.Click(`#room-new-form button[type="submit"]`),
+		chromedp.WaitVisible("#room-header"),
+	)
+	if err != nil {
+		t.Fatalf("make the room: %v", err)
+	}
+	if got := textOf(t, ctx, "#room-header h1"); got != "plans" {
+		t.Errorf("heading = %q, want plans", got)
+	}
+	if err := waitFor(ctx, `document.querySelector('aside a[data-room="plans"].current') !== null`); err != nil {
+		t.Errorf("the new room is not the current one in the sidebar: %v", err)
+	}
+	if err := waitFor(ctx, `document.querySelectorAll('#members-panel li').length === 1`); err != nil {
+		t.Fatalf("alice is not the only member: %v", err)
+	}
+
+	// Add bob with the user picker; the members panel is patched in place.
+	bobID, err := chromedp.Run(ctx, chromedp.Evaluate[string](
+		`[...document.querySelectorAll('#add-member-user option')].find(o => o.textContent.startsWith('Bob')).value`))
+	if err != nil {
+		t.Fatalf("find bob in the picker: %v", err)
+	}
+	err = chromedp.Do(ctx,
+		chromedp.SetValue("#add-member-user", bobID),
+		chromedp.Click(`#add-member-form button[type="submit"]`),
+	)
+	if err != nil {
+		t.Fatalf("add bob: %v", err)
+	}
+	if err := waitFor(ctx, `document.querySelector('#members-panel li[data-username="bob"]') !== null`); err != nil {
+		t.Fatalf("bob did not appear in the members panel: %v", err)
+	}
+	if got := textOf(t, ctx, `#members-panel li[data-username="bob"] .member-added`); got != "added by Alice" {
+		t.Errorf("bob's line = %q, want added by Alice", got)
+	}
+	// Bob is no longer offered in the picker.
+	if err := waitFor(ctx, `![...document.querySelectorAll('#add-member-user option')].some(o => o.textContent.startsWith('Bob'))`); err != nil {
+		t.Errorf("bob is still in the picker: %v", err)
+	}
+
+	// Bob, in a second browser, has the room in his sidebar.
+	other, cancelOther, err := browsertest.NewBrowser(context.Background())
+	if err != nil {
+		t.Fatalf("second browser: %v", err)
+	}
+	defer cancelOther()
+	otherCtx, cancelCtx := context.WithTimeout(other, pageTimeout)
+	defer cancelCtx()
+	if err := browsertest.LogIn(otherCtx, srv, "bob"); err != nil {
+		t.Fatalf("LogIn bob: %+v", err)
+	}
+	if err := waitFor(otherCtx, `document.querySelector('aside a[data-room="plans"] svg.lock') !== null`); err != nil {
+		t.Fatalf("plans is not in bob's sidebar: %v", err)
+	}
+	err = chromedp.Do(otherCtx, chromedp.Click(`aside a[data-room="plans"]`), chromedp.WaitVisible("#room-header"))
+	if err != nil {
+		t.Fatalf("bob opens the room: %v", err)
+	}
+	if got := textOf(t, otherCtx, "#room-header h1"); got != "plans" {
+		t.Errorf("bob sees the heading %q, want plans", got)
+	}
+	// Bob did not make the room: no rename or delete for him.
+	if err := waitFor(otherCtx, `document.getElementById('delete-form') === null && document.getElementById('room-edit') === null`); err != nil {
+		t.Errorf("bob is offered to manage the room: %v", err)
+	}
+}
+
+// TestBrowseAndJoinARoom logs in as carol, who is in no room but general,
+// joins "random" from the browse page and lands in the room.
+func TestBrowseAndJoinARoom(t *testing.T) {
+	srv := browsertest.Start(t)
+	browser := browsertest.Browser(t, srv)
+	ctx, cancel := context.WithTimeout(browser, pageTimeout)
+	defer cancel()
+
+	if err := browsertest.LogIn(ctx, srv, "carol"); err != nil {
+		t.Fatalf("LogIn: %+v", err)
+	}
+	err := chromedp.Do(ctx, chromedp.Click(`aside a[href="/rooms"]`), chromedp.WaitVisible("#rooms-panel"))
+	if err != nil {
+		t.Fatalf("open the browse page: %v", err)
+	}
+	// She joined general in the demo; random offers a Join button; secret is not listed.
+	if err := waitFor(ctx, `document.querySelector('.room-card[data-room="general"] .joined') !== null`); err != nil {
+		t.Fatalf("general does not say Joined: %v", err)
+	}
+	if err := waitFor(ctx, `document.querySelector('.room-card[data-room="secret"]') === null`); err != nil {
+		t.Errorf("a private room is listed: %v", err)
+	}
+	err = chromedp.Do(ctx, chromedp.Click(`.room-card[data-room="random"] form button`), chromedp.WaitVisible("#room-header"))
+	if err != nil {
+		t.Fatalf("join random: %v", err)
+	}
+	if got := textOf(t, ctx, "#room-header h1"); got != "random" {
+		t.Errorf("heading = %q, want random", got)
+	}
+	if err := waitFor(ctx, `document.querySelector('aside a[data-room="random"].current') !== null`); err != nil {
+		t.Errorf("random is not in the sidebar: %v", err)
+	}
+}
