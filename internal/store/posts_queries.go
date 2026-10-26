@@ -197,9 +197,9 @@ func (s *Store) TagNamesOfPosts(ctx context.Context, postIDs []uint64) (map[uint
 	return names, nil
 }
 
-// CommentCounts returns the number of comments of each of the posts (the posts
-// whose RootID is the post), at any depth, with one query. A post without
-// comments has no key in the map.
+// CommentCounts returns the number of comments of each of the posts (the
+// comments whose RootID is the post and that are not deleted), at any depth,
+// with one query. A post without comments has no key in the map.
 func (s *Store) CommentCounts(ctx context.Context, postIDs []uint64) (map[uint64]int, error) {
 	counts := map[uint64]int{}
 	if len(postIDs) == 0 {
@@ -211,7 +211,7 @@ func (s *Store) CommentCounts(ctx context.Context, postIDs []uint64) (map[uint64
 	}
 	err := s.db(ctx).Model(&Post{}).
 		Select("root_id, COUNT(*) AS n").
-		Where("root_id IN ?", postIDs).
+		Where("root_id IN ? AND deleted_at IS NULL", postIDs).
 		Group("root_id").
 		Scan(&rows).Error
 	if err != nil {
@@ -221,6 +221,19 @@ func (s *Store) CommentCounts(ctx context.Context, postIDs []uint64) (map[uint64
 		counts[r.RootID] = r.N
 	}
 	return counts, nil
+}
+
+// ThreadComments returns every comment of the thread of the post rootID, at
+// any depth, oldest first (by ID), with Author loaded, with one query on the
+// index idx_posts_thread. Comments kept as deleted placeholders are included.
+// The post itself is not.
+func (s *Store) ThreadComments(ctx context.Context, rootID uint64) ([]Post, error) {
+	var comments []Post
+	err := s.db(ctx).Where("root_id = ?", rootID).Preload("Author").Order("id ASC").Find(&comments).Error
+	if err != nil {
+		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "threadComments", "postID", rootID)
+	}
+	return comments, nil
 }
 
 // SuggestTagNames returns at most limit tag names that start with prefix and

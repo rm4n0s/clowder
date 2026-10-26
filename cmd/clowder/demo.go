@@ -36,9 +36,9 @@ var demoUsers = []struct {
 // is missing and must otherwise be empty, so that demo never touches the data
 // of a real instance. It then makes the database and the demo users in it,
 // through the accounts service (an invitation and a sign-up for each), then
-// the rooms through the rooms service and their posts through the posts
-// service, and prints the directory, the users with their password, the rooms
-// and the number of posts to stdout.
+// the rooms through the rooms service, their posts and the comments under
+// some of them through the posts service, and prints the directory, the users with their password, the rooms,
+// the number of posts and the number of comments to stdout.
 // Later steps add their own demo data here.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	var dataDir string
@@ -98,7 +98,12 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	if err != nil {
 		return err
 	}
-	return makeDemoPosts(ctx, app.NewPosts(st, clock.Real(), markdown.New()), made, actors, stdout)
+	posts := app.NewPosts(st, clock.Real(), markdown.New())
+	written, err := makeDemoPosts(ctx, posts, made, actors, stdout)
+	if err != nil {
+		return err
+	}
+	return makeDemoComments(ctx, posts, written, actors, stdout)
 }
 
 // makeDemoRooms makes the rooms of the demo through the rooms service, as the
@@ -163,10 +168,65 @@ var demoPosts = []struct {
 
 // makeDemoPosts writes the posts of the demo through the posts service, as the
 // users who would write them. rooms holds the rooms by name, actors the demo
-// users by username.
-func makeDemoPosts(ctx context.Context, posts *app.Posts, rooms map[string]app.Room, actors map[string]app.Actor, stdout io.Writer) error {
+// users by username. It returns the posts, in the order of demoPosts.
+func makeDemoPosts(ctx context.Context, posts *app.Posts, rooms map[string]app.Room, actors map[string]app.Actor, stdout io.Writer) ([]app.Post, error) {
+	written := make([]app.Post, 0, len(demoPosts))
 	for _, d := range demoPosts {
-		_, err := posts.Create(ctx, actors[d.author], rooms[d.room].ID, app.PostInput{
+		p, err := posts.Create(ctx, actors[d.author], rooms[d.room].ID, app.PostInput{
+			Format: d.format,
+			Body:   d.body,
+			Tags:   app.ParseTags(d.tags),
+		})
+		if err != nil {
+			return nil, err
+		}
+		written = append(written, p)
+	}
+	_, _ = fmt.Fprintf(stdout, "demo posts: %d\n", len(demoPosts))
+	return written, nil
+}
+
+// demoComments are the comments of the demo, in the order they are written.
+// post is the index in demoPosts of the post of the thread; parent is the id of
+// the comment that this one answers, or empty for a reply to the post itself.
+// A comment with deletedBy is deleted by that user once all are written, so
+// that it stays as a deleted placeholder when it has replies (D21).
+var demoComments = []struct {
+	id        string
+	post      int
+	parent    string
+	author    string
+	format    app.Format
+	body      string
+	tags      string
+	deletedBy string
+}{
+	// The thread under bob's question: three levels (alice, bob, carol), and a
+	// deleted comment of carol's that has a reply.
+	{"a1", 1, "", "alice", app.FormatText, "Try the shared folder first, then the wiki.", "", ""},
+	{"a2", 1, "a1", "bob", app.FormatText, "Found it in the shared folder, thanks!", "", ""},
+	{"a3", 1, "a2", "carol", app.FormatMarkdown, "Great. I added a link to the **design notes** in the wiki too.", "", ""},
+	{"a4", 1, "", "carol", app.FormatText, "Someone moved them last week, I think.", "", "carol"},
+	{"a5", 1, "a4", "alice", app.FormatText, "Do you remember where to?", "", ""},
+	// The thread under the release checklist, with tags on its first comment.
+	{"b1", 2, "", "bob", app.FormatMarkdown, "Add *update the changelog* to the list.", "release, changelog", ""},
+	{"b2", 2, "b1", "carol", app.FormatText, "Done, thanks!", "", ""},
+	{"b3", 2, "b2", "alice", app.FormatText, "Can we have a script for it?", "", ""},
+	{"b4", 2, "b3", "bob", app.FormatMarkdown, "I can write one on `Friday`.", "", ""},
+}
+
+// makeDemoComments writes the comments of the demo through the posts service,
+// as the users who would write them, under the posts that makeDemoPosts wrote
+// (written, in the order of demoPosts), and then the deletions. actors holds
+// the demo users by username.
+func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post, actors map[string]app.Actor, stdout io.Writer) error {
+	byID := map[string]app.Post{}
+	for _, d := range demoComments {
+		parent := written[d.post]
+		if d.parent != "" {
+			parent = byID[d.parent]
+		}
+		c, err := posts.Reply(ctx, actors[d.author], parent.ID, app.PostInput{
 			Format: d.format,
 			Body:   d.body,
 			Tags:   app.ParseTags(d.tags),
@@ -174,8 +234,19 @@ func makeDemoPosts(ctx context.Context, posts *app.Posts, rooms map[string]app.R
 		if err != nil {
 			return err
 		}
+		byID[d.id] = c
 	}
-	_, _ = fmt.Fprintf(stdout, "demo posts: %d\n", len(demoPosts))
+	deleted := 0
+	for _, d := range demoComments {
+		if d.deletedBy == "" {
+			continue
+		}
+		if err := posts.Delete(ctx, actors[d.deletedBy], byID[d.id].ID); err != nil {
+			return err
+		}
+		deleted++
+	}
+	_, _ = fmt.Fprintf(stdout, "demo comments: %d (%d deleted)\n", len(demoComments), deleted)
 	return nil
 }
 

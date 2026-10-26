@@ -187,6 +187,40 @@ func TestPostQueries(t *testing.T) {
 		if empty, err := f.s.CommentCounts(f.ctx, nil); err != nil || len(empty) != 0 {
 			t.Errorf("CommentCounts(nil) = %v, %v", empty, err)
 		}
+		// A deleted comment, kept for its replies, does not count.
+		if err := f.s.MarkPostDeleted(f.ctx, c1.ID, day(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		got, err = f.s.CommentCounts(f.ctx, []uint64{p.ID, q.ID})
+		if err != nil || !reflect.DeepEqual(got, map[uint64]int{p.ID: 2, q.ID: 1}) {
+			t.Errorf("CommentCounts with a deleted comment = %v, %v", got, err)
+		}
+	})
+
+	t.Run("ThreadComments", func(t *testing.T) {
+		p, other := f.post(room, alice), f.post(room, alice)
+		c1 := f.comment(p, bob)
+		c2 := f.comment(c1, alice)
+		c3 := f.comment(p, alice)
+		f.comment(other, bob)
+		if err := f.s.MarkPostDeleted(f.ctx, c1.ID, day(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		got, err := f.s.ThreadComments(f.ctx, p.ID)
+		if err != nil || !reflect.DeepEqual(postIDs(got), []uint64{c1.ID, c2.ID, c3.ID}) {
+			t.Fatalf("ThreadComments = %v, %v, want %v", postIDs(got), err, []uint64{c1.ID, c2.ID, c3.ID})
+		}
+		for _, c := range got {
+			if c.Author == nil || c.Author.ID != c.AuthorID {
+				t.Errorf("comment %d: Author = %+v", c.ID, c.Author)
+			}
+		}
+		if got[0].DeletedAt == nil {
+			t.Error("the deleted comment is not marked")
+		}
+		if empty, err := f.s.ThreadComments(f.ctx, f.post(room, alice).ID); err != nil || len(empty) != 0 {
+			t.Errorf("ThreadComments of a post without comments = %v, %v", empty, err)
+		}
 	})
 
 	t.Run("SuggestTagNames", func(t *testing.T) {
@@ -381,6 +415,14 @@ func TestPostQueryTags(t *testing.T) {
 				return err
 			},
 			wantTag: TagQueryFailed, wantRoute: "Store.CommentCounts.QueryFailed", wantOp: "commentCounts",
+		},
+		{
+			name: "thread comments with a canceled context",
+			call: func() error {
+				_, err := f.s.ThreadComments(canceled(t), post.ID)
+				return err
+			},
+			wantTag: TagQueryFailed, wantRoute: "Store.ThreadComments.QueryFailed", wantOp: "threadComments",
 		},
 		{
 			name: "suggestions with a canceled context",

@@ -40,8 +40,8 @@ func (e *postsEnv) write(user, room, body string, tags ...string) app.Post {
 	return p
 }
 
-// reply inserts a comment under the post through the store, as step 5.1 will
-// through the service.
+// reply inserts a comment under the post through the store, without the
+// service's checks and audit event (comments_test.go has say for those).
 func (e *postsEnv) reply(parent app.Post, user string) store.Post {
 	e.t.Helper()
 	root := parent.ID

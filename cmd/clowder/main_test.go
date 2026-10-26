@@ -803,3 +803,102 @@ func TestRunDemoMakesTheDemoPosts(t *testing.T) {
 		t.Error("carol reads the feed of the private room")
 	}
 }
+
+func TestRunDemoMakesTheDemoThreads(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	if !strings.Contains(stdout.String(), "demo comments: 9 (1 deleted)") {
+		t.Errorf("stdout lacks the number of comments:\n%s", stdout.String())
+	}
+
+	_, st := openAccounts(t, dir)
+	rooms := app.NewRooms(st)
+	posts := app.NewPosts(st, clock.Real(), markdown.New())
+	row, err := st.UserByUsername(t.Context(), "carol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	carol := app.Actor{UserID: row.ID, Username: row.Username, Role: row.Role}
+	adminRow, err := st.UserByUsername(t.Context(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := rooms.AllRooms(t.Context(), app.Actor{UserID: adminRow.ID, Username: adminRow.Username, Role: adminRow.Role})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var general app.Room
+	for _, r := range all {
+		if r.Name == "general" {
+			general = r
+		}
+	}
+	page, err := posts.Feed(t.Context(), carol, general.ID, 0, 30)
+	if err != nil {
+		t.Fatalf("Feed: %+v", err)
+	}
+	// The feed is newest first: demoPosts[1] is the fourth of five, [2] the third.
+	if len(page.Posts) != 5 {
+		t.Fatalf("general has %d posts, want 5", len(page.Posts))
+	}
+	question, checklist := page.Posts[3], page.Posts[2]
+
+	type shape struct {
+		author  string
+		depth   int
+		deleted bool
+	}
+	tests := []struct {
+		name     string
+		post     app.Post
+		comments int // not deleted
+		want     []shape
+	}{
+		{
+			name: "the question", post: question, comments: 4,
+			want: []shape{{"alice", 1, false}, {"bob", 2, false}, {"carol", 3, false}, {"", 1, true}, {"alice", 2, false}},
+		},
+		{
+			name: "the checklist", post: checklist, comments: 4,
+			want: []shape{{"bob", 1, false}, {"carol", 2, false}, {"alice", 3, false}, {"bob", 4, false}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.post.CommentCount != tt.comments {
+				t.Errorf("CommentCount = %d, want %d", tt.post.CommentCount, tt.comments)
+			}
+			th, err := posts.Thread(t.Context(), carol, tt.post.ID)
+			if err != nil {
+				t.Fatalf("Thread: %+v", err)
+			}
+			var got []shape
+			for _, c := range th.Comments {
+				got = append(got, shape{c.Author.Username, c.Depth, c.Deleted})
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("thread = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	th, err := posts.Thread(t.Context(), carol, checklist.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first := th.Comments[0]; !reflect.DeepEqual(first.Tags, []string{"release", "changelog"}) {
+		t.Errorf("the first comment's tags = %q, want release and changelog", first.Tags)
+	}
+	th, err = posts.Thread(t.Context(), carol, question.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gone := th.Comments[3]; gone.Body != "" || gone.HTML != "" || len(gone.Tags) != 0 || gone.Author != (app.UserRef{}) {
+		t.Errorf("the deleted comment = %+v, want a bare placeholder", gone)
+	} else if reply := th.Comments[4]; reply.ParentID != gone.ID || reply.ParentAuthor != (app.UserRef{}) {
+		t.Errorf("the reply to the deleted comment = %+v", reply)
+	}
+}

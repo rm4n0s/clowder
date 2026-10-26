@@ -97,8 +97,18 @@ type Post struct {
 	// Tags are the normalized tags, in the order the author gave them; empty
 	// for a deleted post.
 	Tags []string
-	// CommentCount is the number of comments under the post, at any depth.
+	// CommentCount is the number of comments in the thread of the post, at any
+	// depth, not counting deleted ones. It is 0 for a comment.
 	CommentCount int
+	// ParentID is the ID of the post or comment that this comment answers; 0
+	// for a top-level post.
+	ParentID uint64
+	// RootID is the ID of the top-level post of the thread of this comment; 0
+	// for a top-level post. For a reply to a top-level post it equals
+	// ParentID.
+	RootID uint64
+	// IsComment is true for a comment and false for a top-level post.
+	IsComment bool
 	// CreatedAt is when the post was written.
 	CreatedAt time.Time
 	// EditedAt is when the author last edited the post; nil if never.
@@ -122,6 +132,33 @@ type FeedPage struct {
 	// NextBefore is the beforeID that asks for the next page: the ID of the
 	// last post of this page. It is 0 when HasNext is false.
 	NextBefore uint64
+}
+
+// Comment is a comment in the thread of a post, with its place in the tree.
+type Comment struct {
+	Post
+	// Depth is how deep the comment is: 1 for a reply to the top-level post,
+	// 2 for a reply to that, and so on.
+	Depth int
+	// ParentID is the ID of the post or comment that this comment answers. It
+	// is the same as the embedded Post.ParentID.
+	ParentID uint64
+	// ParentAuthor is the author of the parent; the zero value when the parent
+	// is a deleted comment or post.
+	ParentAuthor UserRef
+}
+
+// Thread is a top-level post with all its comments, as one reader sees it.
+type Thread struct {
+	// Root is the top-level post of the thread.
+	Root Post
+	// Comments are the comments depth first: every comment comes before its
+	// replies, and siblings are oldest first. A deleted comment that was kept
+	// for its replies is included, as deleted.
+	Comments []Comment
+	// Focus is the ID of the comment that Thread was asked for, or 0 when it
+	// was asked for the top-level post.
+	Focus uint64
 }
 
 // Posts is the service of posts, their tags and their feeds (SPEC §7.3, §7.7).
@@ -206,8 +243,84 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 	return p.viewOne(ctx, actor, room, created.ID)
 }
 
-// Edit changes the body, the format and the tags of a post and writes
-// post.edited with only what changed (for the body that it changed and its
+// Reply writes a comment under the post or comment parentID, in the thread of
+// the same top-level post, and its audit event post.created with the entity
+// type comment (the event never holds the body). Only members of the room
+// reply: a room that the actor may not read, a missing parent and a parent
+// that is deleted fail with TagNotFound, a visible room that the actor has
+// not joined with TagForbidden. It fails with TagInvalidInput, with all the
+// problems in the metadata "fields", for input that breaks a rule.
+func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in PostInput) (Post, error) {
+	var created store.Post
+	var room store.Room
+	err := p.st.Tx(ctx, func(tx *store.Store) error {
+		parent, err := tx.PostByID(ctx, parentID)
+		if err != nil {
+			return err
+		}
+		room, err = loadReadableRoom(ctx, tx, actor, parent.RoomID)
+		if err != nil {
+			return err
+		}
+		if parent.DeletedAt != nil {
+			return errors.New(TagNotFound, "the post is deleted", "reason", "deleted", "postID", parentID)
+		}
+		member, err := isMember(ctx, tx, actor.UserID, room.ID)
+		if err != nil {
+			return err
+		}
+		if !member {
+			return errors.New(TagForbidden, "only members comment",
+				"userID", actor.UserID, "roomID", room.ID)
+		}
+		clean, fields := checkPostInput(in)
+		if len(fields) > 0 {
+			return errors.New(TagInvalidInput, "the comment has mistakes", "fields", fields)
+		}
+		who, err := displayNameOf(ctx, tx, actor.UserID)
+		if err != nil {
+			return err
+		}
+		rootID := parent.ID
+		if parent.RootID != nil {
+			rootID = *parent.RootID
+		}
+		created = store.Post{
+			RoomID: room.ID, AuthorID: actor.UserID, ParentID: &parent.ID, RootID: &rootID,
+			Format: clean.Format, Body: clean.Body,
+		}
+		if err := tx.CreatePost(ctx, &created); err != nil {
+			return err
+		}
+		if err := tx.ReplacePostTags(ctx, created.ID, clean.Tags); err != nil {
+			return err
+		}
+		// TODO(step 11.1): notify the parent's author (reply) and mentions.
+		// TODO(step 7.1): publish live events.
+		return recordAudit(ctx, tx, auditEntry{
+			ActorID:    actor.UserID,
+			Action:     ActionPostCreated,
+			RoomID:     room.ID,
+			EntityType: EntityComment,
+			EntityID:   created.ID,
+			Summary:    who + " commented in #" + room.Name,
+			Details: map[string]any{
+				"format":   string(clean.Format),
+				"length":   utf8.RuneCountInString(clean.Body),
+				"tags":     clean.Tags,
+				"rootID":   rootID,
+				"parentID": parent.ID,
+			},
+		})
+	})
+	if err != nil {
+		return Post{}, err
+	}
+	return p.viewOne(ctx, actor, room, created.ID)
+}
+
+// Edit changes the body, the format and the tags of a post or comment and
+// writes post.edited (entity type comment for a comment) with only what changed (for the body that it changed and its
 // length, never the text). It does nothing, and writes no event, when nothing
 // changed. Only the author may: another reader gets TagForbidden. A room that
 // the actor may not read, a missing post and a deleted post fail with
@@ -261,6 +374,7 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		if err != nil {
 			return err
 		}
+		entity, noun := entityOf(row)
 		if err := tx.UpdatePostContent(ctx, row.ID, clean.Format, clean.Body, p.clk.Now()); err != nil {
 			return err
 		}
@@ -275,9 +389,9 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 			ActorID:    actor.UserID,
 			Action:     ActionPostEdited,
 			RoomID:     room.ID,
-			EntityType: EntityPost,
+			EntityType: entity,
 			EntityID:   row.ID,
-			Summary:    who + " edited a post in #" + room.Name,
+			Summary:    who + " edited a " + noun + " in #" + room.Name,
 			Details:    details,
 		})
 	})
@@ -287,12 +401,16 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 	return p.viewOne(ctx, actor, room, postID)
 }
 
-// Delete deletes a post and writes post.deleted with {"kept": bool}. The
+// Delete deletes a post or comment and writes post.deleted (entity type
+// comment for a comment) with {"kept": bool}. The
 // author or an admin who can read the room may; another reader gets
 // TagForbidden, and a room that the actor may not read, a missing post and a
-// deleted post fail with TagNotFound. A post with replies stays as a deleted
-// placeholder with no body, tags, reactions, mentions or attachments; a post
-// without replies disappears with everything on it (D21).
+// deleted post fail with TagNotFound. A post or comment with replies stays as a
+// deleted placeholder with no body, tags, reactions, mentions or attachments; one
+// without replies disappears with everything on it (D21). When a comment
+// disappears and its parent is a deleted placeholder with no other replies, the
+// parent disappears too, and so on up the thread, up to the top-level post;
+// those cleanups write no events.
 func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 	return p.st.Tx(ctx, func(tx *store.Store) error {
 		row, err := tx.PostByID(ctx, postID)
@@ -314,6 +432,7 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 		if err != nil {
 			return err
 		}
+		entity, noun := entityOf(row)
 		kept, err := tx.PostHasReplies(ctx, row.ID)
 		if err != nil {
 			return err
@@ -326,8 +445,13 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			if err := tx.MarkPostDeleted(ctx, row.ID, p.clk.Now()); err != nil {
 				return err
 			}
-		} else if err := tx.DeletePost(ctx, row.ID); err != nil {
-			return err
+		} else {
+			if err := tx.DeletePost(ctx, row.ID); err != nil {
+				return err
+			}
+			if err := removeEmptyPlaceholders(ctx, tx, row.ParentID); err != nil {
+				return err
+			}
 		}
 		// TODO(step 6.1): remove the files of the attachments.
 		// TODO(step 7.1): publish live events.
@@ -335,9 +459,9 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			ActorID:    actor.UserID,
 			Action:     ActionPostDeleted,
 			RoomID:     room.ID,
-			EntityType: EntityPost,
+			EntityType: entity,
 			EntityID:   row.ID,
-			Summary:    who + " deleted a post in #" + room.Name,
+			Summary:    who + " deleted a " + noun + " in #" + room.Name,
 			Details:    map[string]any{"kept": kept},
 		})
 	})
@@ -377,8 +501,8 @@ func (p *Posts) Feed(ctx context.Context, actor Actor, roomID, beforeID uint64, 
 	return page, nil
 }
 
-// Get returns a post of a room that the actor may read; a deleted post that
-// was kept comes back with Deleted set. A missing post and a room that the
+// Get returns a post or comment of a room that the actor may read; a deleted
+// one that was kept comes back with Deleted set. A missing post and a room that the
 // actor may not read fail with TagNotFound.
 func (p *Posts) Get(ctx context.Context, actor Actor, postID uint64) (Post, error) {
 	row, err := p.st.PostByID(ctx, postID)
@@ -394,6 +518,75 @@ func (p *Posts) Get(ctx context.Context, actor Actor, postID uint64) (Post, erro
 		return Post{}, err
 	}
 	return views[0], nil
+}
+
+// Thread returns the top-level post and all the comments of the thread that
+// postID belongs to: postID is the top-level post, or any comment of the
+// thread (Focus is then that comment's ID). The comments come depth first,
+// siblings oldest first. A missing post and a room that the actor may not read
+// fail with TagNotFound.
+func (p *Posts) Thread(ctx context.Context, actor Actor, postID uint64) (Thread, error) {
+	row, err := p.st.PostByID(ctx, postID)
+	if err != nil {
+		return Thread{}, err
+	}
+	room, err := loadReadableRoom(ctx, p.st, actor, row.RoomID)
+	if err != nil {
+		return Thread{}, err
+	}
+	root, focus := row, uint64(0)
+	if row.RootID != nil {
+		focus = row.ID
+		root, err = p.st.PostByID(ctx, *row.RootID)
+		if err != nil {
+			return Thread{}, err
+		}
+	}
+	rows, err := p.st.ThreadComments(ctx, root.ID)
+	if err != nil {
+		return Thread{}, err
+	}
+	order := threadOrder(root.ID, rows)
+
+	// One query for the tags of the whole thread; the count of the root is
+	// made from the rows.
+	ids := make([]uint64, 0, len(rows)+1)
+	ids = append(ids, root.ID)
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+	tags, err := p.st.TagNamesOfPosts(ctx, ids)
+	if err != nil {
+		return Thread{}, err
+	}
+	count := 0
+	for _, r := range rows {
+		if r.DeletedAt == nil {
+			count++
+		}
+	}
+	rootView, err := p.buildViews(actor, room, []store.Post{root}, tags, map[uint64]int{root.ID: count})
+	if err != nil {
+		return Thread{}, err
+	}
+	views, err := p.buildViews(actor, room, rows, tags, nil)
+	if err != nil {
+		return Thread{}, err
+	}
+	byID := make(map[uint64]int, len(rows))
+	for i, r := range rows {
+		byID[r.ID] = i
+	}
+	comments := make([]Comment, len(order))
+	for i, n := range order {
+		view := views[byID[n.id]]
+		c := Comment{Post: view, Depth: n.depth, ParentID: view.ParentID, ParentAuthor: rootView[0].Author}
+		if j, ok := byID[view.ParentID]; ok {
+			c.ParentAuthor = views[j].Author
+		}
+		comments[i] = c
+	}
+	return Thread{Root: rootView[0], Comments: comments, Focus: focus}, nil
 }
 
 // SuggestTags returns up to 10 tag names that start with prefix (normalized
@@ -463,6 +656,13 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 	if err != nil {
 		return nil, err
 	}
+	return p.buildViews(actor, room, rows, tags, counts)
+}
+
+// buildViews makes the views of posts of one room for the actor, in the order
+// of rows, from the tags and the comment counts that the caller has read. The
+// rows have Author loaded.
+func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, tags map[uint64][]string, counts map[uint64]int) ([]Post, error) {
 	views := make([]Post, len(rows))
 	for i, row := range rows {
 		v := Post{
@@ -472,9 +672,16 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 			Format:       row.Format,
 			Tags:         []string{},
 			CommentCount: counts[row.ID],
+			IsComment:    row.ParentID != nil,
 			CreatedAt:    row.CreatedAt,
 			EditedAt:     row.EditedAt,
 			Deleted:      row.DeletedAt != nil,
+		}
+		if row.ParentID != nil {
+			v.ParentID = *row.ParentID
+		}
+		if row.RootID != nil {
+			v.RootID = *row.RootID
 		}
 		if !v.Deleted {
 			v.Body = row.Body
@@ -482,6 +689,7 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 			if row.Author != nil {
 				v.Author = UserRef{ID: row.Author.ID, Username: row.Author.Username, DisplayName: row.Author.DisplayName}
 			}
+			var err error
 			v.HTML, err = p.md.Render(markdown.Format(row.Format), row.Body)
 			if err != nil {
 				return nil, err
@@ -492,6 +700,79 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 		views[i] = v
 	}
 	return views, nil
+}
+
+// threadNode is a comment in the order of a thread.
+type threadNode struct {
+	id    uint64
+	depth int
+}
+
+// threadOrder puts the comments of the thread of the post rootID in reading
+// order: depth first, every comment before its replies, siblings oldest first.
+// rows are the comments of the thread, oldest first. A row whose parent is not
+// in the thread is left out.
+func threadOrder(rootID uint64, rows []store.Post) []threadNode {
+	children := make(map[uint64][]uint64, len(rows))
+	for _, r := range rows {
+		if r.ParentID != nil {
+			children[*r.ParentID] = append(children[*r.ParentID], r.ID)
+		}
+	}
+	order := make([]threadNode, 0, len(rows))
+	// The stack holds the nodes still to visit; the oldest sibling is on top.
+	stack := make([]threadNode, 0, len(rows))
+	push := func(parentID uint64, depth int) {
+		kids := children[parentID]
+		for i := len(kids) - 1; i >= 0; i-- {
+			stack = append(stack, threadNode{id: kids[i], depth: depth})
+		}
+	}
+	push(rootID, 1)
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		order = append(order, n)
+		push(n.id, n.depth+1)
+	}
+	return order
+}
+
+// entityOf returns the audit entity type of a row and what to call it in the
+// summary of an event: a post, or a comment when it has a parent.
+func entityOf(row store.Post) (EntityType, string) {
+	if row.ParentID != nil {
+		return EntityComment, "comment"
+	}
+	return EntityPost, "post"
+}
+
+// removeEmptyPlaceholders removes, from the comment parentID upwards, every
+// ancestor that is a deleted placeholder with no replies left (D21), up to the
+// top-level post. It stops at the first ancestor that is not deleted or still
+// has replies. A nil parentID does nothing.
+func removeEmptyPlaceholders(ctx context.Context, tx *store.Store, parentID *uint64) error {
+	for parentID != nil {
+		parent, err := tx.PostByID(ctx, *parentID)
+		if err != nil {
+			return err
+		}
+		if parent.DeletedAt == nil {
+			return nil
+		}
+		hasReplies, err := tx.PostHasReplies(ctx, parent.ID)
+		if err != nil {
+			return err
+		}
+		if hasReplies {
+			return nil
+		}
+		if err := tx.DeletePost(ctx, parent.ID); err != nil {
+			return err
+		}
+		parentID = parent.ParentID
+	}
+	return nil
 }
 
 // checkPostInput applies the rules of SPEC §7.3 and §7.7 to in. It returns the
