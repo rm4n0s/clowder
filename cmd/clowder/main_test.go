@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -461,4 +462,85 @@ func TestRunDemo(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServeOpensAndClosesTheStore(t *testing.T) {
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, databaseFile)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	var stderr syncBuffer
+	done := make(chan error, 1)
+	go func() {
+		done <- runServe(ctx, []string{"-data", dataDir, "-addr", "127.0.0.1:0"}, mapEnv(nil), &stderr)
+	}()
+	// The server logs that it listens after the store is open.
+	deadline := time.Now().Add(10 * time.Second)
+	for !strings.Contains(stderr.String(), "server listening") {
+		select {
+		case err := <-done:
+			t.Fatalf("serve ended early: %+v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("serve did not start; stderr:\n%s", stderr.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Errorf("database file not created while serving: %v", err)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serve returned %+v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("serve did not stop")
+	}
+	// Closing the last connection of a WAL database removes its -wal file.
+	if _, err := os.Stat(dbPath + "-wal"); !os.IsNotExist(err) {
+		t.Errorf("the store was not closed: stat of the -wal file = %v", err)
+	}
+	if strings.Contains(stderr.String(), "closing the store failed") {
+		t.Errorf("close error logged:\n%s", stderr.String())
+	}
+}
+
+func TestServeStoreOpenFailure(t *testing.T) {
+	dataDir := t.TempDir()
+	// A directory where the database file should be.
+	if err := os.Mkdir(filepath.Join(dataDir, databaseFile), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	var stderr syncBuffer
+	err := runServe(t.Context(), []string{"-data", dataDir, "-addr", "127.0.0.1:0"}, mapEnv(nil), &stderr)
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+	}
+	if !appErr.HasRoute("runServe->Open->open.StoreOpenFailed") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}
+
+// syncBuffer is a bytes.Buffer that the logger of a running server and the
+// test can use at the same time.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

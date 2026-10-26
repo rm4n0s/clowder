@@ -6,16 +6,23 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/web"
 	"github.com/rm4n0s/errors"
 )
 
-// dataDirMode is the permission of the data directory when serve creates it.
-const dataDirMode = 0o750
+const (
+	// dataDirMode is the permission of the data directory when serve creates it.
+	dataDirMode = 0o750
+	// databaseFile is the name of the database inside the data directory.
+	databaseFile = "clowder.db"
+)
 
 // runServe runs the server until ctx is done.
 func runServe(ctx context.Context, args []string, env func(string) string, stderr io.Writer) error {
@@ -27,6 +34,16 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	if err := os.MkdirAll(cfg.DataDir, dataDirMode); err != nil {
 		return errors.NewErr(tagDataDirCreateFailed, err).SetMetadata("dir", cfg.DataDir)
 	}
+	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, databaseFile), clock.Real(), logger)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := st.Close(); closeErr != nil {
+			logger.Error("closing the store failed", "err", closeErr)
+		}
+	}()
+	// TODO(step 2.2): the services built on st are passed to web.New.
 	srv, err := web.New(cfg, logger)
 	if err != nil {
 		return err
