@@ -1,1 +1,1 @@
-Helper scripts go here; `scripts/perf.sh` will come in step 12.1.
+Helper scripts go here; `scripts/perf.sh` will come in step 13.1.

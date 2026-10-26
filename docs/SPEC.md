@@ -8,7 +8,7 @@
 | Module | `github.com/rm4n0s/clowder` |
 | License | BSD-3-Clause |
 
-Clowder is a self-hosted web application where a team talks in rooms. A room is not a stream of chat lines: it is a feed of posts, and the conversation about a post happens in the comments under it, which can be answered in turn. A post (and a comment) can be plain text or markdown, carry attachments, and hold tasks; the tasks of a room are the cards of the room's Kanban board. Posts have tags, given in their own field, and everything a user can read can be searched. People join only by invitation. Clowder is one Go binary with an SQLite database and a directory of attachments. The pages are rendered on the server with templ and kept live with Datastar over server-sent events, so what one person posts, comments, reacts or moves on a board appears at once for everyone looking at it.
+Clowder is a self-hosted web application where a team talks in rooms. A room is not a stream of chat lines: it is a feed of posts, and the conversation about a post happens in the comments under it, which can be answered in turn. A post (and a comment) can be plain text or markdown, carry attachments, and hold tasks; the tasks of a room are the cards of the room's Kanban board. Posts have tags, given in their own field, and everything a user can read can be searched. Besides the rooms, users write private messages to each other, one to one or in small groups. People join only by invitation. Clowder is one Go binary with an SQLite database and a directory of attachments. The pages are rendered on the server with templ and kept live with Datastar over server-sent events, so what one person posts, comments, reacts or moves on a board appears at once for everyone looking at it.
 
 ---
 
@@ -30,7 +30,6 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 - Single sign-on (OIDC, SAML), passkeys and two-factor authentication.
 - Several separate communities in one installation. One installation is one community.
 - PostgreSQL. The storage is written so it can be added later (D6).
-- Direct messages as a separate feature. A private room with two members serves.
 - Voice, video, screen sharing.
 - Native mobile or desktop apps. The web pages work on a phone's browser.
 - End-to-end encryption.
@@ -51,6 +50,7 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 9. **Mentions and notifications.** `@username` in a body mentions a user. A user is notified, inside Clowder, of mentions, replies to their posts and comments, tasks assigned to them, and being added to a private room. Unread notifications show as a count that updates live.
 10. **Live updates** of feeds, threads, reactions, boards and notification counts (§8).
 11. **Audit log.** Every creation, edit and deletion of a post or comment, a task, a board column and a room membership is recorded with who did it and when; admins read and filter the log in its own page (§7.10).
+12. **Private messages.** Any user starts a conversation with one or more other users. A conversation is a stream of short messages, oldest at the top and newest at the bottom, with emoji reactions, attachments, replies to a message, editing and deleting, read state and an unread count (§7.11).
 
 ## 4. Decisions log
 
@@ -83,6 +83,7 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 | D25 | Every member of a room may change the room's board columns (each change is audited, D24) | The owner's answer, 2026-10-26. §7.6 |
 | D26 | A visible room is readable by every user before joining; joining is for posting, reacting, changing the board and being notified | The owner's answer, 2026-10-26. §7.2 |
 | D27 | Rooms are audited too: `room.created`, `room.renamed` (and description changes), `room.deleted` | The owner's answer, 2026-10-26. §7.10 |
+| D28 | **Private messages** are conversations between users, separate from rooms: a stream of messages, not posts (no comments, tasks, tags or board). A conversation with one other user is unique for the pair; a group conversation has up to 50 members | The owner's request, 2026-10-26. §7.11 |
 
 ## 5. Size estimate
 
@@ -94,6 +95,7 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 | Tasks and the board | 1,500 |
 | Mentions and notifications | 800 |
 | Audit log | 600 |
+| Private messages | 1,500 |
 | Live hub and SSE streams | 800 |
 | HTTP handlers and middleware | 3,000 |
 | templ views | 3,000 (templ) |
@@ -161,6 +163,11 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 | `TaskAssignee` | `TaskID`, `UserID` | |
 | `Mention` | `PostID`, `UserID` | rebuilt when a post is edited |
 | `Notification` | `UserID`, `Kind` (mention, reply, assigned, added_to_room), `PostID`, `TaskID`, `RoomID`, `ActorID`, `ReadAt` | |
+| `Conversation` | `Kind` (direct, group), `Name` (groups, optional), `CreatedBy`, `DirectKey` (direct only: the two user IDs in order, unique) | |
+| `ConversationMember` | `ConversationID`, `UserID`, `AddedBy`, `LastReadMessageID`, `LeftAt` | unique (conversation, user) |
+| `Message` | `ConversationID`, `AuthorID`, `Body`, `ReplyToID`, `EditedAt`, `DeletedAt` | |
+| `MessageAttachment` | as `Attachment`, with `MessageID` instead of `PostID` | |
+| `MessageReaction` | `MessageID`, `UserID`, `Emoji` | unique (message, user, emoji) |
 | `AuditEvent` | `ActorID`, `Action` (§7.10), `RoomID`, `EntityType` (room, post, comment, task, column, member), `EntityID`, `Summary`, `Details` (JSON) | no foreign keys to the entity: the event outlives it. Indexed by time, room, actor and action |
 
 ## 7. Behavior
@@ -241,9 +248,19 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 - Notifications: mention, reply (a comment under your post or comment), assigned (a task assigned to you), added to a private room. Nobody is notified of their own action.
 - A bell shows the unread count, updated live; its page lists the notifications, newest first, and marks them read.
 
+### 7.11 Private messages
+
+- **Starting.** From a user's name anywhere, or from the Messages page, a user starts a conversation with one other user (opening the existing one if there is one) or with several (a group, up to 50 members, with an optional name). Disabled users cannot be added.
+- **Members.** Any member of a group adds other users and renames the group; any member leaves it. A direct conversation has exactly its two users and nobody can be added; to include a third person, a new group is started.
+- **Messages.** A message is plain text (escaped, line breaks kept, links clickable, emoji as typed), up to 4,000 characters, with optional attachments (the limits and the download checks of §7.5, readers being the conversation's members). A message can reply to an earlier message of the same conversation, shown as a quote above it. The author edits a message (it shows "edited") and deletes it (it shows "message deleted" to everyone; its attachments are removed).
+- **Reactions.** Members react with emoji as in §7.4.
+- **Reading.** The Messages page lists the user's conversations, the most recent first, with the last message and an unread mark. A conversation shows its messages oldest first, newest at the bottom, 50 at a time with older ones loaded on scrolling up. Opening a conversation marks it read; a direct conversation shows "Seen" under the last message the other user has read.
+- **Unread count.** The sidebar shows the number of conversations with unread messages, updated live. Messages are not notifications (§7.9) and do not ring the bell.
+- **Privacy.** Only the members read a conversation; a non-member gets 404, admins included. A member who left no longer reads it. Messages are not searched by §7.8 and not written to the audit log (see §16).
+
 ## 8. Live updates and lifecycle
 
-- `internal/live` has one hub per process. Services publish an event after their transaction commits: a topic (`room:<id>`, `post:<id>`, `board:<id>`, `user:<id>`) and what changed.
+- `internal/live` has one hub per process. Services publish an event after their transaction commits: a topic (`room:<id>`, `post:<id>`, `board:<id>`, `conversation:<id>`, `user:<id>`) and what changed.
 - Each page opens one SSE stream (Datastar `@get` on load) for the topics it shows. The handler checks the permission when it subscribes, and again when it renders each event for its user, then sends Datastar patches: a new post at the top of the feed, a comment in its thread, new reaction counts, a moved card, an unread count.
 - A user removed from a private room or disabled loses its streams on that room.
 - A slow stream does not block the hub: each subscriber has a bounded queue, and a subscriber whose queue is full is closed; the page reconnects and reloads its part.
@@ -328,7 +345,8 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M9 | Tasks and the board: tasks in the editor, the board, columns, drag and drop, assignees, due dates, live board, the audit events of tasks and columns | a task written in a post is moved on the board in two sessions at once |
 | M10 | Search: FTS5, tags and the other filters, permission-aware results | the search tests of §7.8 pass |
 | M11 | Mentions and notifications | a mention and an assignment raise the bell's count live |
-| M12 | 1.0: `clowder demo`, the numbers of §10, a README with how to run it behind a proxy, `v1.0.0` | every check passes and the targets of §10 are met or recorded |
+| M12 | Private messages: conversations, messages, replies, reactions, attachments, read state, the unread count, live | a message from alice appears in bob's open conversation and raises his unread count when it is closed |
+| M13 | 1.0: `clowder demo`, the numbers of §10, a README with how to run it behind a proxy, `v1.0.0` | every check passes and the targets of §10 are met or recorded |
 
 ## 14. Demo data
 
@@ -344,7 +362,8 @@ New ones are added here with a recommendation and moved to §4 once decided.
 
 | Decision | Recommendation |
 |---|---|
-| none | |
+| Can admins read private messages, and are messages in the audit log? | No to both (§7.11 as written): they are private between their members |
+| Can private messages be searched? | Yes, but only inside the Messages page and only in the user's own conversations; not in 1.0 unless asked |
 
 ## 17. Risks
 

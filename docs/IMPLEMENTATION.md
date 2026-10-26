@@ -64,6 +64,7 @@ The main session is the **manager** (Opus 5.5, high effort) and **workers** writ
    test -z "$(gofmt -l .)"
    go vet ./...
    golangci-lint run
+   golangci-lint run --build-tags clowder_browser
    go test -race ./...
    CGO_ENABLED=0 go build ./...
    go generate ./... && test -z "$(git status --porcelain)"   # the committed *_templ.go files are up to date
@@ -131,7 +132,8 @@ SPEC D22.
 | M9 Tasks and the board | 9.1–9.3 |
 | M10 Search | 10.1–10.2 |
 | M11 Mentions and notifications | 11.1–11.2 |
-| M12 1.0 | 12.1–12.3 |
+| M12 Private messages | 12.1–12.2 |
+| M13 1.0 | 13.1–13.3 |
 
 ---
 
@@ -496,9 +498,34 @@ SPEC D22.
 
 ---
 
-## M12: 1.0
+## M12: Private messages
 
-### 12.1 Performance
+### 12.1 Conversations and messages service
+**Goal:** private messages follow SPEC §7.11.
+**Read:** SPEC D28, §6.3, §7.4, §7.5, §7.11, §8.
+**Tasks:**
+1. `Messages`: `StartDirect(ctx, actor, userID)` (returns the existing one if any), `StartGroup(ctx, actor, userIDs, name)`, `AddMembers`, `Rename`, `Leave`, `Conversations(ctx, actor)` (most recent first, last message, unread), `History(ctx, actor, convID, before, limit)`, `Send(ctx, actor, convID, input)` (body, reply-to, attachments through `internal/files`), `Edit`, `Delete`, `MarkRead`, `UnreadCount`, reactions as in step 8.1. Every method checks membership; non-members (admins too) get `TagNotFound`.
+2. Live events on `conversation:<id>` and `user:<id>` after commit. No audit events (SPEC §7.11).
+3. `clowder demo` adds a direct conversation (alice–bob) and a group (alice, bob, carol).
+**Tests:** permission tables (member, left member, non-member, admin non-member, disabled user), the direct pair is unique, group limit, read state and unread count, delete removes attachments.
+**Done when:** the standard checks pass.
+
+### 12.2 Messages pages
+**Goal:** users write and read private messages live.
+**Read:** SPEC §7.11, §8.
+**Tasks:**
+1. A "Messages" link in the sidebar with the live unread count; `/messages` lists the conversations; `/messages/{id}` shows a conversation (oldest at the top, newest at the bottom, older loaded on scrolling up, "Seen" in direct conversations), a composer (text, attachments, reply-to quote), edit, delete, reactions, the members panel (add, rename, leave for groups). "Message" buttons on users' names start a direct conversation.
+2. The stream `GET /messages/{id}/stream` and the per-user stream keep the conversation and the count live.
+**Tests:** handler tests, 404 for non-members.
+**Browser tests:** alice sends bob a message; bob's open conversation shows it; with it closed, bob's unread count goes up.
+**Proof:** method A: `12.2-messages.png`, the alice–bob conversation as `bob` with a reply and a reaction.
+**Done when:** the standard checks pass and the proof is verified.
+
+---
+
+## M13: 1.0
+
+### 13.1 Performance
 **Goal:** the targets of SPEC §10 are measured.
 **Read:** SPEC §10.
 **Tasks:**
@@ -507,15 +534,15 @@ SPEC D22.
 3. `docs/PERFORMANCE.md`: the machine, the commands, the numbers, the targets not met.
 **Done when:** the numbers are recorded and the standard checks pass.
 
-### 12.2 Security review and README
+### 13.2 Security review and README
 **Goal:** the release is reviewed and documented.
-**Read:** SPEC §7, §9, §11, §17.
+**Read:** SPEC §7, §9, §11, §17. (Private messages included.)
 **Tasks:**
 1. Review every route for the permission checks, cookie and header settings, upload handling, markdown output, the login limiter; fix what is found with tests.
 2. `README.md`: what Clowder is, building, the first admin, configuration, running behind a TLS reverse proxy (an example for Caddy and nginx), backups (the data directory, with SQLite's online backup), screenshots from the proofs.
 **Done when:** the standard checks and the browser tests pass.
 
-### 12.3 Release 1.0
+### 13.3 Release 1.0
 **Goal:** version 1.0.0 is published.
 **Tasks:**
 1. Run every check and every browser test; update the SPEC's status to 1.0.

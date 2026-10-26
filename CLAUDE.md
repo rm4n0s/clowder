@@ -3,7 +3,7 @@
 Guidance for Claude Code when working in this repository (Go, hosted on GitHub).
 
 ## Project
-Clowder (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause) is a self-hosted web application where a team talks in rooms. A room is a feed of posts with threaded comments; posts and comments carry text or markdown, attachments, tags and tasks, and each room's tasks make its Kanban board. People join by invitation only. It is one cgo-free binary: GORM on SQLite (pure-Go driver) for storage, pages rendered on the server with templ, and kept live with Datastar over server-sent events.
+Clowder (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause) is a self-hosted web application where a team talks in rooms. A room is a feed of posts with threaded comments; posts and comments carry text or markdown, attachments, tags and tasks, and each room's tasks make its Kanban board. Users also write private messages to each other, one to one or in groups. People join by invitation only. It is one cgo-free binary: GORM on SQLite (pure-Go driver) for storage, pages rendered on the server with templ, and kept live with Datastar over server-sent events.
 
 **`docs/SPEC.md` is the source of truth.** Read the sections that cover a task before starting it. If the code and the spec disagree, or a task needs a decision the spec doesn't make, ask instead of guessing. When a decision changes, update the spec on the same branch.
 
