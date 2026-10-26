@@ -16,7 +16,7 @@ The main session is the **manager** (Opus 5.5, high effort) and **workers** writ
 - **Workers run in the shared checkout, on the step branch, without worktree isolation**: an isolated worktree starts from `main`, not from the step branch. A worker never runs a git command that changes state (commit, merge, rebase, stash, push, tag, branch, switch, reset, checkout of files); the manager does all of them.
 - **One worker per step**, or several at once only when their parts touch disjoint directories and do not depend on each other; at most three at a time. A part that needs another part's API waits for it.
 - **The manager reviews the work, not the summary**: it reads the diff, runs the tests the worker says pass and the checks of rule 8 itself, and looks at every proof. What is wrong, missing or outside the step goes back to the same worker (SendMessage, so it keeps its context) with the concrete failure. The manager writes only small fixes itself (a few lines, a doc comment, a test table row).
-- **Questions.** A worker that hits a case of rule 7 stops and reports it; the manager decides what the plan and the SPEC already decide, and asks the user otherwise (rule 7). The manager answers "what is going on" questions of the user while workers run, and never reports a worker's result before it arrived.
+- **Questions.** A worker that hits a case of rule 7 stops and reports it to the manager; the manager decides (rule 7) and the work goes on. The manager never stops for a decision. The manager answers "what is going on" questions of the user while workers run, and never reports a worker's result before it arrived.
 - **The manager finishes the step**: the `IMPLEMENTED.md` entry (rule 10; it may have a worker draft it, and checks every claim in it), the commit, the publish and the tag (rules 11–12), the report (rule 13), and deletes the step's briefs.
 
 ### Before you start a step
@@ -37,15 +37,13 @@ The main session is the **manager** (Opus 5.5, high effort) and **workers** writ
 4. **Do exactly the step's Tasks.** Don't do work that belongs to a later step, even if it looks easy. If a later step will need a hook, leave only a comment: `// TODO(step 3.2): ...`.
 5. **Follow CLAUDE.md.** In particular: `rm4n0s/errors` v0.2.0 for every error, used the way its `AI_GUIDE.md` says (the "Errors" rules below), and a doc comment on every exported identifier.
 6. **Test what you build.** Write the tests listed under **Tests** as table-driven Go tests, plus a route test for every new error tag. In `docs/IMPLEMENTED.md`, say how many test cases were added.
-7. **Stop and ask the user** when any of these happens:
-   - the step is ambiguous
-   - the spec looks wrong or contradicts itself
-   - a tool is missing (give the exact install command, e.g. `sudo dnf install <package>`)
-   - a new dependency seems necessary
-   - something needs `sudo`
-   - a check still fails after a real attempt to fix it
+7. **Never stop** (the owner's rule, 2026-10-26). The manager decides and keeps going:
+   - the step is ambiguous, or the spec looks wrong or contradicts itself: take the reading that fits the SPEC's goals best (the recommendation, if §16 has one), write the decision into the SPEC (§4, marked "decided by the manager, 2026-…; the owner may revise"), and mention it in the step's report
+   - a tool is missing or something needs `sudo`: find a way that needs neither (a pure-Go alternative, a test that skips with a clear message when the tool is absent), record it in the step's "Deviations and follow-ups", and list the install command in the report
+   - a new dependency seems necessary: prefer the standard library or an allowed dependency; if none can do it reasonably, add the smallest well-known dependency, record it as a decision in SPEC §4 and CLAUDE.md, and mention it in the report
+   - a check still fails after a real attempt to fix it: keep fixing (another worker, a different approach, a smaller step) until it passes
 
-   Never weaken or delete a test, skip a check, or mark a step done just to get unblocked.
+   Never weaken or delete a test, skip a check, or mark a step done just to get unblocked. The user may still interrupt with a question or a change; answer it and continue.
 
 **Errors.** `github.com/rm4n0s/errors` is used to the fullest, as its `AI_GUIDE.md` says. This is a requirement of the project owner, not a style choice. It is in the module cache, so reading it is allowed: `$(go env GOMODCACHE)/github.com/rm4n0s/errors@v0.2.0/AI_GUIDE.md`. Read all of it before you write or change code that makes, returns, logs or tests an error, and again after the dependency moves to a new version (then also read the library's `errors.go` for changed signatures). The rules, with the guide's numbers (SPEC §9.3 has the same list with the reasons):
 - **R1.** `errors.New(tag, message, metadata...)` always has a tag and a message. A tag names one thing a function cannot do.
@@ -81,7 +79,7 @@ The main session is the **manager** (Opus 5.5, high effort) and **workers** writ
     git add -A && git commit -m "Step 1.2: Add the config loader"
     ```
 12. **Publish every finished step to `main`, right away.**
-    - A step counts as finished only when its commit is on `origin/main`.
+    - A step counts as finished only when its commit is on `origin/main` (a push that fails for network reasons is retried later, see below).
     - Publish before you start the next step. Never collect several steps into one publish, and never leave a finished step only on its branch.
     - Publish only after rules 8–11 are complete: checks green, proof verified, `IMPLEMENTED.md` entry committed.
     ```sh
@@ -94,7 +92,7 @@ The main session is the **manager** (Opus 5.5, high effort) and **workers** writ
     ```
     - **Tag every published step** with an annotated tag `step-<id>` (the step's id as in this file) on the commit now on `main`, and push it right after the push of `main`. The step is finished only when the tag is on `origin` too. If the tag already exists, stop and tell the user; never move or delete a tag.
     - The release tags `v<major>.<minor>.<patch>` are a separate thing. When a version is finished (its release step, or the fix step that closes a patch version), its commit is published to `main` and the annotated `v…` tag is made on it and pushed at once, without asking.
-    If `--ff-only` fails, rebase the step branch onto `main`, run the standard checks again, and retry. If the push is rejected or fails (authentication, network), stop and tell the user. Don't start the next step until the push succeeded.
+    If `--ff-only` fails, rebase the step branch onto `main`, run the standard checks again, and retry. If a push fails (network, a reset connection), retry it a few times with a pause; if it still fails, start the next step anyway from the local `main` and push `main` and every pending tag as soon as a later push succeeds (check with `git status -sb` and `git ls-remote --tags origin` before each report). A push that is **rejected** (someone else changed `origin/main`) is resolved by pulling and rebasing, never by force. A step counts as finished once its commit and tag are on `origin`; report the ones still waiting to be pushed.
 13. **Report to the user.** Give the step id, a two-line summary, the check results, the proof paths, and the commit hash now on `main`.
 
 **Default "Done when".** A step without a **Done when** line is done when its Tasks are complete, its **Tests** are written and passing, its **Proof** is verified, and the standard checks pass.
