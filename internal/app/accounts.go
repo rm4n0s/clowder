@@ -56,6 +56,11 @@ type User struct {
 	CreatedAt time.Time
 }
 
+// IsAdmin reports whether the user has the admin role.
+func (u User) IsAdmin() bool {
+	return u.Role == store.RoleAdmin
+}
+
 // IssuedInvitation is a new invitation: the token, which is shown once and
 // never stored, and the facts about it.
 type IssuedInvitation struct {

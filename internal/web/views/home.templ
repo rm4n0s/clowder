@@ -1,12 +1,14 @@
 package views
 
+import "github.com/rm4n0s/clowder/internal/app"
+
 // Home is the home page of a logged-in user: it greets the user by display
 // name.
-templ Home(displayName string) {
-	@Layout("Home", Sidebar()) {
+templ Home(user app.User) {
+	@Layout("Home", Sidebar(user)) {
 		<h1>Clowder</h1>
 		<p>A place where the team talks in rooms.</p>
-		<p id="signed-in-as">Signed in as { displayName }</p>
+		<p id="signed-in-as">Signed in as { user.DisplayName }</p>
 		<p id="datastar-check" data-signals="{status: 'Datastar is running'}" data-text="$status">Datastar is not running</p>
 	}
 }

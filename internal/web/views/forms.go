@@ -2,6 +2,7 @@ package views
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -55,4 +56,10 @@ func escapeQuote(s string) string {
 // invitePath returns the path of the sign-up page and form of a token.
 func invitePath(token string) string {
 	return "/invite/" + url.PathEscape(token)
+}
+
+// userPath returns the path of an action on a user, such as
+// /admin/users/3/role.
+func userPath(id uint64, action string) string {
+	return "/admin/users/" + strconv.FormatUint(id, 10) + "/" + action
 }

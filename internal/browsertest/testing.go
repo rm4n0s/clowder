@@ -45,8 +45,7 @@ func StartWith(t testing.TB, opts Options) *Server {
 }
 
 // Browser starts headless Chromium for the test and closes it when the test
-// ends. The session is not logged in yet.
-// TODO(step 2.4): log in as a user.
+// ends. The session is not logged in yet: call LogIn for that.
 func Browser(t testing.TB, _ *Server) context.Context {
 	t.Helper()
 	ctx, cancel, err := NewBrowser(context.Background())

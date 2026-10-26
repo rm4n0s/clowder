@@ -6,12 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/web/views"
 )
 
 func TestHome(t *testing.T) {
 	var buf bytes.Buffer
-	if err := views.Home("Alice").Render(context.Background(), &buf); err != nil {
+	if err := views.Home(app.User{DisplayName: "Alice", Username: "alice", Role: app.RoleMember}).Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render Home: %v", err)
 	}
 	html := buf.String()

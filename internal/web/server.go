@@ -97,6 +97,10 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /logout", handler: http.HandlerFunc(s.logout)},
 		{pattern: "GET /invite/{token}", handler: http.HandlerFunc(s.signUpPage), access: optionalSession},
 		{pattern: "POST /invite/{token}", handler: http.HandlerFunc(s.signUpSubmit), access: optionalSession},
+		{pattern: "GET /admin/users", handler: http.HandlerFunc(s.adminUsers)},
+		{pattern: "POST /admin/users/{id}/role", handler: http.HandlerFunc(s.setRole)},
+		{pattern: "POST /admin/users/{id}/disabled", handler: http.HandlerFunc(s.setDisabled)},
+		{pattern: "POST /admin/invitations", handler: http.HandlerFunc(s.invite)},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
 	}
 	mux := http.NewServeMux()
@@ -171,7 +175,7 @@ func (s *Server) serve(ctx context.Context, ln net.Listener) error {
 // home answers GET /{$}. The route needs a login.
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFrom(r.Context())
-	s.render(w, r, http.StatusOK, views.Home(user.DisplayName))
+	s.render(w, r, http.StatusOK, views.Home(user))
 }
 
 // notFound answers with the 404 page.

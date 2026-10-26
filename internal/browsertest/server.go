@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -34,10 +36,18 @@ const (
 	tailSize = 4096
 	// listenMessage is the message of the log entry that reports the address.
 	listenMessage = "server listening"
-	// baseURL is the -base-url the server is started with. It names no port, so
-	// the invitation links it prints are wrong; the tests take the token from
-	// them (Server.InviteToken) and build the link from Server.URL.
-	baseURL = "http://127.0.0.1"
+	// inviteBaseURL is the -base-url of the "clowder invite" command of
+	// Options.InviteMember. It runs before the server's port is known, so the
+	// link it prints names no port; only its token is used (Server.InviteToken).
+	inviteBaseURL = "http://127.0.0.1"
+	// bindFailureText is what the server prints on stderr when its port is
+	// taken.
+	bindFailureText = "address already in use"
+	// listenHost is the address the servers listen on.
+	listenHost = "127.0.0.1"
+	// startAttempts is how many ports StartServer tries: the port is chosen
+	// before the server starts, so another process can take it in between.
+	startAttempts = 2
 )
 
 // Options configure StartServer. The zero value is valid.
@@ -138,22 +148,49 @@ func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, err
 		}
 	}
 
+	var srv *Server
+	for attempt := 1; ; attempt++ {
+		var bindFailed bool
+		var err error
+		srv, bindFailed, err = launch(ctx, opts, bin, dataDir)
+		if err == nil {
+			break
+		}
+		if !bindFailed || attempt >= startAttempts {
+			return nil, err
+		}
+	}
+	srv.DataDir = dataDir
+	srv.InviteToken = inviteToken
+	srv.tmpDir = tmpDir
+	return srv, nil
+}
+
+// launch starts "clowder serve" on a free port and waits until it logs that it
+// listens there. The port is chosen first, by listening on port 0 and closing
+// again, and the server is told its base URL with that port. bindFailed is true
+// when the server exited because the port was taken in between; the caller may
+// try again with another port. The returned Server has no DataDir, InviteToken
+// or tmpDir yet.
+func launch(ctx context.Context, opts Options, bin, dataDir string) (srv *Server, bindFailed bool, err error) {
+	port, err := freePort(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	addr := net.JoinHostPort(listenHost, strconv.Itoa(port))
 	w := newListenWatcher(opts.Stderr)
-	cmd := exec.Command(bin, "serve", "-addr", "127.0.0.1:0", "-data", dataDir, "-base-url", baseURL)
+	cmd := exec.Command(bin, "serve", "-addr", addr, "-data", dataDir, "-base-url", "http://"+addr)
 	cmd.Stderr = w
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = waitDelay
 	if err := cmd.Start(); err != nil {
-		return nil, errors.NewErr(tagServerStartFailed, err).SetMetadata("binary", bin)
+		return nil, false, errors.NewErr(tagServerStartFailed, err).SetMetadata("binary", bin)
 	}
 	stopTimeout := opts.StopTimeout
 	if stopTimeout <= 0 {
 		stopTimeout = defaultStopTimeout
 	}
-	srv := &Server{
-		DataDir:     dataDir,
-		InviteToken: inviteToken,
-		tmpDir:      tmpDir,
+	srv = &Server{
 		stopTimeout: stopTimeout,
 		cmd:         cmd,
 		done:        make(chan struct{}),
@@ -170,29 +207,67 @@ func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, err
 	timer := time.NewTimer(startTimeout)
 	defer timer.Stop()
 	select {
-	case addr := <-w.addr:
+	case listening := <-w.addr:
+		if listening != addr {
+			stopErr := srv.stopProcess()
+			return nil, false, errors.New(tagServerAddrMismatch, "the server listens on another address than it was told",
+				"want", addr, "got", listening, "stop", errString(stopErr))
+		}
 		srv.URL = "http://" + addr
-		return srv, nil
+		return srv, false, nil
 	case <-srv.done:
 		stopErr := srv.stopProcess() // kills what the process left in its group
-		return nil, errors.New(tagServerExitedEarly, "the server exited before it listened",
-			"exit", errString(srv.waitErr), "stderr", w.Tail(), "stop", errString(stopErr))
+		return nil, isBindFailure(w.Tail()), errors.New(tagServerExitedEarly, "the server exited before it listened",
+			"exit", errString(srv.waitErr), "stderr", w.Tail(), "stop", errString(stopErr), "addr", addr)
 	case <-timer.C:
 		stopErr := srv.stopProcess()
-		return nil, errors.New(tagServerStartTimeout, "the server did not listen in time",
+		return nil, false, errors.New(tagServerStartTimeout, "the server did not listen in time",
 			"timeout", startTimeout.String(), "stderr", w.Tail(), "stop", errString(stopErr))
 	case <-ctx.Done():
 		stopErr := srv.stopProcess()
-		return nil, errors.NewErr(tagServerStartCanceled, ctx.Err()).
+		return nil, false, errors.NewErr(tagServerStartCanceled, ctx.Err()).
 			SetMetadata("stderr", w.Tail(), "stop", errString(stopErr))
 	}
+}
+
+// freePort returns a TCP port on 127.0.0.1 that is free now: it listens on port
+// 0, reads the port the system chose and closes the listener. Another process
+// may take the port before the caller uses it; StartServer then tries a second
+// port.
+func freePort(ctx context.Context) (int, error) {
+	return freePortOn(ctx, listenHost)
+}
+
+// freePortOn is freePort on the address host.
+func freePortOn(ctx context.Context, host string) (int, error) {
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", net.JoinHostPort(host, "0"))
+	if err != nil {
+		return 0, errors.NewErr(tagFreePortFailed, err).SetMetadata("host", host)
+	}
+	tcp, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		_ = ln.Close()
+		return 0, errors.New(tagFreePortFailed, "the listener has no TCP address", "addr", ln.Addr().String())
+	}
+	port := tcp.Port
+	if err := ln.Close(); err != nil {
+		return 0, errors.NewErr(tagFreePortFailed, err).SetMetadata("port", port)
+	}
+	return port, nil
+}
+
+// isBindFailure reports whether the stderr of a server that exited early says
+// that its port was taken.
+func isBindFailure(stderr string) bool {
+	return strings.Contains(stderr, bindFailureText)
 }
 
 // inviteMember runs "clowder invite -member" on the data directory and returns
 // the token of the invitation it prints.
 func inviteMember(ctx context.Context, bin, dataDir string) (string, error) {
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, bin, "invite", "-member", "-data", dataDir, "-base-url", baseURL)
+	cmd := exec.CommandContext(ctx, bin, "invite", "-member", "-data", dataDir, "-base-url", inviteBaseURL)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -397,4 +472,6 @@ const (
 	tagServerStartTimeout  = "ServerStartTimeout"
 	tagServerStartCanceled = "ServerStartCanceled"
 	tagServerStopFailed    = "ServerStopFailed"
+	tagServerAddrMismatch  = "ServerAddrMismatch"
+	tagFreePortFailed      = "FreePortFailed"
 )

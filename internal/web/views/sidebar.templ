@@ -1,8 +1,20 @@
 package views
 
-// Sidebar is the sidebar of the pages of a logged-in user: the logout button.
-// Later steps add the navigation.
-templ Sidebar() {
+import "github.com/rm4n0s/clowder/internal/app"
+
+// Sidebar is the sidebar of the pages of a logged-in user: the display name of
+// the user, the navigation (Home, and Admin for admins) and the logout button.
+// Later steps add the rooms to the navigation.
+templ Sidebar(user app.User) {
+	<p class="sidebar-user" id="sidebar-user">{ user.DisplayName }</p>
+	<nav aria-label="Main">
+		<ul>
+			<li><a href="/">Home</a></li>
+			if user.IsAdmin() {
+				<li><a href="/admin/users">Admin</a></li>
+			}
+		</ul>
+	</nav>
 	<form id="logout-form" method="post" action="/logout" data-on:submit={ FormPost("/logout") }>
 		<button type="submit" class="secondary">Log out</button>
 	</form>

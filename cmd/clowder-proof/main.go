@@ -127,10 +127,6 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if opts.as != "" {
-		_, _ = fmt.Fprintf(stderr, "note: -as %q is ignored until step 2.4 adds the login\n", opts.as)
-	}
-
 	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite})
 	if err != nil {
 		return err
@@ -163,7 +159,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.SetOutput(stderr)
 	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1")
 	fs.StringVar(&o.out, "o", "", "path of the PNG to write (required)")
-	fs.StringVar(&o.as, "as", "", "user to log in as (ignored until step 2.4)")
+	fs.StringVar(&o.as, "as", "", "demo user to log in as through /login before the page is opened, such as admin or alice")
 	fs.IntVar(&o.width, "width", 1280, "viewport width in pixels")
 	fs.IntVar(&o.height, "height", 800, "viewport height in pixels")
 	fs.DurationVar(&o.wait, "wait", 500*time.Millisecond, "extra time to settle after the page has loaded and after the click")
@@ -203,9 +199,15 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 	defer cancel()
 
 	url := srv.URL + o.page
-	// The first run started the browser; this timeout limits only the page.
+	// The first run started the browser; this timeout limits the login and the
+	// page.
 	pageCtx, cancelPage := context.WithTimeout(browser, pageTimeout)
 	defer cancelPage()
+	if o.as != "" {
+		if err := browsertest.LogIn(pageCtx, srv, o.as); err != nil {
+			return nil, err
+		}
+	}
 	err = chromedp.Do(pageCtx,
 		chromedp.EmulateViewport(int64(o.width), int64(o.height)),
 		chromedp.Navigate(url),

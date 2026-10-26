@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/a-h/templ"
+	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/web/views"
 )
 
@@ -113,9 +114,15 @@ func TestAuthViews(t *testing.T) {
 			want: []string{"<title>Sign up · Clowder</title>", "<h1>Join Clowder</h1>", `id="signup-form"`},
 		},
 		{
-			name: "sidebar",
-			c:    views.Sidebar(),
-			want: []string{`<form id="logout-form" method="post" action="/logout"`, "Log out</button>"},
+			name:    "sidebar of a member",
+			c:       views.Sidebar(app.User{DisplayName: "Alice", Role: app.RoleMember}),
+			want:    []string{`id="sidebar-user">Alice</p>`, `<a href="/">Home</a>`, `<form id="logout-form" method="post" action="/logout"`, "Log out</button>"},
+			notWant: []string{"Admin</a>", "/admin/users"},
+		},
+		{
+			name: "sidebar of an admin",
+			c:    views.Sidebar(app.User{DisplayName: "Ada", Role: app.RoleAdmin}),
+			want: []string{`id="sidebar-user">Ada</p>`, `<a href="/">Home</a>`, `<a href="/admin/users">Admin</a>`, "Log out</button>"},
 		},
 	}
 	for _, tt := range tests {

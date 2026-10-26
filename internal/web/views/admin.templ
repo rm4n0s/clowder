@@ -1,0 +1,140 @@
+package views
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/rm4n0s/clowder/internal/app"
+)
+
+// AdminUsersData is what the admin users page shows.
+type AdminUsersData struct {
+	// Viewer is the admin who looks at the page.
+	Viewer app.User
+	// Users are all the users.
+	Users []app.User
+	// Message is the problem of the last action on a user, shown above the
+	// table; empty shows none.
+	Message string
+	// Invite is the state of the invitation form and of its link.
+	Invite InviteData
+}
+
+// InviteData is what the invitation form shows.
+type InviteData struct {
+	// Role is the role chosen in the form: "member" or "admin".
+	Role string
+	// Link is the full invitation link, <base URL>/invite/<token>; empty until
+	// an invitation is made. It is shown once.
+	Link string
+	// ExpiresAt is when the invitation stops working.
+	ExpiresAt time.Time
+	// Errors are the problems of the last submit.
+	Errors FormErrors
+}
+
+// AdminUsersPage is the page of the users and of the invitation form. Only
+// admins get it.
+templ AdminUsersPage(d AdminUsersData) {
+	@Layout("Users", Sidebar(d.Viewer)) {
+		<h1>Users</h1>
+		@UsersPanel(d)
+		@InviteSection(d.Invite)
+	}
+}
+
+// UsersPanel is the table of users with the message of the last action above
+// it. The server sends it alone as a Datastar patch after an action on a user.
+templ UsersPanel(d AdminUsersData) {
+	<section id="users-panel">
+		@formProblem(d.Message)
+		<table class="users">
+			<thead>
+				<tr>
+					<th scope="col">Username</th>
+					<th scope="col">Display name</th>
+					<th scope="col">Role</th>
+					<th scope="col">State</th>
+					<th scope="col">Created</th>
+					<th scope="col">Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, u := range d.Users {
+					@userRow(u, u.ID == d.Viewer.ID)
+				}
+			</tbody>
+		</table>
+	</section>
+}
+
+// userRow is one row of the table. The admin's own row has no disable button.
+templ userRow(u app.User, self bool) {
+	<tr id={ "user-" + strconv.FormatUint(u.ID, 10) } data-username={ u.Username }>
+		<td>{ u.Username }</td>
+		<td>{ u.DisplayName }</td>
+		<td class="role">{ string(u.Role) }</td>
+		<td class="state">
+			if u.Disabled {
+				Disabled
+			} else {
+				Active
+			}
+		</td>
+		<td>{ u.CreatedAt.UTC().Format("2006-01-02") }</td>
+		<td class="actions">
+			if u.IsAdmin() {
+				@actionForm(userPath(u.ID, "role"), "role", "member", "Make member")
+			} else {
+				@actionForm(userPath(u.ID, "role"), "role", "admin", "Make admin")
+			}
+			if !self {
+				if u.Disabled {
+					@actionForm(userPath(u.ID, "disabled"), "disabled", "false", "Enable")
+				} else {
+					@actionForm(userPath(u.ID, "disabled"), "disabled", "true", "Disable")
+				}
+			}
+		</td>
+	</tr>
+}
+
+// actionForm is a one-button form that posts one value to path. Datastar sends
+// it; without JavaScript the browser posts it as an ordinary form.
+templ actionForm(path, name, value, label string) {
+	<form class="action" method="post" action={ templ.SafeURL(path) } data-on:submit={ FormPost(path) }>
+		<input type="hidden" name={ name } value={ value }/>
+		<button type="submit" class="secondary">{ label }</button>
+	</form>
+}
+
+// InviteSection is the form that makes an invitation and the box that shows
+// its link. The server sends it alone as a Datastar patch with the link or the
+// problems.
+templ InviteSection(d InviteData) {
+	<section id="invite">
+		<h2>Invite someone</h2>
+		<form id="invite-form" method="post" action="/admin/invitations" data-on:submit={ FormPost("/admin/invitations") }>
+			@formProblem(d.Errors.Form)
+			<div class="field">
+				<label for="invite-role">Role</label>
+				<select id="invite-role" name="role">
+					<option value="member" selected?={ d.Role != "admin" }>Member</option>
+					<option value="admin" selected?={ d.Role == "admin" }>Admin</option>
+				</select>
+				if d.Errors.Fields["role"] != "" {
+					<p class="field-error" role="alert">{ d.Errors.Fields["role"] }</p>
+				}
+			</div>
+			<button type="submit">Make an invitation link</button>
+		</form>
+		if d.Link != "" {
+			<div id="invitation-box" class="invitation-box">
+				<p>Share this link. It is shown only now and works once.</p>
+				<input id="invitation-link" type="text" readonly value={ d.Link } aria-label="Invitation link"/>
+				<p class="hint">Expires { d.ExpiresAt.UTC().Format("2006-01-02 15:04") } UTC.</p>
+				<button id="copy-invitation" type="button" class="secondary" data-on:click="navigator.clipboard.writeText(document.getElementById('invitation-link').value).then(() => { el.textContent = 'Copied' })">Copy link</button>
+			</div>
+		}
+	</section>
+}

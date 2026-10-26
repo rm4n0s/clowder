@@ -2,6 +2,18 @@ package app
 
 import "github.com/rm4n0s/clowder/internal/store"
 
+// Role is what a user may do. It is the store's type, so the web layer can
+// name the roles without importing the store.
+type Role = store.Role
+
+// The two roles (SPEC D14).
+const (
+	// RoleAdmin is a user who manages users, invitations and rooms.
+	RoleAdmin Role = store.RoleAdmin
+	// RoleMember is an ordinary user.
+	RoleMember Role = store.RoleMember
+)
+
 // Actor is the user on whose behalf a service method runs. The web layer
 // builds it from the session; the method trusts its Role and checks the
 // permission itself. Services take it by value, as the second parameter after

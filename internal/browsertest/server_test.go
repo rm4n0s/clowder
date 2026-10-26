@@ -5,9 +5,11 @@ package browsertest
 import (
 	"bytes"
 	"context"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -180,7 +182,9 @@ func fakeBinary(t *testing.T, serve string) string {
 	return path
 }
 
-const listenLine = `echo '{"msg":"server listening","addr":"127.0.0.1:4242"}' >&2`
+// listenLine makes the fake server report the address it was given
+// ("serve -addr <addr> ..." makes it the third argument).
+const listenLine = `echo "{\"msg\":\"server listening\",\"addr\":\"$3\"}" >&2`
 
 func TestStartServerErrors(t *testing.T) {
 	noGoMod := t.TempDir()
@@ -221,7 +225,7 @@ func TestStartServerErrors(t *testing.T) {
 			ctx:       context.Background(),
 			opts:      Options{Binary: fakeBinary(t, "echo boom >&2; exit 3")},
 			wantTag:   tagServerExitedEarly,
-			wantRoute: "StartServer->startServer.ServerExitedEarly",
+			wantRoute: "StartServer->startServer->launch.ServerExitedEarly",
 			metaKey:   "stderr",
 			wantMeta:  "boom",
 		},
@@ -230,7 +234,7 @@ func TestStartServerErrors(t *testing.T) {
 			ctx:       context.Background(),
 			opts:      Options{Binary: fakeBinary(t, "echo waiting >&2; exec sleep 60"), StartTimeout: 300 * time.Millisecond},
 			wantTag:   tagServerStartTimeout,
-			wantRoute: "StartServer->startServer.ServerStartTimeout",
+			wantRoute: "StartServer->startServer->launch.ServerStartTimeout",
 			metaKey:   "stderr",
 			wantMeta:  "waiting",
 		},
@@ -285,7 +289,7 @@ func TestStartServerCanceledWhileStarting(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
 	}
-	if appErr.Tag != tagServerStartCanceled || !appErr.HasRoute("StartServer->startServer.ServerStartCanceled") {
+	if appErr.Tag != tagServerStartCanceled || !appErr.HasRoute("StartServer->startServer->launch.ServerStartCanceled") {
 		t.Errorf("tag = %q, route = %s", appErr.Tag, appErr.Route())
 	}
 	if !errors.Is(err, context.Canceled) {
@@ -328,8 +332,8 @@ func TestStopServer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("StartServer: %v", err)
 			}
-			if srv.URL != "http://127.0.0.1:4242" {
-				t.Errorf("URL = %q, want http://127.0.0.1:4242", srv.URL)
+			if want := "http://" + srv.cmd.Args[3]; srv.URL != want {
+				t.Errorf("URL = %q, want %q", srv.URL, want)
 			}
 			pid := srv.cmd.Process.Pid
 			err = srv.Stop()
@@ -466,5 +470,103 @@ func TestStartServerInviteMember(t *testing.T) {
 				t.Errorf("metadata = %v, want it to contain %q", appErr.Metadata, tt.wantMeta)
 			}
 		})
+	}
+}
+
+func TestFreePort(t *testing.T) {
+	seen := map[int]bool{}
+	for range 5 {
+		port, err := freePort(context.Background())
+		if err != nil {
+			t.Fatalf("freePort: %+v", err)
+		}
+		if port <= 0 || port > 65535 {
+			t.Fatalf("port = %d, want a valid port", port)
+		}
+		seen[port] = true
+		// The port is free again: a listener can take it now.
+		var lc net.ListenConfig
+		ln, err := lc.Listen(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+		if err != nil {
+			t.Fatalf("listen on the port %d it returned: %v", port, err)
+		}
+		if err := ln.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(seen) < 2 {
+		t.Errorf("five calls returned the same port: %v", seen)
+	}
+
+	_, err := freePortOn(context.Background(), "no.such.host.invalid")
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != tagFreePortFailed || !appErr.HasRoute("freePortOn.FreePortFailed") {
+		t.Errorf("freePortOn with a host that cannot be listened on = %v", err)
+	}
+}
+
+func TestIsBindFailure(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		want   bool
+	}{
+		{"port taken", `clowder: ListenFailed: listen tcp 127.0.0.1:80: bind: address already in use`, true},
+		{"another failure", `clowder: DataDirCreateFailed: permission denied`, false},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isBindFailure(tt.stderr); got != tt.want {
+				t.Errorf("isBindFailure(%q) = %v, want %v", tt.stderr, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestStartServerRetriesWhenThePortIsTaken has the fake server fail to bind
+// the first time: StartServer tries once more, with a new port.
+func TestStartServerRetriesWhenThePortIsTaken(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "tried")
+	serve := `if [ ! -e ` + marker + ` ]; then touch ` + marker + `; echo "clowder: ListenFailed: bind: address already in use" >&2; exit 1; fi; ` +
+		listenLine + "; exec sleep 60"
+	srv, err := StartServer(context.Background(), Options{Binary: fakeBinary(t, serve), StopTimeout: 300 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("StartServer: %+v", err)
+	}
+	if want := "http://" + srv.cmd.Args[3]; srv.URL != want {
+		t.Errorf("URL = %q, want %q", srv.URL, want)
+	}
+	_ = srv.Stop() // the fake does not exit on SIGINT cleanly; only the cleanup matters here
+}
+
+func TestStartServerGivesUpAfterTwoBindFailures(t *testing.T) {
+	serve := `echo "clowder: ListenFailed: bind: address already in use" >&2; exit 1`
+	_, err := StartServer(context.Background(), Options{Binary: fakeBinary(t, serve)})
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != tagServerExitedEarly || !appErr.HasRoute("StartServer->startServer->launch.ServerExitedEarly") {
+		t.Fatalf("StartServer = %v, want ServerExitedEarly", err)
+	}
+}
+
+func TestStartServerOtherFailuresAreNotRetried(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "count")
+	serve := `echo x >> ` + marker + `; echo "boom" >&2; exit 1`
+	_, err := StartServer(context.Background(), Options{Binary: fakeBinary(t, serve)})
+	if _, ok := errors.FromError(err); !ok {
+		t.Fatalf("StartServer = %v", err)
+	}
+	data, readErr := os.ReadFile(marker)
+	if readErr != nil || strings.Count(string(data), "x") != 1 {
+		t.Errorf("the server was started %q times, want once (%v)", data, readErr)
+	}
+}
+
+func TestStartServerAddressMismatch(t *testing.T) {
+	serve := `echo '{"msg":"server listening","addr":"127.0.0.1:1"}' >&2; exec sleep 60`
+	_, err := StartServer(context.Background(), Options{Binary: fakeBinary(t, serve), StopTimeout: 300 * time.Millisecond})
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != tagServerAddrMismatch || !appErr.HasRoute("StartServer->startServer->launch.ServerAddrMismatch") {
+		t.Fatalf("StartServer = %v, want ServerAddrMismatch", err)
 	}
 }
