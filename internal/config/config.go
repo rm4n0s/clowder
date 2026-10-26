@@ -75,51 +75,59 @@ func (c Config) SecureCookies() bool {
 // that is not usable, or nil.
 func (c Config) Validate() error {
 	if c.ListenAddr == "" {
-		return errors.New(tagListenAddrEmpty, "listen address is empty")
+		return errors.New(TagListenAddrEmpty, "listen address is empty")
 	}
 	if c.DataDir == "" {
-		return errors.New(tagDataDirEmpty, "data directory is empty")
+		return errors.New(TagDataDirEmpty, "data directory is empty")
 	}
 	u, err := url.Parse(c.BaseURL)
 	if err != nil {
-		return errors.NewErr(tagBaseURLInvalid, err).SetMetadata("baseURL", c.BaseURL)
+		return errors.NewErr(TagBaseURLInvalid, err).SetMetadata("baseURL", c.BaseURL)
 	}
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return errors.New(tagBaseURLInvalid, "base URL is not an absolute http or https URL",
+		return errors.New(TagBaseURLInvalid, "base URL is not an absolute http or https URL",
 			"baseURL", c.BaseURL)
 	}
 	if c.MaxAttachmentSize <= 0 {
-		return errors.New(tagMaxAttachmentSizeInvalid, "maximum attachment size must be positive",
+		return errors.New(TagMaxAttachmentSizeInvalid, "maximum attachment size must be positive",
 			"value", c.MaxAttachmentSize)
 	}
 	if c.MaxAttachmentsPerPost <= 0 {
-		return errors.New(tagMaxAttachmentsPerPostInvalid, "maximum attachments per post must be positive",
+		return errors.New(TagMaxAttachmentsPerPostInvalid, "maximum attachments per post must be positive",
 			"value", c.MaxAttachmentsPerPost)
 	}
 	if c.SessionLifetime <= 0 {
-		return errors.New(tagSessionLifetimeInvalid, "session lifetime must be positive",
+		return errors.New(TagSessionLifetimeInvalid, "session lifetime must be positive",
 			"value", c.SessionLifetime.String())
 	}
 	if c.InvitationLifetime <= 0 {
-		return errors.New(tagInvitationLifetimeInvalid, "invitation lifetime must be positive",
+		return errors.New(TagInvitationLifetimeInvalid, "invitation lifetime must be positive",
 			"value", c.InvitationLifetime.String())
 	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":
 	default:
-		return errors.New(tagLogLevelUnknown, "log level must be debug, info, warn or error",
+		return errors.New(TagLogLevelUnknown, "log level must be debug, info, warn or error",
 			"value", c.LogLevel)
 	}
 	return nil
 }
 
 const (
-	tagListenAddrEmpty              = "ListenAddrEmpty"
-	tagDataDirEmpty                 = "DataDirEmpty"
-	tagBaseURLInvalid               = "BaseURLInvalid"
-	tagMaxAttachmentSizeInvalid     = "MaxAttachmentSizeInvalid"
-	tagMaxAttachmentsPerPostInvalid = "MaxAttachmentsPerPostInvalid"
-	tagSessionLifetimeInvalid       = "SessionLifetimeInvalid"
-	tagInvitationLifetimeInvalid    = "InvitationLifetimeInvalid"
-	tagLogLevelUnknown              = "LogLevelUnknown"
+	// TagListenAddrEmpty is the tag of a listen address that is empty.
+	TagListenAddrEmpty = "ListenAddrEmpty"
+	// TagDataDirEmpty is the tag of a data directory that is empty.
+	TagDataDirEmpty = "DataDirEmpty"
+	// TagBaseURLInvalid is the tag of a base URL that is not an absolute http or https URL.
+	TagBaseURLInvalid = "BaseURLInvalid"
+	// TagMaxAttachmentSizeInvalid is the tag of a maximum attachment size that is not positive.
+	TagMaxAttachmentSizeInvalid = "MaxAttachmentSizeInvalid"
+	// TagMaxAttachmentsPerPostInvalid is the tag of a maximum number of attachments per post that is not positive.
+	TagMaxAttachmentsPerPostInvalid = "MaxAttachmentsPerPostInvalid"
+	// TagSessionLifetimeInvalid is the tag of a session lifetime that is not positive.
+	TagSessionLifetimeInvalid = "SessionLifetimeInvalid"
+	// TagInvitationLifetimeInvalid is the tag of an invitation lifetime that is not positive.
+	TagInvitationLifetimeInvalid = "InvitationLifetimeInvalid"
+	// TagLogLevelUnknown is the tag of a log level that is not debug, info, warn or error.
+	TagLogLevelUnknown = "LogLevelUnknown"
 )
