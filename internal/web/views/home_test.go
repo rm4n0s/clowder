@@ -29,6 +29,10 @@ func TestHome(t *testing.T) {
 		{"sidebar", "<aside>"},
 		{"main", "<main>"},
 		{"heading", "<h1>Clowder</h1>"},
+		{"datastar check element", `id="datastar-check"`},
+		{"datastar check signal", `data-signals="{status: 'Datastar is running'}"`},
+		{"datastar check text", `data-text="$status"`},
+		{"datastar check fallback", "Datastar is not running"},
 	}
 	lower := strings.ToLower(html)
 	for _, tt := range tests {

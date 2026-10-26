@@ -32,8 +32,10 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	switch args[0] {
 	case "serve":
 		return runServe(ctx, args[1:], env, stderr)
-	case "invite", "demo":
-		// TODO(step 2.5): invite; TODO(step 0.4 and 14.1): demo.
+	case "demo":
+		return runDemo(args[1:], env, stdout, stderr)
+	case "invite":
+		// TODO(step 2.5): invite.
 		return errors.New(tagNotImplemented, "command is not implemented yet", "command", args[0])
 	default:
 		usage(stderr)

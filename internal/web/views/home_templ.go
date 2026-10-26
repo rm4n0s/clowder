@@ -39,7 +39,7 @@ func Home() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Clowder</h1><p>A place where the team talks in rooms.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Clowder</h1><p>A place where the team talks in rooms.</p><p id=\"datastar-check\" data-signals=\"{status: 'Datastar is running'}\" data-text=\"$status\">Datastar is not running</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
