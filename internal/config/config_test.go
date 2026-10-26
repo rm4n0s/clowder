@@ -21,6 +21,7 @@ func TestDefaultValidates(t *testing.T) {
 		SessionLifetime:       30 * 24 * time.Hour,
 		InvitationLifetime:    7 * 24 * time.Hour,
 		LogLevel:              "info",
+		TrustProxyHeaders:     false,
 	}
 	if cfg != want {
 		t.Errorf("Default() = %+v, want %+v", cfg, want)
@@ -35,6 +36,7 @@ func TestValidate(t *testing.T) {
 	}{
 		{"default", func(*Config) {}, ""},
 		{"https base URL", func(c *Config) { c.BaseURL = "https://clowder.example.com" }, ""},
+		{"trust proxy headers", func(c *Config) { c.TrustProxyHeaders = true }, ""},
 		{"log level debug", func(c *Config) { c.LogLevel = "debug" }, ""},
 		{"log level warn", func(c *Config) { c.LogLevel = "warn" }, ""},
 		{"log level error", func(c *Config) { c.LogLevel = "error" }, ""},

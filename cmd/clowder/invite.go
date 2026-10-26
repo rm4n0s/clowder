@@ -72,7 +72,7 @@ func runInvite(ctx context.Context, args []string, env func(string) string, stdo
 		}
 	}()
 
-	accounts := app.NewAccounts(st, clock.Real(), hasher, cfg.InvitationLifetime)
+	accounts := app.NewAccounts(st, clock.Real(), hasher, app.AccountsConfig{InvitationLifetime: cfg.InvitationLifetime, SessionLifetime: cfg.SessionLifetime})
 	inv, err := accounts.CreateSystemInvitation(ctx, role)
 	if err != nil {
 		return err

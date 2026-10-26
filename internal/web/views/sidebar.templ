@@ -1,0 +1,9 @@
+package views
+
+// Sidebar is the sidebar of the pages of a logged-in user: the logout button.
+// Later steps add the navigation.
+templ Sidebar() {
+	<form id="logout-form" method="post" action="/logout" data-on:submit={ FormPost("/logout") }>
+		<button type="submit" class="secondary">Log out</button>
+	</form>
+}

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -42,25 +43,52 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
 }
 
+// requestState is what the middleware inside logRequests tell it about the
+// request. The pointer is in the context of the request.
+type requestState struct {
+	// userID is the ID of the logged-in user, 0 when there is none.
+	userID uint64
+}
+
+// requestStateKey is the context key of the *requestState.
+type requestStateKey struct{}
+
+// stateOf returns the requestState of the request. A request that did not go
+// through logRequests gets a throw-away one, so callers never check for nil.
+func stateOf(ctx context.Context) *requestState {
+	if st, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
+		return st
+	}
+	return &requestState{}
+}
+
 // logRequests logs one entry per request after it ends: the method, the
-// matched route pattern (the path when no pattern matched), the status and the
-// duration in milliseconds. It never logs the query string.
+// matched route pattern (the path when no pattern matched), the status, the
+// duration in milliseconds and, for a logged-in user, the user ID. It never
+// logs the query string.
 func (s *Server) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		state := &requestState{}
+		// The mux sets Pattern on the request it receives, which is this
+		// copy: no middleware below copies the request before the mux.
+		r = r.WithContext(context.WithValue(r.Context(), requestStateKey{}, state))
 		start := time.Now()
 		next.ServeHTTP(rec, r)
-		// The mux sets r.Pattern on this same request while it routes it.
 		pattern := r.Pattern
 		if pattern == "" {
 			pattern = r.URL.Path
 		}
-		s.logger.Info("request",
+		attrs := []any{
 			"method", r.Method,
 			"pattern", pattern,
 			"status", rec.status,
-			"duration_ms", float64(time.Since(start))/float64(time.Millisecond),
-		)
+			"duration_ms", float64(time.Since(start)) / float64(time.Millisecond),
+		}
+		if state.userID != 0 {
+			attrs = append(attrs, "user_id", state.userID)
+		}
+		s.logger.Info("request", attrs...)
 	})
 }
 

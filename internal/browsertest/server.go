@@ -35,9 +35,8 @@ const (
 	// listenMessage is the message of the log entry that reports the address.
 	listenMessage = "server listening"
 	// baseURL is the -base-url the server is started with. It names no port, so
-	// the invitation links of a test server are wrong.
-	// TODO(step 2.4): the port is only known after the server has started;
-	// revisit when invitation links are tested in a browser.
+	// the invitation links it prints are wrong; the tests take the token from
+	// them (Server.InviteToken) and build the link from Server.URL.
 	baseURL = "http://127.0.0.1"
 )
 
@@ -57,6 +56,11 @@ type Options struct {
 	// StopTimeout is how long Stop waits after SIGINT before SIGKILL. Zero is
 	// 10 s.
 	StopTimeout time.Duration
+	// InviteMember makes one invitation for a new member with "clowder invite
+	// -member", after the demo data and before the server starts, and puts its
+	// token in Server.InviteToken. A test or proof that needs the sign-up page
+	// of a real invitation sets it.
+	InviteMember bool
 }
 
 // Server is a running clowder server on a temporary data directory. Make it
@@ -67,6 +71,9 @@ type Server struct {
 	URL string
 	// DataDir is the data directory the server runs on. Stop removes it.
 	DataDir string
+	// InviteToken is the token of the invitation made by Options.InviteMember,
+	// the last part of the link /invite/<token>. It is empty without the option.
+	InviteToken string
 
 	tmpDir      string
 	stopTimeout time.Duration
@@ -123,6 +130,14 @@ func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, err
 		return nil, errors.NewErr(tagDemoFailed, err).SetMetadata("data", dataDir, "output", string(out))
 	}
 
+	inviteToken := ""
+	if opts.InviteMember {
+		var err error
+		if inviteToken, err = inviteMember(ctx, bin, dataDir); err != nil {
+			return nil, err
+		}
+	}
+
 	w := newListenWatcher(opts.Stderr)
 	cmd := exec.Command(bin, "serve", "-addr", "127.0.0.1:0", "-data", dataDir, "-base-url", baseURL)
 	cmd.Stderr = w
@@ -137,6 +152,7 @@ func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, err
 	}
 	srv := &Server{
 		DataDir:     dataDir,
+		InviteToken: inviteToken,
 		tmpDir:      tmpDir,
 		stopTimeout: stopTimeout,
 		cmd:         cmd,
@@ -170,6 +186,36 @@ func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, err
 		return nil, errors.NewErr(tagServerStartCanceled, ctx.Err()).
 			SetMetadata("stderr", w.Tail(), "stop", errString(stopErr))
 	}
+}
+
+// inviteMember runs "clowder invite -member" on the data directory and returns
+// the token of the invitation it prints.
+func inviteMember(ctx context.Context, bin, dataDir string) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, bin, "invite", "-member", "-data", dataDir, "-base-url", baseURL)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", errors.NewErr(tagInviteFailed, err).SetMetadata("data", dataDir, "stderr", stderr.String())
+	}
+	token, ok := ParseInviteToken(stdout.String())
+	if !ok {
+		return "", errors.New(tagInviteOutputInvalid, "the invite command printed no invitation link",
+			"output", stdout.String())
+	}
+	return token, nil
+}
+
+// ParseInviteToken reads the output of "clowder invite". It returns the token
+// of the link on its first line, <base URL>/invite/<token>, and true, or false
+// when there is no such link.
+func ParseInviteToken(output string) (string, bool) {
+	line, _, _ := strings.Cut(output, "\n")
+	_, token, found := strings.Cut(strings.TrimSpace(line), "/invite/")
+	if !found || token == "" || strings.ContainsAny(token, "/?# ") {
+		return "", false
+	}
+	return token, true
 }
 
 // Stop stops the server: SIGINT to its process group, then SIGKILL to the group
@@ -344,6 +390,8 @@ const (
 	tagModuleRootNotFound  = "ModuleRootNotFound"
 	tagServerBuildFailed   = "ServerBuildFailed"
 	tagDemoFailed          = "DemoFailed"
+	tagInviteFailed        = "InviteFailed"
+	tagInviteOutputInvalid = "InviteOutputInvalid"
 	tagServerStartFailed   = "ServerStartFailed"
 	tagServerExitedEarly   = "ServerExitedEarly"
 	tagServerStartTimeout  = "ServerStartTimeout"

@@ -24,11 +24,19 @@ const (
 
 // The names of the fields in the metadata "fields" of a TagInvalidInput error.
 const (
-	fieldUsername    = "username"
-	fieldDisplayName = "displayName"
-	fieldPassword    = "password"
-	fieldRole        = "role"
-	fieldUser        = "user"
+	// FieldUsername names the username of a sign-up or a login.
+	FieldUsername = "username"
+	// FieldDisplayName names the display name of a sign-up.
+	FieldDisplayName = "displayName"
+	// FieldPassword names the password of a sign-up.
+	FieldPassword = "password"
+	// FieldRole names the role of an invitation or a role change.
+	FieldRole = "role"
+	// FieldUser names the user an admin acts on.
+	FieldUser = "user"
+	// FieldForm names a problem of a whole form, not of one field: a login
+	// with the wrong username or password.
+	FieldForm = "form"
 )
 
 // User is a user as the services show it: the data of a person without the
@@ -59,22 +67,47 @@ type IssuedInvitation struct {
 	ExpiresAt time.Time
 }
 
-// Accounts is the service of invitations, sign-up and user management
-// (SPEC §7.1). Make it with NewAccounts. It is safe for concurrent use.
+// Accounts is the service of invitations, sign-up, login, sessions and user
+// management (SPEC §7.1). Make it with NewAccounts. It is safe for concurrent
+// use.
 type Accounts struct {
 	st                 *store.Store
 	clk                clock.Clock
 	hasher             auth.Hasher
 	invitationLifetime time.Duration
+	sessionLifetime    time.Duration
+	limiter            *LoginLimiter
 }
 
-// NewAccounts makes the service. An invitation made now stops working after
-// invitationLifetime, counted on clk. A nil clk is the real clock.
-func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, invitationLifetime time.Duration) *Accounts {
+// AccountsConfig holds the settings and the injected parts of Accounts.
+type AccountsConfig struct {
+	// InvitationLifetime is how long an invitation made now stays valid.
+	InvitationLifetime time.Duration
+	// SessionLifetime is how long a session lasts from its last use.
+	SessionLifetime time.Duration
+	// Limiter limits the failed logins. Nil makes the default one of SPEC
+	// §7.1 (5 failures in 15 minutes), on the clock of the service.
+	Limiter *LoginLimiter
+}
+
+// NewAccounts makes the service. Time is counted on clk; a nil clk is the real
+// clock.
+func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg AccountsConfig) *Accounts {
 	if clk == nil {
 		clk = clock.Real()
 	}
-	return &Accounts{st: st, clk: clk, hasher: hasher, invitationLifetime: invitationLifetime}
+	limiter := cfg.Limiter
+	if limiter == nil {
+		limiter = NewLoginLimiter(clk)
+	}
+	return &Accounts{
+		st:                 st,
+		clk:                clk,
+		hasher:             hasher,
+		invitationLifetime: cfg.InvitationLifetime,
+		sessionLifetime:    cfg.SessionLifetime,
+		limiter:            limiter,
+	}
 }
 
 // CreateInvitation makes an invitation for a new user with the given role.
@@ -87,7 +120,7 @@ func (a *Accounts) CreateInvitation(ctx context.Context, actor Actor, role store
 	}
 	if !validRole(role) {
 		return IssuedInvitation{}, errors.New(TagInvalidInput, "the role does not exist",
-			"fields", map[string]string{fieldRole: "Choose admin or member."})
+			"fields", map[string]string{FieldRole: "Choose admin or member."})
 	}
 	return a.issueInvitation(ctx, &actor.UserID, role)
 }
@@ -99,7 +132,7 @@ func (a *Accounts) CreateInvitation(ctx context.Context, actor Actor, role store
 func (a *Accounts) CreateSystemInvitation(ctx context.Context, role store.Role) (IssuedInvitation, error) {
 	if !validRole(role) {
 		return IssuedInvitation{}, errors.New(TagInvalidInput, "the role does not exist",
-			"fields", map[string]string{fieldRole: "Choose admin or member."})
+			"fields", map[string]string{FieldRole: "Choose admin or member."})
 	}
 	return a.issueInvitation(ctx, nil, role)
 }
@@ -164,7 +197,7 @@ func (a *Accounts) SignUp(ctx context.Context, token, username, displayName, pas
 	if _, err := a.usableInvitation(ctx, a.st, token); err != nil {
 		return User{}, err
 	}
-	username = strings.ToLower(strings.TrimSpace(username))
+	username = normalizeUsername(username)
 	displayName = strings.TrimSpace(displayName)
 	if fields := signUpProblems(username, displayName, password); len(fields) > 0 {
 		return User{}, errors.New(TagInvalidInput, "the sign-up form has mistakes", "fields", fields)
@@ -185,7 +218,7 @@ func (a *Accounts) SignUp(ctx context.Context, token, username, displayName, pas
 		_, err = tx.UserByUsername(ctx, username)
 		if err == nil {
 			return errors.New(TagInvalidInput, "the username is taken",
-				"fields", map[string]string{fieldUsername: "This username is taken."})
+				"fields", map[string]string{FieldUsername: "This username is taken."})
 		}
 		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != store.TagNotFound {
 			return err
@@ -212,19 +245,19 @@ func (a *Accounts) SignUp(ctx context.Context, token, username, displayName, pas
 func signUpProblems(username, displayName, password string) map[string]string {
 	fields := map[string]string{}
 	if n := utf8.RuneCountInString(username); n < usernameMinLength || n > usernameMaxLength {
-		fields[fieldUsername] = "Use 3 to 32 characters."
+		fields[FieldUsername] = "Use 3 to 32 characters."
 	} else if strings.ContainsFunc(username, func(r rune) bool {
 		return (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' && r != '-'
 	}) {
-		fields[fieldUsername] = "Use only the letters a to z, digits, _ and -."
+		fields[FieldUsername] = "Use only the letters a to z, digits, _ and -."
 	}
 	if n := utf8.RuneCountInString(displayName); n < 1 || n > displayNameMaxLength {
-		fields[fieldDisplayName] = "Use 1 to 64 characters."
+		fields[FieldDisplayName] = "Use 1 to 64 characters."
 	}
 	if utf8.RuneCountInString(password) < passwordMinLength {
-		fields[fieldPassword] = "Use at least 12 characters."
+		fields[FieldPassword] = "Use at least 12 characters."
 	} else if len(password) > passwordMaxBytes {
-		fields[fieldPassword] = "Use at most 1024 bytes."
+		fields[FieldPassword] = "Use at most 1024 bytes."
 	}
 	return fields
 }
@@ -256,7 +289,7 @@ func (a *Accounts) SetRole(ctx context.Context, actor Actor, userID uint64, role
 	}
 	if !validRole(role) {
 		return errors.New(TagInvalidInput, "the role does not exist",
-			"fields", map[string]string{fieldRole: "Choose admin or member."})
+			"fields", map[string]string{FieldRole: "Choose admin or member."})
 	}
 	return a.st.Tx(ctx, func(tx *store.Store) error {
 		user, err := tx.UserByID(ctx, userID)
@@ -292,7 +325,7 @@ func (a *Accounts) SetDisabled(ctx context.Context, actor Actor, userID uint64, 
 	}
 	if disabled && userID == actor.UserID {
 		return errors.New(TagInvalidInput, "an admin cannot disable themselves",
-			"fields", map[string]string{fieldUser: "You cannot disable your own account."})
+			"fields", map[string]string{FieldUser: "You cannot disable your own account."})
 	}
 	return a.st.Tx(ctx, func(tx *store.Store) error {
 		user, err := tx.UserByID(ctx, userID)
@@ -320,6 +353,11 @@ func (a *Accounts) SetDisabled(ctx context.Context, actor Actor, userID uint64, 
 		}
 		return tx.DeleteSessionsOfUser(ctx, userID)
 	})
+}
+
+// normalizeUsername lower-cases and trims a username as typed.
+func normalizeUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
 }
 
 // validRole reports whether role is one of the two roles.

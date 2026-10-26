@@ -17,7 +17,11 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/app"
+	"github.com/rm4n0s/clowder/internal/auth"
+	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/store/storetest"
 	"github.com/rm4n0s/clowder/internal/web/static"
 	"github.com/rm4n0s/errors"
 )
@@ -71,16 +75,55 @@ func logEntries(t *testing.T, buf fmtStringer) []logEntry {
 
 type fmtStringer interface{ String() string }
 
-// newTestServer makes a server whose logger writes JSON to the returned buffer.
-func newTestServer(t *testing.T, extra ...route) (*Server, *syncBuffer) {
+// testPassword is the password of the users the tests make.
+const testPassword = "correct horse battery"
+
+// testStart is the time the fake clock of the tests starts at.
+var testStart = time.Date(2026, 10, 26, 9, 30, 0, 0, time.UTC)
+
+// testEnv is a server on a fresh in-memory database, with the real accounts
+// service, the fast password hasher and the fake clock.
+type testEnv struct {
+	t        *testing.T
+	srv      *Server
+	log      *syncBuffer
+	accounts *app.Accounts
+	clk      *clock.Fake
+}
+
+// newTestEnv makes a testEnv. mutate changes the configuration before the
+// server is made; extra routes are added to the server's.
+func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *testEnv {
 	t.Helper()
 	buf := &syncBuffer{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	s, err := newServer(config.Default(), logger, static.FS, extra...)
+	clk := clock.NewFake(testStart)
+	st := storetest.Open(t, clk)
+	cfg := config.Default()
+	if mutate != nil {
+		mutate(&cfg)
+	}
+	accounts := app.NewAccounts(st, clk, auth.FastHasher(), app.AccountsConfig{
+		InvitationLifetime: cfg.InvitationLifetime,
+		SessionLifetime:    cfg.SessionLifetime,
+	})
+	s, err := newServer(cfg, logger, Services{Accounts: accounts}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return s, buf
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, clk: clk}
+}
+
+// newTestServer makes a server whose logger writes JSON to the returned buffer.
+func newTestServer(t *testing.T, extra ...route) (*Server, *syncBuffer) {
+	t.Helper()
+	e := newTestEnv(t, nil, extra...)
+	return e.srv, e.log
+}
+
+// publicRoute is an extra route of a test that never looks at the session.
+func publicRoute(pattern string, h http.Handler) route {
+	return route{pattern: pattern, handler: h, access: noSession}
 }
 
 // do sends a request to the handler and returns the recorded answer.
@@ -99,9 +142,9 @@ func TestHandlerPages(t *testing.T) {
 		wantBody   []string
 	}{
 		{
-			name: "home", method: http.MethodGet, path: "/",
+			name: "login", method: http.MethodGet, path: "/login",
 			wantStatus: http.StatusOK,
-			wantBody:   []string{"<!doctype html>", "<h1>Clowder</h1>", "<title>Home · Clowder</title>"},
+			wantBody:   []string{"<!doctype html>", "<h1>Log in</h1>", "<title>Log in · Clowder</title>"},
 		},
 		{
 			name: "unknown path", method: http.MethodGet, path: "/nope",
@@ -246,10 +289,11 @@ func TestRequestLog(t *testing.T) {
 		wantPattern string
 		wantStatus  int
 	}{
-		{"home", http.MethodGet, "/", "GET /{$}", http.StatusOK},
+		{"home without a session", http.MethodGet, "/", "GET /{$}", http.StatusFound},
+		{"login page", http.MethodGet, "/login", "GET /login", http.StatusOK},
 		{"static", http.MethodGet, "/static/app.css", "GET /static/", http.StatusOK},
 		{"not found logs the path", http.MethodGet, "/nope", "/nope", http.StatusNotFound},
-		{"query string is not logged", http.MethodGet, "/?token=secret", "GET /{$}", http.StatusOK},
+		{"query string is not logged", http.MethodGet, "/?token=secret", "GET /{$}", http.StatusFound},
 		{"not allowed logs the path", http.MethodPost, "/", "/", http.StatusMethodNotAllowed},
 	}
 	for _, tt := range tests {
@@ -318,7 +362,7 @@ func TestPanicRecovery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s, buf := newTestServer(t, route{"GET /panic", tt.handler})
+			s, buf := newTestServer(t, publicRoute("GET /panic", tt.handler))
 			rec := do(s.Handler(), httptest.NewRequest(http.MethodGet, "/panic", nil))
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
@@ -364,9 +408,9 @@ func TestPanicRecovery(t *testing.T) {
 }
 
 func TestPanicAbortHandlerReachesTheServer(t *testing.T) {
-	s, buf := newTestServer(t, route{"GET /abort", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	s, buf := newTestServer(t, publicRoute("GET /abort", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic(http.ErrAbortHandler)
-	})})
+	})))
 	defer func() {
 		if v := recover(); v != http.ErrAbortHandler {
 			t.Errorf("recovered %v, want http.ErrAbortHandler", v)
@@ -404,7 +448,7 @@ func TestCrossOriginProtection(t *testing.T) {
 		{
 			name: "cross-site GET is allowed", method: http.MethodGet,
 			headers:    map[string]string{"Sec-Fetch-Site": "cross-site"},
-			wantStatus: http.StatusOK,
+			wantStatus: http.StatusFound, // GET / needs a login: the redirect shows it passed
 		},
 	}
 	for _, tt := range tests {
@@ -540,7 +584,7 @@ func TestNewStaticHandlerFailures(t *testing.T) {
 func TestNewServerStaticFailure(t *testing.T) {
 	base := fstest.MapFS{"a.css": {Data: []byte("a{}")}}
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	s, err := newServer(config.Default(), logger, errorFS{FS: base, failOpen: "a.css"})
+	s, err := newServer(config.Default(), logger, Services{}, errorFS{FS: base, failOpen: "a.css"})
 	if s != nil {
 		t.Errorf("server = %v, want nil", s)
 	}
@@ -575,7 +619,7 @@ func TestRunListenFailed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := config.Default()
 			cfg.ListenAddr = tt.addr
-			s, err := New(cfg, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+			s, err := New(cfg, slog.New(slog.NewJSONHandler(io.Discard, nil)), Services{})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -650,7 +694,7 @@ func TestServeStopsCleanly(t *testing.T) {
 	s, buf := newTestServer(t)
 	base, cancel, done := runServer(t, s)
 
-	resp, err := http.Get(base + "/")
+	resp, err := http.Get(base + "/") // no session: it follows the redirect to the login page
 	if err != nil {
 		t.Fatalf("GET /: %v", err)
 	}
@@ -661,7 +705,7 @@ func TestServeStopsCleanly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "<h1>Clowder</h1>") {
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "<h1>Log in</h1>") {
 		t.Fatalf("GET / = %d:\n%s", resp.StatusCode, body)
 	}
 
@@ -679,7 +723,7 @@ func TestServeStopsCleanly(t *testing.T) {
 	for _, e := range logEntries(t, buf) {
 		msgs = append(msgs, e.Msg)
 	}
-	want := []string{"server listening", "request", "server shutting down", "server stopped"}
+	want := []string{"server listening", "request", "request", "server shutting down", "server stopped"} // GET / and the login page it redirects to
 	if strings.Join(msgs, ",") != strings.Join(want, ",") {
 		t.Errorf("log messages = %v, want %v", msgs, want)
 	}
@@ -688,11 +732,11 @@ func TestServeStopsCleanly(t *testing.T) {
 func TestServeWaitsForRunningRequests(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
-	s, _ := newTestServer(t, route{"GET /slow", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	s, _ := newTestServer(t, publicRoute("GET /slow", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		close(started)
 		<-release
 		_, _ = io.WriteString(w, "finished")
-	})})
+	})))
 	base, cancel, done := runServer(t, s)
 
 	type result struct {
@@ -732,10 +776,10 @@ func TestServeShutdownFailed(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	defer close(release)
-	s, _ := newTestServer(t, route{"GET /stuck", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	s, _ := newTestServer(t, publicRoute("GET /stuck", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		close(started)
 		<-release
-	})})
+	})))
 	s.shutdownTimeout = 50 * time.Millisecond
 	base, cancel, done := runServer(t, s)
 
@@ -772,7 +816,7 @@ func TestRunStopsOnCancel(t *testing.T) {
 	cfg := config.Default()
 	cfg.ListenAddr = "127.0.0.1:0"
 	buf := &syncBuffer{}
-	s, err := New(cfg, slog.New(slog.NewJSONHandler(buf, nil)))
+	s, err := New(cfg, slog.New(slog.NewJSONHandler(buf, nil)), Services{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

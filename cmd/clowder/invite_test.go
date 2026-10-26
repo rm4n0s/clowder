@@ -30,7 +30,7 @@ func openAccounts(t *testing.T, dir string) (*app.Accounts, *store.Store) {
 			t.Errorf("close: %v", err)
 		}
 	})
-	return app.NewAccounts(st, clock.Real(), auth.FastHasher(), config.DefaultInvitationLifetime), st
+	return app.NewAccounts(st, clock.Real(), auth.FastHasher(), app.AccountsConfig{InvitationLifetime: config.DefaultInvitationLifetime, SessionLifetime: config.DefaultSessionLifetime}), st
 }
 
 func TestRunInvite(t *testing.T) {

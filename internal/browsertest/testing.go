@@ -19,12 +19,20 @@ const startTimeout = 2 * time.Minute
 // it when the server cannot start.
 func Start(t testing.TB) *Server {
 	t.Helper()
+	return StartWith(t, Options{})
+}
+
+// StartWith is Start with options, such as Options{InviteMember: true}. Its
+// Stderr is always the log of the test.
+func StartWith(t testing.TB, opts Options) *Server {
+	t.Helper()
 	if _, err := FindChromium(); err != nil {
 		t.Skipf("browser test skipped: %v (install chromium-browser, chromium or google-chrome)", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
 	defer cancel()
-	srv, err := StartServer(ctx, Options{Stderr: testLogWriter{t}})
+	opts.Stderr = testLogWriter{t}
+	srv, err := StartServer(ctx, opts)
 	if err != nil {
 		t.Fatalf("start the server: %+v", err)
 	}

@@ -271,7 +271,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 
 ### 9.1 Public error tags
 
-The services return tagged errors that the handlers turn into HTTP answers. The tags that decide the answer are exported from `internal/app` (`TagNotFound` → 404, `TagForbidden` → 403, `TagInvalidInput` → 422 with the field errors in the metadata, `TagConflict` → 409, `TagUnauthenticated` → redirect to the login). A user who may not see a private room gets `TagNotFound`, not `TagForbidden`. Any other error is a 500, logged with its route; the page shows a short message, never the error.
+The services return tagged errors that the handlers turn into HTTP answers. The tags that decide the answer are exported from `internal/app` (`TagNotFound` → 404, `TagForbidden` → 403, `TagInvalidInput` → 422 with the field errors in the metadata, `TagConflict` → 409, `TagRateLimited` → 429 (a login refused by the limiter of §7.1), `TagUnauthenticated` → redirect to the login). A user who may not see a private room gets `TagNotFound`, not `TagForbidden`. Any other error is a 500, logged with its route; the page shows a short message, never the error. These statuses are what a full page or a plain form post gets. A Datastar request is answered with 200 and an SSE stream that patches the error into the page, because `datastar.js` drops the body of any other status.
 
 ### 9.2 Logging
 
@@ -313,7 +313,7 @@ Measured on the development machine with a database of 100 rooms, 200 users, 100
   - `clowder serve`: runs the server.
   - `clowder invite -admin`: prints a one-time link for a new admin (used for the first one).
   - `clowder demo`: fills an empty database with demo data, for development, proofs and §10.
-- Configuration, as flags or `CLOWDER_*` environment variables: the listen address (`:8080`), the data directory (`./data`, holding `clowder.db` and `files/`), the base URL (for invitation links), secure cookies (on unless the base URL is `http://`), the attachment limits, the session lifetime, the invitation lifetime, the log level.
+- Configuration, as flags or `CLOWDER_*` environment variables: the listen address (`:8080`), the data directory (`./data`, holding `clowder.db` and `files/`), the base URL (for invitation links), secure cookies (on unless the base URL is `http://`), the attachment limits, the session lifetime, the invitation lifetime, the log level, and whether to trust the proxy headers (`-trust-proxy`, `CLOWDER_TRUST_PROXY`, off by default: the client address, which the login limiter counts, is then the last address of `X-Forwarded-For` instead of the address of the connection).
 - Clowder speaks plain HTTP; TLS is done by a reverse proxy in front of it.
 
 ## 12. Testing strategy

@@ -39,6 +39,69 @@ func main() {
 	}
 }
 
+// invitePlaceholder in -page stands for the token of the invitation that
+// -invite makes.
+const invitePlaceholder = "{invite}"
+
+// fill is one -fill flag: type value into the first element that matches
+// selector.
+type fill struct {
+	selector string
+	value    string
+}
+
+// fills is the repeatable -fill flag.
+type fills []fill
+
+// String implements flag.Value.
+func (f *fills) String() string {
+	parts := make([]string, len(*f))
+	for i, x := range *f {
+		parts[i] = x.selector + "=" + x.value
+	}
+	return strings.Join(parts, " ")
+}
+
+// Set implements flag.Value: it adds one selector=value.
+func (f *fills) Set(v string) error {
+	selector, value, ok := splitFill(v)
+	if !ok {
+		return errors.New(tagFlagsInvalid, "-fill must be selector=value", "value", v)
+	}
+	*f = append(*f, fill{selector: selector, value: value})
+	return nil
+}
+
+// splitFill splits "selector=value" at the first "=" that is not inside
+// brackets or quotes of the selector, so that input[name=user]=ana works. It
+// returns false when there is no such "=" or the selector is empty.
+func splitFill(v string) (selector, value string, ok bool) {
+	depth := 0
+	var quote rune
+	for i, c := range v {
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '[':
+			depth++
+		case c == ']':
+			if depth > 0 {
+				depth--
+			}
+		case c == '=' && depth == 0:
+			if i == 0 {
+				return "", "", false
+			}
+			return v[:i], v[i+1:], true
+		}
+	}
+	return "", "", false
+}
+
 // options are the flags of the tool.
 type options struct {
 	page   string
@@ -47,6 +110,14 @@ type options struct {
 	width  int
 	height int
 	wait   time.Duration
+	// invite makes the server start with one invitation for a new member and
+	// replaces invitePlaceholder in page with its token.
+	invite bool
+	// fills are typed into the page, in order, before the click.
+	fills fills
+	// click is the selector of the element to click after the fills; the tool
+	// then waits for the page to settle.
+	click string
 }
 
 // run takes one screenshot. It stops the server and the browser it started
@@ -60,9 +131,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		_, _ = fmt.Fprintf(stderr, "note: -as %q is ignored until step 2.4 adds the login\n", opts.as)
 	}
 
-	srv, err := browsertest.StartServer(ctx, browsertest.Options{})
+	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite})
 	if err != nil {
 		return err
+	}
+	if opts.invite {
+		opts.page = strings.ReplaceAll(opts.page, invitePlaceholder, srv.InviteToken)
 	}
 	shot, runErr := screenshot(ctx, srv, opts)
 	if stopErr := srv.Stop(); stopErr != nil {
@@ -92,7 +166,10 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.StringVar(&o.as, "as", "", "user to log in as (ignored until step 2.4)")
 	fs.IntVar(&o.width, "width", 1280, "viewport width in pixels")
 	fs.IntVar(&o.height, "height", 800, "viewport height in pixels")
-	fs.DurationVar(&o.wait, "wait", 500*time.Millisecond, "extra time to settle after the page has loaded")
+	fs.DurationVar(&o.wait, "wait", 500*time.Millisecond, "extra time to settle after the page has loaded and after the click")
+	fs.BoolVar(&o.invite, "invite", false, "start with an invitation for a new member and put its token in -page where it says "+invitePlaceholder)
+	fs.Var(&o.fills, "fill", "type text into an element before the click, as selector=value, such as '#username=ana' (repeatable)")
+	fs.StringVar(&o.click, "click", "", "CSS selector of an element to click after the -fill flags; the tool then waits for the page to settle")
 	if err := fs.Parse(args); err != nil {
 		return options{}, errors.NewErr(tagFlagsInvalid, err)
 	}
@@ -108,6 +185,9 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 			"width", o.width, "height", o.height)
 	case o.wait < 0:
 		return options{}, errors.New(tagFlagsInvalid, "-wait must not be negative", "wait", o.wait.String())
+	case o.invite != strings.Contains(o.page, invitePlaceholder):
+		return options{}, errors.New(tagFlagsInvalid, "-invite and "+invitePlaceholder+" in -page go together",
+			"invite", o.invite, "page", o.page)
 	}
 	return o, nil
 }
@@ -135,6 +215,25 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 	if err != nil {
 		return nil, errors.NewErr(tagPageLoadFailed, err).SetMetadata("url", url)
 	}
+	for _, f := range o.fills {
+		err = chromedp.Do(pageCtx, browsertest.Fill(f.selector, f.value))
+		if _, tagged := errors.FromError(err); err != nil && !tagged {
+			// Fill tags its own failures; this is chromedp's (the browser died).
+			return nil, errors.NewErr(tagFillFailed, err).SetMetadata("url", url, "selector", f.selector)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	if o.click != "" {
+		err = chromedp.Do(pageCtx,
+			chromedp.Click(o.click),
+			chromedp.Sleep(o.wait),
+		)
+		if err != nil {
+			return nil, errors.NewErr(tagClickFailed, err).SetMetadata("url", url, "selector", o.click)
+		}
+	}
 	shot, err := chromedp.Run(pageCtx, chromedp.CaptureScreenshot())
 	if err != nil {
 		return nil, errors.NewErr(tagScreenshotFailed, err).SetMetadata("url", url)
@@ -149,5 +248,7 @@ const (
 	tagFlagsInvalid      = "FlagsInvalid"
 	tagOutputWriteFailed = "OutputWriteFailed"
 	tagPageLoadFailed    = "PageLoadFailed"
+	tagFillFailed        = "FillFailed"
+	tagClickFailed       = "ClickFailed"
 	tagScreenshotFailed  = "ScreenshotFailed"
 )

@@ -100,3 +100,26 @@ button:hover { filter: brightness(1.1); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.secondary { color: var(--fg); background: transparent; border: 1px solid var(--border); }
 button.danger { background: var(--danger); }
+
+/* Pages of people who are not logged in have no sidebar: the form sits in a
+   centered card. */
+body:not(:has(aside)) main { margin: 0 auto; }
+
+.auth-card { max-width: 24rem; margin: 3rem auto 0; }
+
+.field { margin-bottom: 0.25rem; }
+
+.hint { margin: -0.5rem 0 0.75rem; font-size: 0.875rem; color: var(--fg-muted); }
+
+/* Problems found by the server, next to the input they belong to. */
+.field-error { margin: -0.5rem 0 0.75rem; font-size: 0.875rem; color: var(--danger); }
+
+.form-error {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+}
+
+input[aria-invalid="true"] { border-color: var(--danger); }

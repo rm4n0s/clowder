@@ -310,6 +310,42 @@ func TestUserQueryTags(t *testing.T) {
 			wantTag: TagQueryFailed, wantRoute: "Store.CountSessionsOfUser.QueryFailed", wantOp: "countSessionsOfUser",
 		},
 		{
+			name: "session of an unknown token hash",
+			call: func() error {
+				_, err := f.s.SessionByTokenHash(f.ctx, "nope")
+				return err
+			},
+			wantTag: TagNotFound, wantRoute: "Store.SessionByTokenHash.NotFound", wantOp: "sessionByTokenHash",
+		},
+		{
+			name: "session by token hash with a canceled context",
+			call: func() error {
+				_, err := f.s.SessionByTokenHash(canceled(t), "nope")
+				return err
+			},
+			wantTag: TagQueryFailed, wantRoute: "Store.SessionByTokenHash.QueryFailed", wantOp: "sessionByTokenHash",
+		},
+		{
+			name:    "touch an unknown session",
+			call:    func() error { return f.s.TouchSession(f.ctx, 9999, day(0), day(time.Hour)) },
+			wantTag: TagNotFound, wantRoute: "Store.TouchSession.NotFound", wantOp: "touchSession",
+		},
+		{
+			name:    "touch with a canceled context",
+			call:    func() error { return f.s.TouchSession(canceled(t), 1, day(0), day(time.Hour)) },
+			wantTag: TagQueryFailed, wantRoute: "Store.TouchSession.QueryFailed", wantOp: "touchSession",
+		},
+		{
+			name:    "delete a session with a canceled context",
+			call:    func() error { return f.s.DeleteSessionByTokenHash(canceled(t), "h") },
+			wantTag: TagQueryFailed, wantRoute: "Store.DeleteSessionByTokenHash.QueryFailed", wantOp: "deleteSessionByTokenHash",
+		},
+		{
+			name:    "delete expired sessions with a canceled context",
+			call:    func() error { return f.s.DeleteExpiredSessionsOfUser(canceled(t), u.ID, day(0)) },
+			wantTag: TagQueryFailed, wantRoute: "Store.DeleteExpiredSessionsOfUser.QueryFailed", wantOp: "deleteExpiredSessionsOfUser",
+		},
+		{
 			name:    "delete sessions with a canceled context",
 			call:    func() error { return f.s.DeleteSessionsOfUser(canceled(t), u.ID) },
 			wantTag: TagQueryFailed, wantRoute: "Store.DeleteSessionsOfUser.QueryFailed", wantOp: "deleteSessionsOfUser",
@@ -421,6 +457,85 @@ func TestSessionsOfUser(t *testing.T) {
 		t.Errorf("after delete: %d, %d, want 0, 1", count(u), count(other))
 	}
 	if err := f.s.DeleteSessionsOfUser(f.ctx, u.ID); err != nil {
+		t.Errorf("deleting none: %+v", err)
+	}
+}
+
+func TestSessionByTokenHashTouchAndDelete(t *testing.T) {
+	f := newFix(t)
+	u := f.user()
+	sess := &Session{TokenHash: "h", UserID: u.ID, ExpiresAt: day(time.Hour), LastSeenAt: day(0)}
+	if err := f.s.CreateSession(f.ctx, sess); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := f.s.SessionByTokenHash(f.ctx, "h")
+	if err != nil {
+		t.Fatalf("SessionByTokenHash: %+v", err)
+	}
+	if got.ID != sess.ID || got.UserID != u.ID || !got.ExpiresAt.Equal(day(time.Hour)) || !got.LastSeenAt.Equal(day(0)) {
+		t.Errorf("session = %+v", got)
+	}
+
+	if err := f.s.TouchSession(f.ctx, sess.ID, day(2*time.Hour), day(3*time.Hour)); err != nil {
+		t.Fatalf("TouchSession: %+v", err)
+	}
+	got, err = f.s.SessionByTokenHash(f.ctx, "h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.LastSeenAt.Equal(day(2*time.Hour)) || !got.ExpiresAt.Equal(day(3*time.Hour)) {
+		t.Errorf("after touch: last seen %v, expires %v", got.LastSeenAt, got.ExpiresAt)
+	}
+
+	other := &Session{TokenHash: "k", UserID: u.ID, ExpiresAt: day(time.Hour), LastSeenAt: day(0)}
+	if err := f.s.CreateSession(f.ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.DeleteSessionByTokenHash(f.ctx, "h"); err != nil {
+		t.Fatalf("DeleteSessionByTokenHash: %+v", err)
+	}
+	if _, err := f.s.SessionByTokenHash(f.ctx, "h"); err == nil {
+		t.Error("the deleted session is still found")
+	}
+	if _, err := f.s.SessionByTokenHash(f.ctx, "k"); err != nil {
+		t.Errorf("the other session was deleted too: %v", err)
+	}
+	if err := f.s.DeleteSessionByTokenHash(f.ctx, "h"); err != nil {
+		t.Errorf("deleting an unknown session: %+v", err)
+	}
+}
+
+func TestDeleteExpiredSessionsOfUser(t *testing.T) {
+	f := newFix(t)
+	u, other := f.user(), f.user()
+	add := func(hash string, owner *User, expires time.Duration) {
+		t.Helper()
+		s := &Session{TokenHash: hash, UserID: owner.ID, ExpiresAt: day(expires), LastSeenAt: day(0)}
+		if err := f.s.CreateSession(f.ctx, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	has := func(hash string) bool {
+		t.Helper()
+		_, err := f.s.SessionByTokenHash(f.ctx, hash)
+		return err == nil
+	}
+	add("past", u, -time.Hour)
+	add("exactly-now", u, time.Hour)
+	add("future", u, 2*time.Hour)
+	add("other-past", other, -time.Hour)
+
+	now := day(time.Hour) // "exactly-now" ends at this very moment
+	if err := f.s.DeleteExpiredSessionsOfUser(f.ctx, u.ID, now); err != nil {
+		t.Fatalf("DeleteExpiredSessionsOfUser: %+v", err)
+	}
+	for hash, want := range map[string]bool{"past": false, "exactly-now": false, "future": true, "other-past": true} {
+		if got := has(hash); got != want {
+			t.Errorf("session %q exists = %v, want %v", hash, got, want)
+		}
+	}
+	if err := f.s.DeleteExpiredSessionsOfUser(f.ctx, u.ID, now); err != nil {
 		t.Errorf("deleting none: %+v", err)
 	}
 }

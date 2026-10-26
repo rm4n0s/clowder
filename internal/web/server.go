@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
+	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/web/static"
 	"github.com/rm4n0s/clowder/internal/web/views"
@@ -32,44 +33,75 @@ const (
 	staticPrefix = "/static/"
 )
 
+// Services are the services the handlers call. Later steps add a field for
+// each service they build.
+type Services struct {
+	// Accounts is the service of login, sessions, invitations and users.
+	Accounts *app.Accounts
+}
+
 // Server is the HTTP server of Clowder: the routes, the middleware and the
 // handlers. Make it with New.
 type Server struct {
 	cfg             config.Config
 	logger          *slog.Logger
+	svc             Services
 	handler         http.Handler
 	shutdownTimeout time.Duration
 }
+
+// access says what a route needs from the session of the request.
+type access int
+
+const (
+	// requireSession is for the routes that need a login: a request without
+	// one is sent to the login page. It is the zero value, so a route that
+	// does not say otherwise is protected.
+	requireSession access = iota
+	// optionalSession is for the public pages that behave differently for a
+	// logged-in user (the login page): the session is read, never required.
+	optionalSession
+	// noSession is for the routes that never look at the session (the static
+	// files).
+	noSession
+)
 
 // route is a pattern and its handler, added to the routes of a Server.
 type route struct {
 	pattern string
 	handler http.Handler
+	access  access
 }
 
 // New makes the server from its dependencies. Run starts it. It fails when the
 // embedded static files cannot be read and hashed.
-// TODO(step 2.3): the services are passed here as they are added.
-func New(cfg config.Config, logger *slog.Logger) (*Server, error) {
-	return newServer(cfg, logger, static.FS)
+func New(cfg config.Config, logger *slog.Logger, svc Services) (*Server, error) {
+	return newServer(cfg, logger, svc, static.FS)
 }
 
 // newServer is New with the static files as a parameter and extra routes,
 // which the tests use to fail the hashing and to add a handler that panics or
 // blocks.
-func newServer(cfg config.Config, logger *slog.Logger, staticFS fs.FS, extra ...route) (*Server, error) {
-	s := &Server{cfg: cfg, logger: logger, shutdownTimeout: shutdownTimeout}
+func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs.FS, extra ...route) (*Server, error) {
+	s := &Server{cfg: cfg, logger: logger, svc: svc, shutdownTimeout: shutdownTimeout}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", s.home)
 	notFound := http.HandlerFunc(s.notFound)
 	staticFiles, err := newStaticHandler(staticFS, staticPrefix, notFound)
 	if err != nil {
 		return nil, err
 	}
-	mux.Handle("GET "+staticPrefix, staticFiles)
-	for _, rt := range extra {
-		mux.Handle(rt.pattern, rt.handler)
+	routes := []route{
+		{pattern: "GET /{$}", handler: http.HandlerFunc(s.home)},
+		{pattern: "GET /login", handler: http.HandlerFunc(s.loginPage), access: optionalSession},
+		{pattern: "POST /login", handler: http.HandlerFunc(s.loginSubmit), access: optionalSession},
+		{pattern: "POST /logout", handler: http.HandlerFunc(s.logout)},
+		{pattern: "GET /invite/{token}", handler: http.HandlerFunc(s.signUpPage), access: optionalSession},
+		{pattern: "POST /invite/{token}", handler: http.HandlerFunc(s.signUpSubmit), access: optionalSession},
+		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
+	}
+	mux := http.NewServeMux()
+	for _, rt := range append(routes, extra...) {
+		mux.Handle(rt.pattern, s.withAccess(rt.handler, rt.access))
 	}
 
 	// Outermost first: logging, panic recovery, cross-origin protection.
@@ -136,9 +168,10 @@ func (s *Server) serve(ctx context.Context, ln net.Listener) error {
 	return nil
 }
 
-// home answers GET /{$}.
+// home answers GET /{$}. The route needs a login.
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, http.StatusOK, views.Home())
+	user, _ := userFrom(r.Context())
+	s.render(w, r, http.StatusOK, views.Home(user.DisplayName))
 }
 
 // notFound answers with the 404 page.

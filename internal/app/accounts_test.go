@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	lifetime     = 7 * 24 * time.Hour
-	goodPassword = "correct horse battery"
+	lifetime        = 7 * 24 * time.Hour
+	sessionLifetime = 30 * 24 * time.Hour
+	goodPassword    = "correct horse battery"
 )
 
 var start = time.Date(2026, 10, 26, 9, 30, 0, 0, time.UTC)
@@ -36,7 +37,7 @@ func newEnv(t *testing.T) *env {
 	clk := clock.NewFake(start)
 	st := storetest.Open(t, clk)
 	hasher := auth.FastHasher()
-	return &env{t: t, svc: app.NewAccounts(st, clk, hasher, lifetime), st: st, clk: clk, hasher: hasher}
+	return &env{t: t, svc: app.NewAccounts(st, clk, hasher, app.AccountsConfig{InvitationLifetime: lifetime, SessionLifetime: sessionLifetime}), st: st, clk: clk, hasher: hasher}
 }
 
 // signUp makes a user with the role through a system invitation.

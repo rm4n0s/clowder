@@ -76,7 +76,7 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 			logger.Error("closing the store failed", "err", closeErr)
 		}
 	}()
-	accounts := app.NewAccounts(st, clock.Real(), hasher, config.DefaultInvitationLifetime)
+	accounts := app.NewAccounts(st, clock.Real(), hasher, app.AccountsConfig{InvitationLifetime: config.DefaultInvitationLifetime, SessionLifetime: config.DefaultSessionLifetime})
 	_, _ = fmt.Fprintf(stdout, "demo users (password %s):\n", demoPassword)
 	for _, d := range demoUsers {
 		inv, err := accounts.CreateSystemInvitation(ctx, d.role)

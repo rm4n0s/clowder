@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/app"
+	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/store"
@@ -43,8 +45,11 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 			logger.Error("closing the store failed", "err", closeErr)
 		}
 	}()
-	// TODO(step 2.3): the services built on st are passed to web.New.
-	srv, err := web.New(cfg, logger)
+	accounts := app.NewAccounts(st, clock.Real(), auth.DefaultHasher(), app.AccountsConfig{
+		InvitationLifetime: cfg.InvitationLifetime,
+		SessionLifetime:    cfg.SessionLifetime,
+	})
+	srv, err := web.New(cfg, logger, web.Services{Accounts: accounts})
 	if err != nil {
 		return err
 	}
@@ -73,6 +78,11 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		return config.Config{}, err
 	}
 
+	trustProxy, err := envBool(env, "CLOWDER_TRUST_PROXY", def.TrustProxyHeaders)
+	if err != nil {
+		return config.Config{}, err
+	}
+
 	var cfg config.Config
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -92,6 +102,8 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		"how long an invitation is valid (CLOWDER_INVITATION_LIFETIME)")
 	fs.StringVar(&cfg.LogLevel, "log-level", envString(env, "CLOWDER_LOG_LEVEL", def.LogLevel),
 		"log level: debug, info, warn or error (CLOWDER_LOG_LEVEL)")
+	fs.BoolVar(&cfg.TrustProxyHeaders, "trust-proxy", trustProxy,
+		"take the client address from the last X-Forwarded-For entry; only behind our own reverse proxy (CLOWDER_TRUST_PROXY)")
 	if err := fs.Parse(args); err != nil {
 		return config.Config{}, errors.NewErr(tagFlagsInvalid, err)
 	}
@@ -153,6 +165,20 @@ func envInt(env func(string) string, key string, def int) (int, error) {
 		return 0, errors.NewErr(tagEnvValueInvalid, err).SetMetadata("name", key, "value", v)
 	}
 	return n, nil
+}
+
+// envBool returns the variable key as a boolean ("true", "false", "1", "0"),
+// or def when it is unset.
+func envBool(env func(string) string, key string, def bool) (bool, error) {
+	v := env(key)
+	if v == "" {
+		return def, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, errors.NewErr(tagEnvValueInvalid, err).SetMetadata("name", key, "value", v)
+	}
+	return b, nil
 }
 
 // envDuration returns the variable key as a Go duration ("720h"), or def when

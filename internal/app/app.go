@@ -45,4 +45,8 @@ const (
 	// TagUnauthenticated is the tag of a request that needs a login and has
 	// none. The handlers redirect to the login page.
 	TagUnauthenticated = "Unauthenticated"
+	// TagRateLimited is the tag of a login attempt refused because the
+	// username or the client address failed too many times lately (SPEC
+	// §7.1). The handlers answer 429.
+	TagRateLimited = "RateLimited"
 )

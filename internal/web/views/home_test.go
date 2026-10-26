@@ -11,7 +11,7 @@ import (
 
 func TestHome(t *testing.T) {
 	var buf bytes.Buffer
-	if err := views.Home().Render(context.Background(), &buf); err != nil {
+	if err := views.Home("Alice").Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render Home: %v", err)
 	}
 	html := buf.String()
@@ -29,6 +29,8 @@ func TestHome(t *testing.T) {
 		{"sidebar", "<aside>"},
 		{"main", "<main>"},
 		{"heading", "<h1>Clowder</h1>"},
+		{"signed in as", `<p id="signed-in-as">Signed in as Alice</p>`},
+		{"logout button", `<form id="logout-form" method="post" action="/logout"`},
 		{"datastar check element", `id="datastar-check"`},
 		{"datastar check signal", `data-signals="{status: 'Datastar is running'}"`},
 		{"datastar check text", `data-text="$status"`},

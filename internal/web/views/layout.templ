@@ -1,8 +1,9 @@
 package views
 
 // Layout is the HTML page every page is rendered in: the head with the title,
-// the stylesheet and the Datastar client, an aside for the sidebar and a main
-// element for the children.
+// the stylesheet and the Datastar client, an aside for the sidebar (only when
+// there is one: the pages of people who are not logged in have none) and a
+// main element for the children.
 templ Layout(title string, sidebar templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -14,11 +15,11 @@ templ Layout(title string, sidebar templ.Component) {
 			<script type="module" src="/static/datastar.js"></script>
 		</head>
 		<body>
-			<aside>
-				if sidebar != nil {
+			if sidebar != nil {
+				<aside>
 					@sidebar
-				}
-			</aside>
+				</aside>
+			}
 			<main>
 				{ children... }
 			</main>

@@ -45,6 +45,34 @@ func TestParseListenAddr(t *testing.T) {
 	}
 }
 
+func TestParseInviteToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		output    string
+		wantToken string
+		wantOK    bool
+	}{
+		{"the link and the expiry", "http://127.0.0.1/invite/AbC-_123\nexpires 2026-11-02T10:00:00Z\n", "AbC-_123", true},
+		{"link only", "http://localhost:8080/invite/tok", "tok", true},
+		{"link with a trailing slash in the base URL", "https://x.example/chat/invite/tok\n", "tok", true},
+		{"windows line ending", "http://h/invite/tok\r\n", "tok", true},
+		{"no link", "expires soon\n", "", false},
+		{"link on the second line only", "hello\nhttp://h/invite/tok\n", "", false},
+		{"empty token", "http://h/invite/\n", "", false},
+		{"token with a path", "http://h/invite/a/b\n", "", false},
+		{"token with a query", "http://h/invite/a?b\n", "", false},
+		{"empty", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token, ok := ParseInviteToken(tt.output)
+			if token != tt.wantToken || ok != tt.wantOK {
+				t.Errorf("ParseInviteToken(%q) = %q, %v; want %q, %v", tt.output, token, ok, tt.wantToken, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestListenWatcher(t *testing.T) {
 	var out bytes.Buffer
 	w := newListenWatcher(&out)
@@ -144,7 +172,8 @@ func TestFindChromium(t *testing.T) {
 func fakeBinary(t *testing.T, serve string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "clowder")
-	script := "#!/bin/sh\nif [ \"$1\" = demo ]; then exit 0; fi\n" + serve + "\n"
+	script := "#!/bin/sh\nif [ \"$1\" = demo ]; then exit 0; fi\n" +
+		"if [ \"$1\" = invite ]; then echo http://127.0.0.1/invite/fake-token; echo expires soon; exit 0; fi\n" + serve + "\n"
 	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +365,7 @@ func TestStartServerReal(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
-	srv, err := StartServer(context.Background(), Options{})
+	srv, err := StartServer(context.Background(), Options{InviteMember: true})
 	if err != nil {
 		t.Fatalf("StartServer: %+v", err)
 	}
@@ -345,10 +374,97 @@ func TestStartServerReal(t *testing.T) {
 			t.Errorf("Stop: %v", err)
 		}
 	}()
+	if len(srv.InviteToken) != 43 {
+		t.Errorf("InviteToken = %q, want a token of 43 characters", srv.InviteToken)
+	}
 	if !strings.HasPrefix(srv.URL, "http://127.0.0.1:") || strings.HasSuffix(srv.URL, ":0") {
 		t.Errorf("URL = %q, want http://127.0.0.1:<port>", srv.URL)
 	}
 	if _, err := os.Stat(srv.DataDir); err != nil {
 		t.Errorf("data directory: %v", err)
+	}
+}
+
+func TestStartServerInviteMember(t *testing.T) {
+	tests := []struct {
+		name      string
+		opts      func(t *testing.T) Options
+		wantToken string
+		wantTag   string
+		wantRoute string
+		wantMeta  string
+	}{
+		{
+			name: "without the option there is no token",
+			opts: func(t *testing.T) Options {
+				return Options{Binary: fakeBinary(t, listenLine+"; exec sleep 60"), StopTimeout: 300 * time.Millisecond}
+			},
+		},
+		{
+			name: "with the option the token is read from the invite command",
+			opts: func(t *testing.T) Options {
+				return Options{Binary: fakeBinary(t, listenLine+"; exec sleep 60"), StopTimeout: 300 * time.Millisecond, InviteMember: true}
+			},
+			wantToken: "fake-token",
+		},
+		{
+			name: "invite fails",
+			opts: func(t *testing.T) Options {
+				path := filepath.Join(t.TempDir(), "clowder")
+				script := "#!/bin/sh\nif [ \"$1\" = invite ]; then echo bad flags >&2; exit 2; fi\nexit 0\n"
+				if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				return Options{Binary: path, InviteMember: true}
+			},
+			wantTag: tagInviteFailed, wantRoute: "StartServer->startServer->inviteMember.InviteFailed", wantMeta: "bad flags",
+		},
+		{
+			name: "invite prints no link",
+			opts: func(t *testing.T) Options {
+				path := filepath.Join(t.TempDir(), "clowder")
+				script := "#!/bin/sh\nif [ \"$1\" = invite ]; then echo nothing useful; exit 0; fi\nexit 0\n"
+				if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				return Options{Binary: path, InviteMember: true}
+			},
+			wantTag: tagInviteOutputInvalid, wantRoute: "StartServer->startServer->inviteMember.InviteOutputInvalid", wantMeta: "nothing useful",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, err := StartServer(context.Background(), tt.opts(t))
+			if tt.wantTag == "" {
+				if err != nil {
+					t.Fatalf("StartServer: %+v", err)
+				}
+				defer func() { _ = srv.Stop() }() // killed after the timeout, as the other fakes
+				if srv.InviteToken != tt.wantToken {
+					t.Errorf("InviteToken = %q, want %q", srv.InviteToken, tt.wantToken)
+				}
+				return
+			}
+			if err == nil {
+				_ = srv.Stop()
+				t.Fatal("StartServer succeeded")
+			}
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+			}
+			if appErr.Tag != tt.wantTag || !appErr.HasRoute(tt.wantRoute) {
+				t.Errorf("tag = %q, route = %s; want %s, %s", appErr.Tag, appErr.Route(), tt.wantTag, tt.wantRoute)
+			}
+			meta := ""
+			for _, k := range []string{"stderr", "output"} {
+				if v, ok := appErr.Metadata[k].(string); ok {
+					meta += v
+				}
+			}
+			if !strings.Contains(meta, tt.wantMeta) {
+				t.Errorf("metadata = %v, want it to contain %q", appErr.Metadata, tt.wantMeta)
+			}
+		})
 	}
 }

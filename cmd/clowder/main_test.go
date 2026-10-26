@@ -120,6 +120,7 @@ func TestParseServeConfig(t *testing.T) {
 				"CLOWDER_SESSION_LIFETIME":    "48h",
 				"CLOWDER_INVITATION_LIFETIME": "24h",
 				"CLOWDER_LOG_LEVEL":           "debug",
+				"CLOWDER_TRUST_PROXY":         "true",
 			},
 			want: config.Config{
 				ListenAddr:            "127.0.0.1:9000",
@@ -130,6 +131,7 @@ func TestParseServeConfig(t *testing.T) {
 				SessionLifetime:       48 * time.Hour,
 				InvitationLifetime:    24 * time.Hour,
 				LogLevel:              "debug",
+				TrustProxyHeaders:     true,
 			},
 		},
 		{
@@ -138,6 +140,7 @@ func TestParseServeConfig(t *testing.T) {
 				"-addr", "127.0.0.1:9001", "-data", "d", "-base-url", "http://x.test",
 				"-max-attachment-size", "10", "-max-attachments", "2",
 				"-session-lifetime", "1h", "-invitation-lifetime", "30m", "-log-level", "warn",
+				"-trust-proxy",
 			},
 			want: config.Config{
 				ListenAddr:            "127.0.0.1:9001",
@@ -148,7 +151,23 @@ func TestParseServeConfig(t *testing.T) {
 				SessionLifetime:       time.Hour,
 				InvitationLifetime:    30 * time.Minute,
 				LogLevel:              "warn",
+				TrustProxyHeaders:     true,
 			},
+		},
+		{
+			name: "trust proxy: flag beats environment",
+			args: []string{"-trust-proxy=false"},
+			env:  map[string]string{"CLOWDER_TRUST_PROXY": "1"},
+			want: def,
+		},
+		{
+			name: "trust proxy: environment 1",
+			env:  map[string]string{"CLOWDER_TRUST_PROXY": "1"},
+			want: func() config.Config {
+				c := def
+				c.TrustProxyHeaders = true
+				return c
+			}(),
 		},
 		{
 			name: "flag beats environment, environment beats default",
@@ -222,6 +241,13 @@ func TestParseServeConfigErrors(t *testing.T) {
 			wantTag:   tagEnvValueInvalid,
 			wantRoute: "parseServeConfig->envDuration.EnvValueInvalid",
 			wantMeta:  map[string]any{"name": "CLOWDER_INVITATION_LIFETIME", "value": "soon"},
+		},
+		{
+			name:      "malformed trust proxy in the environment",
+			env:       map[string]string{"CLOWDER_TRUST_PROXY": "maybe"},
+			wantTag:   tagEnvValueInvalid,
+			wantRoute: "parseServeConfig->envBool.EnvValueInvalid",
+			wantMeta:  map[string]any{"name": "CLOWDER_TRUST_PROXY", "value": "maybe"},
 		},
 		{
 			name:      "a flag does not hide a malformed environment value",

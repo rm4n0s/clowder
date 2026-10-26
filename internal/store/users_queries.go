@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/rm4n0s/errors"
 )
@@ -187,6 +188,58 @@ func (s *Store) DeleteSessionsOfUser(ctx context.Context, userID uint64) error {
 	err := s.db(ctx).Where("user_id = ?", userID).Delete(&Session{}).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "deleteSessionsOfUser")
+	}
+	return nil
+}
+
+// SessionByTokenHash returns the session whose cookie token has the given
+// SHA-256 hash. It fails with TagNotFound when there is none.
+func (s *Store) SessionByTokenHash(ctx context.Context, tokenHash string) (Session, error) {
+	var sess Session
+	err := s.db(ctx).Where("token_hash = ?", tokenHash).First(&sess).Error
+	if err != nil {
+		switch classify(err) {
+		case failureNotFound:
+			return Session{}, errors.NewErr(TagNotFound, err).SetMetadata("op", "sessionByTokenHash")
+		default:
+			return Session{}, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "sessionByTokenHash")
+		}
+	}
+	return sess, nil
+}
+
+// TouchSession sets when the session id was last used and when it expires. It
+// fails with TagNotFound when there is no such session.
+func (s *Store) TouchSession(ctx context.Context, id uint64, lastSeenAt, expiresAt time.Time) error {
+	res := s.db(ctx).Model(&Session{}).Where("id = ?", id).
+		Updates(map[string]any{"last_seen_at": lastSeenAt.UTC(), "expires_at": expiresAt.UTC()})
+	if res.Error != nil {
+		return errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "touchSession")
+	}
+	if res.RowsAffected == 0 {
+		return errors.New(TagNotFound, "no session with this ID", "op", "touchSession", "sessionID", id)
+	}
+	return nil
+}
+
+// DeleteSessionByTokenHash deletes the session with the given token hash,
+// which logs that browser out. It is not an error when there is none.
+func (s *Store) DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error {
+	err := s.db(ctx).Where("token_hash = ?", tokenHash).Delete(&Session{}).Error
+	if err != nil {
+		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "deleteSessionByTokenHash")
+	}
+	return nil
+}
+
+// DeleteExpiredSessionsOfUser deletes the sessions of the user that expired at
+// or before now (a session is over from its ExpiresAt on). The other sessions
+// of the user and the sessions of other users stay. It is not an error when
+// there are none.
+func (s *Store) DeleteExpiredSessionsOfUser(ctx context.Context, userID uint64, now time.Time) error {
+	err := s.db(ctx).Where("user_id = ? AND expires_at <= ?", userID, now.UTC()).Delete(&Session{}).Error
+	if err != nil {
+		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "deleteExpiredSessionsOfUser")
 	}
 	return nil
 }

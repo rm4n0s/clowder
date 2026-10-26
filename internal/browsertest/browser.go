@@ -4,6 +4,7 @@ package browsertest
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 
@@ -62,6 +63,30 @@ func NewBrowser(ctx context.Context, extra ...chromedp.ExecAllocatorOption) (con
 	return browserCtx, cancel, nil
 }
 
+// Fill empties the first element that matches the CSS selector and types value
+// into it with key events, as a person does, so that the page's own handlers
+// see it. It sets the value property to empty first because chromedp.Clear
+// only sets the attribute, which changes nothing in a field that has been
+// typed in or patched by the server. It fails with a FillFailed error when no
+// element matches.
+func Fill(selector, value string) chromedp.Action[chromedp.Void] {
+	return func(ctx context.Context, t *chromedp.Target) (chromedp.Void, error) {
+		quoted, err := json.Marshal(selector)
+		if err != nil {
+			return chromedp.Void{}, errors.NewErr(tagFillFailed, err).SetMetadata("selector", selector)
+		}
+		js := `(() => { const el = document.querySelector(` + string(quoted) + `); if (!el) { return false; } el.value = ""; return true; })()`
+		found, err := chromedp.Evaluate[bool](js)(ctx, t)
+		if err != nil {
+			return chromedp.Void{}, errors.NewErr(tagFillFailed, err).SetMetadata("selector", selector)
+		}
+		if !found {
+			return chromedp.Void{}, errors.New(tagFillFailed, "no element matches the selector", "selector", selector)
+		}
+		return chromedp.SendKeys(selector, value)(ctx, t)
+	}
+}
+
 const (
 	// defaultWidth and defaultHeight are the size of the browser window.
 	defaultWidth  = 1280
@@ -74,4 +99,5 @@ const (
 	TagChromiumNotFound = "ChromiumNotFound"
 
 	tagBrowserStartFailed = "BrowserStartFailed"
+	tagFillFailed         = "FillFailed"
 )

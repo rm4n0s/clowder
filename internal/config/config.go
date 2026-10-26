@@ -45,6 +45,11 @@ type Config struct {
 	InvitationLifetime time.Duration
 	// LogLevel is one of debug, info, warn and error.
 	LogLevel string
+	// TrustProxyHeaders says that Clowder runs behind a reverse proxy of our
+	// own: the client address is then the last address of X-Forwarded-For (the
+	// one the proxy appended) and not the address of the connection. Leave it
+	// off when clients can reach Clowder directly, or they can forge the header.
+	TrustProxyHeaders bool
 }
 
 // Default returns the configuration with every setting at its default.

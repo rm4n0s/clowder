@@ -1,0 +1,109 @@
+package views
+
+// LoginData is what the login page and its form show.
+type LoginData struct {
+	// Username is the username typed in the last submit. The password is
+	// never put back.
+	Username string
+	// Next is the local path to go to after the login, already checked; empty
+	// means the home page.
+	Next string
+	// Errors are the problems of the last submit.
+	Errors FormErrors
+}
+
+// LoginPage is the page of the login form.
+templ LoginPage(d LoginData) {
+	@Layout("Log in", nil) {
+		<div class="auth-card">
+			<h1>Log in</h1>
+			@LoginForm(d)
+		</div>
+	}
+}
+
+// LoginForm is the login form. The server sends it alone as a Datastar patch
+// to show the problems of a failed login; it replaces the element with the
+// same id.
+templ LoginForm(d LoginData) {
+	<form id="login-form" method="post" action="/login" data-on:submit={ FormPost("/login") }>
+		@formProblem(d.Errors.Form)
+		@inputField(formField{ID: "login-username", Name: "username", Label: "Username", Type: "text", Value: d.Username, Autocomplete: "username", Error: d.Errors.Fields["username"], Autofocus: true})
+		@inputField(formField{ID: "login-password", Name: "password", Label: "Password", Type: "password", Autocomplete: "current-password", Error: d.Errors.Fields["password"]})
+		if d.Next != "" {
+			<input type="hidden" name="next" value={ d.Next }/>
+		}
+		<button type="submit">Log in</button>
+	</form>
+}
+
+// SignUpData is what the sign-up page and its form show.
+type SignUpData struct {
+	// Token is the token of the invitation, from the link.
+	Token string
+	// Username and DisplayName are the values typed in the last submit. The
+	// password is never put back.
+	Username    string
+	DisplayName string
+	// Errors are the problems of the last submit.
+	Errors FormErrors
+}
+
+// SignUpPage is the page of the sign-up form of an invitation.
+templ SignUpPage(d SignUpData) {
+	@Layout("Sign up", nil) {
+		<div class="auth-card">
+			<h1>Join Clowder</h1>
+			@SignUpForm(d)
+		</div>
+	}
+}
+
+// SignUpForm is the sign-up form. The server sends it alone as a Datastar
+// patch to show the problems of a failed submit.
+templ SignUpForm(d SignUpData) {
+	<form id="signup-form" method="post" action={ templ.SafeURL(invitePath(d.Token)) } data-on:submit={ FormPost(invitePath(d.Token)) }>
+		@formProblem(d.Errors.Form)
+		@inputField(formField{ID: "signup-username", Name: "username", Label: "Username", Type: "text", Value: d.Username, Autocomplete: "username", Error: d.Errors.Fields["username"], Autofocus: true, Hint: "3 to 32 characters: a to z, digits, _ and -."})
+		@inputField(formField{ID: "signup-display-name", Name: "displayName", Label: "Display name", Type: "text", Value: d.DisplayName, Autocomplete: "name", Error: d.Errors.Fields["displayName"]})
+		@inputField(formField{ID: "signup-password", Name: "password", Label: "Password", Type: "password", Autocomplete: "new-password", Error: d.Errors.Fields["password"], Hint: "At least 12 characters."})
+		<button type="submit">Create account</button>
+	</form>
+}
+
+// formProblem shows the problem of a whole form, if there is one.
+templ formProblem(message string) {
+	if message != "" {
+		<p class="form-error" role="alert">{ message }</p>
+	}
+}
+
+// inputField is a label, an input and, when it has one, the message of its
+// problem next to it.
+templ inputField(f formField) {
+	<div class="field">
+		<label for={ f.ID }>{ f.Label }</label>
+		<input
+			id={ f.ID }
+			name={ f.Name }
+			type={ f.Type }
+			if f.Type != "password" {
+				value={ f.Value }
+			}
+			autocomplete={ f.Autocomplete }
+			required
+			if f.Autofocus {
+				autofocus
+			}
+			if f.Error != "" {
+				aria-invalid="true"
+				aria-describedby={ f.ID + "-error" }
+			}
+		/>
+		if f.Error != "" {
+			<p class="field-error" id={ f.ID + "-error" } role="alert">{ f.Error }</p>
+		} else if f.Hint != "" {
+			<p class="hint">{ f.Hint }</p>
+		}
+	</div>
+}
