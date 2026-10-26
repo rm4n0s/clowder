@@ -13,7 +13,9 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/auth"
+	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -716,4 +718,88 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
+}
+
+func TestRunDemoMakesTheDemoPosts(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	if !strings.Contains(stdout.String(), "demo posts: 8") {
+		t.Errorf("stdout lacks the number of posts:\n%s", stdout.String())
+	}
+
+	_, st := openAccounts(t, dir)
+	rooms := app.NewRooms(st)
+	posts := app.NewPosts(st, clock.Real(), markdown.New())
+	actors := map[string]app.Actor{}
+	for _, d := range demoUsers {
+		row, err := st.UserByUsername(t.Context(), d.username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actors[d.username] = app.Actor{UserID: row.ID, Username: row.Username, Role: row.Role}
+	}
+	all, err := rooms.AllRooms(t.Context(), actors["admin"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]app.Room{}
+	for _, r := range all {
+		byName[r.Name] = r
+	}
+
+	feed := func(viewer, room string) []app.Post {
+		t.Helper()
+		page, err := posts.Feed(t.Context(), actors[viewer], byName[room].ID, 0, 30)
+		if err != nil {
+			t.Fatalf("Feed %s: %+v", room, err)
+		}
+		return page.Posts
+	}
+	general := feed("carol", "general")
+	if len(general) != 5 {
+		t.Fatalf("general has %d posts, want 5", len(general))
+	}
+	authors := map[string]bool{}
+	tags := map[string]bool{}
+	html := ""
+	formats := map[app.Format]int{}
+	for _, p := range general {
+		authors[p.Author.Username] = true
+		formats[p.Format]++
+		html += string(p.HTML)
+		for _, tag := range p.Tags {
+			tags[tag] = true
+		}
+	}
+	for _, name := range []string{"alice", "bob", "carol"} {
+		if !authors[name] {
+			t.Errorf("%s wrote no post in general", name)
+		}
+	}
+	for _, tag := range []string{"design", "release", "help"} {
+		if !tags[tag] {
+			t.Errorf("no post in general is tagged %s", tag)
+		}
+	}
+	if formats[app.FormatText] != 1 || formats[app.FormatMarkdown] != 4 {
+		t.Errorf("formats = %v, want one text and four markdown", formats)
+	}
+	for _, want := range []string{"<h3>", "<h4>", "<ul>", "<li>", "<pre>", "<code", "<a href=", "<table>"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("the rendered posts of general lack %s", want)
+		}
+	}
+	if n := len(feed("alice", "random")); n != 2 {
+		t.Errorf("random has %d posts, want 2", n)
+	}
+	secret := feed("alice", "secret")
+	if len(secret) != 1 || secret[0].Author.Username != "alice" {
+		t.Errorf("secret = %+v, want one post by alice", secret)
+	}
+	if _, err := posts.Feed(t.Context(), actors["carol"], byName["secret"].ID, 0, 30); err == nil {
+		t.Error("carol reads the feed of the private room")
+	}
 }
