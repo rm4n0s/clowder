@@ -62,7 +62,7 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 | D4 | The work is done in numbered steps (`docs/IMPLEMENTATION.md`), each published to `main` with a `step-<id>` tag, by a managing session and worker agents | CLAUDE.md "Working through the steps" |
 | D5 | No CI on GitHub: the checks run locally | CLAUDE.md "Git and GitHub" |
 | D6 | **GORM** (`gorm.io/gorm`) for storage, on **SQLite** through the pure-Go driver `github.com/glebarez/sqlite` (built on `modernc.org/sqlite`) | Keeps D1. Only `internal/store` imports GORM; nothing SQLite-specific leaves it, so PostgreSQL can be added behind the same API later. Full-text search uses SQLite's FTS5 (§7.8) |
-| D7 | **Datastar** for the browser side: `github.com/starfederation/datastar-go` on the server and the matching `datastar.js` client, embedded in the binary | The versions of the SDK and the client are pinned together; changing one changes both. §8 |
+| D7 | **Datastar** for the browser side: `github.com/starfederation/datastar-go` on the server and the matching `datastar.js` client, embedded in the binary | The versions of the SDK and the client are pinned together; changing one changes both. SDK `v1.2.2`, client `v1.0.2`. §8 |
 | D8 | **templ** (`github.com/a-h/templ`) for HTML, run as `go tool templ` (a `tool` line in `go.mod`); the generated `*_templ.go` files are committed | `go generate ./...` regenerates them; a check makes sure they are up to date (IMPLEMENTATION.md rule 8) |
 | D9 | **goldmark** (`github.com/yuin/goldmark`) renders markdown, in its safe mode: raw HTML in a body is escaped and dangerous link schemes are dropped. No other sanitizer | §7.3 |
 | D10 | Passwords are hashed with **argon2id** from `golang.org/x/crypto` | §7.1 |

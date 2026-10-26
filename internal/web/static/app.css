@@ -1,0 +1,102 @@
+/* Clowder base styles. Colors are custom properties; the dark values follow
+   the system setting. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --bg-sidebar: #f3f4f6;
+  --fg: #1f2933;
+  --fg-muted: #52606d;
+  --border: #d2d6dc;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --danger: #b42318;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121418;
+    --bg-sidebar: #1b1e24;
+    --fg: #e4e7eb;
+    --fg-muted: #9aa5b1;
+    --border: #323843;
+    --accent: #5b8def;
+    --accent-fg: #0b1220;
+    --danger: #f97066;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 var(--font);
+}
+
+/* Page layout: a left sidebar and a main column. */
+aside {
+  flex: 0 0 16rem;
+  padding: 1rem;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+}
+
+main {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 60rem;
+  padding: 1.5rem 2rem;
+}
+
+@media (max-width: 40rem) {
+  body { flex-direction: column; }
+  aside { flex-basis: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  main { padding: 1rem; }
+}
+
+h1, h2, h3 { line-height: 1.25; margin: 0 0 0.75rem; }
+
+a { color: var(--accent); }
+
+code, pre { font-family: var(--mono); font-size: 0.9em; }
+
+/* Forms and buttons. */
+label { display: block; margin-bottom: 0.25rem; font-weight: 600; }
+
+input, textarea, select {
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  margin-bottom: 0.75rem;
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+input:focus-visible, textarea:focus-visible, select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-fg);
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover { filter: brightness(1.1); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.secondary { color: var(--fg); background: transparent; border: 1px solid var(--border); }
+button.danger { background: var(--danger); }

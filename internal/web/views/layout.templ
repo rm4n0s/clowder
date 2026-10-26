@@ -1,0 +1,27 @@
+package views
+
+// Layout is the HTML page every page is rendered in: the head with the title,
+// the stylesheet and the Datastar client, an aside for the sidebar and a main
+// element for the children.
+templ Layout(title string, sidebar templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } · Clowder</title>
+			<link rel="stylesheet" href="/static/app.css"/>
+			<script type="module" src="/static/datastar.js"></script>
+		</head>
+		<body>
+			<aside>
+				if sidebar != nil {
+					@sidebar
+				}
+			</aside>
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
