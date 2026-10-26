@@ -36,7 +36,7 @@ const (
 	listenMessage = "server listening"
 	// baseURL is the -base-url the server is started with. It names no port, so
 	// the invitation links of a test server are wrong.
-	// TODO(step 2.2): the port is only known after the server has started;
+	// TODO(step 2.4): the port is only known after the server has started;
 	// revisit when invitation links are tested in a browser.
 	baseURL = "http://127.0.0.1"
 )

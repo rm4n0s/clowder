@@ -37,8 +37,9 @@ type Invitation struct {
 	TokenHash string `gorm:"not null;uniqueIndex:uq_invitations_token_hash"`
 	// Role is the role the new user gets.
 	Role Role `gorm:"not null;check:chk_invitations_role,role IN ('admin','member')"`
-	// CreatedBy is the admin who made the invitation.
-	CreatedBy uint64    `gorm:"not null"`
+	// CreatedBy is the admin who made the invitation; nil for one made by
+	// "clowder invite" on the command line.
+	CreatedBy *uint64
 	ExpiresAt time.Time `gorm:"not null"`
 	// UsedBy is the user the invitation made; nil until it is used.
 	UsedBy *uint64

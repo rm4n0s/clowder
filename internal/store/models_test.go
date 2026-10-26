@@ -68,9 +68,12 @@ func TestModelsRoundTrip(t *testing.T) {
 		{"Invitation", "invitations", func(f *fix) any {
 			admin, used := f.user(), f.user()
 			return &Invitation{
-				TokenHash: "h1", Role: RoleMember, CreatedBy: admin.ID, ExpiresAt: day(24 * time.Hour),
+				TokenHash: "h1", Role: RoleMember, CreatedBy: &admin.ID, ExpiresAt: day(24 * time.Hour),
 				UsedBy: &used.ID, UsedAt: ptr(day(time.Hour)),
 			}
+		}},
+		{"Invitation made by the command line", "invitations", func(f *fix) any {
+			return &Invitation{TokenHash: "h2", Role: RoleAdmin, CreatedBy: nil, ExpiresAt: day(24 * time.Hour)}
 		}},
 		{"Session", "sessions", func(f *fix) any {
 			return &Session{TokenHash: "h1", UserID: f.user().ID, ExpiresAt: day(48 * time.Hour), LastSeenAt: day(time.Minute)}
@@ -235,8 +238,8 @@ func TestUniqueConstraints(t *testing.T) {
 		}},
 		{"invitations.token_hash", func(f *fix) (any, any) {
 			u := f.user()
-			return &Invitation{TokenHash: "h", Role: RoleMember, CreatedBy: u.ID, ExpiresAt: day(time.Hour)},
-				&Invitation{TokenHash: "h", Role: RoleAdmin, CreatedBy: u.ID, ExpiresAt: day(time.Hour)}
+			return &Invitation{TokenHash: "h", Role: RoleMember, CreatedBy: &u.ID, ExpiresAt: day(time.Hour)},
+				&Invitation{TokenHash: "h", Role: RoleAdmin, CreatedBy: &u.ID, ExpiresAt: day(time.Hour)}
 		}},
 		{"sessions.token_hash", func(f *fix) (any, any) {
 			u := f.user()
@@ -374,7 +377,7 @@ func TestCheckConstraints(t *testing.T) {
 			return &User{Username: "Alice", Role: RoleMember}
 		}},
 		{"invitation role", "chk_invitations_role", func(f *fix) any {
-			return &Invitation{TokenHash: "h", Role: "owner", CreatedBy: f.user().ID, ExpiresAt: day(time.Hour)}
+			return &Invitation{TokenHash: "h", Role: "owner", CreatedBy: &f.user().ID, ExpiresAt: day(time.Hour)}
 		}},
 		{"room visibility", "chk_rooms_visibility", func(f *fix) any {
 			return &Room{Name: "r", Visibility: "secret", CreatedBy: f.user().ID}
@@ -878,12 +881,12 @@ func TestDeleteUserIsRefused(t *testing.T) {
 		}},
 		{"invitation creator", func(f *fix) *User {
 			u := f.user()
-			f.create(&Invitation{TokenHash: "h", Role: RoleMember, CreatedBy: u.ID, ExpiresAt: day(time.Hour)})
+			f.create(&Invitation{TokenHash: "h", Role: RoleMember, CreatedBy: &u.ID, ExpiresAt: day(time.Hour)})
 			return u
 		}},
 		{"invitation user", func(f *fix) *User {
 			u := f.user()
-			f.create(&Invitation{TokenHash: "h", Role: RoleMember, CreatedBy: f.user().ID, ExpiresAt: day(time.Hour), UsedBy: &u.ID})
+			f.create(&Invitation{TokenHash: "h", Role: RoleMember, CreatedBy: &f.user().ID, ExpiresAt: day(time.Hour), UsedBy: &u.ID})
 			return u
 		}},
 		{"reaction", func(f *fix) *User {

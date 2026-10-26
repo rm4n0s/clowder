@@ -43,7 +43,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 			logger.Error("closing the store failed", "err", closeErr)
 		}
 	}()
-	// TODO(step 2.2): the services built on st are passed to web.New.
+	// TODO(step 2.3): the services built on st are passed to web.New.
 	srv, err := web.New(cfg, logger)
 	if err != nil {
 		return err

@@ -10,7 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/app"
+	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
 
@@ -52,13 +55,6 @@ func TestRunDispatch(t *testing.T) {
 			wantUsage: true,
 		},
 		{
-			name:      "invite is not implemented",
-			args:      []string{"invite", "-admin"},
-			wantTag:   tagNotImplemented,
-			wantRoute: "run.NotImplemented",
-			wantMeta:  map[string]any{"command": "invite"},
-		},
-		{
 			name:      "serve with a bad data directory",
 			args:      []string{"serve", "-data", filepath.Join(notADir, "sub")},
 			wantTag:   tagDataDirCreateFailed,
@@ -75,7 +71,7 @@ func TestRunDispatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			err := run(context.Background(), tt.args, mapEnv(nil), &stdout, &stderr)
+			err := run(context.Background(), tt.args, mapEnv(nil), &stdout, &stderr, auth.FastHasher())
 			appErr, ok := errors.FromError(err)
 			if !ok {
 				t.Fatalf("expected *errors.Error, got %T: %v", err, err)
@@ -433,7 +429,7 @@ func TestRunDemo(t *testing.T) {
 				env = tt.env(dir)
 			}
 			var stdout, stderr bytes.Buffer
-			err := run(context.Background(), args, mapEnv(env), &stdout, &stderr)
+			err := run(context.Background(), args, mapEnv(env), &stdout, &stderr, auth.FastHasher())
 			if tt.wantTag == "" {
 				if err != nil {
 					t.Fatalf("run demo: %v", err)
@@ -441,9 +437,10 @@ func TestRunDemo(t *testing.T) {
 				if st, statErr := os.Stat(dir); statErr != nil || !st.IsDir() {
 					t.Errorf("data directory %s was not made: %v", dir, statErr)
 				}
-				if !strings.Contains(stdout.String(), "demo data directory is ready") ||
-					strings.Count(stdout.String(), "\n") != 1 {
-					t.Errorf("stdout = %q, want one line saying the directory is ready", stdout.String())
+				out := stdout.String()
+				if !strings.HasPrefix(out, "demo data directory is ready") ||
+					!strings.Contains(out, demoPassword) {
+					t.Errorf("stdout = %q, want the directory and the password", out)
 				}
 				return
 			}
@@ -461,6 +458,67 @@ func TestRunDemo(t *testing.T) {
 				t.Errorf("unexpected stdout: %q", stdout.String())
 			}
 		})
+	}
+}
+
+func TestRunDemoMakesTheDemoUsers(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	hasher := auth.FastHasher()
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, hasher); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	for _, line := range []string{"admin  admin  Admin", "alice  member Alice", "bob    member Bob", "carol  member Carol"} {
+		if !strings.Contains(stdout.String(), line) {
+			t.Errorf("stdout lacks %q:\n%s", line, stdout.String())
+		}
+	}
+
+	accounts, st := openAccounts(t, dir)
+	admin, err := accounts.Users(t.Context(), app.Actor{Role: store.RoleAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, u := range admin {
+		got = append(got, u.Username)
+	}
+	if want := "admin,alice,bob,carol"; strings.Join(got, ",") != want {
+		t.Fatalf("users = %v, want %s", got, want)
+	}
+	for _, d := range demoUsers {
+		row, err := st.UserByUsername(t.Context(), d.username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.Role != d.role || row.DisplayName != d.displayName || row.DisabledAt != nil {
+			t.Errorf("%s = %+v", d.username, row)
+		}
+		if ok, err := hasher.Verify("demo-password-1234", row.PasswordHash); err != nil || !ok {
+			t.Errorf("%s: the password does not verify: %v, %v", d.username, ok, err)
+		}
+	}
+
+	// The database is there now, so the directory is no longer empty.
+	err = run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, hasher)
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != tagDataDirNotEmpty || !appErr.HasRoute("run->runDemo.DataDirNotEmpty") {
+		t.Errorf("second demo: %v", err)
+	}
+}
+
+func TestRunDemoStoreOpenFailure(t *testing.T) {
+	// A closed context fails the open of the database, after the directory is ready.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	var stdout, stderr bytes.Buffer
+	err := run(ctx, []string{"demo", "-data", t.TempDir()}, mapEnv(nil), &stdout, &stderr, auth.FastHasher())
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+	}
+	if !appErr.HasRoute("run->runDemo->Open->open") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
 

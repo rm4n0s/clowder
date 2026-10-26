@@ -49,7 +49,7 @@ type route struct {
 
 // New makes the server from its dependencies. Run starts it. It fails when the
 // embedded static files cannot be read and hashed.
-// TODO(step 2.2): the services are passed here as they are added.
+// TODO(step 2.3): the services are passed here as they are added.
 func New(cfg config.Config, logger *slog.Logger) (*Server, error) {
 	return newServer(cfg, logger, static.FS)
 }
