@@ -34,3 +34,6 @@ go.work.sum
 
 # The briefs the managing session writes for its worker agents (docs/IMPLEMENTATION.md, "Who does the work")
 /.claude/briefs/
+
+# The data directory of a local run (database, attachments)
+/data/

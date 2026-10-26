@@ -3,29 +3,39 @@
 Guidance for Claude Code when working in this repository (Go, hosted on GitHub).
 
 ## Project
-Clowder is a Go project (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause). _What it is, who uses it and what it targets is not written yet: see SPEC §1–§3 and the open questions in SPEC §16._
+Clowder (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause) is a self-hosted web application where a team talks in rooms. A room is a feed of posts with threaded comments; posts and comments carry text or markdown, attachments, tags and tasks, and each room's tasks make its Kanban board. People join by invitation only. It is one cgo-free binary: GORM on SQLite (pure-Go driver) for storage, pages rendered on the server with templ, and kept live with Datastar over server-sent events.
 
 **`docs/SPEC.md` is the source of truth.** Read the sections that cover a task before starting it. If the code and the spec disagree, or a task needs a decision the spec doesn't make, ask instead of guessing. When a decision changes, update the spec on the same branch.
 
 ## Commands
-- Build: `go build ./...`
+- Build: `go build ./...`. Clowder is cgo-free; `CGO_ENABLED=0 go build ./...` must always work
 - Test all: `go test -race ./...`
 - Test one package: `go test ./<pkg> -run TestName -v`
 - Vet: `go vet ./...`
 - Lint: `golangci-lint run`
-- Format: `gofmt -w .` (or `goimports -w .`)
-- Generate: `go generate ./...`
+- Format: `gofmt -w .` (or `goimports -w .`); templ files: `go tool templ fmt .`
+- Generate (the templ views): `go generate ./...`; the generated `*_templ.go` files are committed
+- Run: `go run ./cmd/clowder serve`; first admin: `go run ./cmd/clowder invite -admin`; demo data: `go run ./cmd/clowder demo`
+- Browser tests (need Chromium): `go test -tags clowder_browser ./...`
+- Proof screenshot of a page: `go run -tags clowder_browser ./cmd/clowder-proof -as <user> -page <path> -o docs/implemented-proof-images/<id>-<name>.png`
 - After changing dependencies: `go mod tidy`
 
 ## Definition of done
 Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint run` and `go test -race ./...`, and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
+- `CGO_ENABLED=0 go build ./...` passes
+- `go generate ./...` leaves no change in the tree (the committed `*_templ.go` files are up to date)
 - Every new exported identifier has a doc comment
 - Every new error tag has a route test (see "Error handling")
+- Every new service method has a permission test (SPEC §12)
 
 ## Layout
-_The package layout is decided in SPEC §6 and copied here once it is._
-- `cmd/<name>/` holds the commands; `internal/` holds what is not public API; `examples/<name>/` holds runnable examples (public API only); `scripts/` holds helper scripts
-- `docs/SPEC.md` is the specification; `docs/IMPLEMENTATION.md` is the step-by-step plan; `docs/IMPLEMENTED.md` logs finished steps; `docs/implemented-proof-images/` holds each step's proof images
+The packages are listed in SPEC §6.2; the layers in SPEC §6.1.
+- `cmd/clowder/` is the binary (`serve`, `invite`, `demo`) and wires everything together
+- `internal/store` is the only package that imports GORM or knows the database; `internal/app` holds the services and every permission check, and never imports `net/http` or templ; `internal/web` holds the handlers, middleware and SSE streams, and never imports `internal/store`
+- `internal/web/views` holds the templ components; `internal/web/static` holds the embedded `datastar.js`, CSS and scripts
+- `internal/live` is the event hub; `internal/markdown`, `internal/files`, `internal/auth`, `internal/config` and `internal/clock` are what their names say
+- `docs/SPEC.md` is the specification; `docs/IMPLEMENTATION.md` is the step-by-step plan; `docs/IMPLEMENTED.md` logs finished steps; `docs/implemented-proof-images/` holds each step's proofs
+- `data/` (git-ignored) is the default data directory of a local run
 - Tests live next to the code (`foo_test.go`); test data lives in `testdata/` of its package
 
 ## Go conventions
@@ -33,7 +43,14 @@ _The package layout is decided in SPEC §6 and copied here once it is._
 - Pass `context.Context` as the first parameter of anything that does I/O or may block. Name it `ctx`
 - Tests are table-driven
 - No global mutable state. Package-level read-only values are fine and are never reassigned. Dependencies are passed through constructors
-- Prefer the standard library. Allowed dependencies: `github.com/rm4n0s/errors`. Ask before adding any other
+- Prefer the standard library. Allowed dependencies: `github.com/rm4n0s/errors`, `gorm.io/gorm`, `github.com/glebarez/sqlite`, `github.com/starfederation/datastar-go`, `github.com/a-h/templ`, `github.com/yuin/goldmark`, `golang.org/x/crypto` and, for browser tests and proofs only, `github.com/chromedp/chromedp` (SPEC §4). Ask before adding any other
+- **No cgo**: never write `import "C"` or add a dependency that needs it (the SQLite driver is the pure-Go one)
+- The SDK `datastar-go` and the embedded `datastar.js` are the same release; never upgrade one without the other
+- Routes use the standard `http.ServeMux` patterns (`"POST /rooms/{id}/posts"`)
+- A service method takes `ctx` and the acting user first, checks the permission itself, does its writes in one transaction, and publishes its live events only after the commit (SPEC §6.1, §8)
+- A user who may not see a private room gets "not found", never "forbidden" (SPEC §9.1)
+- Every create, update and delete of posts, comments, tasks, board columns and room memberships writes its audit event in the same transaction (SPEC §7.10). Nothing edits or deletes an audit event
+- Never log passwords, tokens or post bodies
 - Log with `log/slog`; a logger is passed in, never taken from a package-level variable
 - Every goroutine has an owner that stops it (through a `context.Context` or a `Close`) and waits for it to end
 
@@ -91,10 +108,17 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 - **Manager and workers:** the main session (Opus 5.5, high effort) manages and Sonnet 5.5 agents at high effort write the code (Agent tool with `model: "sonnet"`, `effort: "high"`). The manager reads the step and the SPEC, writes the brief, launches and steers the workers, reviews their diffs, runs the checks, and does the git work; it writes only small fixes itself. The details are in `docs/IMPLEMENTATION.md`, Rules, "Who does the work"
 
 ## Don't
-- Don't edit generated files (`*_gen.go`); regenerate them with `go generate ./...`
+- Don't edit generated files (`*_templ.go`, `*_gen.go`); change the `.templ` source and regenerate with `go generate ./...`
+- Don't render user content as raw HTML except the output of `internal/markdown` (goldmark in safe mode, SPEC D9)
+- Don't commit `data/` or any database file
 - Don't commit secrets or `.env` files
 - Never look for, list, open or read files outside this project folder (no home-directory databases, configs, logs or other projects). If something outside it is needed, ask the user to provide it. Exception: dependency source in the Go module cache
 
 ## Testing notes
-- Tests run without network access or external services unless a build tag says otherwise; a fake replaces each external dependency
+- The default tests run without network access, a browser or external services; a fake replaces each external dependency
+- Browser tests carry the `clowder_browser` build tag and use `internal/browsertest`; `chromedp` is imported only in files with that tag
+- Store and service tests use a fresh in-memory SQLite database per test, the fake clock (`internal/clock`) and a recording hub
+- Handler tests run the real handlers with `httptest`, logged in, and check the status, the HTML and the Datastar SSE patches
+- Every service method has a table of who may call it (admin, member, room member, non-member of a visible room, non-member of a private room, disabled user)
 - Every error Tag has a route test
+- Every audited action has a test of the event it writes, and of no event when the change fails
