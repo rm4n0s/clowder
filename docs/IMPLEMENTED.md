@@ -694,3 +694,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
     - downloads keep `private, max-age=86400`;
     - read-marking on GET (D33).
   - `govulncheck` was not run, because it is not an allowed tool. Dependency versions are listed. The bundled SQLite (`modernc.org/sqlite v1.23.1`, SQLite 3.41) is the oldest part.
+
+## 13.3 Release 1.0
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-13.3-release
+- **Summary:** Every check and every browser test was run on the final tree. The SPEC status is now 1.0. The step is merged, milestone M13 is pushed, and the annotated tag `v1.0.0` is made on the merge commit and pushed.
+- **Main files:** `docs/SPEC.md`, `docs/IMPLEMENTED.md`.
+- **Tests:** the whole suite. `go test -race ./...` passes in about 41 s, and the browser suite `go test -tags clowder_browser ./...` passes in about 89 s.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · no process left ✅
+- **Proof:** method B: `git ls-remote --tags origin v1.0.0` shows the tag on `origin`.
+- **Manual checks:** none
+- **Deviations and follow-ups:** The SPEC §16 recommendations stand as written: admins don't read private messages, and messages are not audited or searched in 1.0. The owner may revise them, along with the decisions D29–D37 that the manager made.

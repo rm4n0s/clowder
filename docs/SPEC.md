@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | Draft 0.1 |
-| Date | 2026-10-26 |
+| Status | 1.0 (released as `v1.0.0`, 2026-10-27) |
+| Date | 2026-10-27 |
 | Owner | Manos Ragiadakos |
 | Module | `github.com/rm4n0s/clowder` |
 | License | BSD-3-Clause |
