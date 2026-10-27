@@ -9,23 +9,51 @@ import (
 	"github.com/rm4n0s/clowder/internal/store"
 )
 
-// securedRoutes are the requests of the routes that need a login. A later step
-// adds its own to the list; TestEverySecuredRouteIsListed makes sure none is
-// forgotten.
-func securedRoutes() []struct {
+// securedRoute is a request of a route that needs a login, with the status it
+// gets from a member and from an admin.
+type securedRoute struct {
 	name, method, path string
 	status             int
-} {
-	return []struct {
-		name, method, path string
-		status             int
-	}{
-		{"me", http.MethodGet, "/api/v1/me", http.StatusOK},
-		{"sessions", http.MethodGet, "/api/v1/me/sessions", http.StatusOK},
-		{"users", http.MethodGet, "/api/v1/users", http.StatusOK},
-		{"users with a query", http.MethodGet, "/api/v1/users?q=al", http.StatusOK},
-		{"end a session", http.MethodDelete, "/api/v1/me/sessions/999999", http.StatusNotFound},
-		{"logout", http.MethodPost, "/api/v1/auth/logout", http.StatusNoContent},
+	// body is the JSON body of the request; nil sends none.
+	body any
+}
+
+// securedRoutes are the requests of the routes that need a login. A later step
+// adds its own to the list; TestEverySecuredRouteIsListed makes sure none is
+// forgotten. A route with an ID asks for a resource that does not exist, so
+// that the same request is 404 for everyone who is logged in; the tests of the
+// resource check who may do what.
+func securedRoutes() []securedRoute {
+	const missing = "/999999"
+	reactPath := "/api/v1/posts" + missing + "/reactions/%F0%9F%91%8D"
+	return []securedRoute{
+		{"me", http.MethodGet, "/api/v1/me", http.StatusOK, nil},
+		{"sessions", http.MethodGet, "/api/v1/me/sessions", http.StatusOK, nil},
+		{"users", http.MethodGet, "/api/v1/users", http.StatusOK, nil},
+		{"users with a query", http.MethodGet, "/api/v1/users?q=al", http.StatusOK, nil},
+		{"end a session", http.MethodDelete, "/api/v1/me/sessions/999999", http.StatusNotFound, nil},
+		{"logout", http.MethodPost, "/api/v1/auth/logout", http.StatusNoContent, nil},
+		{"rooms", http.MethodGet, "/api/v1/rooms", http.StatusOK, nil},
+		{"make a room", http.MethodPost, "/api/v1/rooms", http.StatusCreated, map[string]any{"name": "den", "visibility": "private"}},
+		{"get a room", http.MethodGet, "/api/v1/rooms" + missing, http.StatusNotFound, nil},
+		{"change a room", http.MethodPatch, "/api/v1/rooms" + missing, http.StatusNotFound, map[string]any{"name": "x"}},
+		{"delete a room", http.MethodDelete, "/api/v1/rooms" + missing, http.StatusNotFound, nil},
+		{"join a room", http.MethodPost, "/api/v1/rooms" + missing + "/join", http.StatusNotFound, nil},
+		{"leave a room", http.MethodPost, "/api/v1/rooms" + missing + "/leave", http.StatusNotFound, nil},
+		{"members", http.MethodGet, "/api/v1/rooms" + missing + "/members", http.StatusNotFound, nil},
+		{"add a member", http.MethodPost, "/api/v1/rooms" + missing + "/members", http.StatusNotFound, map[string]any{"user_id": 1}},
+		{"remove a member", http.MethodDelete, "/api/v1/rooms" + missing + "/members/1", http.StatusNotFound, nil},
+		{"candidates", http.MethodGet, "/api/v1/rooms" + missing + "/candidates?q=a", http.StatusNotFound, nil},
+		{"feed", http.MethodGet, "/api/v1/rooms" + missing + "/posts", http.StatusNotFound, nil},
+		{"write a post", http.MethodPost, "/api/v1/rooms" + missing + "/posts", http.StatusNotFound, map[string]any{"body": "hello"}},
+		{"get a post", http.MethodGet, "/api/v1/posts" + missing, http.StatusNotFound, nil},
+		{"thread", http.MethodGet, "/api/v1/posts" + missing + "/thread", http.StatusNotFound, nil},
+		{"write a comment", http.MethodPost, "/api/v1/posts" + missing + "/comments", http.StatusNotFound, map[string]any{"body": "hello"}},
+		{"edit a post", http.MethodPatch, "/api/v1/posts" + missing, http.StatusNotFound, map[string]any{"body": "hello"}},
+		{"delete a post", http.MethodDelete, "/api/v1/posts" + missing, http.StatusNotFound, nil},
+		{"react", http.MethodPut, reactPath, http.StatusNotFound, nil},
+		{"unreact", http.MethodDelete, reactPath, http.StatusNotFound, nil},
+		{"tags", http.MethodGet, "/api/v1/tags?prefix=a", http.StatusOK, nil},
 	}
 }
 
@@ -45,7 +73,7 @@ func TestEverySecuredRouteIsListed(t *testing.T) {
 	listed := map[string]bool{}
 	for _, rt := range securedRoutes() {
 		// Find the pattern the request matches.
-		r := request(rt.method, rt.path, nil)
+		r := request(rt.method, rt.path, rt.body)
 		e.sendRaw(r)
 		listed[r.Pattern] = true
 	}
@@ -128,7 +156,7 @@ func TestWhoMayCall(t *testing.T) {
 				e.addUser("admin", store.RoleAdmin)
 				e.addUser("alice", store.RoleMember)
 				opts := c.opts(e)
-				rec := e.send(request(rt.method, rt.path, nil, opts...))
+				rec := e.send(request(rt.method, rt.path, rt.body, opts...))
 				want := c.want
 				if want == 0 {
 					want = rt.status

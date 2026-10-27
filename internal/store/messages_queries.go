@@ -76,6 +76,8 @@ type MessageReactionRow struct {
 	UserID uint64
 	// Emoji is the emoji of the reaction.
 	Emoji string
+	// Username is the username of the user who reacted.
+	Username string
 	// DisplayName is the display name of the user who reacted.
 	DisplayName string
 }
@@ -570,7 +572,7 @@ func (s *Store) ReactionsOfMessages(ctx context.Context, messageIDs []uint64) (m
 	}
 	var rows []MessageReactionRow
 	err := s.db(ctx).Table("message_reactions").
-		Select("message_reactions.id AS id, message_reactions.message_id AS message_id, message_reactions.user_id AS user_id, message_reactions.emoji AS emoji, users.display_name AS display_name").
+		Select("message_reactions.id AS id, message_reactions.message_id AS message_id, message_reactions.user_id AS user_id, message_reactions.emoji AS emoji, users.username AS username, users.display_name AS display_name").
 		Joins("JOIN users ON users.id = message_reactions.user_id").
 		Where("message_reactions.message_id IN ?", messageIDs).
 		Order("message_reactions.id ASC").

@@ -842,3 +842,38 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The limiter's counter uses its own Redis client, separate from the bridge's.
   - The cluster screenshot is taken with `-height 1500` so that the post is in view.
   - Each process holds up to 32 PostgreSQL connections; the README says to raise `max_connections` to match.
+
+## 16.2 Rooms, posts, comments and reactions
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-16.2-api-rooms-posts
+- **Summary:**
+  - The API gets the 21 routes that SPEC §7.12 lists under Rooms and under Posts and comments, plus `GET /tags`: rooms, members, candidates, the paged feed (`before`, `limit` up to 100), posts and comments, the thread, reactions and tag suggestions.
+  - A post or comment carries its `body` and its rendered `html`, author, tags, tasks, attachments, reactions (with the caller's own marked), comment count, edited and deleted state and `can_edit`/`can_delete`.
+  - Reactions are idempotent `PUT`/`DELETE` that answer with the post's reactions.
+  - The thread is `{post, comments: [{depth, comment}], focus_id}` in reading order, with no depth limit.
+  - A `PATCH` keeps every field that is absent; a list that is present replaces the whole list.
+  - Every rule comes from the services: a private room is 404 to a non-member, admins included for reads (D29).
+- **Main files:**
+  - The API: `internal/api/{handlers_rooms,handlers_posts,types_rooms,types_posts,fields}.go`, `openapi.json` (21 operations, 20 schemas).
+  - The services: `internal/app/{rooms,posts,reactions}.go` (new `Rooms.Available`, `Rooms.Patch`, `Rooms.SearchCandidates`, `Posts.SetReaction`).
+  - The store: `internal/store/{reactions,posts_queries}.go`.
+  - The client: `cmd/clowder-apicheck` (the `rooms` scenario).
+- **Tests:**
+  - `internal/api`: 1064 passing cases, among them the access matrix extended to every new route, feed paging, the PATCH rules, the emoji escaping, the field-name mapping, the request schemas and the audit events written through the API (and none when a change fails).
+  - `internal/app`: 98 cases with permission tables for the 4 new methods.
+  - `internal/store`: the reaction queries, and `TestReplacePostTagsWithTheSameNewTagAtOnce` (8 concurrent transactions). This test fails on PostgreSQL without the fix below.
+  - `cmd/clowder-apicheck`: 31 cases.
+  - Each of the 5 new tags has a route test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests (`internal/web`) ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [16.2 apicheck](implemented-proof-images/16.2-apicheck.txt)
+  `clowder-apicheck` as alice on demo data runs 29 requests, all with their expected statuses. The rooms scenario leaves and rejoins a room, makes a private room with a member, posts, comments twice, reacts and unreacts, edits, reads the thread, deletes a comment that is then shown as deleted, and deletes the room (404 afterwards).
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Fixed on the manager's review: two requests creating the same new tag at once got a 409 on PostgreSQL, from the pages too. `ReplacePostTags` now inserts missing tags with `ON CONFLICT DO NOTHING`, sorted by name so that transactions cannot deadlock, and reads the IDs back.
+  - Left as it is: the same user joining one room twice at the same instant gets 409 `conflict`, as documented. The apicheck tests give each scenario its own server for that reason.
+  - The feed's largest page went from 50 to 100.
+  - The admin, thread and PATCH decisions are recorded in SPEC D42 and §7.12.
+  - The task errors of a post come back under `tasks`, because the service has one field for all its tasks.
+  - `upload_ids` is refused (422) until 16.3 adds `POST /uploads`.

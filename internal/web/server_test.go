@@ -148,7 +148,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		Logger:            logger,
 	}, hub)
 	apiServer, err := api.New(api.Options{
-		Services: api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs},
+		Services: api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts},
 		Logger:   logger,
 		NoteUser: NoteUser,
 		ClientIP: ClientIPFunc(cfg.TrustProxyHeaders),

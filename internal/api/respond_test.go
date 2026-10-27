@@ -121,8 +121,8 @@ func TestSnakeCase(t *testing.T) {
 			t.Errorf("snakeCase(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
-	if got := snakeFields(nil); got != nil {
-		t.Errorf("snakeFields(nil) = %v, want nil", got)
+	if got := renamedFields(nil, snakeCase); got != nil {
+		t.Errorf("renamedFields(nil) = %v, want nil", got)
 	}
 }
 

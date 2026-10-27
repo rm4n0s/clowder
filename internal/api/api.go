@@ -28,6 +28,10 @@ type Services struct {
 	Notifications *app.Notifications
 	// Messages is the service of private messages, for the unread count.
 	Messages *app.Messages
+	// Rooms is the service of rooms and their members.
+	Rooms *app.Rooms
+	// Posts is the service of posts, comments, reactions and tags.
+	Posts *app.Posts
 }
 
 // Options are the parts a Server is made of.
@@ -73,8 +77,9 @@ type Server struct {
 // New makes the API from its options. It fails when the services of Options
 // are not all there.
 func New(opts Options) (*Server, error) {
-	if opts.Services.Accounts == nil || opts.Services.Notifications == nil || opts.Services.Messages == nil {
-		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications and messages services")
+	svc := opts.Services
+	if svc.Accounts == nil || svc.Notifications == nil || svc.Messages == nil || svc.Rooms == nil || svc.Posts == nil {
+		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications, messages, rooms and posts services")
 	}
 	s := &Server{svc: opts.Services, logger: opts.Logger, noteUser: opts.NoteUser, clientIP: opts.ClientIP}
 	if s.logger == nil {
@@ -118,6 +123,8 @@ func (s *Server) defineRoutes() []Route {
 	routes = append(routes, s.authRoutes()...)
 	routes = append(routes, s.meRoutes()...)
 	routes = append(routes, s.userRoutes()...)
+	routes = append(routes, s.roomRoutes()...)
+	routes = append(routes, s.postRoutes()...)
 	routes = append(routes, s.documentRoutes()...)
 	return routes
 }

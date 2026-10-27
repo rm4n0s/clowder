@@ -41,7 +41,7 @@ const (
 	// feedDefaultLimit is the page size of the feed when the caller gives none.
 	feedDefaultLimit = 30
 	// feedMaxLimit is the largest page the feed gives.
-	feedMaxLimit = 50
+	feedMaxLimit = 100
 	// tagShownLength is how much of a wrong tag a message quotes.
 	tagShownLength = 20
 )
@@ -718,7 +718,7 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 // Feed returns a page of the top-level posts of a room that the actor may
 // read, newest first. beforeID 0 starts from the newest post; another value
 // returns the posts older than it. limit is the page size: 30 when it is 0 or
-// less, at most 50. A deleted post that has replies appears as deleted. For a
+// less, at most 100. A deleted post that has replies appears as deleted. For a
 // room that the actor may not read it fails with TagNotFound.
 func (p *Posts) Feed(ctx context.Context, actor Actor, roomID, beforeID uint64, limit int) (FeedPage, error) {
 	if limit <= 0 {

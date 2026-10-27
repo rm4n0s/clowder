@@ -33,6 +33,18 @@
       "description": "The other users."
     },
     {
+      "name": "rooms",
+      "description": "Rooms and their members."
+    },
+    {
+      "name": "posts",
+      "description": "Posts, comments, threads and reactions."
+    },
+    {
+      "name": "tags",
+      "description": "Tag suggestions."
+    },
+    {
       "name": "meta",
       "description": "The API itself."
     }
@@ -321,6 +333,1085 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UserList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "List rooms",
+        "operationId": "listRooms",
+        "description": "Lists the rooms the user sees, by name without regard to case: every visible room and the private rooms the user is a member of. is_member says which the user has joined. A private room the user is not in is not listed, an admin included.",
+        "responses": {
+          "200": {
+            "description": "The rooms.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Make a room",
+        "operationId": "createRoom",
+        "description": "Makes a room with the user as its first member and the columns To do, In progress and Done. Visible rooms are made by admins only (403 forbidden for anyone else); private rooms by anyone. A name is 1 to 64 characters and unique without regard to case, a description at most 500; mistakes are 422 invalid_input with fields name, description and visibility.",
+        "requestBody": {
+          "required": true,
+          "description": "The new room.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new room.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Room"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "The path of the new resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Get a room",
+        "operationId": "getRoom",
+        "description": "Returns a visible room, which every user reads before joining, or a private room the user is a member of. Any other room is 404, an admin's too.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The room.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Room"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Change a room",
+        "operationId": "updateRoom",
+        "description": "Changes the name and the description that the body has and returns the room; a field that is left out, or null, stays. The visibility of a room does not change. Admins may in any room, the creator in a room they can still read (D29); another member gets 403 forbidden and a user who may not know a private room 404. Nothing changes, and no audit event is written, when the values are the room's own.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomPatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The room as it is now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Room"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Delete a room",
+        "operationId": "deleteRoom",
+        "description": "Deletes the room with its posts, comments, tasks, attachments and members. Admins may in any room (D29), the creator in a room they can still read; a member who is neither gets 403 forbidden.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The room is gone."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/join": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Join a room",
+        "operationId": "joinRoom",
+        "description": "Makes the user a member of a visible room. Joining a room the user is in is not an error. A private room the user is not in is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The user is a member."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/leave": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Leave a room",
+        "operationId": "leaveRoom",
+        "description": "Removes the user from the room. Leaving a room the user is not in is not an error. A private room the user is not in is 404; one that ends with no members is kept for admins to delete.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The user is not a member."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/members": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "List the members of a room",
+        "operationId": "listRoomMembers",
+        "description": "Lists the members of a room the user can read, by display name.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The members.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Add a member to a room",
+        "operationId": "addRoomMember",
+        "description": "Adds a user to the room, who is notified. Any member of the room may. Adding a user who is a member is not an error. A user who does not exist or is disabled is 422 with the field user_id. A visible room the caller has not joined is 403 forbidden.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The user to add.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberAddRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The user is a member."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/members/{user_id}": {
+      "delete": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Remove a member from a room",
+        "operationId": "removeRoomMember",
+        "description": "Removes a user from the room. Only admins may, in any room (D29); everyone else gets 403 forbidden, or 404 for a private room they are not in. Removing a user who is not a member is not an error.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the user.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The user is not a member."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/candidates": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Find users to add to a room",
+        "operationId": "listRoomCandidates",
+        "description": "Lists the enabled users who are not members of the room and whose username or display name starts with q, in any case, ordered by username, 20 at most. Without q it lists the first 20. Only members of the room may ask (403 forbidden for a visible room the user has not joined).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "The start of a username or of a display name.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/posts": {
+      "get": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Read the feed of a room",
+        "operationId": "listPosts",
+        "description": "Returns a page of the top-level posts of a room the user can read, newest first. Without before it starts at the newest post; with before it returns the posts older than that ID. limit is 30 by default and at most 100 (422 above, and for anything that is not a positive number). next_before is the before of the next page and null on the last. A deleted post that has replies is in the feed as deleted.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "The ID of the last post of the previous page (its next_before).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The size of the page, 1 to 100; 30 when left out.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of the feed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Feed"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Write a post",
+        "operationId": "createPost",
+        "description": "Writes a post in a room. Only members post (403 forbidden for a visible room the user has not joined). The body is at most 20,000 characters; a post needs a body, an attachment or a task. Fields that are left out are empty and the format is text. attachment_ids must be empty here: a new post has nothing to keep. Mistakes are 422 invalid_input with fields named as in the request (tasks has one message that names the row: Task 2: ...).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The post.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new post.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "The path of the new resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/posts/{id}": {
+      "get": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Get a post or a comment",
+        "operationId": "getPost",
+        "description": "Returns a post or a comment of a room the user can read. One that was deleted but stays for its replies comes back with deleted true and no author, body or html; one that was deleted without replies is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The post.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Edit a post or a comment",
+        "operationId": "updatePost",
+        "description": "Changes a post or comment and returns it. Only the author may (403 forbidden for another reader). What the body leaves out, or sets to null, stays as it is: format, body, tags, tasks and attachment_ids. A list that is there replaces the list: tags is exactly those tags, tasks exactly those tasks (an entry with an id is that task edited, one without is new, a task that is not listed is deleted), attachment_ids exactly those attachments of the post (the others are removed). upload_ids add new files. The post then shows edited_at.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The post as it is now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Delete a post or a comment",
+        "operationId": "deletePost",
+        "description": "Deletes a post or comment. The author or an admin may (403 forbidden for another reader). One with replies stays as deleted so that its thread keeps its shape; one without replies disappears. Its tasks, attachments, reactions, tags and mentions go with it.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The post is deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/posts/{id}/thread": {
+      "get": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Read a thread",
+        "operationId": "getThread",
+        "description": "Returns a top-level post and every comment under it at any depth, as a list in reading order: every comment comes before its replies and siblings are oldest first. A comment's parent_id and depth place it in the tree. The ID may be that of a comment: the thread of its post comes back and focus_id is the comment's ID, otherwise null.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The thread.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Thread"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/posts/{id}/comments": {
+      "post": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Write a comment",
+        "operationId": "createComment",
+        "description": "Writes a comment under a post or a comment, to any depth, in the thread of the same top-level post. The body of the request and its rules are those of a new post. A deleted post cannot be replied to (404).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The comment.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new comment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "The path of the new resource.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/posts/{id}/reactions/{emoji}": {
+      "put": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "React to a post or a comment",
+        "operationId": "putReaction",
+        "description": "Puts the emoji on the post or comment as the user. Only members of the room react (403 forbidden for a visible room the user has not joined). Putting an emoji that is already there is not an error. The answer is the reactions of the post as the user sees them.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "required": true,
+            "description": "The emoji, URL-escaped (UTF-8 percent-encoded). Exactly one emoji: a flag, a keycap or a joined sequence such as a family counts as one; several emoji, letters and anything else are 422 with the field emoji.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reactions of the post.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Take a reaction off",
+        "operationId": "deleteReaction",
+        "description": "Takes the user's emoji off the post or comment. Taking off one that is not there is not an error. The answer is the reactions of the post as the user sees them.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "required": true,
+            "description": "The emoji, URL-escaped (UTF-8 percent-encoded). Exactly one emoji: a flag, a keycap or a joined sequence such as a family counts as one; several emoji, letters and anything else are 422 with the field emoji.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reactions of the post.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/tags": {
+      "get": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "Suggest tags",
+        "operationId": "listTags",
+        "description": "Lists up to 10 tags that start with prefix, used on posts in rooms the user can read, by name. A leading # and the case of prefix do not matter. Without prefix it lists the first names.",
+        "parameters": [
+          {
+            "name": "prefix",
+            "in": "query",
+            "required": false,
+            "description": "The start of a tag.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tags.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagList"
                 }
               }
             }
@@ -685,6 +1776,708 @@
           "users"
         ],
         "additionalProperties": false
+      },
+      "UserRef": {
+        "type": "object",
+        "description": "A person named on a room, a post or a reaction.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the user."
+          },
+          "username": {
+            "type": "string",
+            "description": "The unique, lower-case username."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "The name shown to other people."
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name"
+        ],
+        "additionalProperties": false
+      },
+      "Room": {
+        "type": "object",
+        "description": "A room as the user sees it.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the room."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name, unique without regard to case."
+          },
+          "description": {
+            "type": "string",
+            "description": "What the room is for; may be empty."
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "visible",
+              "private"
+            ],
+            "description": "visible rooms are listed and read by every user; private rooms only by their members."
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/UserRef",
+            "description": "Who made the room."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the room was made."
+          },
+          "member_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of members."
+          },
+          "is_member": {
+            "type": "boolean",
+            "description": "True when the user is a member; only members post, comment and react."
+          },
+          "can_manage": {
+            "type": "boolean",
+            "description": "True when the user may rename and delete the room: an admin, or its creator."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "visibility",
+          "created_by",
+          "created_at",
+          "member_count",
+          "is_member",
+          "can_manage"
+        ],
+        "additionalProperties": false
+      },
+      "RoomList": {
+        "type": "object",
+        "properties": {
+          "rooms": {
+            "type": "array",
+            "description": "The rooms, by name.",
+            "items": {
+              "$ref": "#/components/schemas/Room"
+            }
+          }
+        },
+        "required": [
+          "rooms"
+        ],
+        "additionalProperties": false
+      },
+      "RoomCreateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The name: 1 to 64 characters, unique without regard to case."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "At most 500 characters; empty when left out."
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "visible",
+              "private"
+            ],
+            "description": "visible rooms are made by admins only. It cannot be changed later."
+          }
+        },
+        "required": [
+          "name",
+          "visibility"
+        ],
+        "additionalProperties": false
+      },
+      "RoomPatchRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The new name; left out or null keeps it."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "description": "The new description; left out or null keeps it, an empty string clears it."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "Member": {
+        "type": "object",
+        "description": "A member of a room.",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "added_by": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member who added the user; null when the user joined by themselves or made the room."
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the user became a member."
+          }
+        },
+        "required": [
+          "user",
+          "added_by",
+          "joined_at"
+        ],
+        "additionalProperties": false
+      },
+      "MemberList": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "description": "The members, by display name.",
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            }
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "MemberAddRequest": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the user to add."
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "additionalProperties": false
+      },
+      "Task": {
+        "type": "object",
+        "description": "A task written in a post or comment; it is a card on the board of the room.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the task."
+          },
+          "title": {
+            "type": "string",
+            "description": "The title, 1 to 200 characters."
+          },
+          "column_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the column of the board the task is in."
+          },
+          "assignees": {
+            "type": "array",
+            "description": "The people the task is assigned to.",
+            "items": {
+              "$ref": "#/components/schemas/UserRef"
+            }
+          },
+          "due_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The day the task is due as YYYY-MM-DD, or null.",
+            "format": "date"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "column_id",
+          "assignees",
+          "due_date"
+        ],
+        "additionalProperties": false
+      },
+      "Attachment": {
+        "type": "object",
+        "description": "A file attached to a post or comment.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the attachment."
+          },
+          "file_name": {
+            "type": "string",
+            "description": "The name the file had when it was uploaded."
+          },
+          "content_type": {
+            "type": "string",
+            "description": "The type found by looking at the content."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The size in bytes."
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The width in pixels of an image, otherwise null.",
+            "minimum": 1
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The height in pixels of an image, otherwise null.",
+            "minimum": 1
+          },
+          "url": {
+            "type": "string",
+            "description": "The path to download the file from, with the bearer token."
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "content_type",
+          "size",
+          "width",
+          "height",
+          "url"
+        ],
+        "additionalProperties": false
+      },
+      "Reaction": {
+        "type": "object",
+        "description": "One emoji on a post or comment.",
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "description": "The emoji."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many people reacted with it."
+          },
+          "users": {
+            "type": "array",
+            "description": "The people, in the order they reacted.",
+            "items": {
+              "$ref": "#/components/schemas/UserRef"
+            }
+          },
+          "mine": {
+            "type": "boolean",
+            "description": "True when the user is one of them."
+          }
+        },
+        "required": [
+          "emoji",
+          "count",
+          "users",
+          "mine"
+        ],
+        "additionalProperties": false
+      },
+      "ReactionList": {
+        "type": "object",
+        "properties": {
+          "reactions": {
+            "type": "array",
+            "description": "The reactions of the post as the user sees them, in the order each emoji was first used.",
+            "items": {
+              "$ref": "#/components/schemas/Reaction"
+            }
+          }
+        },
+        "required": [
+          "reactions"
+        ],
+        "additionalProperties": false
+      },
+      "Post": {
+        "type": "object",
+        "description": "A post, or a comment (a post with a parent).",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the post. Newer posts have larger IDs."
+          },
+          "room_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the room."
+          },
+          "parent_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The post or comment this comment answers; null for a top-level post.",
+            "minimum": 1
+          },
+          "root_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The top-level post of the thread; the post's own ID for a top-level post."
+          },
+          "author": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The author; null for a deleted post."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "text",
+              "markdown"
+            ],
+            "description": "How the body is written."
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The body as written; null for a deleted post."
+          },
+          "html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The body rendered safely for display (raw HTML in the body is escaped; a markdown body is rendered with GitHub-flavoured extensions); null for a deleted post. A client needs no markdown renderer."
+          },
+          "tags": {
+            "type": "array",
+            "description": "The tags, normalized, in the order given.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "description": "The tasks written in the post.",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
+          "attachments": {
+            "type": "array",
+            "description": "The files of the post, in the order they were attached.",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          },
+          "reactions": {
+            "type": "array",
+            "description": "The reactions, in the order each emoji was first used; the user's own are marked.",
+            "items": {
+              "$ref": "#/components/schemas/Reaction"
+            }
+          },
+          "comment_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The comments in the thread at any depth, not counting deleted ones; 0 for a comment."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the post was written."
+          },
+          "edited_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the author last edited the post; null if never.",
+            "format": "date-time"
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "True for a post that stays only because it has replies; it has no author, body, tags, tasks, attachments or reactions."
+          },
+          "can_edit": {
+            "type": "boolean",
+            "description": "True when the user may edit it: its author."
+          },
+          "can_delete": {
+            "type": "boolean",
+            "description": "True when the user may delete it: its author or an admin."
+          }
+        },
+        "required": [
+          "id",
+          "room_id",
+          "parent_id",
+          "root_id",
+          "author",
+          "format",
+          "body",
+          "html",
+          "tags",
+          "tasks",
+          "attachments",
+          "reactions",
+          "comment_count",
+          "created_at",
+          "edited_at",
+          "deleted",
+          "can_edit",
+          "can_delete"
+        ],
+        "additionalProperties": false
+      },
+      "TaskRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "On an edit, the ID of a task of the post that stays; left out for a new task."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The title, 1 to 200 characters."
+          },
+          "assignee_ids": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "The IDs of members of the room to assign, at most 10.",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The ID of a member."
+            }
+          },
+          "due_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The day it is due as YYYY-MM-DD; left out or null for none.",
+            "format": "date"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "PostRequest": {
+        "type": "object",
+        "description": "The body of a new post, a new comment and an edit. On a new post or comment a field that is left out is empty (the format is text); on an edit it keeps what the post has. A list that is there replaces the list.",
+        "properties": {
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "text",
+              "markdown",
+              null
+            ],
+            "description": "How the body is written; text by default, and on an edit the post's own."
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20000,
+            "description": "The body, at most 20,000 characters. A post needs a body, an attachment or a task."
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 10,
+            "description": "The tags: 1 to 50 letters, digits, - or _ each, with or without a leading #, at most 10. On an edit, exactly these tags replace the old ones.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tasks": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 20,
+            "description": "The tasks, at most 20. On an edit, exactly these tasks: those with an id are edited, those without are new, the others are deleted.",
+            "items": {
+              "$ref": "#/components/schemas/TaskRequest"
+            }
+          },
+          "upload_ids": {
+            "type": "array",
+            "description": "The IDs of files uploaded with POST /uploads, to attach. Not available yet: any ID is 422.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attachment_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "On an edit, the IDs of the attachments of the post that stay; the others are removed. Left out keeps all of them. Not allowed on a new post or comment (422 unless empty).",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The ID of an attachment."
+            }
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "Feed": {
+        "type": "object",
+        "description": "A page of the feed of a room.",
+        "properties": {
+          "posts": {
+            "type": "array",
+            "description": "The top-level posts, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/Post"
+            }
+          },
+          "next_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The before of the next page; null when this is the last.",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "posts",
+          "next_before"
+        ],
+        "additionalProperties": false
+      },
+      "ThreadComment": {
+        "type": "object",
+        "description": "A comment of a thread with how deep it is.",
+        "properties": {
+          "depth": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 for a reply to the top-level post, 2 for a reply to that, and so on, without limit."
+          },
+          "comment": {
+            "$ref": "#/components/schemas/Post"
+          }
+        },
+        "required": [
+          "depth",
+          "comment"
+        ],
+        "additionalProperties": false
+      },
+      "Thread": {
+        "type": "object",
+        "description": "A top-level post with all its comments.",
+        "properties": {
+          "post": {
+            "$ref": "#/components/schemas/Post",
+            "description": "The top-level post."
+          },
+          "comments": {
+            "type": "array",
+            "description": "Every comment, in reading order: a comment comes before its replies and siblings are oldest first. Deleted comments that stay for their replies are included, as deleted.",
+            "items": {
+              "$ref": "#/components/schemas/ThreadComment"
+            }
+          },
+          "focus_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The ID of the comment the thread was asked for; null when it was asked for the top-level post.",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "post",
+          "comments",
+          "focus_id"
+        ],
+        "additionalProperties": false
+      },
+      "TagList": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "description": "The tags, by name, at most 10.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "tags"
+        ],
+        "additionalProperties": false
       }
     },
     "responses": {
@@ -706,8 +2499,28 @@
           }
         }
       },
+      "Forbidden": {
+        "description": "The user may see this but may not do it, for example post in a room they have not joined or edit someone else's post.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
       "NotFound": {
         "description": "There is no such thing, or the user may not know it exists.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The change clashes with one made just now by someone else; try again.",
         "content": {
           "application/json": {
             "schema": {

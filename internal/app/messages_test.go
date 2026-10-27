@@ -1380,9 +1380,13 @@ func TestReact(t *testing.T) {
 	toggle("bob", "\U0001F44D")
 	toggle("alice", "\U0001F44D")
 	got := toggle("carol", "❤️")
+	ref := func(name string) app.UserRef {
+		u := e.users[name]
+		return app.UserRef{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+	}
 	want := app.Reactions{
-		{Emoji: "\U0001F44D", Count: 2, Names: []string{"Bob", "Alice"}},
-		{Emoji: "❤️", Count: 1, Mine: true, Names: []string{"Carol"}},
+		{Emoji: "\U0001F44D", Count: 2, Names: []string{"Bob", "Alice"}, Users: []app.UserRef{ref("bob"), ref("alice")}},
+		{Emoji: "❤️", Count: 1, Mine: true, Names: []string{"Carol"}, Users: []app.UserRef{ref("carol")}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("reactions as carol = %+v, want %+v", got, want)

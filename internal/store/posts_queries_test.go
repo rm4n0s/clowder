@@ -2,6 +2,7 @@ package store
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
@@ -435,5 +436,70 @@ func TestPostQueryTags(t *testing.T) {
 	}
 	if n := f.count("posts"); n != 1 {
 		t.Errorf("posts has %d rows after the failures, want 1", n)
+	}
+}
+
+// TestReplacePostTagsWithTheSameNewTagAtOnce checks that transactions that
+// make the same new tag at the same moment all succeed and leave one tag row
+// (without ON CONFLICT DO NOTHING the second insert is a unique violation on
+// SQLite and PostgreSQL alike, and on PostgreSQL it would abort the
+// transaction as well).
+func TestReplacePostTagsWithTheSameNewTagAtOnce(t *testing.T) {
+	f := newFix(t)
+	alice := f.user()
+	room := f.room(alice)
+	const writers = 8
+	posts := make([]*Post, writers)
+	for i := range posts {
+		posts[i] = f.post(room, alice)
+	}
+	start := make(chan struct{})
+	errs := make([]error, writers)
+	var wg sync.WaitGroup
+	// Half of the writers give the tags in the other order: the tags are made in
+	// the same order whatever the order given, so that they cannot deadlock.
+	namesOf := func(i int) []string {
+		if i%2 == 1 {
+			return []string{"also-new", "brand-new"}
+		}
+		return []string{"brand-new", "also-new"}
+	}
+	for i, p := range posts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs[i] = f.s.Tx(f.ctx, func(tx *Store) error {
+				if err := tx.ReplacePostTags(f.ctx, p.ID, namesOf(i)); err != nil {
+					return err
+				}
+				// Hold the transaction open, so that the others overlap with it.
+				time.Sleep(30 * time.Millisecond)
+				return nil
+			})
+		}()
+	}
+	close(start)
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("writer %d: %+v", i, err)
+		}
+	}
+	if n := f.count("tags"); n != 2 {
+		t.Errorf("%d tag rows, want 2", n)
+	}
+	ids := make([]uint64, len(posts))
+	for i, p := range posts {
+		ids[i] = p.ID
+	}
+	got, err := f.s.TagNamesOfPosts(f.ctx, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range posts {
+		if !reflect.DeepEqual(got[p.ID], namesOf(i)) {
+			t.Errorf("tags of post %d = %v", p.ID, got[p.ID])
+		}
 	}
 }

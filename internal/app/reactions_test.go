@@ -150,7 +150,7 @@ func TestToggleReactionAddsAndRemoves(t *testing.T) {
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "react to me")
 	if got := e.react("bob", p.ID, emojiParty); !reflect.DeepEqual([]app.ReactionCount(got),
-		[]app.ReactionCount{{Emoji: emojiParty, Count: 1, Mine: true, Names: []string{"Bob"}}}) {
+		[]app.ReactionCount{{Emoji: emojiParty, Count: 1, Mine: true, Names: []string{"Bob"}, Users: []app.UserRef{e.ref("bob")}}}) {
 		t.Errorf("after the add: %+v", got)
 	}
 	if got := e.react("bob", p.ID, emojiParty); len(got) != 0 {
@@ -195,9 +195,9 @@ func TestReactionsOfPostsAreCountedPerActor(t *testing.T) {
 			return false
 		}
 		return []app.ReactionCount{
-			{Emoji: emojiParty, Count: 2, Mine: mine("bob", "alice"), Names: []string{"Bob", "Alice"}},
-			{Emoji: emojiFire, Count: 2, Mine: mine("admin", "bob"), Names: []string{"Admin", "Bob"}},
-			{Emoji: emojiThumbsUp, Count: 1, Mine: mine("alice"), Names: []string{"Alice"}},
+			{Emoji: emojiParty, Count: 2, Mine: mine("bob", "alice"), Names: []string{"Bob", "Alice"}, Users: []app.UserRef{e.ref("bob"), e.ref("alice")}},
+			{Emoji: emojiFire, Count: 2, Mine: mine("admin", "bob"), Names: []string{"Admin", "Bob"}, Users: []app.UserRef{e.ref("admin"), e.ref("bob")}},
+			{Emoji: emojiThumbsUp, Count: 1, Mine: mine("alice"), Names: []string{"Alice"}, Users: []app.UserRef{e.ref("alice")}},
 		}
 	}
 	for _, user := range []string{"bob", "admin", "alice", "carol"} {
@@ -232,7 +232,7 @@ func TestReactionsOfPostsAreCountedPerActor(t *testing.T) {
 			t.Errorf("root reactions = %+v", th.Root.Reactions)
 		}
 		if len(th.Comments) != 1 ||
-			!reflect.DeepEqual(th.Comments[0].Reactions, []app.ReactionCount{{Emoji: emojiHeart, Count: 1, Mine: true, Names: []string{"Admin"}}}) {
+			!reflect.DeepEqual(th.Comments[0].Reactions, []app.ReactionCount{{Emoji: emojiHeart, Count: 1, Mine: true, Names: []string{"Admin"}, Users: []app.UserRef{e.ref("admin")}}}) {
 			t.Errorf("comment reactions = %+v", th.Comments)
 		}
 		th = e.thread("bob", p.ID)

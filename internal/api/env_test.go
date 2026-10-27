@@ -18,6 +18,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/store/storetest"
 	"github.com/rm4n0s/errors"
@@ -57,6 +58,8 @@ type testEnv struct {
 	handler  http.Handler
 	accounts *app.Accounts
 	msgs     *app.Messages
+	rooms    *app.Rooms
+	posts    *app.Posts
 	st       *store.Store
 	clk      *clock.Fake
 	rec      *live.Recorder
@@ -103,9 +106,11 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 	}
 	msgs := app.NewMessages(st, clk, fileStore, app.MessagesConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4}, rec)
 	notifs := app.NewNotifications(st, rec)
+	rooms := app.NewRooms(st, fileStore, logger, rec)
+	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4, Logger: logger}, rec)
 	noted := &noteLog{}
 	opts := Options{
-		Services: Services{Accounts: accounts, Notifications: notifs, Messages: msgs},
+		Services: Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts},
 		Logger:   logger,
 		NoteUser: func(_ *http.Request, id uint64) { noted.add(id) },
 	}
@@ -120,7 +125,7 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 	for _, rt := range srv.Routes() {
 		mux.Handle(rt.Pattern, rt.Handler)
 	}
-	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, st: st, clk: clk, rec: rec, log: buf, noted: noted}
+	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, st: st, clk: clk, rec: rec, log: buf, noted: noted}
 }
 
 // addUser makes a user with the password testPassword.

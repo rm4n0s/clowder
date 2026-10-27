@@ -1,8 +1,10 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -71,6 +73,8 @@ type Room struct {
 	Visibility Visibility
 	// CreatedBy is the ID of the user who made the room.
 	CreatedBy uint64
+	// Creator names the user who made the room.
+	Creator UserRef
 	// CreatedAt is when the room was made.
 	CreatedAt time.Time
 	// MemberCount is the number of members.
@@ -96,6 +100,8 @@ type Member struct {
 	// AddedByDisplayName is the display name of AddedBy; empty when AddedBy
 	// is nil.
 	AddedByDisplayName string
+	// AddedByUsername is the username of AddedBy; empty when AddedBy is nil.
+	AddedByUsername string
 	// JoinedAt is when the user became a member.
 	JoinedAt time.Time
 }
@@ -137,6 +143,7 @@ func (r *Rooms) Create(ctx context.Context, actor Actor, in RoomInput) (Room, er
 	}
 
 	var created store.Room
+	var creator UserRef
 	err := r.st.Tx(ctx, func(tx *store.Store) error {
 		// Look first, so that a taken name is a mistake in the form. The unique
 		// index still decides when two requests race: that one is TagConflict.
@@ -152,6 +159,7 @@ func (r *Rooms) Create(ctx context.Context, actor Actor, in RoomInput) (Room, er
 		if err != nil {
 			return err
 		}
+		creator = UserRef{ID: actor.UserID, Username: actor.Username, DisplayName: who}
 		created = store.Room{
 			Name:        in.Name,
 			Description: in.Description,
@@ -188,7 +196,7 @@ func (r *Rooms) Create(ctx context.Context, actor Actor, in RoomInput) (Room, er
 	if err != nil {
 		return Room{}, err
 	}
-	return roomView(actor, created, 1, true), nil
+	return roomView(actor, created, creator, 1, true), nil
 }
 
 // Visible returns every visible room, ordered by name. IsMember says which of
@@ -265,6 +273,7 @@ func memberViews(ctx context.Context, st *store.Store, roomID uint64) ([]Member,
 		}
 		if row.Adder != nil {
 			m.AddedByDisplayName = row.Adder.DisplayName
+			m.AddedByUsername = row.Adder.Username
 		}
 		members[i] = m
 	}
@@ -656,6 +665,97 @@ func (r *Rooms) Delete(ctx context.Context, actor Actor, roomID uint64) error {
 	return nil
 }
 
+// Available returns the rooms the actor sees in a list: every visible room
+// and the private rooms the actor is a member of, ordered by name. IsMember
+// says which of them the actor has joined.
+func (r *Rooms) Available(ctx context.Context, actor Actor) ([]Room, error) {
+	visible, err := r.st.ListVisibleRooms(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mine, err := r.st.ListRoomsOfUser(ctx, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[uint64]bool, len(visible)+len(mine))
+	rows := make([]store.Room, 0, len(visible)+len(mine))
+	for _, row := range slices.Concat(visible, mine) {
+		if !seen[row.ID] {
+			seen[row.ID] = true
+			rows = append(rows, row)
+		}
+	}
+	slices.SortFunc(rows, func(a, b store.Room) int {
+		if c := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.ID, b.ID)
+	})
+	return roomViews(ctx, r.st, actor, rows)
+}
+
+// RoomPatch is a change of a room in which only the fields that are set
+// change.
+type RoomPatch struct {
+	// Name is the new name, or nil to keep the name.
+	Name *string
+	// Description is the new description, or nil to keep it.
+	Description *string
+}
+
+// Patch changes the name and the description of a room, the fields of patch
+// that are set, and returns the room as the actor sees it afterwards. The
+// rules, the audit event and the errors are those of Update, which it calls:
+// admins and the creator may, and a private room that the actor may not read
+// is TagNotFound for anyone but an admin.
+func (r *Rooms) Patch(ctx context.Context, actor Actor, roomID uint64, patch RoomPatch) (Room, error) {
+	room, err := loadManageableRoom(ctx, r.st, actor, roomID)
+	if err != nil {
+		return Room{}, err
+	}
+	in := RoomInput{Name: room.Name, Description: room.Description}
+	if patch.Name != nil {
+		in.Name = *patch.Name
+	}
+	if patch.Description != nil {
+		in.Description = *patch.Description
+	}
+	if err := r.Update(ctx, actor, roomID, in); err != nil {
+		return Room{}, err
+	}
+	row, err := r.st.RoomByID(ctx, roomID)
+	if err != nil {
+		return Room{}, err
+	}
+	views, err := roomViews(ctx, r.st, actor, []store.Room{row})
+	if err != nil {
+		return Room{}, err
+	}
+	return views[0], nil
+}
+
+// SearchCandidates returns the candidates of Candidates whose username or
+// display name starts with prefix, in any case, 20 at most, ordered by
+// username. An empty prefix returns the first 20. The permissions are those
+// of Candidates.
+func (r *Rooms) SearchCandidates(ctx context.Context, actor Actor, roomID uint64, prefix string) ([]User, error) {
+	all, err := r.Candidates(ctx, actor, roomID)
+	if err != nil {
+		return nil, err
+	}
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	users := []User{}
+	for _, u := range all {
+		if len(users) == userSearchLimit {
+			break
+		}
+		if prefix == "" || strings.HasPrefix(strings.ToLower(u.Username), prefix) || strings.HasPrefix(strings.ToLower(u.DisplayName), prefix) {
+			users = append(users, u)
+		}
+	}
+	return users, nil
+}
+
 // AllRooms returns every room, private ones included, ordered by name, for
 // the admin rooms page (D29). Only admins may; anyone else gets TagForbidden.
 func (r *Rooms) AllRooms(ctx context.Context, actor Actor) ([]Room, error) {
@@ -693,13 +793,14 @@ func memberDetails(userID uint64, username string) map[string]any {
 }
 
 // roomView makes the view of a room for the actor.
-func roomView(actor Actor, row store.Room, memberCount int, member bool) Room {
+func roomView(actor Actor, row store.Room, creator UserRef, memberCount int, member bool) Room {
 	return Room{
 		ID:          row.ID,
 		Name:        row.Name,
 		Description: row.Description,
 		Visibility:  row.Visibility,
 		CreatedBy:   row.CreatedBy,
+		Creator:     creator,
 		CreatedAt:   row.CreatedAt,
 		MemberCount: memberCount,
 		IsMember:    member,
@@ -708,7 +809,8 @@ func roomView(actor Actor, row store.Room, memberCount int, member bool) Room {
 }
 
 // roomViews makes the views of the rooms for the actor, in the order of rows,
-// with two queries: the member counts and the rooms of the actor.
+// with three queries: the member counts, the rooms of the actor and the
+// creators.
 func roomViews(ctx context.Context, st *store.Store, actor Actor, rows []store.Room) ([]Room, error) {
 	ids := make([]uint64, len(rows))
 	for i, row := range rows {
@@ -726,9 +828,21 @@ func roomViews(ctx context.Context, st *store.Store, actor Actor, rows []store.R
 	for _, id := range mine {
 		joined[id] = true
 	}
+	creatorIDs := make([]uint64, len(rows))
+	for i, row := range rows {
+		creatorIDs[i] = row.CreatedBy
+	}
+	creators, err := st.UsersByIDs(ctx, creatorIDs)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[uint64]UserRef, len(creators))
+	for _, u := range creators {
+		byID[u.ID] = UserRef{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+	}
 	views := make([]Room, len(rows))
 	for i, row := range rows {
-		views[i] = roomView(actor, row, counts[row.ID], joined[row.ID])
+		views[i] = roomView(actor, row, byID[row.CreatedBy], counts[row.ID], joined[row.ID])
 	}
 	return views, nil
 }

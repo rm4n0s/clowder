@@ -51,6 +51,8 @@ type ReactionCount struct {
 	Mine bool
 	// Names are the display names of the people, in the order they reacted.
 	Names []string
+	// Users are the same people as Names, in the same order.
+	Users []UserRef
 }
 
 // Reactions are the reactions on a post, ordered by the first use of each
@@ -110,6 +112,65 @@ func (p *Posts) ToggleReaction(ctx context.Context, actor Actor, postID uint64, 
 	return Reactions(reactionCounts(rows[postID], actor.UserID)), nil
 }
 
+// SetReaction puts the emoji on the post or comment as the actor (present
+// true) or takes it off (present false) and returns the reactions of the post
+// as the actor sees them. Unlike ToggleReaction it is idempotent: putting an
+// emoji that is there, or taking off one that is not, changes nothing. The
+// permissions and the errors are those of ToggleReaction. The change is
+// published as reaction.changed only when something changed. Reactions are not
+// audited (SPEC §7.10).
+func (p *Posts) SetReaction(ctx context.Context, actor Actor, postID uint64, emoji string, present bool) (Reactions, error) {
+	var events []live.Event
+	err := p.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
+		row, err := tx.PostByID(ctx, postID)
+		if err != nil {
+			return err
+		}
+		if _, err := loadReadableRoom(ctx, tx, actor, row.RoomID); err != nil {
+			return err
+		}
+		if row.DeletedAt != nil {
+			return errors.New(TagNotFound, "the post is deleted", "reason", "deleted", "postID", postID)
+		}
+		member, err := isMember(ctx, tx, actor.UserID, row.RoomID)
+		if err != nil {
+			return err
+		}
+		if !member {
+			return errors.New(TagForbidden, "only members react",
+				"userID", actor.UserID, "roomID", row.RoomID)
+		}
+		clean, ok := cleanEmoji(emoji)
+		if !ok {
+			return errors.New(TagInvalidInput, "the reaction is not an emoji",
+				"fields", map[string]string{FieldEmoji: messageEmojiInvalid})
+		}
+		var changed bool
+		if present {
+			changed, err = tx.PutReaction(ctx, row.ID, actor.UserID, clean)
+		} else {
+			changed, err = tx.DeleteReaction(ctx, row.ID, actor.UserID, clean)
+		}
+		if err != nil {
+			return err
+		}
+		if changed {
+			events = reactionEvents(refOf(row))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	publishAll(p.pub, events)
+	rows, err := p.st.ReactionsOfPosts(ctx, []uint64{postID})
+	if err != nil {
+		return nil, err
+	}
+	return Reactions(reactionCounts(rows[postID], actor.UserID)), nil
+}
+
 // reactionEvents are the live events of a change to the reactions of a post or
 // comment: the room and the thread of the post hear of it.
 func reactionEvents(ref postRef) []live.Event {
@@ -134,10 +195,11 @@ func reactionCounts(rows []store.ReactionRow, userID uint64) []ReactionCount {
 		if !ok {
 			i = len(out)
 			at[r.Emoji] = i
-			out = append(out, ReactionCount{Emoji: r.Emoji, Names: []string{}})
+			out = append(out, ReactionCount{Emoji: r.Emoji, Names: []string{}, Users: []UserRef{}})
 		}
 		out[i].Count++
 		out[i].Names = append(out[i].Names, r.DisplayName)
+		out[i].Users = append(out[i].Users, UserRef{ID: r.UserID, Username: r.Username, DisplayName: r.DisplayName})
 		if r.UserID == userID {
 			out[i].Mine = true
 		}

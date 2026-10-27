@@ -4,7 +4,30 @@ import (
 	"context"
 
 	"github.com/rm4n0s/errors"
+	"gorm.io/gorm/clause"
 )
+
+// PutReaction adds the reaction (post, user, emoji) when it is not there and
+// leaves it when it is. It returns true when it was added. It fails with
+// TagQueryFailed when the post or the user does not exist.
+func (s *Store) PutReaction(ctx context.Context, postID, userID uint64, emoji string) (bool, error) {
+	r := Reaction{PostID: postID, UserID: userID, Emoji: emoji}
+	res := s.db(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&r)
+	if res.Error != nil {
+		return false, errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "putReaction", "postID", postID)
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// DeleteReaction removes the reaction (post, user, emoji) when it is there and
+// does nothing when it is not. It returns true when it was removed.
+func (s *Store) DeleteReaction(ctx context.Context, postID, userID uint64, emoji string) (bool, error) {
+	res := s.db(ctx).Where("post_id = ? AND user_id = ? AND emoji = ?", postID, userID, emoji).Delete(&Reaction{})
+	if res.Error != nil {
+		return false, errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "deleteReaction", "postID", postID)
+	}
+	return res.RowsAffected > 0, nil
+}
 
 // ToggleReaction adds the reaction (post, user, emoji) when it is not there and
 // removes it when it is. It returns true when the reaction was added and false
@@ -31,7 +54,8 @@ func (s *Store) ToggleReaction(ctx context.Context, postID, userID uint64, emoji
 	return true, nil
 }
 
-// ReactionRow is one reaction with the display name of the user who made it.
+// ReactionRow is one reaction with the username and the display name of the
+// user who made it.
 type ReactionRow struct {
 	// ID is the ID of the reaction; a smaller ID is an older reaction.
 	ID uint64
@@ -41,6 +65,8 @@ type ReactionRow struct {
 	UserID uint64
 	// Emoji is the emoji of the reaction.
 	Emoji string
+	// Username is the username of the user who reacted.
+	Username string
 	// DisplayName is the display name of the user who reacted.
 	DisplayName string
 }
@@ -55,7 +81,7 @@ func (s *Store) ReactionsOfPosts(ctx context.Context, postIDs []uint64) (map[uin
 	}
 	var rows []ReactionRow
 	err := s.db(ctx).Table("reactions").
-		Select("reactions.id AS id, reactions.post_id AS post_id, reactions.user_id AS user_id, reactions.emoji AS emoji, users.display_name AS display_name").
+		Select("reactions.id AS id, reactions.post_id AS post_id, reactions.user_id AS user_id, reactions.emoji AS emoji, users.username AS username, users.display_name AS display_name").
 		Joins("JOIN users ON users.id = reactions.user_id").
 		Where("reactions.post_id IN ?", postIDs).
 		Order("reactions.id ASC").

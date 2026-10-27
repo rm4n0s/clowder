@@ -36,6 +36,28 @@ type roomsEnv struct {
 	den      app.Room
 }
 
+// ref is the reference to the user of the fixture with the username.
+func (e *roomsEnv) ref(username string) app.UserRef {
+	e.t.Helper()
+	u, ok := e.users[username]
+	if !ok {
+		e.t.Fatalf("no user %q in the fixture", username)
+	}
+	return app.UserRef{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+}
+
+// userRef is the reference to the user of the fixture with the ID.
+func (e *roomsEnv) userRef(id uint64) app.UserRef {
+	e.t.Helper()
+	for _, u := range e.users {
+		if u.ID == id {
+			return app.UserRef{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+		}
+	}
+	e.t.Fatalf("no user %d in the fixture", id)
+	return app.UserRef{}
+}
+
 func newRoomsEnv(t *testing.T) *roomsEnv {
 	t.Helper()
 	e := &roomsEnv{env: newEnv(t), users: map[string]app.User{}}
@@ -278,7 +300,8 @@ func TestRoomsCreate(t *testing.T) {
 	}
 	want := app.Room{
 		ID: got.ID, Name: "Design", Description: "Pixels and things", Visibility: app.VisibilityPrivate,
-		CreatedBy: e.users["alice"].ID, CreatedAt: e.clk.Now(), MemberCount: 1, IsMember: true, CanManage: true,
+		CreatedBy: e.users["alice"].ID, Creator: e.userRef(e.users["alice"].ID),
+		CreatedAt: e.clk.Now(), MemberCount: 1, IsMember: true, CanManage: true,
 	}
 	if got.ID == 0 || !reflect.DeepEqual(got, want) {
 		t.Errorf("room = %+v, want %+v", got, want)
@@ -468,6 +491,7 @@ func TestRoomsGetView(t *testing.T) {
 			want := tt.want
 			want.ID, want.Name, want.Description, want.Visibility = base.ID, base.Name, base.Description, base.Visibility
 			want.CreatedBy, want.CreatedAt = base.CreatedBy, base.CreatedAt
+			want.Creator = e.userRef(base.CreatedBy)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("room = %+v, want %+v", got, want)
 			}
@@ -560,7 +584,7 @@ func TestRoomsMembersView(t *testing.T) {
 	aliceID, bobID := e.users["alice"].ID, e.users["bob"].ID
 	want := []app.Member{
 		{UserID: aliceID, Username: "alice", DisplayName: "Alice", JoinedAt: e.clk.Now()},
-		{UserID: bobID, Username: "bob", DisplayName: "Bob", AddedBy: &aliceID, AddedByDisplayName: "Alice", JoinedAt: e.clk.Now()},
+		{UserID: bobID, Username: "bob", DisplayName: "Bob", AddedBy: &aliceID, AddedByDisplayName: "Alice", AddedByUsername: "alice", JoinedAt: e.clk.Now()},
 	}
 	if !reflect.DeepEqual(members, want) {
 		t.Errorf("members = %+v, want %+v", members, want)
@@ -729,7 +753,7 @@ func TestRoomsAdminMembers(t *testing.T) {
 	}
 	want := []app.Member{
 		{UserID: aliceID, Username: "alice", DisplayName: "Alice", JoinedAt: e.clk.Now()},
-		{UserID: bobID, Username: "bob", DisplayName: "Bob", AddedBy: &aliceID, AddedByDisplayName: "Alice", JoinedAt: e.clk.Now()},
+		{UserID: bobID, Username: "bob", DisplayName: "Bob", AddedBy: &aliceID, AddedByDisplayName: "Alice", AddedByUsername: "alice", JoinedAt: e.clk.Now()},
 	}
 	if !reflect.DeepEqual(members, want) {
 		t.Errorf("members of den = %+v, want %+v", members, want)

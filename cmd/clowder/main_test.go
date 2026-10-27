@@ -1188,7 +1188,7 @@ func TestRunDemoMakesTheDemoReactions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if !reflect.DeepEqual(tt.post.Reactions, tt.want) {
+			if !reflect.DeepEqual(withoutUsers(tt.post.Reactions), tt.want) {
 				t.Errorf("reactions = %+v, want %+v", tt.post.Reactions, tt.want)
 			}
 		})
@@ -1203,7 +1203,7 @@ func TestRunDemoMakesTheDemoReactions(t *testing.T) {
 		if len(c.Reactions) > 0 {
 			withReactions++
 			want := []app.ReactionCount{{Emoji: "\U0001F44D", Count: 1, Names: []string{"Alice"}}}
-			if c.Author.Username != "bob" || !reflect.DeepEqual(c.Reactions, want) {
+			if c.Author.Username != "bob" || !reflect.DeepEqual(withoutUsers(c.Reactions), want) {
 				t.Errorf("reacted comment = %s %+v", c.Author.Username, c.Reactions)
 			}
 		}
@@ -1725,4 +1725,15 @@ func TestServeWithRedisURLNeedsPostgres(t *testing.T) {
 	if !ok || !appErr.HasRoute("runServe->parseServeConfig->Config.Validate.RedisNeedsPostgres") {
 		t.Errorf("err = %v", err)
 	}
+}
+
+// withoutUsers returns the reactions with their Users left out, for a test that
+// compares the names of the people only.
+func withoutUsers(reactions []app.ReactionCount) []app.ReactionCount {
+	out := make([]app.ReactionCount, len(reactions))
+	for i, r := range reactions {
+		r.Users = nil
+		out[i] = r
+	}
+	return out
 }

@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/files"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/store/storetest"
 	"github.com/rm4n0s/errors"
@@ -46,10 +49,24 @@ func startAPI(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rooms := app.NewRooms(st, fileStore, nil, nil)
+	root, err := st.UserByUsername(t.Context(), "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A visible room that alice has not joined, for the scenario to join.
+	if _, err := rooms.Create(t.Context(), app.Actor{UserID: root.ID, Username: root.Username, Role: root.Role},
+		app.RoomInput{Name: "lobby", Visibility: app.VisibilityVisible}); err != nil {
+		t.Fatal(err)
+	}
 	srv, err := api.New(api.Options{Services: api.Services{
 		Accounts:      accounts,
 		Notifications: app.NewNotifications(st, nil),
 		Messages:      app.NewMessages(st, clk, fileStore, app.MessagesConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 2}, nil),
+		Rooms:         rooms,
+		Posts: app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
+			MaxAttachmentSize: 1 << 20, MaxAttachments: 2,
+		}, nil),
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -67,8 +84,13 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 	t.Parallel()
 	base := startAPI(t)
 	tests := []struct {
-		name       string
-		args       []string
+		name string
+		args []string
+		// ownServer runs the case on a server of its own: a case that runs the
+		// rooms scenario writes, and two runs of the same user on one database
+		// can join and leave the same room at once (a double join is a unique
+		// violation, 409).
+		ownServer  bool
 		env        map[string]string
 		wantCode   int
 		wantOut    []string
@@ -76,30 +98,53 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 		wantErr    string
 	}{
 		{
-			name:     "the session scenario",
-			args:     []string{"-base-url", base, "-username", "alice", "-password", testPassword},
-			wantCode: 0,
+			name:      "the session scenario",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword},
+			ownServer: true,
+			wantCode:  0,
 			wantOut: []string{
 				"== session:", "> POST /api/v1/auth/login", `"client_name": "clowder-apicheck"`, `"password": "<password>"`,
 				"< 200 OK", `"token": "<token>"`, "> GET /api/v1/me", "> Authorization: Bearer <token>",
 				`"unread_notifications": 0`, "> GET /api/v1/me/sessions", `"current": true`, `"kind": "api"`,
 				"> GET /api/v1/users?q=al", `"username": "alice"`, "> POST /api/v1/auth/logout", "< 204 No Content",
 				"< 401 Unauthorized", "< WWW-Authenticate: Bearer", `"code": "unauthenticated"`,
-				"ok session", "all scenarios passed (6 requests)",
+				"ok session", "== rooms:", "ok rooms", "all scenarios passed (",
 			},
 			notWantOut: []string{testPassword},
 		},
 		{
-			name:     "the password from the environment and another client name",
-			args:     []string{"-base-url", base + "/", "-username", "root", "-client-name", "Clowder Desktop"},
-			env:      map[string]string{passwordEnv: testPassword},
-			wantCode: 0,
-			wantOut:  []string{`"client_name": "Clowder Desktop"`, `"role": "admin"`, "all scenarios passed"},
+			name:      "the password from the environment and another client name",
+			args:      []string{"-base-url", base + "/", "-username", "root", "-client-name", "Clowder Desktop"},
+			ownServer: true,
+			env:       map[string]string{passwordEnv: testPassword},
+			wantCode:  0,
+			wantOut:   []string{`"client_name": "Clowder Desktop"`, `"role": "admin"`, "all scenarios passed"},
 		},
 		{
 			name:     "only a scenario",
 			args:     []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "session"},
-			wantCode: 0, wantOut: []string{"ok session"},
+			wantCode: 0, wantOut: []string{"ok session", "all scenarios passed (6 requests)"}, notWantOut: []string{"== rooms"},
+		},
+		{
+			name:      "the rooms scenario",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "rooms"},
+			ownServer: true,
+			wantCode:  0,
+			wantOut: []string{
+				"== rooms:", "> GET /api/v1/rooms\n", `"name": "lobby"`, "> POST /api/v1/rooms/", "/join", "/leave",
+				`"visibility": "private"`, "< 201 Created", "/candidates", "> POST /api/v1/rooms/", "/members",
+				"/posts", `"format": "markdown"`, `"assignee_ids"`, `"due_date": "2030-01-31"`, "<strong>first</strong>",
+				"/comments", "/reactions/%F0%9F%91%8D", "> PUT ", "> DELETE ", "> PATCH ", "<strong>edited</strong>",
+				"/thread", `"depth": 2`, `"deleted": true`, "> GET /api/v1/tags?prefix=apic", "< 404 Not Found", "< 204 No Content",
+				"ok rooms", "all scenarios passed",
+			},
+			notWantOut: []string{testPassword, "== session"},
+		},
+		{
+			name:      "the rooms scenario as an admin",
+			args:      []string{"-base-url", base, "-username", "root", "-password", testPassword, "-only", "rooms"},
+			ownServer: true,
+			wantCode:  0, wantOut: []string{"ok rooms"},
 		},
 		{
 			name:       "a wrong password",
@@ -142,7 +187,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 		{
 			name:     "the list",
 			args:     []string{"-list"},
-			wantCode: 0, wantOut: []string{"session\t"},
+			wantCode: 0, wantOut: []string{"session\t", "rooms\t"},
 		},
 		{
 			name:     "a server that is not there",
@@ -153,8 +198,15 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			args := slices.Clone(tt.args)
+			if tt.ownServer {
+				own := startAPI(t)
+				for i, a := range args {
+					args[i] = strings.Replace(a, base, own, 1)
+				}
+			}
 			var out, errOut bytes.Buffer
-			code := run(t.Context(), tt.args, func(k string) string { return tt.env[k] }, &out, &errOut)
+			code := run(t.Context(), args, func(k string) string { return tt.env[k] }, &out, &errOut)
 			if code != tt.wantCode {
 				t.Fatalf("exit code = %d, want %d\nstdout:\n%s\nstderr:\n%s", code, tt.wantCode, out.String(), errOut.String())
 			}
@@ -398,4 +450,145 @@ func TestErrorRoutes(t *testing.T) {
 			t.Errorf("%s: error %v, want the route %s", tt.name, err, tt.route)
 		}
 	}
+}
+
+// TestRoomsScenarioFailures uses a fake server that answers the steps of the
+// rooms scenario wrongly, to check the exit status and what is printed.
+func TestRoomsScenarioFailures(t *testing.T) {
+	t.Parallel()
+	reply := func(w http.ResponseWriter, status int, body string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}
+	login := `{"token":"abcdefghijklmnop","expires_at":"2026-11-01T00:00:00Z","user":{"id":5,"username":"alice"}}`
+	tests := []struct {
+		name    string
+		handler func(w http.ResponseWriter, r *http.Request)
+		wantOut []string
+	}{
+		{
+			name: "the rooms cannot be listed",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/auth/login" {
+					reply(w, 200, login)
+					return
+				}
+				reply(w, 500, `{"error":{"code":"internal","message":"Something went wrong."}}`)
+			},
+			wantOut: []string{"FAILED rooms", "StatusUnexpected", "path=/api/v1/rooms", "got=500"},
+		},
+		{
+			name: "a new room that is not the one made",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/api/v1/auth/login":
+					reply(w, 200, login)
+				case r.Method == "GET":
+					reply(w, 200, `{"rooms":[]}`)
+				default:
+					reply(w, 201, `{"id":9,"name":"other","is_member":true,"created_by":{"id":5}}`)
+				}
+			},
+			wantOut: []string{"FAILED rooms", "AnswerUnexpected", "the new room is not as made"},
+		},
+		{
+			name: "nobody to add",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/api/v1/auth/login":
+					reply(w, 200, login)
+				case r.Method == "POST":
+					var in struct{ Name string }
+					_ = json.NewDecoder(r.Body).Decode(&in)
+					reply(w, 201, `{"id":9,"name":"`+in.Name+`","is_member":true,"created_by":{"id":5}}`)
+				case strings.HasSuffix(r.URL.Path, "/candidates"):
+					reply(w, 200, `{"users":[{"id":5,"username":"alice"}]}`)
+				default:
+					reply(w, 200, `{"rooms":[]}`)
+				}
+			},
+			wantOut: []string{"FAILED rooms", "there is nobody to add to the room"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ts := httptest.NewServer(http.HandlerFunc(tt.handler))
+			t.Cleanup(ts.Close)
+			var out, errOut bytes.Buffer
+			code := run(t.Context(), []string{"-base-url", ts.URL, "-username", "alice", "-password", testPassword, "-only", "rooms"},
+				func(string) string { return "" }, &out, &errOut)
+			if code != 1 {
+				t.Fatalf("exit code = %d, want 1\n%s", code, out.String())
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("stdout does not contain %q:\n%s", want, out.String())
+				}
+			}
+			if strings.Contains(out.String(), "abcdefghijklmnop") {
+				t.Error("the token is in the output")
+			}
+		})
+	}
+}
+
+// TestRoomsScenarioLeavesTheRoomsAsItFoundThem checks the order of the visible
+// room's join and leave: a user who is not in it joins and leaves, a member
+// leaves and joins again, and either way the user ends as they started.
+func TestRoomsScenarioLeavesTheRoomsAsItFoundThem(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		user        string
+		first, then string
+	}{
+		{"alice", "/join", "/leave"},
+		{"root", "/leave", "/join"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.user, func(t *testing.T) {
+			t.Parallel()
+			base := startAPI(t)
+			var out, errOut bytes.Buffer
+			code := run(t.Context(), []string{"-base-url", base, "-username", tt.user, "-password", testPassword, "-only", "rooms"},
+				func(string) string { return "" }, &out, &errOut)
+			if code != 0 {
+				t.Fatalf("exit code = %d\n%s\n%s", code, out.String(), errOut.String())
+			}
+			first := strings.Index(out.String(), "> POST /api/v1/rooms/1"+tt.first)
+			then := strings.Index(out.String(), "> POST /api/v1/rooms/1"+tt.then)
+			if first < 0 || then < 0 || first > then {
+				t.Errorf("%s came at %d and %s at %d, want %s first", tt.first, first, tt.then, then, tt.first)
+			}
+			// The user is in the room again, or still out of it, as at the start.
+			if got := isMemberOfLobby(t, base, tt.user); got != (tt.user == "root") {
+				t.Errorf("%s is a member of lobby at the end = %v", tt.user, got)
+			}
+		})
+	}
+}
+
+// isMemberOfLobby logs in as the user and returns whether the user is a
+// member of the room lobby.
+func isMemberOfLobby(t *testing.T, base, username string) bool {
+	t.Helper()
+	var out bytes.Buffer
+	c := &client{base: base, http: http.DefaultClient, out: &out, redac: &redactor{}}
+	r := &runner{c: c, username: username, password: testPassword, clientName: "check"}
+	if _, err := r.login(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	a, err := c.do(t.Context(), "GET", "/api/v1/rooms", nil, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range a.items("rooms") {
+		room, _ := item.(map[string]any)
+		if room["name"] == "lobby" {
+			return room["is_member"] == true
+		}
+	}
+	t.Fatal("no lobby")
+	return false
 }

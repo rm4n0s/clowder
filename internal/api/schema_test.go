@@ -42,7 +42,7 @@ func at(v any, keys ...string) any {
 // the subset of JSON Schema that the document uses: type (a name or a list of
 // names), properties, required, additionalProperties (a boolean or a schema),
 // items, enum, const, format date-time, $ref, oneOf, minimum, maximum,
-// minLength, maxLength, minItems and maxItems. A keyword it does not know is a
+// minLength, maxLength, minItems and maxItems; the formats date-time and date. A keyword it does not know is a
 // problem, so that the document cannot use one the tests would silently
 // ignore.
 type validator struct {
@@ -106,6 +106,13 @@ func (v *validator) validateObject(s map[string]any, value any, path string) []s
 		if str, ok := value.(string); ok {
 			if _, err := time.Parse(time.RFC3339, str); err != nil {
 				problems = append(problems, fmt.Sprintf("%s: %q is not an RFC 3339 time", path, str))
+			}
+		}
+	}
+	if s["format"] == "date" {
+		if str, ok := value.(string); ok {
+			if d, err := time.Parse("2006-01-02", str); err != nil || d.Format("2006-01-02") != str {
+				problems = append(problems, fmt.Sprintf("%s: %q is not a day (YYYY-MM-DD)", path, str))
 			}
 		}
 	}

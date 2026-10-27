@@ -472,7 +472,7 @@ func attachmentNames(rows []store.MessageAttachment) []string {
 func messageReactionRows(rows []store.MessageReactionRow) []store.ReactionRow {
 	out := make([]store.ReactionRow, len(rows))
 	for i, r := range rows {
-		out[i] = store.ReactionRow{ID: r.ID, PostID: r.MessageID, UserID: r.UserID, Emoji: r.Emoji, DisplayName: r.DisplayName}
+		out[i] = store.ReactionRow{ID: r.ID, PostID: r.MessageID, UserID: r.UserID, Emoji: r.Emoji, Username: r.Username, DisplayName: r.DisplayName}
 	}
 	return out
 }

@@ -37,6 +37,36 @@ func TestReactionQueries(t *testing.T) {
 		}
 	})
 
+	t.Run("PutReaction and DeleteReaction are idempotent", func(t *testing.T) {
+		steps := []struct {
+			name string
+			put  bool
+			want bool
+			rows int
+		}{
+			{"put adds", true, true, 1},
+			{"put again changes nothing", true, false, 1},
+			{"delete removes", false, true, 0},
+			{"delete again changes nothing", false, false, 0},
+		}
+		for _, st := range steps {
+			var changed bool
+			var err error
+			if st.put {
+				changed, err = f.s.PutReaction(f.ctx, none.ID, alice.ID, "\U0001F525")
+			} else {
+				changed, err = f.s.DeleteReaction(f.ctx, none.ID, alice.ID, "\U0001F525")
+			}
+			if err != nil || changed != st.want {
+				t.Fatalf("%s = %v, %v, want %v", st.name, changed, err, st.want)
+			}
+			rows, err := f.s.ReactionsOfPosts(f.ctx, []uint64{none.ID})
+			if err != nil || len(rows[none.ID]) != st.rows {
+				t.Fatalf("%s: %d rows, %v, want %d", st.name, len(rows[none.ID]), err, st.rows)
+			}
+		}
+	})
+
 	t.Run("ReactionsOfPosts in order of first use, with names", func(t *testing.T) {
 		for _, r := range []struct {
 			post  *Post
@@ -104,6 +134,30 @@ func TestReactionQueryTags(t *testing.T) {
 				return err
 			},
 			wantRoute: "Store.ToggleReaction.QueryFailed", wantOp: "toggleReaction",
+		},
+		{
+			name: "put on an unknown post",
+			call: func() error {
+				_, err := f.s.PutReaction(f.ctx, 999, alice.ID, "x")
+				return err
+			},
+			wantRoute: "Store.PutReaction.QueryFailed", wantOp: "putReaction",
+		},
+		{
+			name: "put with a canceled context",
+			call: func() error {
+				_, err := f.s.PutReaction(canceled(t), post.ID, alice.ID, "x")
+				return err
+			},
+			wantRoute: "Store.PutReaction.QueryFailed", wantOp: "putReaction",
+		},
+		{
+			name: "delete with a canceled context",
+			call: func() error {
+				_, err := f.s.DeleteReaction(canceled(t), post.ID, alice.ID, "x")
+				return err
+			},
+			wantRoute: "Store.DeleteReaction.QueryFailed", wantOp: "deleteReaction",
 		},
 		{
 			name: "reactions with a canceled context",

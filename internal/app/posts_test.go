@@ -754,8 +754,9 @@ func TestPostsFeedPaging(t *testing.T) {
 		{61, 30, []int{30, 30, 1}},
 		{7, 3, []int{3, 3, 1}},
 		{6, 3, []int{3, 3}},
-		{120, 100, []int{50, 50, 20}}, // above the largest page
-		{5, -4, []int{5}},             // below 1 is the default
+		{120, 100, []int{100, 20}}, // the largest page
+		{120, 500, []int{100, 20}}, // above the largest page
+		{5, -4, []int{5}},          // below 1 is the default
 		{3, 1, []int{1, 1, 1}},
 	}
 	for _, tt := range tests {

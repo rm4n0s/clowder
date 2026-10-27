@@ -88,7 +88,9 @@ type problem struct {
 //   - app.TagUnauthenticated and a missing or malformed bearer header 401
 //     unauthenticated with WWW-Authenticate;
 //   - the tags of this package: a body over the limit 413 too_large, a body
-//     that cannot be read 422 invalid_input, a Content-Type that is not JSON
+//     that cannot be read, a query before or limit that is wrong, a due date
+//     that is not a day, upload_ids before the uploads exist and attachment_ids
+//     on a new post 422 invalid_input, a Content-Type that is not JSON
 //     415 unsupported_media_type, an unknown path 404 not_found, a wrong
 //     method 405 method_not_allowed with Allow;
 //   - anything else, and an error that is not tagged, 500 internal, whose
@@ -105,10 +107,14 @@ func problemOf(err error) (problem, bool) {
 		return problem{status: http.StatusNotFound, object: errorObject{Code: codeNotFound, Message: messageNotFound}}, false
 	case app.TagForbidden:
 		return problem{status: http.StatusForbidden, object: errorObject{Code: codeForbidden, Message: messageForbidden}}, false
-	case app.TagInvalidInput, tagBodyInvalid:
+	case app.TagInvalidInput:
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
 		return problem{status: http.StatusUnprocessableEntity,
-			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: snakeFields(fields)}}, false
+			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, apiFieldName)}}, false
+	case tagBodyInvalid, tagBeforeInvalid, tagLimitInvalid, tagDueDateInvalid, tagUploadsUnavailable, tagKeepOnCreate:
+		fields, _ := appErr.Metadata["fields"].(map[string]string)
+		return problem{status: http.StatusUnprocessableEntity,
+			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, snakeCase)}}, false
 	case app.TagConflict:
 		return problem{status: http.StatusConflict, object: errorObject{Code: codeConflict, Message: messageConflict}}, false
 	case app.TagRateLimited:
@@ -144,16 +150,18 @@ func unauthenticatedProblem(message string) problem {
 		header: map[string]string{"WWW-Authenticate": wwwAuthenticateChallenge}}
 }
 
-// snakeFields returns the field errors with their names in snake_case
-// (displayName becomes display_name), the way the JSON of the API names them.
-// It returns nil for none.
-func snakeFields(fields map[string]string) map[string]string {
+// renamedFields returns the field errors with each name run through rename;
+// it returns nil for none. The fields of a service's TagInvalidInput are named
+// by apiFieldName, those of the API's own errors (a body, a query) already
+// carry the client's names and only get snake_case (a client may have sent
+// displayName; the answer says display_name).
+func renamedFields(fields map[string]string, rename func(string) string) map[string]string {
 	if len(fields) == 0 {
 		return nil
 	}
 	out := make(map[string]string, len(fields))
 	for name, message := range fields {
-		out[snakeCase(name)] = message
+		out[rename(name)] = message
 	}
 	return out
 }

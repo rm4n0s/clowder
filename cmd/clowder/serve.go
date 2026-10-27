@@ -85,8 +85,10 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	}
 	notifications := app.NewNotifications(st, pub)
 	messages := app.NewMessages(st, clock.Real(), fileStore, postsConfig, pub)
+	rooms := app.NewRooms(st, fileStore, logger, pub)
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, pub)
 	apiServer, err := api.New(api.Options{
-		Services: api.Services{Accounts: accounts, Notifications: notifications, Messages: messages},
+		Services: api.Services{Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts},
 		Logger:   logger,
 		NoteUser: web.NoteUser,
 		ClientIP: web.ClientIPFunc(cfg.TrustProxyHeaders),
@@ -97,14 +99,14 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	srv, err := web.New(cfg, logger, web.Services{
 		API:           apiServer,
 		Accounts:      accounts,
-		Rooms:         app.NewRooms(st, fileStore, logger, pub),
+		Rooms:         rooms,
 		Audit:         app.NewAudit(st),
 		Board:         app.NewBoard(st, clock.Real(), pub),
 		Search:        app.NewSearch(st),
 		Health:        app.NewHealth(st),
 		Hub:           hub,
 		Notifications: notifications,
-		Posts:         app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, pub),
+		Posts:         posts,
 		Messages:      messages,
 	})
 	if err != nil {

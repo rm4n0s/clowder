@@ -1,0 +1,702 @@
+# commands that ran (data directory: a temporary one):
+#   clowder demo -data <tmp>
+#   clowder serve -data <tmp> -addr 127.0.0.1:18082
+#   clowder-apicheck -base-url http://127.0.0.1:18082 -username alice -password demo-password-1234
+#   (both scenarios, session then rooms, in the one run)
+
+== session: log in, read who I am and my sessions, find users, log out
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "alice"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-26T16:06:35Z",
+<   "token": "<token>",
+<   "user": {
+<     "created_at": "2026-10-27T16:06:33Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "unread_conversations": 0,
+<   "unread_notifications": 4,
+<   "user": {
+<     "created_at": "2026-10-27T16:06:33Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/me/sessions
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "sessions": [
+<     {
+<       "client_name": "clowder-apicheck",
+<       "created_at": "2026-10-27T16:06:35Z",
+<       "current": true,
+<       "expires_at": "2026-11-26T16:06:35Z",
+<       "id": 1,
+<       "kind": "api",
+<       "last_seen_at": "2026-10-27T16:06:35Z"
+<     }
+<   ]
+< }
+
+> GET /api/v1/users?q=al
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "users": [
+<     {
+<       "created_at": "2026-10-27T16:06:33Z",
+<       "display_name": "Alice",
+<       "id": 2,
+<       "role": "member",
+<       "username": "alice"
+<     }
+<   ]
+< }
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 401 Unauthorized
+< WWW-Authenticate: Bearer realm="clowder"
+< {
+<   "error": {
+<     "code": "unauthenticated",
+<     "message": "Log in to use this."
+<   }
+< }
+
+ok session
+== rooms: list the rooms, leave and join one, make a room with a member, post, comment, react, edit, read the thread, delete
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "alice"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-26T16:06:35Z",
+<   "token": "<token>",
+<   "user": {
+<     "created_at": "2026-10-27T16:06:33Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/rooms
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "rooms": [
+<     {
+<       "can_manage": false,
+<       "created_at": "2026-10-27T16:06:33Z",
+<       "created_by": {
+<         "display_name": "Admin",
+<         "id": 1,
+<         "username": "admin"
+<       },
+<       "description": "Everything",
+<       "id": 1,
+<       "is_member": true,
+<       "member_count": 4,
+<       "name": "general",
+<       "visibility": "visible"
+<     },
+<     {
+<       "can_manage": false,
+<       "created_at": "2026-10-27T16:06:33Z",
+<       "created_by": {
+<         "display_name": "Admin",
+<         "id": 1,
+<         "username": "admin"
+<       },
+<       "description": "Off topic",
+<       "id": 2,
+<       "is_member": true,
+<       "member_count": 3,
+<       "name": "random",
+<       "visibility": "visible"
+<     },
+<     {
+<       "can_manage": true,
+<       "created_at": "2026-10-27T16:06:33Z",
+<       "created_by": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "description": "Just for a few of us",
+<       "id": 3,
+<       "is_member": true,
+<       "member_count": 2,
+<       "name": "secret",
+<       "visibility": "private"
+<     }
+<   ]
+< }
+
+> GET /api/v1/rooms/1
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "can_manage": false,
+<   "created_at": "2026-10-27T16:06:33Z",
+<   "created_by": {
+<     "display_name": "Admin",
+<     "id": 1,
+<     "username": "admin"
+<   },
+<   "description": "Everything",
+<   "id": 1,
+<   "is_member": true,
+<   "member_count": 4,
+<   "name": "general",
+<   "visibility": "visible"
+< }
+
+> POST /api/v1/rooms/1/leave
+> Authorization: Bearer <token>
+< 204 No Content
+
+> POST /api/v1/rooms/1/join
+> Authorization: Bearer <token>
+< 204 No Content
+
+> POST /api/v1/rooms
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "description": "Made by clowder-apicheck",
+>   "name": "apicheck-1793117195400398554",
+>   "visibility": "private"
+> }
+< 201 Created
+< {
+<   "can_manage": true,
+<   "created_at": "2026-10-27T16:06:35Z",
+<   "created_by": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "description": "Made by clowder-apicheck",
+<   "id": 4,
+<   "is_member": true,
+<   "member_count": 1,
+<   "name": "apicheck-1793117195400398554",
+<   "visibility": "private"
+< }
+
+> GET /api/v1/rooms/4/candidates
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "users": [
+<     {
+<       "created_at": "2026-10-27T16:06:32Z",
+<       "display_name": "Admin",
+<       "id": 1,
+<       "role": "admin",
+<       "username": "admin"
+<     },
+<     {
+<       "created_at": "2026-10-27T16:06:33Z",
+<       "display_name": "Bob",
+<       "id": 3,
+<       "role": "member",
+<       "username": "bob"
+<     },
+<     {
+<       "created_at": "2026-10-27T16:06:33Z",
+<       "display_name": "Carol",
+<       "id": 4,
+<       "role": "member",
+<       "username": "carol"
+<     }
+<   ]
+< }
+
+> POST /api/v1/rooms/4/members
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "user_id": 1
+> }
+< 204 No Content
+
+> GET /api/v1/rooms/4/members
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "members": [
+<     {
+<       "added_by": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "joined_at": "2026-10-27T16:06:35Z",
+<       "user": {
+<         "display_name": "Admin",
+<         "id": 1,
+<         "username": "admin"
+<       }
+<     },
+<     {
+<       "added_by": null,
+<       "joined_at": "2026-10-27T16:06:35Z",
+<       "user": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       }
+<     }
+<   ]
+< }
+
+> POST /api/v1/rooms/4/posts
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "# Plan\n\nThe **first** post of the apicheck room.",
+>   "format": "markdown",
+>   "tags": [
+>     "apicheck",
+>     "plan"
+>   ],
+>   "tasks": [
+>     {
+>       "assignee_ids": [
+>         1
+>       ],
+>       "due_date": "2030-01-31",
+>       "title": "Read the plan"
+>     }
+>   ]
+> }
+< 201 Created
+< {
+<   "attachments": [],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "# Plan\n\nThe **first** post of the apicheck room.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:06:35Z",
+<   "deleted": false,
+<   "edited_at": null,
+<   "format": "markdown",
+<   "html": "<h3>Plan</h3>\n<p>The <strong>first</strong> post of the apicheck room.</p>\n",
+<   "id": 18,
+<   "parent_id": null,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [
+<     "apicheck",
+<     "plan"
+<   ],
+<   "tasks": [
+<     {
+<       "assignees": [
+<         {
+<           "display_name": "Admin",
+<           "id": 1,
+<           "username": "admin"
+<         }
+<       ],
+<       "column_id": 10,
+<       "due_date": "2030-01-31",
+<       "id": 10,
+<       "title": "Read the plan"
+<     }
+<   ]
+< }
+
+> GET /api/v1/rooms/4/posts?limit=10
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "next_before": null,
+<   "posts": [
+<     {
+<       "attachments": [],
+<       "author": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "body": "# Plan\n\nThe **first** post of the apicheck room.",
+<       "can_delete": true,
+<       "can_edit": true,
+<       "comment_count": 0,
+<       "created_at": "2026-10-27T16:06:35Z",
+<       "deleted": false,
+<       "edited_at": null,
+<       "format": "markdown",
+<       "html": "<h3>Plan</h3>\n<p>The <strong>first</strong> post of the apicheck room.</p>\n",
+<       "id": 18,
+<       "parent_id": null,
+<       "reactions": [],
+<       "room_id": 4,
+<       "root_id": 18,
+<       "tags": [
+<         "apicheck",
+<         "plan"
+<       ],
+<       "tasks": [
+<         {
+<           "assignees": [
+<             {
+<               "display_name": "Admin",
+<               "id": 1,
+<               "username": "admin"
+<             }
+<           ],
+<           "column_id": 10,
+<           "due_date": "2030-01-31",
+<           "id": 10,
+<           "title": "Read the plan"
+<         }
+<       ]
+<     }
+<   ]
+< }
+
+> POST /api/v1/posts/18/comments
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "A comment on the plan."
+> }
+< 201 Created
+< {
+<   "attachments": [],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "A comment on the plan.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:06:35Z",
+<   "deleted": false,
+<   "edited_at": null,
+<   "format": "text",
+<   "html": "<p>A comment on the plan.</p>\n",
+<   "id": 19,
+<   "parent_id": 18,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [],
+<   "tasks": []
+< }
+
+> POST /api/v1/posts/19/comments
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "A *reply* to the comment.",
+>   "format": "markdown"
+> }
+< 201 Created
+< {
+<   "attachments": [],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "A *reply* to the comment.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:06:35Z",
+<   "deleted": false,
+<   "edited_at": null,
+<   "format": "markdown",
+<   "html": "<p>A <em>reply</em> to the comment.</p>\n",
+<   "id": 20,
+<   "parent_id": 19,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [],
+<   "tasks": []
+< }
+
+> PUT /api/v1/posts/18/reactions/%F0%9F%91%8D
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "reactions": [
+<     {
+<       "count": 1,
+<       "emoji": "👍",
+<       "mine": true,
+<       "users": [
+<         {
+<           "display_name": "Alice",
+<           "id": 2,
+<           "username": "alice"
+<         }
+<       ]
+<     }
+<   ]
+< }
+
+> DELETE /api/v1/posts/18/reactions/%F0%9F%91%8D
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "reactions": []
+< }
+
+> PATCH /api/v1/posts/18
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "# Plan\n\nThe **edited** post of the apicheck room."
+> }
+< 200 OK
+< {
+<   "attachments": [],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "# Plan\n\nThe **edited** post of the apicheck room.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 2,
+<   "created_at": "2026-10-27T16:06:35Z",
+<   "deleted": false,
+<   "edited_at": "2026-10-27T16:06:35Z",
+<   "format": "markdown",
+<   "html": "<h3>Plan</h3>\n<p>The <strong>edited</strong> post of the apicheck room.</p>\n",
+<   "id": 18,
+<   "parent_id": null,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [
+<     "apicheck",
+<     "plan"
+<   ],
+<   "tasks": [
+<     {
+<       "assignees": [
+<         {
+<           "display_name": "Admin",
+<           "id": 1,
+<           "username": "admin"
+<         }
+<       ],
+<       "column_id": 10,
+<       "due_date": "2030-01-31",
+<       "id": 10,
+<       "title": "Read the plan"
+<     }
+<   ]
+< }
+
+> GET /api/v1/posts/18/thread
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "comments": [
+<     {
+<       "comment": {
+<         "attachments": [],
+<         "author": {
+<           "display_name": "Alice",
+<           "id": 2,
+<           "username": "alice"
+<         },
+<         "body": "A comment on the plan.",
+<         "can_delete": true,
+<         "can_edit": true,
+<         "comment_count": 0,
+<         "created_at": "2026-10-27T16:06:35Z",
+<         "deleted": false,
+<         "edited_at": null,
+<         "format": "text",
+<         "html": "<p>A comment on the plan.</p>\n",
+<         "id": 19,
+<         "parent_id": 18,
+<         "reactions": [],
+<         "room_id": 4,
+<         "root_id": 18,
+<         "tags": [],
+<         "tasks": []
+<       },
+<       "depth": 1
+<     },
+<     {
+<       "comment": {
+<         "attachments": [],
+<         "author": {
+<           "display_name": "Alice",
+<           "id": 2,
+<           "username": "alice"
+<         },
+<         "body": "A *reply* to the comment.",
+<         "can_delete": true,
+<         "can_edit": true,
+<         "comment_count": 0,
+<         "created_at": "2026-10-27T16:06:35Z",
+<         "deleted": false,
+<         "edited_at": null,
+<         "format": "markdown",
+<         "html": "<p>A <em>reply</em> to the comment.</p>\n",
+<         "id": 20,
+<         "parent_id": 19,
+<         "reactions": [],
+<         "room_id": 4,
+<         "root_id": 18,
+<         "tags": [],
+<         "tasks": []
+<       },
+<       "depth": 2
+<     }
+<   ],
+<   "focus_id": null,
+<   "post": {
+<     "attachments": [],
+<     "author": {
+<       "display_name": "Alice",
+<       "id": 2,
+<       "username": "alice"
+<     },
+<     "body": "# Plan\n\nThe **edited** post of the apicheck room.",
+<     "can_delete": true,
+<     "can_edit": true,
+<     "comment_count": 2,
+<     "created_at": "2026-10-27T16:06:35Z",
+<     "deleted": false,
+<     "edited_at": "2026-10-27T16:06:35Z",
+<     "format": "markdown",
+<     "html": "<h3>Plan</h3>\n<p>The <strong>edited</strong> post of the apicheck room.</p>\n",
+<     "id": 18,
+<     "parent_id": null,
+<     "reactions": [],
+<     "room_id": 4,
+<     "root_id": 18,
+<     "tags": [
+<       "apicheck",
+<       "plan"
+<     ],
+<     "tasks": [
+<       {
+<         "assignees": [
+<           {
+<             "display_name": "Admin",
+<             "id": 1,
+<             "username": "admin"
+<           }
+<         ],
+<         "column_id": 10,
+<         "due_date": "2030-01-31",
+<         "id": 10,
+<         "title": "Read the plan"
+<       }
+<     ]
+<   }
+< }
+
+> DELETE /api/v1/posts/19
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/posts/19
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "attachments": [],
+<   "author": null,
+<   "body": null,
+<   "can_delete": false,
+<   "can_edit": false,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:06:35Z",
+<   "deleted": true,
+<   "edited_at": null,
+<   "format": "text",
+<   "html": null,
+<   "id": 19,
+<   "parent_id": 18,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [],
+<   "tasks": []
+< }
+
+> GET /api/v1/tags?prefix=apic
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "tags": [
+<     "apicheck"
+<   ]
+< }
+
+> DELETE /api/v1/rooms/4
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/rooms/4
+> Authorization: Bearer <token>
+< 404 Not Found
+< {
+<   "error": {
+<     "code": "not_found",
+<     "message": "Not found."
+<   }
+< }
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+ok rooms
+
+all scenarios passed (29 requests)
+# exit status: 0

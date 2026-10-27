@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/rm4n0s/errors"
+	"gorm.io/gorm/clause"
 )
 
 // CreatePost inserts p and sets its ID and CreatedAt (the time of the Store's
@@ -150,15 +153,22 @@ func (s *Store) ReplacePostTags(ctx context.Context, postID uint64, names []stri
 		}
 	}
 	if len(missing) > 0 {
-		if err := s.db(ctx).Create(&missing).Error; err != nil {
-			switch classify(err) {
-			case failureConflict:
-				return errors.NewErr(TagConflict, err).SetMetadata("op", "replacePostTags", "postID", postID)
-			default:
-				return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "replacePostTags", "postID", postID)
-			}
+		// In the same order whatever the order given, so that transactions that
+		// make several of the same new tags cannot deadlock on PostgreSQL.
+		slices.SortFunc(missing, func(a, b Tag) int { return strings.Compare(a.Name, b.Name) })
+		// ON CONFLICT DO NOTHING, so that two transactions that make the same
+		// new tag at once both succeed: the second waits for the first to
+		// commit, then does nothing (unlike a failed INSERT, it does not abort
+		// a PostgreSQL transaction). The IDs are read back by name, because a
+		// row that was not inserted has none.
+		if err := s.db(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&missing).Error; err != nil {
+			return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "replacePostTags", "postID", postID)
 		}
-		for _, t := range missing {
+		var made []Tag
+		if err := s.db(ctx).Where("name IN ?", names).Find(&made).Error; err != nil {
+			return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "replacePostTags", "postID", postID)
+		}
+		for _, t := range made {
 			byName[t.Name] = t.ID
 		}
 	}
