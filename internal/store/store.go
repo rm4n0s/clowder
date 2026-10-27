@@ -291,6 +291,19 @@ func (s *Store) Close() error {
 	return nil
 }
 
+// Ping checks that the database answers, within ctx. It is what the health
+// check of the server asks (SPEC D40).
+func (s *Store) Ping(ctx context.Context) error {
+	sqlDB, err := s.gdb.DB()
+	if err != nil {
+		return errors.NewErr(tagPingFailed, err).SetMetadata("step", "handle")
+	}
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return errors.NewErr(tagPingFailed, err).SetMetadata("step", "ping")
+	}
+	return nil
+}
+
 // db returns the GORM handle for one operation, bound to ctx. It is
 // unexported: only this package touches GORM.
 func (s *Store) db(ctx context.Context) *gorm.DB {
@@ -321,5 +334,6 @@ func (s *Store) Tx(ctx context.Context, fn func(tx *Store) error) error {
 const (
 	tagOpenFailed  = "StoreOpenFailed"
 	tagCloseFailed = "StoreCloseFailed"
+	tagPingFailed  = "StorePingFailed"
 	tagTxFailed    = "TransactionFailed"
 )

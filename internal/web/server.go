@@ -73,6 +73,9 @@ type Services struct {
 	// Messages is the service of private conversations and messages: their
 	// pages, their streams and the unread count in the sidebar.
 	Messages *app.Messages
+	// Health answers the health check, GET /healthz (SPEC D40). Nil makes
+	// the check answer 503.
+	Health HealthChecker
 	// Hub delivers the live events of the services to the streams of the
 	// pages (SPEC §8). The services must publish to the same hub. Nil makes a
 	// hub that nothing publishes to.
@@ -92,6 +95,8 @@ type Server struct {
 	// pingInterval is how often an open stream writes a comment line, so that
 	// proxies keep the connection.
 	pingInterval time.Duration
+	// healthTimeout is healthTimeout; the tests shorten it.
+	healthTimeout time.Duration
 	// formTimeout, uploadTimeout and writeTimeout are formReadTimeout,
 	// uploadReadTimeout and streamWriteTimeout; the tests shorten them.
 	formTimeout, uploadTimeout, writeTimeout time.Duration
@@ -137,7 +142,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		svc.Hub = live.New()
 	}
 	s := &Server{cfg: cfg, logger: logger, svc: svc, md: markdown.New(), shutdownTimeout: shutdownTimeout, pingInterval: pingInterval,
-		formTimeout: formReadTimeout, uploadTimeout: uploadReadTimeout, writeTimeout: streamWriteTimeout}
+		formTimeout: formReadTimeout, uploadTimeout: uploadReadTimeout, writeTimeout: streamWriteTimeout, healthTimeout: healthTimeout}
 
 	notFound := http.HandlerFunc(s.notFound)
 	staticFiles, err := newStaticHandler(staticFS, staticPrefix, notFound)
@@ -217,6 +222,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "GET " + views.MeStreamPath, handler: http.HandlerFunc(s.meStream)},
 		{pattern: "GET /tags/suggest", handler: http.HandlerFunc(s.tagSuggest)},
 		{pattern: "GET /editor/task-row", handler: http.HandlerFunc(s.taskRowForm)},
+		{pattern: healthPattern, handler: http.HandlerFunc(s.healthz), access: noSession},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
 	}
 	mux := http.NewServeMux()

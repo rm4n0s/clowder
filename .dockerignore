@@ -1,0 +1,7 @@
+.git
+.claude
+data/
+docs/implemented-proof-images/
+*.test
+*.out
+.env

@@ -59,6 +59,44 @@ The data directory holds `clowder.db` (the database) and `files/` (the attachmen
 
 Clowder runs as one process per database. It speaks plain HTTP, so put a reverse proxy with TLS in front of it (see below).
 
+## Running with Docker
+
+`compose.yaml` runs Clowder and PostgreSQL 18. The image is built from the `Dockerfile` (a static binary on a distroless base, running as a user that is not root); PostgreSQL is the official image. You need Docker with the Compose plugin.
+
+```sh
+cp .env.example .env
+```
+
+Edit `.env`: **change `CLOWDER_DB_PASSWORD`** (the example value is a placeholder; compose refuses to start without a password, and anyone who knows the placeholder knows your database password), and set `CLOWDER_BASE_URL` to the address people will type in their browser (`https://chat.example.org` behind a proxy). `.env.example` explains every variable. Then:
+
+```sh
+docker compose up -d --build
+docker compose run --rm clowder invite -admin
+```
+
+The second command prints the link of the first admin (see "The first admin"); its address is made from `CLOWDER_BASE_URL`. Clowder is published on `CLOWDER_PORT` (8080). `docker compose ps` shows both services `healthy` once they are ready: the image asks its own `GET /healthz`, which answers `200 ok` when the database answers.
+
+- **Logs:** `docker compose logs -f clowder` (JSON lines).
+- **Stop and start:** `docker compose stop` and `docker compose start`. `docker compose down` removes the containers and keeps the data; `docker compose down -v` also deletes the volumes, which is the database and the attachments.
+- **Where the data is:** the volume `pgdata` holds the database and the volume `clowderdata` is the data directory of Clowder (`/data`), of which only `files/`, the attachments, matters with PostgreSQL.
+- **Upgrades:** get the new source (`git pull`) or image, then `docker compose build` (or `docker compose pull`) and `docker compose up -d`. Clowder migrates the database when it starts.
+- **Backups:** the database with `pg_dump`, then the attachments, **after** it, for the reason given under "Backups":
+
+  ```sh
+  docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > clowder.dump
+  docker run --rm -v clowder_clowderdata:/data:ro -v "$PWD":/backup busybox \
+      tar czf /backup/files.tgz -C /data files
+  ```
+
+  (The volume is named `<project>_clowderdata`, here for a project called `clowder`, which is the name of the directory unless you set `-p` or `COMPOSE_PROJECT_NAME`; `docker volume ls` shows it.) To restore into a new, empty installation: `docker compose up -d postgres`, then `docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < clowder.dump`, unpack `files.tgz` into the volume the same way, and `docker compose up -d`. Both files hold private data (password hashes, attachments): keep them private.
+- **TLS and a reverse proxy:** the container speaks plain HTTP, so put a reverse proxy with TLS in front of it, as "Running behind a TLS reverse proxy" says: proxy to the published port, set `CLOWDER_BASE_URL` to the public `https://` address and, only when every request comes through the proxy, `CLOWDER_TRUST_PROXY=true`.
+
+`scripts/compose-smoke.sh` checks the whole composition on a throw-away project: it builds the image, starts both services, makes an admin invitation, signs up through the form, opens a page and removes everything.
+
+### PostgreSQL without Docker
+
+`clowder serve` uses PostgreSQL instead of SQLite when it is given a database URL, with `-database-url` or `CLOWDER_DATABASE_URL`, for example `postgres://clowder:secret@db.example.org:5432/clowder?sslmode=require`. `clowder invite` and `clowder demo` read the same setting. The server needs PostgreSQL 16 or later (18 is the tested version) with ICU and the `unaccent` extension, which the official images and the usual packages (`postgresql-contrib`) have. The database user must be allowed to create the extension, a collation and functions in the database, because Clowder migrates the database when it starts. The URL is never written to a log with its password. The attachments stay in `files/` of the data directory.
+
 ## Configuration
 
 Each setting is a flag of `clowder serve` or a `CLOWDER_*` environment variable. A flag wins over the variable, and the variable wins over the default. `clowder serve -h` lists the flags.
@@ -67,6 +105,7 @@ Each setting is a flag of `clowder serve` or a `CLOWDER_*` environment variable.
 |---|---|---|---|
 | `-addr` | `CLOWDER_ADDR` | `:8080` | Address to listen on, as `host:port`. |
 | `-data` | `CLOWDER_DATA` | `./data` | Data directory, with `clowder.db` and `files/`. |
+| `-database-url` | `CLOWDER_DATABASE_URL` | empty | A `postgres://` URL. Empty: SQLite in `clowder.db` of the data directory. |
 | `-base-url` | `CLOWDER_BASE_URL` | `http://localhost:8080` | The public URL, an absolute `http` or `https` URL. Invitation links are made from it. Cookies get the `Secure` attribute unless it starts with `http://`. |
 | `-max-attachment-size` | `CLOWDER_MAX_ATTACHMENT_SIZE` | `26214400` | Largest attachment in bytes (25 MiB). |
 | `-max-attachments` | `CLOWDER_MAX_ATTACHMENTS` | `10` | Most attachments on one post, comment or message. |
@@ -75,7 +114,7 @@ Each setting is a flag of `clowder serve` or a `CLOWDER_*` environment variable.
 | `-log-level` | `CLOWDER_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. Logs are JSON lines on stderr. |
 | `-trust-proxy` | `CLOWDER_TRUST_PROXY` | `false` | Take the client address, which the login limiter counts, from the last entry of `X-Forwarded-For`. Turn it on only behind your own reverse proxy. |
 
-Durations are written the way Go reads them: `720h`, `90m`. `clowder invite` reads `-data`, `-base-url` and `-invitation-lifetime` (and their variables); `clowder demo` reads `-data` and `-size`.
+Durations are written the way Go reads them: `720h`, `90m`. `clowder invite` reads `-data`, `-database-url`, `-base-url` and `-invitation-lifetime` (and their variables); `clowder demo` reads `-data`, `-database-url` and `-size`. `clowder healthcheck -addr host:port` asks `GET /healthz` of a running server and exits 0 when it answers 200 and 1 otherwise; the Docker image runs it as its health check.
 
 The log has one entry per request (method, route pattern, status, duration, user ID). It never has passwords, tokens, post bodies or query strings.
 

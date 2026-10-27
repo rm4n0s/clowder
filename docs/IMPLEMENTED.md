@@ -739,3 +739,39 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Stream tests in `internal/web` flaked under load. `drain` waited only the quiet time for the first event; it now waits up to `streamTimeout` (raised from 3 s to 10 s, the failure limit only), and `drainQuiet` keeps the old behaviour where no event is expected.
   - SQLite-only on purpose: `TestFTS5IsAvailable`, the large-demo benchmarks, the tests of the SQLite opener, and the tests that open the real binary's data directory.
   - The manager fixed `TestStopServer` in `internal/browsertest`, which failed on this machine before this step too. A child of the killed shell is reaped by the subreaper after `Stop`, so the test now waits up to 2 s for the process group to go instead of checking once.
+
+## 14.3 Docker image and compose
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-14.3-docker
+- **Summary:**
+  - `docker compose up` runs Clowder on PostgreSQL 18, configured by a `.env` made from `.env.example`.
+  - The `Dockerfile` builds the cgo-free binary on `golang:1.27` (Go 1.27.3) and puts it on `gcr.io/distroless/static-debian13:nonroot` (38 MB). The image runs as `nonroot`, keeps its data in `/data` and checks itself with `clowder healthcheck`.
+  - `GET /healthz` pings the database within 2 s and answers `ok` (200) or `unavailable` (503). A successful check is logged at debug level only.
+  - `scripts/compose-smoke.sh` builds the image, brings up the composition under its own project name and checks the first admin and the logged-in page. It removes everything it made.
+- **Main files:**
+  - The container files: `Dockerfile`, `.dockerignore`, `compose.yaml`, `.env.example`, `scripts/compose-smoke.sh`.
+  - The health check: `internal/app/health.go`, `internal/web/health.go`, `internal/web/{server,middleware}.go`, `internal/store/store.go` (`Ping`), `cmd/clowder/{healthcheck,main,serve}.go`.
+  - The docs: `README.md` (running with Docker, backups and restore, PostgreSQL without Docker), `scripts/README.md`.
+- **Tests:** about 45 cases:
+  - `Store.Ping` (4)
+  - `Health.Check` (3)
+  - `/healthz` (6 table rows, plus no-session, 405 and HSTS)
+  - the address mapping of `healthcheck` (14)
+  - the `healthcheck` command (7, plus the `CLOWDER_ADDR` default, timeout and bad-URL cases, and the usage text)
+
+  Each of the 5 new tags has a route test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · scripts/compose-smoke.sh ✅
+- **Proof:**
+  [14.3 compose](implemented-proof-images/14.3-compose.txt)
+  - The image is built and the composition comes up, with both `clowder` and `postgres` shown as `(healthy)` in `docker compose ps`.
+  - `invite -admin` prints a link, and the sign-up through it answers 303.
+  - The logged-in home page shows "Smoke Admin", and `/healthz` answers 200 `ok`.
+  - Everything is taken down at the end, its volumes included.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - `Services.Health` is an interface, so that a test can block it past the deadline.
+  - The failures of `clowder healthcheck` print `clowder: healthcheck: <reason>`.
+  - The smoke script builds its own image tag, so it never overwrites `clowder:local`.
+  - `.env.example` also has `CLOWDER_DB_USER`, `CLOWDER_DB_NAME`, `CLOWDER_TRUST_PROXY` and `CLOWDER_LOG_LEVEL`.
+  - `-cluster` of the smoke script is left for step 15.2.

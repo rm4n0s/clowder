@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -66,7 +67,8 @@ func stateOf(ctx context.Context) *requestState {
 // logRequests logs one entry per request after it ends: the method, the
 // matched route pattern (the path when no pattern matched), the status, the
 // duration in milliseconds and, for a logged-in user, the user ID. It never
-// logs the query string.
+// logs the query string. A health check that succeeded is logged at debug
+// level, every other request at info.
 func (s *Server) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
@@ -89,7 +91,13 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		if state.userID != 0 {
 			attrs = append(attrs, "user_id", state.userID)
 		}
-		s.logger.Info("request", attrs...)
+		// A successful health check comes every few seconds: it is a debug
+		// entry, so that it does not flood the log.
+		level := slog.LevelInfo
+		if pattern == healthPattern && rec.status == http.StatusOK {
+			level = slog.LevelDebug
+		}
+		s.logger.Log(r.Context(), level, "request", attrs...)
 	})
 }
 

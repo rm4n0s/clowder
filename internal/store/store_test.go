@@ -12,6 +12,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/errors"
+	"gorm.io/gorm"
 )
 
 func TestOpenPragmas(t *testing.T) {
@@ -360,6 +361,58 @@ func TestCloseFailure(t *testing.T) {
 	if appErr.Tag != tagCloseFailed {
 		t.Errorf("tag = %s", appErr.Tag)
 	}
+}
+
+func TestPing(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		closeDB   bool
+		noHandle  bool
+		wantRoute string
+		wantStep  string
+	}{
+		{name: "working database"},
+		{name: "closed database", closeDB: true, wantRoute: "Store.Ping.StorePingFailed", wantStep: "ping"},
+		{name: "no database handle", noHandle: true, wantRoute: "Store.Ping.StorePingFailed", wantStep: "handle"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s, _, _ := testStore(t, nil)
+			if tt.closeDB {
+				if err := s.Close(); err != nil {
+					t.Fatalf("Close: %v", err)
+				}
+			}
+			if tt.noHandle {
+				// A Store whose GORM handle has no connection pool of database/sql.
+				s = &Store{gdb: &gorm.DB{Config: &gorm.Config{}}}
+			}
+			err := s.Ping(t.Context())
+			if tt.wantRoute == "" {
+				if err != nil {
+					t.Fatalf("Ping: %+v", err)
+				}
+				return
+			}
+			appErr := requireRoute(t, err, tt.wantRoute)
+			if appErr.Tag != tagPingFailed {
+				t.Errorf("tag = %s", appErr.Tag)
+			}
+			if appErr.Metadata["step"] != tt.wantStep {
+				t.Errorf("step = %v, want %s", appErr.Metadata["step"], tt.wantStep)
+			}
+		})
+	}
+}
+
+func TestPingHonorsContext(t *testing.T) {
+	t.Parallel()
+	s, _, _ := testStore(t, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_ = requireRoute(t, s.Ping(ctx), "Store.Ping.StorePingFailed")
 }
 
 func TestCloseInsideTxDoesNothing(t *testing.T) {

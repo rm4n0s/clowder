@@ -1,0 +1,95 @@
+project clowder-smoke-3139286, image clowder-smoke:3139286, base URL http://localhost:23311
+
+==> docker compose build (the last 15 lines)
+#16 CACHED
+
+#17 exporting to image
+#17 exporting layers done
+#17 exporting manifest sha256:ae4c535ca4b8c283d701f2d91b1babcb168ddcc1d904e5e894311c3e6c8f5f3c done
+#17 exporting config sha256:d71662bb2817f6d2db74cfc957386e08964076d81759c20963fc5c6f35fe0642 done
+#17 exporting attestation manifest sha256:46e1b3432dbd6819d5234b77a5a80d4e6314af5cdf4418898935a5b9fc6e4759 done
+#17 exporting manifest list sha256:afd0095c314616bcd50902a2c4d5ae66c10f2a97f49c537f4f1dcf2fa837d763 done
+#17 naming to docker.io/library/clowder-smoke:3139286 done
+#17 unpacking to docker.io/library/clowder-smoke:3139286 0.1s done
+#17 DONE 0.2s
+
+#18 resolving provenance for metadata file
+#18 DONE 0.0s
+ Image clowder-smoke:3139286 Built 
+
+==> docker compose up -d --wait
+ Volume clowder-smoke-3139286_clowderdata Creating 
+ Volume clowder-smoke-3139286_clowderdata Creating 
+ Network clowder-smoke-3139286_default Creating 
+ Network clowder-smoke-3139286_default Creating 
+ Volume clowder-smoke-3139286_pgdata Creating 
+ Volume clowder-smoke-3139286_pgdata Creating 
+ Volume clowder-smoke-3139286_clowderdata Created 
+ Volume clowder-smoke-3139286_clowderdata Created 
+ Volume clowder-smoke-3139286_pgdata Created 
+ Volume clowder-smoke-3139286_pgdata Created 
+ Network clowder-smoke-3139286_default Created 
+ Network clowder-smoke-3139286_default Created 
+ Container clowder-smoke-3139286-postgres-1 Creating 
+ Container clowder-smoke-3139286-postgres-1 Created 
+ Container clowder-smoke-3139286-clowder-1 Creating 
+ Container clowder-smoke-3139286-clowder-1 Created 
+ Container clowder-smoke-3139286-postgres-1 Starting 
+ Container clowder-smoke-3139286-postgres-1 Started 
+ Container clowder-smoke-3139286-postgres-1 Waiting 
+ Container clowder-smoke-3139286-postgres-1 Healthy 
+ Container clowder-smoke-3139286-clowder-1 Starting 
+ Container clowder-smoke-3139286-clowder-1 Started 
+ Container clowder-smoke-3139286-clowder-1 Waiting 
+ Container clowder-smoke-3139286-postgres-1 Waiting 
+ Container clowder-smoke-3139286-postgres-1 Healthy 
+ Container clowder-smoke-3139286-clowder-1 Healthy 
+
+==> docker compose ps
+NAME                               IMAGE                   COMMAND                  SERVICE    CREATED          STATUS                    PORTS
+clowder-smoke-3139286-clowder-1    clowder-smoke:3139286   "/clowder serve"         clowder    11 seconds ago   Up 5 seconds (healthy)    0.0.0.0:23311->8080/tcp, [::]:23311->8080/tcp
+clowder-smoke-3139286-postgres-1   postgres:18             "docker-entrypoint.s…"   postgres   11 seconds ago   Up 11 seconds (healthy)   5432/tcp
+
+==> docker compose run --rm clowder invite -admin
+http://localhost:23311/invite/audnfY7hiicfcOolX82JfaRYzivmwOZnUU-dPUyfzWI
+expires 2026-11-03T13:54:57Z
+
+==> GET /invite/audnfY7hiicfcOolX82JfaRYzivmwOZnUU-dPUyfzWI (the sign-up form)
+status 200
+
+==> POST /invite/audnfY7hiicfcOolX82JfaRYzivmwOZnUU-dPUyfzWI (sign up as smokeadmin, "Smoke Admin")
+status 303 -> http://127.0.0.1:23311/
+
+==> GET / (logged in)
+status 200
+<title>Home · Clowder</title>
+<p class="sidebar-user" id="sidebar-user">Smoke Admin</p>
+
+==> GET /healthz
+HTTP/1.1 200 OK
+Cache-Control: no-store
+Content-Type: text/plain; charset=utf-8
+ok
+
+==> docker compose ps (after the requests)
+NAME                               IMAGE                   COMMAND                  SERVICE    CREATED          STATUS                    PORTS
+clowder-smoke-3139286-clowder-1    clowder-smoke:3139286   "/clowder serve"         clowder    12 seconds ago   Up 7 seconds (healthy)    0.0.0.0:23311->8080/tcp, [::]:23311->8080/tcp
+clowder-smoke-3139286-postgres-1   postgres:18             "docker-entrypoint.s…"   postgres   12 seconds ago   Up 12 seconds (healthy)   5432/tcp
+
+compose-smoke: OK
+
+==> docker compose down -v --remove-orphans
+ Container clowder-smoke-3139286-clowder-1 Stopping 
+ Container clowder-smoke-3139286-clowder-1 Stopped 
+ Container clowder-smoke-3139286-clowder-1 Removing 
+ Container clowder-smoke-3139286-clowder-1 Removed 
+ Container clowder-smoke-3139286-postgres-1 Stopping 
+ Container clowder-smoke-3139286-postgres-1 Stopped 
+ Container clowder-smoke-3139286-postgres-1 Removing 
+ Container clowder-smoke-3139286-postgres-1 Removed 
+ Volume clowder-smoke-3139286_pgdata Removing 
+ Volume clowder-smoke-3139286_clowderdata Removing 
+ Network clowder-smoke-3139286_default Removing 
+ Volume clowder-smoke-3139286_clowderdata Removed 
+ Volume clowder-smoke-3139286_pgdata Removed 
+ Network clowder-smoke-3139286_default Removed 

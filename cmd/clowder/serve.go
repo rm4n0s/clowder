@@ -73,6 +73,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Audit:         app.NewAudit(st),
 		Board:         app.NewBoard(st, clock.Real(), hub),
 		Search:        app.NewSearch(st),
+		Health:        app.NewHealth(st),
 		Hub:           hub,
 		Notifications: app.NewNotifications(st, hub),
 		Posts:         app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, hub),

@@ -146,7 +146,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
 	}, hub)
-	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Messages: msgs, Hub: hub}, static.FS, extra...)
+	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Messages: msgs, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
