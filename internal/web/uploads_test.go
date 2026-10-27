@@ -155,6 +155,7 @@ func (e *roomsEnv) getPost(user string, id uint64) app.Post {
 }
 
 func TestUploadCreateWithFiles(t *testing.T) {
+	t.Parallel()
 	img := pngOf(t, 40, 30)
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
@@ -197,6 +198,7 @@ func TestUploadCreateWithFiles(t *testing.T) {
 }
 
 func TestUploadBodyMayBeEmptyWithFiles(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		rec := e.postFiles("alice", "/rooms/"+idText(e.general.ID)+"/posts",
@@ -212,6 +214,7 @@ func TestUploadBodyMayBeEmptyWithFiles(t *testing.T) {
 }
 
 func TestUploadIgnoresTheEmptyFilePartOfABrowser(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	body := &bytes.Buffer{}
 	mw := multipart.NewWriter(body)
@@ -241,6 +244,7 @@ func TestUploadIgnoresTheEmptyFilePartOfABrowser(t *testing.T) {
 }
 
 func TestUploadReplyWithFiles(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		p := e.writePost("alice", "general", "root")
@@ -263,6 +267,7 @@ func TestUploadReplyWithFiles(t *testing.T) {
 }
 
 func TestUploadEditKeepsAndRemovesFiles(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		ctx := t.Context()
@@ -314,6 +319,7 @@ func TestUploadEditKeepsAndRemovesFiles(t *testing.T) {
 }
 
 func TestUploadEditWithNoKeepRemovesTheFiles(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	u, err := e.posts.Upload(t.Context(), e.actor(e.alice), "a.txt", strings.NewReader("a"))
 	if err != nil {
@@ -331,6 +337,7 @@ func TestUploadEditWithNoKeepRemovesTheFiles(t *testing.T) {
 }
 
 func TestUploadEditProblemsKeepTheEditor(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnvWith(t, smallFiles)
 	u, err := e.posts.Upload(t.Context(), e.actor(e.alice), "a.txt", strings.NewReader("a"))
 	if err != nil {
@@ -383,6 +390,7 @@ func TestUploadEditProblemsKeepTheEditor(t *testing.T) {
 }
 
 func TestUploadTooLarge(t *testing.T) {
+	t.Parallel()
 	big := make([]byte, 5000)
 	tests := []struct {
 		name string
@@ -437,6 +445,7 @@ func TestUploadTooLarge(t *testing.T) {
 }
 
 func TestUploadTooManyFiles(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnvWith(t, smallFiles)
 		rec := e.postFiles("alice", "/rooms/"+idText(e.general.ID)+"/posts", editorForm("text", "kept words", "t"), []upload{
@@ -459,6 +468,7 @@ func TestUploadTooManyFiles(t *testing.T) {
 }
 
 func TestUploadRefusedCallsLeaveNoFiles(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		user       string
@@ -490,6 +500,7 @@ func TestUploadRefusedCallsLeaveNoFiles(t *testing.T) {
 }
 
 func TestUploadRequestIsCapped(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnvWith(t, smallFiles)
 	// The cap is the files of a post at their largest and a megabyte.
 	wantCap := int64(2*1024 + 1<<20)
@@ -524,6 +535,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 }
 
 func TestUploadUnreadableForms(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	path := "/rooms/" + idText(e.general.ID) + "/posts"
 	huge := strings.Repeat("a", maxPostFormBytes+1)
@@ -570,6 +582,7 @@ func TestUploadUnreadableForms(t *testing.T) {
 }
 
 func TestUploadOtherFieldsNamedFilesAreText(t *testing.T) {
+	t.Parallel()
 	// Only the field "files" is a file; a file part with another name is read as
 	// text, so that it cannot be saved without the limits of the editor.
 	e := newRoomsEnv(t)
@@ -584,6 +597,7 @@ func TestUploadOtherFieldsNamedFilesAreText(t *testing.T) {
 }
 
 func TestUploadPreviewIgnoresFiles(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnvWith(t, smallFiles)
 	// The preview of a form that carries a file the size of the limit, a file
 	// over it and too many files: the files are dropped, not saved.
@@ -602,6 +616,7 @@ func TestUploadPreviewIgnoresFiles(t *testing.T) {
 }
 
 func TestUploadEditorsCarryTheFileInput(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writePost("alice", "general", "root")
 	for _, tt := range []struct{ name, path, user string }{

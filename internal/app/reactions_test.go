@@ -19,6 +19,7 @@ const (
 )
 
 func TestCleanEmoji(t *testing.T) {
+	t.Parallel()
 	picker := []string{
 		"\U0001F44D", "\U0001F44E", "\U0001F600", "\U0001F602", "\U0001F389", "\u2764\uFE0F", "\U0001F64F", "\U0001F440",
 		"\U0001F525", "\U0001F680", "\u2705", "\u274C", "\U0001F914", "\U0001F62E", "\U0001F622", "\U0001F621",
@@ -145,6 +146,7 @@ func (e *postsEnv) react(user string, postID uint64, emoji string) app.Reactions
 }
 
 func TestToggleReactionAddsAndRemoves(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "react to me")
 	if got := e.react("bob", p.ID, emojiParty); !reflect.DeepEqual([]app.ReactionCount(got),
@@ -165,6 +167,7 @@ func TestToggleReactionAddsAndRemoves(t *testing.T) {
 }
 
 func TestReactionsOfPostsAreCountedPerActor(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	// lobby has admin and bob; make alice a member too.
 	if err := e.rooms.Join(t.Context(), e.as("alice"), e.lobby.ID); err != nil {
@@ -240,6 +243,7 @@ func TestReactionsOfPostsAreCountedPerActor(t *testing.T) {
 }
 
 func TestReactionsLeaveWhenAPostIsDeleted(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "going")
 	e.say("admin", p.ID, "keeps the thread")
@@ -254,6 +258,7 @@ func TestReactionsLeaveWhenAPostIsDeleted(t *testing.T) {
 }
 
 func TestPostCanReactIsForMembers(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "hello")
 	for user, want := range map[string]bool{"bob": true, "admin": true, "carol": false, "root": false} {
@@ -269,6 +274,7 @@ func TestPostCanReactIsForMembers(t *testing.T) {
 }
 
 func TestToggleReactionPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  "Posts.ToggleReaction.func1->" + notFoundPrivate,
 		app.TagForbidden: "Posts.ToggleReaction.func1.Forbidden",
@@ -291,6 +297,7 @@ func TestToggleReactionPermissions(t *testing.T) {
 }
 
 func TestToggleReactionFailures(t *testing.T) {
+	t.Parallel()
 	t.Run("a missing post", func(t *testing.T) {
 		e := newPostsEnv(t)
 		_, err := e.posts.ToggleReaction(t.Context(), e.as("bob"), 9999, emojiParty)
@@ -332,6 +339,7 @@ func TestToggleReactionFailures(t *testing.T) {
 }
 
 func TestToggleReactionWritesNoAuditEvent(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "react")
 	before := len(e.events())
@@ -353,6 +361,7 @@ func reactionEvts(room, post, thread uint64) []live.Event {
 }
 
 func TestLiveReactionsPublish(t *testing.T) {
+	t.Parallel()
 	runLiveCases(t, []liveCase{
 		{"add on a post", func(e *liveEnv) liveResult {
 			p := e.write("bob", "lobby", "post")

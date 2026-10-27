@@ -79,6 +79,7 @@ func requireOrder(t *testing.T, body string, parts ...string) {
 }
 
 func TestPostPageShowsTheThread(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	d := e.demoThread()
 	rec := e.getAs("bob", postPathOf(d.root, ""), false)
@@ -127,6 +128,7 @@ func TestPostPageShowsTheThread(t *testing.T) {
 }
 
 func TestPostPageCapsTheDepth(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	root := e.writePost("alice", "general", "deep root")
 	chain := make([]app.Post, 0, 9)
@@ -168,6 +170,7 @@ func TestPostPageCapsTheDepth(t *testing.T) {
 }
 
 func TestCommentPageShowsTheThreadOfItsPost(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	d := e.demoThread()
 	rec := e.getAs("alice", postPathOf(d.second, ""), false)
@@ -194,6 +197,7 @@ func TestCommentPageShowsTheThreadOfItsPost(t *testing.T) {
 }
 
 func TestPostReplyForm(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	d := e.demoThread()
 	slot := `id="reply-slot-` + idText(d.second.ID) + `"`
@@ -236,6 +240,7 @@ func TestPostReplyForm(t *testing.T) {
 }
 
 func TestPostReply(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		d := e.demoThread()
@@ -276,6 +281,7 @@ func TestPostReply(t *testing.T) {
 }
 
 func TestPostReplyToThePost(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	d := e.demoThread()
 	rec := e.post("alice", postPathOf(d.root, "replies"), editorForm("text", "top level", ""), true)
@@ -288,6 +294,7 @@ func TestPostReplyToThePost(t *testing.T) {
 }
 
 func TestPostReplyMistakes(t *testing.T) {
+	t.Parallel()
 	tags11 := "t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11"
 	tests := []struct {
 		name string
@@ -325,6 +332,7 @@ func TestPostReplyMistakes(t *testing.T) {
 }
 
 func TestPostReplyByANonMember(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	d := e.demoThread()
 	t.Run("the page has no Reply buttons and says to join", func(t *testing.T) {
@@ -367,6 +375,7 @@ func TestPostReplyByANonMember(t *testing.T) {
 }
 
 func TestDeleteComments(t *testing.T) {
+	t.Parallel()
 	post := func(e *roomsEnv, user string, p app.Post, datastar bool) *httptest.ResponseRecorder {
 		return e.post(user, postPathOf(p, "delete"), url.Values{"from": {"post"}}, datastar)
 	}
@@ -464,6 +473,7 @@ func TestDeleteComments(t *testing.T) {
 }
 
 func TestEditComments(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	d := e.demoThread()
 	card := `id="post-` + idText(d.second.ID) + `"`
@@ -540,6 +550,7 @@ func TestEditComments(t *testing.T) {
 }
 
 func TestFeedLinksToTheThread(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	d := e.demoThread()
 	rec := e.getAs("bob", "/rooms/"+idText(e.general.ID), false)
@@ -548,6 +559,7 @@ func TestFeedLinksToTheThread(t *testing.T) {
 }
 
 func TestMentionsAreLinksOnThePages(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	link := `<a href="/search?q=from%3Abob" class="mention">@bob</a>`
 	root := e.writePost("alice", "general", "hello @bob and @nobody")

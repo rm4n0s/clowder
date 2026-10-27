@@ -27,6 +27,7 @@ func (e *roomsEnv) boardVersion(user, room string) string {
 }
 
 func TestBoardStreamPatchesTheColumns(t *testing.T) {
+	t.Parallel()
 	type env = *roomsEnv
 	tests := []struct {
 		name string
@@ -100,6 +101,7 @@ func TestBoardStreamPatchesTheColumns(t *testing.T) {
 }
 
 func TestBoardStreamShowsTheOrderOfTheServer(t *testing.T) {
+	t.Parallel()
 	// Bob drags a card: alice's board gets the columns with the new order.
 	e := newRoomsEnv(t)
 	s := e.seedBoard()
@@ -113,6 +115,7 @@ func TestBoardStreamShowsTheOrderOfTheServer(t *testing.T) {
 }
 
 func TestBoardStreamIgnoresTheBoardOfAnotherRoom(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.seedBoard()
 	c := e.serveStreams().open("alice", e.streamOfBoard("general", "v="+e.boardVersion("alice", "general")), asDatastar())
@@ -124,6 +127,7 @@ func TestBoardStreamIgnoresTheBoardOfAnotherRoom(t *testing.T) {
 }
 
 func TestBoardStreamConnects(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		query     string
@@ -182,6 +186,7 @@ func TestBoardStreamConnects(t *testing.T) {
 }
 
 func TestBoardStreamNoticesAChangeWhileThePageLoaded(t *testing.T) {
+	t.Parallel()
 	// The page tells its stream the version it shows: a move that came between
 	// the render and the subscription is sent at once.
 	e := newRoomsEnv(t)
@@ -196,6 +201,7 @@ func TestBoardStreamNoticesAChangeWhileThePageLoaded(t *testing.T) {
 }
 
 func TestBoardStreamEndsWhenTheRoomIsLost(t *testing.T) {
+	t.Parallel()
 	type env = *roomsEnv
 	tests := []struct {
 		name string
@@ -243,6 +249,7 @@ func TestBoardStreamEndsWhenTheRoomIsLost(t *testing.T) {
 }
 
 func TestBoardStreamFollowsTheMembershipOfTheUser(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.seedBoard()
 	c := e.serveStreams().open("carol", e.streamOfBoard("general", "v="+e.boardVersion("carol", "general")), asDatastar())
@@ -273,6 +280,7 @@ func TestBoardStreamFollowsTheMembershipOfTheUser(t *testing.T) {
 }
 
 func TestBoardStreamIgnoresTheMembershipOfOthers(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.seedBoard()
 	c := e.serveStreams().open("alice", e.streamOfBoard("general", "v="+e.boardVersion("alice", "general")), asDatastar())
@@ -283,6 +291,7 @@ func TestBoardStreamIgnoresTheMembershipOfOthers(t *testing.T) {
 }
 
 func TestBoardStreamFollowsTheRoom(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	c := e.serveStreams().open("alice", e.streamOfBoard("general", "v="+e.boardVersion("alice", "general")), asDatastar())
 	if err := e.rooms.Update(t.Context(), e.actor(e.admin), e.general.ID, appRoomInput("lobby")); err != nil {
@@ -294,6 +303,7 @@ func TestBoardStreamFollowsTheRoom(t *testing.T) {
 }
 
 func TestBoardStreamRefusesWhoCannotRead(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	ss := e.serveStreams()
 	secret := e.streamOfBoard("secret", "")
@@ -327,6 +337,7 @@ func TestBoardStreamRefusesWhoCannotRead(t *testing.T) {
 }
 
 func TestBoardStreamKeepAliveAndEnd(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.srv.pingInterval = 20 * time.Millisecond
 	ss := e.serveStreams()

@@ -46,6 +46,7 @@ func (e *roomsEnv) reactionsOf(user string, p app.Post) []app.ReactionCount {
 }
 
 func TestPostReact(t *testing.T) {
+	t.Parallel()
 	t.Run("a member reacts and takes it back", func(t *testing.T) {
 		modes(t, func(t *testing.T, datastar bool) {
 			e := newRoomsEnv(t)
@@ -135,6 +136,7 @@ func TestPostReact(t *testing.T) {
 }
 
 func TestPostReactNotAnEmoji(t *testing.T) {
+	t.Parallel()
 	for _, emoji := range []string{"", "a", "42", "<script>alert(1)</script>", "thumbs up", strings.Repeat(partyEmoji, 9)} {
 		t.Run("datastar "+emoji, func(t *testing.T) {
 			e := newRoomsEnv(t)
@@ -182,6 +184,7 @@ func htmlEscape(s string) string {
 }
 
 func TestPostReactByANonMember(t *testing.T) {
+	t.Parallel()
 	t.Run("a visible room: the message above the bar, nothing stored", func(t *testing.T) {
 		e := newRoomsEnv(t)
 		p := e.writePost("bob", "general", "visible")
@@ -227,6 +230,7 @@ func TestPostReactByANonMember(t *testing.T) {
 }
 
 func TestPostReactToAGoneOrMissingPost(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writePost("alice", "general", "going")
 	e.reply(p, "bob")
@@ -242,6 +246,7 @@ func TestPostReactToAGoneOrMissingPost(t *testing.T) {
 }
 
 func TestPostReactNeedsASessionAndPost(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writePost("bob", "general", "x")
 	rec := e.send(postForm(reactPath(p), url.Values{"emoji": {partyEmoji}}))
@@ -263,6 +268,7 @@ func TestPostReactNeedsASessionAndPost(t *testing.T) {
 }
 
 func TestReactionBarOnThePages(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writePost("bob", "general", "with reactions")
 	other := e.writePost("bob", "general", "without")
@@ -322,6 +328,7 @@ func TestReactionBarOnThePages(t *testing.T) {
 }
 
 func TestReactionTitleListsTheFirstTwentyNames(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writePost("bob", "general", "crowd")
 	// Twenty-two people react; the title names twenty and counts the rest.

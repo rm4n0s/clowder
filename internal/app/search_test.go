@@ -24,6 +24,7 @@ func words(texts ...string) []app.Term {
 }
 
 func TestParseQuery(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		in   string
@@ -121,6 +122,7 @@ func TestParseQuery(t *testing.T) {
 }
 
 func TestParseQueryEmptiness(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		in         string
 		words      bool
@@ -150,6 +152,7 @@ func TestParseQueryEmptiness(t *testing.T) {
 }
 
 func TestParseQueryBadDates(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{
 		"after:yesterday", "before:tomorrow", "after:2026-13-01", "after:2026-02-30", "after:2026-1-5", "after:26-10-27",
 		"before:2026/10/27", "after:2026-10-27T10:00:00Z", "after:2026-10-27x", `before:"not a date"`,
@@ -220,6 +223,7 @@ func (e *searchEnv) requireIndex(want map[uint64]string) {
 }
 
 func TestSearchQueryReadableRooms(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	inLobby := e.write("bob", "lobby", "launch plan")
 	inDen := e.write("bob", "den", "secret plan")
@@ -273,6 +277,7 @@ func TestSearchQueryReadableRooms(t *testing.T) {
 }
 
 func TestSearchQueryFilters(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	e.clk.Set(time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC))
 	old := e.write("admin", "lobby", "Quarterly report ready", "finance", "report")
@@ -344,6 +349,7 @@ func TestSearchQueryFilters(t *testing.T) {
 }
 
 func TestSearchQueryResultFields(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	post := e.write("bob", "lobby", "A post with tags", "alpha", "beta")
 	comment := e.say("admin", post.ID, "A comment under it")
@@ -376,6 +382,7 @@ func TestSearchQueryResultFields(t *testing.T) {
 }
 
 func TestSearchQueryEmpty(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	e.write("bob", "lobby", "something")
 	for _, q := range []string{"", "   ", "---", "* ()", `""`, "\ue000"} {
@@ -389,6 +396,7 @@ func TestSearchQueryEmpty(t *testing.T) {
 }
 
 func TestSearchQueryBadDate(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	_, err := e.search.Query(t.Context(), e.as("bob"), "report after:soon", 1)
 	appErr := requireTag(t, err, app.TagInvalidInput, "Search.Query->ParseQuery.InvalidInput")
@@ -398,6 +406,7 @@ func TestSearchQueryBadDate(t *testing.T) {
 }
 
 func TestSearchQueryPages(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		total int
 		pages []int // the results on page 1, 2, 3, ...
@@ -455,6 +464,7 @@ func TestSearchQueryPages(t *testing.T) {
 }
 
 func TestSearchQueryOrder(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	long := e.write("bob", "lobby", "zebra "+strings.Repeat("filler words ", 30))
 	short := e.write("bob", "lobby", "zebra")
@@ -469,6 +479,7 @@ func TestSearchQueryOrder(t *testing.T) {
 }
 
 func TestSearchQueryTextAndSnippets(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	up := e.uploadText("bob", "Budget-2026.xlsx")
 	cafe := e.write("bob", "lobby", "Lunch at the Café Münster")
@@ -571,6 +582,7 @@ func TestSearchQueryTextAndSnippets(t *testing.T) {
 }
 
 func TestIndexCreate(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	e.requireIndex(map[uint64]string{})
 	up := e.uploadText("bob", "plan.pdf")
@@ -608,6 +620,7 @@ func TestIndexCreate(t *testing.T) {
 }
 
 func TestIndexEdit(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	a := e.uploadText("bob", "first.txt")
 	b := e.uploadText("bob", "second.txt")
@@ -699,6 +712,7 @@ func taskInputs(p app.Post) []app.TaskInput {
 }
 
 func TestIndexBoardTaskTitle(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	p := e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "Old title"}, app.TaskInput{Title: "Keeper"})
 	e.requireIndex(map[uint64]string{p.ID: "a post\nOld title\nKeeper"})
@@ -736,6 +750,7 @@ func TestIndexBoardTaskTitle(t *testing.T) {
 }
 
 func TestIndexDelete(t *testing.T) {
+	t.Parallel()
 	t.Run("a post without replies goes", func(t *testing.T) {
 		e := newSearchEnv(t)
 		keep := e.write("bob", "lobby", "keeper")
@@ -806,6 +821,7 @@ func TestIndexDelete(t *testing.T) {
 }
 
 func TestIndexRoomDelete(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	inLobby := e.write("bob", "lobby", "in the lobby")
 	lobbyReply := e.say("admin", inLobby.ID, "lobby reply")
@@ -841,6 +857,7 @@ func TestIndexRoomDelete(t *testing.T) {
 }
 
 func TestNewSearch(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	if e.search == nil {
 		t.Fatal("NewSearch returned nil")
@@ -850,6 +867,7 @@ func TestNewSearch(t *testing.T) {
 // TestSearchQueryInjection sends FTS5 syntax through the whole service: it
 // is words, so it neither fails nor finds what the words do not match.
 func TestSearchQueryInjection(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	lobby := e.write("bob", "lobby", "alpha beta")
 	e.write("alice", "den", "gamma secret")

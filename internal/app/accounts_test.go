@@ -87,6 +87,7 @@ func fieldsOf(t *testing.T, appErr *errors.Error) map[string]string {
 }
 
 func TestExportedTagsMatchTheStore(t *testing.T) {
+	t.Parallel()
 	if app.TagNotFound != store.TagNotFound || app.TagConflict != store.TagConflict {
 		t.Errorf("app tags %q, %q differ from the store's %q, %q",
 			app.TagNotFound, app.TagConflict, store.TagNotFound, store.TagConflict)
@@ -94,6 +95,7 @@ func TestExportedTagsMatchTheStore(t *testing.T) {
 }
 
 func TestActorIsAdmin(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		role store.Role
 		want bool
@@ -112,6 +114,7 @@ func TestActorIsAdmin(t *testing.T) {
 }
 
 func TestCreateInvitation(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	admin := e.signUp("root", store.RoleAdmin)
 
@@ -187,6 +190,7 @@ func TestCreateInvitation(t *testing.T) {
 }
 
 func TestCreateInvitationInvalidRole(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	admin := e.signUp("root", store.RoleAdmin)
 	tests := []struct {
@@ -222,6 +226,7 @@ func TestCreateInvitationInvalidRole(t *testing.T) {
 }
 
 func TestInvitationValid(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	used, err := e.svc.CreateSystemInvitation(t.Context(), store.RoleMember)
 	if err != nil {
@@ -286,6 +291,7 @@ func TestInvitationValid(t *testing.T) {
 }
 
 func TestSignUpValidation(t *testing.T) {
+	t.Parallel()
 	long := func(n int, s string) string { return strings.Repeat(s, n) }
 	tests := []struct {
 		name        string
@@ -407,6 +413,7 @@ func sameSet(a, b []string) bool {
 }
 
 func TestSignUp(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		role store.Role
@@ -467,6 +474,7 @@ func TestSignUp(t *testing.T) {
 }
 
 func TestSignUpInvitationFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		prepare    func(e *env) string // returns the token to use
@@ -522,6 +530,7 @@ func TestSignUpInvitationFailures(t *testing.T) {
 }
 
 func TestSignUpTakenUsername(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.signUp("alice", store.RoleMember)
 	for _, name := range []string{"alice", "ALICE", " Alice "} {
@@ -552,6 +561,7 @@ func TestSignUpTakenUsername(t *testing.T) {
 // error, and there is one user: the check in the service and the unique index
 // agree.
 func TestSignUpRaceUsesTheUniqueIndex(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	tokens := make([]string, 2)
 	for i := range tokens {
@@ -588,6 +598,7 @@ func TestSignUpRaceUsesTheUniqueIndex(t *testing.T) {
 }
 
 func TestUsers(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	zed := e.signUp("zed", store.RoleMember)
 	root := e.signUp("root", store.RoleAdmin)
@@ -623,6 +634,7 @@ func TestUsers(t *testing.T) {
 }
 
 func TestSetRole(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		setup func(e *env) (act app.Actor, target uint64, role store.Role)
@@ -752,6 +764,7 @@ func TestSetRole(t *testing.T) {
 }
 
 func TestSetDisabled(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		setup func(e *env) (act app.Actor, target uint64, disabled bool)
@@ -890,6 +903,7 @@ func TestSetDisabled(t *testing.T) {
 }
 
 func TestSetDisabledDeletesSessions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	root := e.signUp("root", store.RoleAdmin)
 	victim := e.signUp("victim", store.RoleMember)
@@ -947,6 +961,7 @@ func TestSetDisabledDeletesSessions(t *testing.T) {
 // so it never becomes an Actor, and the web layer's middleware (step 2.3) is
 // what refuses it.
 func TestPermissions(t *testing.T) {
+	t.Parallel()
 	type call func(e *env, act app.Actor, member app.User) error
 	methods := []struct {
 		name      string
@@ -1021,6 +1036,7 @@ func TestPermissions(t *testing.T) {
 // TestStoreErrorsPassUp checks that a failure of the store reaches the caller
 // untouched: same tag, and a route that goes down into the store.
 func TestStoreErrorsPassUp(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	root := e.signUp("root", store.RoleAdmin)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -1079,6 +1095,7 @@ func TestStoreErrorsPassUp(t *testing.T) {
 }
 
 func TestUserIsAdmin(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		user app.User

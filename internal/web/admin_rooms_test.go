@@ -27,6 +27,7 @@ func rowHTML(t *testing.T, body string, r app.Room) string {
 }
 
 func TestAdminRoomsPage(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	rec := e.send(get("/admin/rooms", e.cookies["admin"]))
 	if rec.Code != http.StatusOK {
@@ -80,6 +81,7 @@ func TestAdminRoomsPage(t *testing.T) {
 }
 
 func TestAdminRoomsPageOpensTheMembersOfOneRoom(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	tests := []struct {
 		name    string
@@ -110,6 +112,7 @@ func TestAdminRoomsPageOpensTheMembersOfOneRoom(t *testing.T) {
 }
 
 func TestAdminRoomMembersToggle(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	t.Run("datastar patches the row with the members", func(t *testing.T) {
 		rec := e.send(get(adminRoomPath(e.secret, "/members"), e.cookies["admin"], asDatastar()))
@@ -149,6 +152,7 @@ func TestAdminRoomMembersToggle(t *testing.T) {
 }
 
 func TestAdminRoomRename(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		// A private room of someone else, which the admin is not a member of.
@@ -171,6 +175,7 @@ func TestAdminRoomRename(t *testing.T) {
 }
 
 func TestAdminRoomRenameFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		form       url.Values
@@ -213,6 +218,7 @@ func TestAdminRoomRenameFailures(t *testing.T) {
 }
 
 func TestAdminRoomDelete(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		rec := e.post("admin", adminRoomPath(e.secret, "/delete"), nil, datastar)
@@ -234,6 +240,7 @@ func TestAdminRoomDelete(t *testing.T) {
 }
 
 func TestAdminRoomActionsOnARoomThatIsGone(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"/rename", "/delete", "/members/" + "1" + "/remove"} {
 		t.Run(action, func(t *testing.T) {
 			e := newRoomsEnv(t)
@@ -250,6 +257,7 @@ func TestAdminRoomActionsOnARoomThatIsGone(t *testing.T) {
 }
 
 func TestAdminMemberRemove(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		// bob in the private room secret, which the admin is not a member of.
@@ -277,6 +285,7 @@ func TestAdminMemberRemove(t *testing.T) {
 }
 
 func TestAdminMemberRemoveOfANonMemberChangesNothing(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	rec := e.post("admin", adminRoomPath(e.secret, "/members/"+idText(e.carol.ID)+"/remove"), nil, true)
 	requireSSE(t, rec)
@@ -287,6 +296,7 @@ func TestAdminMemberRemoveOfANonMemberChangesNothing(t *testing.T) {
 }
 
 func TestAdminRoomsAreInvisibleToMembers(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	form := url.Values{"name": {"x"}}
 	remove := "/members/" + idText(e.bob.ID) + "/remove"
@@ -345,6 +355,7 @@ func reqAs(_ *roomsEnv, r *http.Request, datastar bool) *http.Request {
 }
 
 func TestAdminRoomsNeedASession(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	tests := []struct {
 		name    string
@@ -368,6 +379,7 @@ func TestAdminRoomsNeedASession(t *testing.T) {
 }
 
 func TestAdminTabsOnTheUsersPage(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	rec := e.send(get("/admin/users", e.cookies["admin"]))
 	requireBody(t, rec, []string{

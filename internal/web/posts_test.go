@@ -95,6 +95,7 @@ func postPathOf(p app.Post, action string) string {
 }
 
 func TestPostCreate(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		rec := e.post("alice", "/rooms/"+idText(e.general.ID)+"/posts",
@@ -126,6 +127,7 @@ func TestPostCreate(t *testing.T) {
 }
 
 func TestPostCreateMistakes(t *testing.T) {
+	t.Parallel()
 	tags11 := "t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11"
 	tests := []struct {
 		name  string
@@ -176,6 +178,7 @@ func TestPostCreateMistakes(t *testing.T) {
 }
 
 func TestPostCreateNotAllowed(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		form := editorForm("text", "let me in", "")
@@ -205,6 +208,7 @@ func TestPostCreateNotAllowed(t *testing.T) {
 }
 
 func TestPostPreview(t *testing.T) {
+	t.Parallel()
 	tooLong := strings.Repeat("a", 20_001)
 	tests := []struct {
 		name    string
@@ -257,6 +261,7 @@ func TestPostPreview(t *testing.T) {
 }
 
 func TestPostPreviewNeedsALogin(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	rec := e.send(postForm("/preview", url.Values{"format": {"text"}, "body": {"x"}}, asDatastar()))
 	requireSSE(t, rec)
@@ -264,6 +269,7 @@ func TestPostPreviewNeedsALogin(t *testing.T) {
 }
 
 func TestTagSuggest(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.writePost("bob", "general", "1", "design", "desktop", "release")
 	e.writePost("alice", "secret", "2", "design-private", "secret-plan")
@@ -302,6 +308,7 @@ func TestTagSuggest(t *testing.T) {
 const pageSize = 30
 
 func TestFeedPages(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	made := e.writeMany("alice", "general", pageSize+5)
 	newest, thirtieth := made[len(made)-1], made[len(made)-pageSize]
@@ -381,6 +388,7 @@ func TestFeedPages(t *testing.T) {
 }
 
 func TestFeedContent(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	plain := e.writePost("alice", "general", "Hello <b>team</b>\nsecond line", "design", "ünï")
 	md := e.writeMarkdown("bob", "general", "# Big\n\n**bold** and [a link](https://example.com)")
@@ -458,6 +466,7 @@ func requireContains(t *testing.T, s string, want, notWant []string) {
 }
 
 func TestPostEditInPlace(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writeMarkdown("alice", "general", "Original **body**", "alpha", "beta")
 	card := `id="post-` + idText(p.ID) + `"`
@@ -571,6 +580,7 @@ func TestPostEditInPlace(t *testing.T) {
 }
 
 func TestPostDelete(t *testing.T) {
+	t.Parallel()
 	t.Run("a post without replies disappears", func(t *testing.T) {
 		modes(t, func(t *testing.T, datastar bool) {
 			e := newRoomsEnv(t)
@@ -666,6 +676,7 @@ func TestPostDelete(t *testing.T) {
 }
 
 func TestPostPage(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writeMarkdown("alice", "general", "Page **body**", "page-tag")
 	e.reply(p, "alice")
@@ -722,6 +733,7 @@ func TestPostPage(t *testing.T) {
 // private room (carol, and the admin too) call every route on its post and on
 // the room: all of them are "not found", never "forbidden".
 func TestPrivateRoomPostsAreNotFound(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writePost("alice", "secret", "private words", "private-tag")
 	comment := e.commentOn(p, "bob", "private reply")
@@ -787,6 +799,7 @@ func TestPrivateRoomPostsAreNotFound(t *testing.T) {
 // TestPostRoutesNeedASession has a request without a login to each route of
 // this step: all of them are sent to the login page.
 func TestPostRoutesNeedASession(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writePost("alice", "general", "hello")
 	paths := []struct {
@@ -816,6 +829,7 @@ func TestPostRoutesNeedASession(t *testing.T) {
 }
 
 func TestPostFormTooLarge(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	// 20,000 characters of four bytes each still fit (the form writes each byte
 	// as three characters); a body far beyond that is refused as unreadable.

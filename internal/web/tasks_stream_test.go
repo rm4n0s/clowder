@@ -20,6 +20,7 @@ func (e *roomsEnv) columnID(room string, place int) uint64 {
 func contentOf(p app.Post) string { return `id="post-content-` + idText(p.ID) + `"` }
 
 func TestRoomStreamRefreshesTheTasksOfPostsOnAColumnChange(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	past := mustDay(t, pastDue)
 	withTasks := e.writeTasks("bob", "general", "Has tasks", app.TaskInput{Title: "Late", DueDate: &past}, app.TaskInput{Title: "Other"})
@@ -64,6 +65,7 @@ func TestRoomStreamRefreshesTheTasksOfPostsOnAColumnChange(t *testing.T) {
 }
 
 func TestRoomStreamIgnoresTheBoardOfAnotherRoom(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.writeTasks("alice", "general", "Has tasks", app.TaskInput{Title: "A"})
 	c := e.serveStreams().open("alice", e.streamOfRoom("general", "seen="+idText(newestOf(e, "general"))), asDatastar())
@@ -74,6 +76,7 @@ func TestRoomStreamIgnoresTheBoardOfAnotherRoom(t *testing.T) {
 }
 
 func TestPostStreamRefreshesTheTasksOfTheThreadOnAColumnChange(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	root := e.writeTasks("alice", "general", "Root", app.TaskInput{Title: "Root task"})
 	plain := e.commentOn(root, "bob", "no tasks here")

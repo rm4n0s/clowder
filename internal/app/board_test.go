@@ -157,6 +157,7 @@ func columnEvts(room app.Room) []live.Event {
 }
 
 func TestBoardView(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	// The clock is 2026-10-26 09:30 UTC. Due dates are given with a time and
 	// a zone: only the day counts.
@@ -243,6 +244,7 @@ func TestBoardView(t *testing.T) {
 }
 
 func TestBoardViewForEveryReader(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "One"})
 	for _, tc := range []struct {
@@ -260,6 +262,7 @@ func TestBoardViewForEveryReader(t *testing.T) {
 }
 
 func TestBoardPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"bob", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"carol", "lobby", ""},
@@ -334,6 +337,7 @@ var mutatingCases = []boardCase{
 }
 
 func TestBoardMoveTaskPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  "Board.MoveTask.func1->loadTaskRoom->loadReadableRoom.NotFound",
 		app.TagForbidden: "Board.MoveTask.func1.Forbidden",
@@ -345,6 +349,7 @@ func TestBoardMoveTaskPermissions(t *testing.T) {
 }
 
 func TestBoardUpdateTaskPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  "Board.UpdateTask.func1->loadTaskRoom->loadReadableRoom.NotFound",
 		app.TagForbidden: "Board.UpdateTask.func1.Forbidden",
@@ -356,6 +361,7 @@ func TestBoardUpdateTaskPermissions(t *testing.T) {
 }
 
 func TestBoardAddColumnPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
 		app.TagForbidden: "Board.AddColumn.func1.Forbidden",
@@ -367,6 +373,7 @@ func TestBoardAddColumnPermissions(t *testing.T) {
 }
 
 func TestBoardRenameColumnPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  "Board.RenameColumn.func1->loadColumnRoom->loadReadableRoom.NotFound",
 		app.TagForbidden: "Board.RenameColumn.func1.Forbidden",
@@ -377,6 +384,7 @@ func TestBoardRenameColumnPermissions(t *testing.T) {
 }
 
 func TestBoardMoveColumnPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  "Board.MoveColumn.func1->loadColumnRoom->loadReadableRoom.NotFound",
 		app.TagForbidden: "Board.MoveColumn.func1.Forbidden",
@@ -387,6 +395,7 @@ func TestBoardMoveColumnPermissions(t *testing.T) {
 }
 
 func TestBoardDeleteColumnPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  "Board.DeleteColumn.func1->loadColumnRoom->loadReadableRoom.NotFound",
 		app.TagForbidden: "Board.DeleteColumn.func1.Forbidden",
@@ -398,6 +407,7 @@ func TestBoardDeleteColumnPermissions(t *testing.T) {
 }
 
 func TestBoardMissingThings(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	ctx := t.Context()
 	cols := e.view("bob", e.lobby.ID).Columns
@@ -436,6 +446,7 @@ func TestBoardMissingThings(t *testing.T) {
 }
 
 func TestBoardMoveTaskPositions(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	start := [][]string{{"a", "b", "c"}, {"x", "y"}, {}}
 	tests := []struct {
@@ -490,6 +501,7 @@ func TestBoardMoveTaskPositions(t *testing.T) {
 }
 
 func TestBoardMoveTask(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	e.clk.Advance(time.Hour)
 	p := e.withTasks("bob", e.lobby.ID,
@@ -540,6 +552,7 @@ func TestBoardMoveTask(t *testing.T) {
 }
 
 func TestBoardMoveTaskOfAComment(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	p := e.write("bob", "lobby", "a post")
 	c, err := e.posts.Reply(t.Context(), e.as("admin"), p.ID, app.PostInput{
@@ -573,6 +586,7 @@ func TestBoardMoveTaskOfAComment(t *testing.T) {
 }
 
 func TestBoardUpdateTask(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	due := time.Date(2026, 11, 3, 18, 0, 0, 0, time.FixedZone("x", 5*3600))
 	p := e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "Fix login", Assignees: []uint64{e.uid("bob")}, DueDate: &due})
@@ -664,6 +678,7 @@ func TestBoardUpdateTask(t *testing.T) {
 }
 
 func TestBoardUpdateTaskInvalid(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "Fix login"})
 	task := card(t, e.view("bob", e.lobby.ID), "Fix login")
@@ -713,6 +728,7 @@ func TestBoardUpdateTaskInvalid(t *testing.T) {
 }
 
 func TestBoardUpdateTaskKeepsOtherFields(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	due := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
 	e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "Fix login", Assignees: []uint64{e.uid("bob")}, DueDate: &due})
@@ -728,6 +744,7 @@ func TestBoardUpdateTaskKeepsOtherFields(t *testing.T) {
 }
 
 func TestBoardAddColumn(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	before := len(e.events())
 	e.rec.Reset()
@@ -787,6 +804,7 @@ func TestBoardAddColumn(t *testing.T) {
 }
 
 func TestBoardRenameColumn(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	cols := e.view("bob", e.lobby.ID).Columns
 	rename := func(i int, name string) error {
@@ -854,6 +872,7 @@ func TestBoardRenameColumn(t *testing.T) {
 }
 
 func TestBoardMoveColumn(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	room := e.newRoom("columns")
 	names := func() []string {
@@ -926,6 +945,7 @@ func TestBoardMoveColumn(t *testing.T) {
 }
 
 func TestBoardDeleteColumn(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	room := e.newRoom("deleting")
 	e.withTasks("admin", room.ID, app.TaskInput{Title: "Fix login"})

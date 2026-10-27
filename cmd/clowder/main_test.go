@@ -648,7 +648,7 @@ func TestRunDemoStoreOpenFailure(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
 	}
-	if !appErr.HasRoute("run->runDemo->Open->open") {
+	if !appErr.HasRoute("run->runDemo->fillDemo->Open->open") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }

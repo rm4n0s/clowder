@@ -177,6 +177,7 @@ func withKeep(t app.TaskCard, assignees []uint64) app.TaskInput {
 }
 
 func TestNotificationKindsMatchTheStore(t *testing.T) {
+	t.Parallel()
 	pairs := [][2]app.NotificationKind{
 		{app.NotificationMention, store.NotificationMention},
 		{app.NotificationReply, store.NotificationReply},
@@ -191,6 +192,7 @@ func TestNotificationKindsMatchTheStore(t *testing.T) {
 }
 
 func TestMentionNotifications(t *testing.T) {
+	t.Parallel()
 	mention := []app.NotificationKind{app.NotificationMention}
 	tests := []struct {
 		name string
@@ -322,6 +324,7 @@ func TestMentionNotifications(t *testing.T) {
 }
 
 func TestMentionNotificationDetails(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	e.join("alice", "carol")
 	p := e.mustCreate("bob", "lobby", app.FormatText, "hi @carol")
@@ -351,6 +354,7 @@ func TestMentionNotificationDetails(t *testing.T) {
 }
 
 func TestReplyNotifications(t *testing.T) {
+	t.Parallel()
 	reply := []app.NotificationKind{app.NotificationReply}
 	tests := []struct {
 		name string
@@ -469,6 +473,7 @@ func TestReplyNotifications(t *testing.T) {
 }
 
 func TestReplyNotificationDetails(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	p := e.mustCreate("bob", "lobby", app.FormatText, "post")
 	c := e.say("admin", p.ID, "one")
@@ -484,6 +489,7 @@ func TestReplyNotificationDetails(t *testing.T) {
 }
 
 func TestAssignedNotifications(t *testing.T) {
+	t.Parallel()
 	assigned := []app.NotificationKind{app.NotificationAssigned}
 	tests := []struct {
 		name string
@@ -692,6 +698,7 @@ func TestAssignedNotifications(t *testing.T) {
 }
 
 func TestAssignedNotificationDetails(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	p := e.mustCreate("bob", "lobby", app.FormatText, "post", e.assign("Write the report", "admin"))
 	c, err := e.posts.Reply(e.t.Context(), e.as("bob"), p.ID,
@@ -714,6 +721,7 @@ func TestAssignedNotificationDetails(t *testing.T) {
 }
 
 func TestAddedToRoomNotifications(t *testing.T) {
+	t.Parallel()
 	added := []app.NotificationKind{app.NotificationAddedToRoom}
 	tests := []struct {
 		name string
@@ -801,6 +809,7 @@ func TestAddedToRoomNotifications(t *testing.T) {
 }
 
 func TestAddedToRoomNotificationDetails(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	e.intoDen("carol")
 	// intoDen settled; look at the whole list.
@@ -816,6 +825,7 @@ func TestAddedToRoomNotificationDetails(t *testing.T) {
 }
 
 func TestEditMentions(t *testing.T) {
+	t.Parallel()
 	mention := []app.NotificationKind{app.NotificationMention}
 	tests := []struct {
 		name string
@@ -957,6 +967,7 @@ func TestEditMentions(t *testing.T) {
 }
 
 func TestMentionsAreLinks(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	link := func(name string) string {
 		return `<a href="/search?q=from%3A` + name + `" class="mention">@` + name + `</a>`
@@ -1001,6 +1012,7 @@ func TestMentionsAreLinks(t *testing.T) {
 }
 
 func TestMentionOfSomeoneWhoCannotReadIsNoLink(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	p := e.mustCreate("alice", "den", app.FormatText, "psst @carol and @bob")
 	if strings.Contains(string(p.HTML), "from%3Acarol") || !strings.Contains(string(p.HTML), "from%3Abob") {
@@ -1012,6 +1024,7 @@ func TestMentionOfSomeoneWhoCannotReadIsNoLink(t *testing.T) {
 }
 
 func TestSearchSnippetsStayPlain(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	e.mustCreate("bob", "lobby", app.FormatText, "deploy tonight, ask @carol")
 	page, err := app.NewSearch(e.st).Query(t.Context(), e.as("admin"), "deploy", 1)
@@ -1025,6 +1038,7 @@ func TestSearchSnippetsStayPlain(t *testing.T) {
 }
 
 func TestNotificationsDeletedWithTheirPost(t *testing.T) {
+	t.Parallel()
 	assigned, mention, reply := app.NotificationAssigned, app.NotificationMention, app.NotificationReply
 	tests := []struct {
 		name string
@@ -1124,6 +1138,7 @@ func TestNotificationsDeletedWithTheirPost(t *testing.T) {
 }
 
 func TestNotificationsList(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	var ids []uint64
 	for i := range 7 {
@@ -1181,6 +1196,7 @@ func TestNotificationsList(t *testing.T) {
 }
 
 func TestNotificationsHiddenWithTheRoom(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	e.intoDen("carol")
 	e.mustCreate("alice", "den", app.FormatText, "psst @carol")
@@ -1216,6 +1232,7 @@ func TestNotificationsHiddenWithTheRoom(t *testing.T) {
 }
 
 func TestUnreadCountAndMarkRead(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	for range 4 {
 		e.mustCreate("bob", "lobby", app.FormatText, "@carol")
@@ -1298,6 +1315,7 @@ func TestUnreadCountAndMarkRead(t *testing.T) {
 }
 
 func TestNotificationsPermissions(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	e.mustCreate("bob", "lobby", app.FormatText, "@alice @carol @admin @root")
 	someone := e.as("alice")
@@ -1329,6 +1347,7 @@ func TestNotificationsPermissions(t *testing.T) {
 }
 
 func TestNotificationsOnlyOwn(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	e.mustCreate("bob", "lobby", app.FormatText, "@alice @carol")
 	for _, who := range []string{"admin", "root", "alice", "bob", "carol", "dave"} {
@@ -1348,6 +1367,7 @@ func TestNotificationsOnlyOwn(t *testing.T) {
 }
 
 func TestNotificationEventsPublished(t *testing.T) {
+	t.Parallel()
 	notif := notifEvt
 	tests := []struct {
 		name string
@@ -1515,6 +1535,7 @@ func (p *commitProbe) Publish(ev live.Event) {
 }
 
 func TestNotificationEventsComeAfterTheCommit(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	probe := &commitProbe{notes: e.notes, seen: map[uint64]int{}, t: t, as: func(id uint64) app.Actor {
 		for name, u := range e.users {
@@ -1535,6 +1556,7 @@ func TestNotificationEventsComeAfterTheCommit(t *testing.T) {
 }
 
 func TestNotificationTimesUseTheClock(t *testing.T) {
+	t.Parallel()
 	e := newNotifEnv(t)
 	e.clk.Advance(3 * time.Hour)
 	e.mustCreate("bob", "lobby", app.FormatText, "@carol")
@@ -1545,6 +1567,7 @@ func TestNotificationTimesUseTheClock(t *testing.T) {
 }
 
 func TestMentionsAreDeletedWithThePost(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		// replies is true when the post has a reply, so that it stays as a

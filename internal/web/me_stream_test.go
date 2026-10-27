@@ -45,6 +45,7 @@ func requireCounts(t *testing.T, c *streamClient, n int) {
 }
 
 func TestMeStreamSendsTheCountFirst(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.mentionBob("general", "one")
 	ss := e.serveStreams()
@@ -69,6 +70,7 @@ func TestMeStreamSendsTheCountFirst(t *testing.T) {
 }
 
 func TestMeStreamPatchesTheCount(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	c := e.serveStreams().open("bob", "/me/stream", asDatastar())
 	requireCounts(t, c, 1) // the addition to "secret"
@@ -91,6 +93,7 @@ func TestMeStreamPatchesTheCount(t *testing.T) {
 }
 
 func TestMeStreamPatchesTheRoomList(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	c := e.serveStreams().open("carol", "/me/stream", asDatastar())
 	requireCounts(t, c, 0)
@@ -131,6 +134,7 @@ func TestMeStreamPatchesTheRoomList(t *testing.T) {
 }
 
 func TestMeStreamReconnectSendsTheSidebar(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.mentionBob("general", "hello")
 	c := e.serveStreams().open("bob", "/me/stream", asDatastar(), withHeader("Last-Event-ID", "1"))
@@ -139,6 +143,7 @@ func TestMeStreamReconnectSendsTheSidebar(t *testing.T) {
 }
 
 func TestMeStreamKeepAliveAndEnd(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.srv.pingInterval = 20 * time.Millisecond
 	ss := e.serveStreams()
@@ -184,6 +189,7 @@ func (c *streamClient) drainUntilEnd() []patch {
 }
 
 func TestMeStreamNeedsALogin(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	c := e.serveStreams().open("", "/me/stream", asDatastar())
 	if c.status != http.StatusOK {
@@ -204,6 +210,7 @@ func listItem(html string, n app.Notification) bool {
 }
 
 func TestMeStreamKeepsTheNotificationsListLive(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	ss := e.serveStreams()
 
@@ -285,6 +292,7 @@ func TestMeStreamKeepsTheNotificationsListLive(t *testing.T) {
 }
 
 func TestNotificationsPageOpensItsStream(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	post := e.mentionBob("general", "x")
 	_ = post
@@ -308,6 +316,7 @@ func TestNotificationsPageOpensItsStream(t *testing.T) {
 }
 
 func TestPageStreamsKeepTheCountLive(t *testing.T) {
+	t.Parallel()
 	// The streams of the pages that have their own keep the count of the
 	// sidebar live too (SPEC D31): they patch the badge alone, not the sidebar.
 	tests := []struct {

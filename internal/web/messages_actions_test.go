@@ -11,6 +11,7 @@ import (
 )
 
 func TestSendAMessage(t *testing.T) {
+	t.Parallel()
 	t.Run("a Datastar request gets the message at the end and a fresh composer", func(t *testing.T) {
 		e := newRoomsEnv(t)
 		conv := e.direct("alice", "bob")
@@ -62,6 +63,7 @@ func TestSendAMessage(t *testing.T) {
 }
 
 func TestSendProblemsKeepWhatWasTyped(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		form func(e *roomsEnv, conv uint64) url.Values
@@ -128,6 +130,7 @@ func TestSendProblemsKeepWhatWasTyped(t *testing.T) {
 }
 
 func TestSendWithFiles(t *testing.T) {
+	t.Parallel()
 	img := pngOf(t, 40, 30)
 	t.Run("files and a message", func(t *testing.T) {
 		modes(t, func(t *testing.T, datastar bool) {
@@ -231,6 +234,7 @@ func TestSendWithFiles(t *testing.T) {
 }
 
 func TestEditAMessage(t *testing.T) {
+	t.Parallel()
 	t.Run("the editor replaces the content, and saving shows it again", func(t *testing.T) {
 		e := newRoomsEnv(t)
 		conv := e.direct("alice", "bob")
@@ -346,6 +350,7 @@ func TestEditAMessage(t *testing.T) {
 }
 
 func TestDeleteAMessage(t *testing.T) {
+	t.Parallel()
 	t.Run("the placeholder stays, in both modes", func(t *testing.T) {
 		modes(t, func(t *testing.T, datastar bool) {
 			e := newRoomsEnv(t)
@@ -402,6 +407,7 @@ func TestDeleteAMessage(t *testing.T) {
 }
 
 func TestReactToAMessage(t *testing.T) {
+	t.Parallel()
 	t.Run("a reaction puts the chip and the picker, and again takes it off", func(t *testing.T) {
 		modes(t, func(t *testing.T, datastar bool) {
 			e := newRoomsEnv(t)
@@ -462,6 +468,7 @@ func TestReactToAMessage(t *testing.T) {
 }
 
 func TestGroupActions(t *testing.T) {
+	t.Parallel()
 	t.Run("add people by username", func(t *testing.T) {
 		modes(t, func(t *testing.T, datastar bool) {
 			e := newRoomsEnv(t)
@@ -614,6 +621,7 @@ func TestGroupActions(t *testing.T) {
 }
 
 func TestMessageFileDownloads(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	img := pngOf(t, 4, 3)
@@ -681,6 +689,7 @@ func TestMessageFileDownloads(t *testing.T) {
 }
 
 func TestMessageFilesAreNotPostFiles(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	msg := e.sayIn("alice", conv, app.MessageInput{Uploads: []app.Upload{e.uploadMessage("alice", "f.txt")}})

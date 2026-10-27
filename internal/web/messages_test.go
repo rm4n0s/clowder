@@ -111,6 +111,7 @@ func requireRedirectTo(t *testing.T, rec *httptest.ResponseRecorder, datastar bo
 }
 
 func TestMessagesLinkAndBadgeInTheSidebar(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	e.say("alice", conv, "one")
@@ -150,6 +151,7 @@ func TestMessagesLinkAndBadgeInTheSidebar(t *testing.T) {
 }
 
 func TestMessagesPageListsTheConversations(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	direct := e.direct("alice", "bob")
 	e.say("alice", direct, "Hello <Bob>")
@@ -208,6 +210,7 @@ func TestMessagesPageListsTheConversations(t *testing.T) {
 }
 
 func TestMessagesNeedALogin(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	msg := e.say("alice", conv, "hi")
@@ -251,6 +254,7 @@ func TestMessagesNeedALogin(t *testing.T) {
 }
 
 func TestMessagesRefuseWhoIsNoMember(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	crew := e.group("crew", "alice", "bob", "carol")
 	e.leave("carol", crew)
@@ -350,6 +354,7 @@ func (e *roomsEnv) uploadMessage(user, name string) app.Upload {
 }
 
 func TestMessagesBadIDsAreNotFound(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	for _, path := range []string{
 		"/messages/abc", "/messages/0", "/messages/9999", "/messages/abc/stream", "/messages/abc/older",
@@ -377,6 +382,7 @@ func TestMessagesBadIDsAreNotFound(t *testing.T) {
 }
 
 func TestStartConversation(t *testing.T) {
+	t.Parallel()
 	t.Run("one user opens the direct conversation, again and again", func(t *testing.T) {
 		modes(t, func(t *testing.T, datastar bool) {
 			e := newRoomsEnv(t)
@@ -524,6 +530,7 @@ func TestStartConversation(t *testing.T) {
 }
 
 func TestRoomMemberListHasMessageButtons(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	roomPath := "/rooms/" + idText(e.general.ID)
 	rec := e.send(get(roomPath, e.cookies["alice"]))

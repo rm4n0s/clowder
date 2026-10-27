@@ -112,12 +112,14 @@ func attachmentNames(p app.Post) []string {
 }
 
 func TestPostsTagTooLargeIsTheFilesTag(t *testing.T) {
+	t.Parallel()
 	if app.TagTooLarge != files.TagTooLarge {
 		t.Errorf("TagTooLarge = %q, want %q", app.TagTooLarge, files.TagTooLarge)
 	}
 }
 
 func TestPostsUploadCleansTheName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		in   string
@@ -166,6 +168,7 @@ func TestPostsUploadCleansTheName(t *testing.T) {
 }
 
 func TestPostsUploadResult(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	data := pngData(t, 30, 20)
 	u := e.upload("bob", "dir/pic.png", data)
@@ -180,6 +183,7 @@ func TestPostsUploadResult(t *testing.T) {
 }
 
 func TestPostsUploadPermissions(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	for _, user := range []string{"admin", "root", "alice", "bob", "carol", "dave"} {
 		t.Run(user, func(t *testing.T) {
@@ -199,6 +203,7 @@ func TestPostsUploadPermissions(t *testing.T) {
 }
 
 func TestPostsUploadLimit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		size int
@@ -229,6 +234,7 @@ func TestPostsUploadLimit(t *testing.T) {
 }
 
 func TestPostsUploadDefaults(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	posts := app.NewPosts(e.st, e.clk, markdown.New(), e.files, app.PostsConfig{}, nil)
 	// The default limit is 25 MB: 2 KB is far under it, and the count default
@@ -256,6 +262,7 @@ func TestPostsUploadDefaults(t *testing.T) {
 }
 
 func TestPostsCreateWithAttachments(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	img := e.upload("bob", "pic.png", pngData(t, 30, 20))
 	txt := e.uploadText("bob", "notes.txt")
@@ -294,6 +301,7 @@ func TestPostsCreateWithAttachments(t *testing.T) {
 }
 
 func TestPostsImageTypes(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	webp := []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x09\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
 	tests := []struct {
@@ -323,6 +331,7 @@ func TestPostsImageTypes(t *testing.T) {
 }
 
 func TestPostsAttachmentsAllowAnEmptyBody(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	u := e.uploadText("bob", "a.txt")
 	p, err := e.posts.Create(t.Context(), e.as("bob"), e.lobby.ID, app.PostInput{Format: app.FormatText, Body: " \n", Uploads: []app.Upload{u}})
@@ -349,6 +358,7 @@ func TestPostsAttachmentsAllowAnEmptyBody(t *testing.T) {
 }
 
 func TestPostsReplyWithAttachments(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("alice", "den", "the post")
 	u := e.upload("bob", "pic.png", pngData(t, 4, 4))
@@ -371,6 +381,7 @@ func TestPostsReplyWithAttachments(t *testing.T) {
 }
 
 func TestPostsAttachmentCountLimit(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	var ups []app.Upload
 	for _, n := range []string{"a", "b", "c", "d"} {
@@ -421,6 +432,7 @@ func TestPostsAttachmentCountLimit(t *testing.T) {
 }
 
 func TestPostsFailedCallsRemoveTheirUploads(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		call func(e *postsEnv, ups []app.Upload) error
@@ -488,6 +500,7 @@ func TestPostsFailedCallsRemoveTheirUploads(t *testing.T) {
 }
 
 func TestPostsForgedUploadsAreRefused(t *testing.T) {
+	t.Parallel()
 	missing := strings.Repeat("0", 64)
 	tests := []struct {
 		name  string
@@ -554,6 +567,7 @@ func TestPostsForgedUploadsAreRefused(t *testing.T) {
 }
 
 func TestPostsUploadsMustBeOnDiskWhenTheDiskFails(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: permission bits do not apply")
 	}
@@ -568,6 +582,7 @@ func TestPostsUploadsMustBeOnDiskWhenTheDiskFails(t *testing.T) {
 }
 
 func TestPostsEditAttachments(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	a, b, c := e.uploadText("bob", "a.txt"), e.uploadText("bob", "b.txt"), e.uploadText("bob", "c.txt")
 	p := e.writeWith("bob", "lobby", "post", a, b)
@@ -617,6 +632,7 @@ func TestPostsEditAttachments(t *testing.T) {
 }
 
 func TestPostsEditWithAttachmentsAndOtherChanges(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	a := e.uploadText("bob", "a.txt")
 	p := e.writeWith("bob", "lobby", "post", a)
@@ -645,6 +661,7 @@ func TestPostsEditWithAttachmentsAndOtherChanges(t *testing.T) {
 }
 
 func TestPostsEditWithNothingChangedWritesNothing(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	a := e.uploadText("bob", "a.txt")
 	p := e.writeWith("bob", "lobby", "post", a)
@@ -660,6 +677,7 @@ func TestPostsEditWithNothingChangedWritesNothing(t *testing.T) {
 }
 
 func TestPostsEditAttachmentRules(t *testing.T) {
+	t.Parallel()
 	t.Run("count limit counts the kept ones", func(t *testing.T) {
 		e := newPostsEnv(t)
 		a, b := e.uploadText("bob", "a"), e.uploadText("bob", "b")
@@ -775,6 +793,7 @@ func TestPostsEditAttachmentRules(t *testing.T) {
 }
 
 func TestPostsEditByOthersKeepsTheFiles(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	a := e.uploadText("bob", "a")
 	p := e.writeWith("bob", "lobby", "post", a)
@@ -788,6 +807,7 @@ func TestPostsEditByOthersKeepsTheFiles(t *testing.T) {
 }
 
 func TestPostsDeleteRemovesTheFiles(t *testing.T) {
+	t.Parallel()
 	t.Run("a post without replies", func(t *testing.T) {
 		e := newPostsEnv(t)
 		a, b := e.uploadText("bob", "a"), e.uploadText("bob", "b")
@@ -879,6 +899,7 @@ func TestPostsDeleteRemovesTheFiles(t *testing.T) {
 }
 
 func TestRoomsDeleteRemovesTheFiles(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	inLobby := e.uploadText("bob", "lobby-post")
 	inLobbyComment := e.uploadText("bob", "lobby-comment")
@@ -927,6 +948,7 @@ func logLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
 }
 
 func TestPostsFilesThatCannotBeRemovedAreLogged(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
@@ -961,6 +983,7 @@ func TestPostsFilesThatCannotBeRemovedAreLogged(t *testing.T) {
 }
 
 func TestPostsAttachmentPermissions(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		actor string
 		room  string
@@ -1014,6 +1037,7 @@ func TestPostsAttachmentPermissions(t *testing.T) {
 }
 
 func TestPostsAttachmentMissingAndDeleted(t *testing.T) {
+	t.Parallel()
 	t.Run("a missing attachment", func(t *testing.T) {
 		e := newPostsEnv(t)
 		_, _, err := e.posts.Attachment(t.Context(), e.as("bob"), 9999)
@@ -1074,6 +1098,7 @@ func withoutTimes(views []app.AttachmentView) []app.AttachmentView {
 }
 
 func TestPostsViewsCarryTheAttachments(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	img := e.upload("bob", "pic.png", pngData(t, 8, 6))
 	txt := e.uploadText("bob", "a.txt")
@@ -1125,6 +1150,7 @@ func TestPostsViewsCarryTheAttachments(t *testing.T) {
 }
 
 func TestPostsDiscardUploads(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		user string

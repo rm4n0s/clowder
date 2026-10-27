@@ -172,6 +172,7 @@ func do(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
 }
 
 func TestHandlerPages(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		method     string
@@ -231,6 +232,7 @@ func TestHandlerPages(t *testing.T) {
 }
 
 func TestMethodNotAllowedStaysWithTheMux(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		method    string
@@ -255,6 +257,7 @@ func TestMethodNotAllowedStaysWithTheMux(t *testing.T) {
 }
 
 func TestStaticFiles(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path            string
 		wantContentType string
@@ -320,6 +323,7 @@ func TestStaticFiles(t *testing.T) {
 }
 
 func TestRequestLog(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		method      string
@@ -367,6 +371,7 @@ func TestRequestLog(t *testing.T) {
 }
 
 func TestPanicRecovery(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		handler    http.HandlerFunc
@@ -446,6 +451,7 @@ func TestPanicRecovery(t *testing.T) {
 }
 
 func TestPanicAbortHandlerReachesTheServer(t *testing.T) {
+	t.Parallel()
 	s, buf := newTestServer(t, publicRoute("GET /abort", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic(http.ErrAbortHandler)
 	})))
@@ -462,6 +468,7 @@ func TestPanicAbortHandlerReachesTheServer(t *testing.T) {
 }
 
 func TestCrossOriginProtection(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		method     string
@@ -511,6 +518,7 @@ func (w *failingWriter) WriteHeader(int)           {}
 func (w *failingWriter) Write([]byte) (int, error) { return 0, stdErrors.New("broken pipe") }
 
 func TestRenderFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		w         func() http.ResponseWriter
@@ -592,6 +600,7 @@ func (f errorFS) Open(name string) (fs.File, error) {
 }
 
 func TestNewStaticHandlerFailures(t *testing.T) {
+	t.Parallel()
 	base := fstest.MapFS{"a.css": {Data: []byte("a{}")}, "b.js": {Data: []byte("1")}}
 	tests := []struct {
 		name     string
@@ -622,6 +631,7 @@ func TestNewStaticHandlerFailures(t *testing.T) {
 }
 
 func TestNewServerStaticFailure(t *testing.T) {
+	t.Parallel()
 	base := fstest.MapFS{"a.css": {Data: []byte("a{}")}}
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	s, err := newServer(config.Default(), logger, Services{}, errorFS{FS: base, failOpen: "a.css"})
@@ -641,6 +651,7 @@ func TestNewServerStaticFailure(t *testing.T) {
 }
 
 func TestRunListenFailed(t *testing.T) {
+	t.Parallel()
 	// An address that is already taken.
 	taken, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -687,6 +698,7 @@ type brokenListener struct{ net.Listener }
 func (brokenListener) Accept() (net.Conn, error) { return nil, stdErrors.New("accept broke") }
 
 func TestServeFailed(t *testing.T) {
+	t.Parallel()
 	inner, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -731,6 +743,7 @@ func runServer(t *testing.T, s *Server) (string, context.CancelFunc, <-chan erro
 }
 
 func TestServeStopsCleanly(t *testing.T) {
+	t.Parallel()
 	s, buf := newTestServer(t)
 	base, cancel, done := runServer(t, s)
 
@@ -770,6 +783,7 @@ func TestServeStopsCleanly(t *testing.T) {
 }
 
 func TestServeWaitsForRunningRequests(t *testing.T) {
+	t.Parallel()
 	started := make(chan struct{})
 	release := make(chan struct{})
 	s, _ := newTestServer(t, publicRoute("GET /slow", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -813,6 +827,7 @@ func TestServeWaitsForRunningRequests(t *testing.T) {
 }
 
 func TestServeShutdownFailed(t *testing.T) {
+	t.Parallel()
 	started := make(chan struct{})
 	release := make(chan struct{})
 	defer close(release)
@@ -853,6 +868,7 @@ func TestServeShutdownFailed(t *testing.T) {
 }
 
 func TestRunStopsOnCancel(t *testing.T) {
+	t.Parallel()
 	cfg := config.Default()
 	cfg.ListenAddr = "127.0.0.1:0"
 	buf := &syncBuffer{}

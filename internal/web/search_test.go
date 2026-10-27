@@ -95,6 +95,7 @@ func chipLinks(t *testing.T, body string) map[string]string {
 }
 
 func TestSearchEmptyQuery(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	for _, path := range []string{"/search", "/search?q=", "/search?q=+++", "/search?q=%22%22"} {
 		t.Run(path, func(t *testing.T) {
@@ -114,6 +115,7 @@ func TestSearchEmptyQuery(t *testing.T) {
 }
 
 func TestSearchWordsHighlightAndResultFields(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	body := e.searchAs("alice", "design")
 	// Tags are not words: the post of the secret room has the tag only.
@@ -144,6 +146,7 @@ func TestSearchWordsHighlightAndResultFields(t *testing.T) {
 }
 
 func TestSearchFromATagLink(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	// The tag link of a post card is what the user clicks.
 	feed := e.getAs("bob", "/rooms/"+idText(e.general.ID), false).Body.String()
@@ -162,6 +165,7 @@ func TestSearchFromATagLink(t *testing.T) {
 }
 
 func TestSearchFiltersAndChips(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	tests := []struct {
 		name  string
@@ -259,6 +263,7 @@ func TestSearchFiltersAndChips(t *testing.T) {
 }
 
 func TestSearchNothingFound(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	for _, q := range []string{"nonexistentword", "design room:random", "#nosuchtag", "is:comment lunch"} {
 		t.Run(q, func(t *testing.T) {
@@ -271,6 +276,7 @@ func TestSearchNothingFound(t *testing.T) {
 }
 
 func TestSearchBadDate(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	q := "design after:soon"
 	t.Run("plain", func(t *testing.T) {
@@ -305,6 +311,7 @@ func TestSearchBadDate(t *testing.T) {
 }
 
 func TestSearchPagination(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	for i := 0; i < 24; i++ {
 		e.writePost("bob", "general", "paginate item "+strconv.Itoa(i))
@@ -380,6 +387,7 @@ func TestSearchPagination(t *testing.T) {
 }
 
 func TestSearchDatastarPatchesThePanel(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	rec := e.getAs("alice", "/search?q=friday+%23design", true)
 	requireSSE(t, rec)
@@ -399,6 +407,7 @@ func TestSearchDatastarPatchesThePanel(t *testing.T) {
 }
 
 func TestSearchNeverShowsAPrivateRoomToWhoIsNotAMember(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	secretComment := e.commentOn(e.zebra, "bob", "zebra comment")
 	for _, q := range []string{"zebra", "#design", "room:secret", "from:alice", "is:comment"} {
@@ -421,6 +430,7 @@ func TestSearchNeverShowsAPrivateRoomToWhoIsNotAMember(t *testing.T) {
 }
 
 func TestSearchComments(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	first := e.commentOn(e.notes, "bob", "the quokka comment")
 	second := e.commentOn(first, "alice", "a quokka reply")
@@ -446,6 +456,7 @@ func TestSearchComments(t *testing.T) {
 }
 
 func TestSearchSnippetIsTheServicesHTML(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	e.writePost("alice", "general", "markup <b>bold</b> & <script>alert(1)</script> gadget")
 	body := e.searchAs("alice", "gadget")
@@ -460,6 +471,7 @@ func TestSearchSnippetIsTheServicesHTML(t *testing.T) {
 }
 
 func TestSearchBoxIsOnTheOtherPages(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	for _, tt := range []struct{ user, path string }{
 		{"alice", "/"}, {"alice", "/rooms"}, {"alice", "/rooms/" + idText(e.general.ID)},
@@ -483,6 +495,7 @@ func TestSearchBoxIsOnTheOtherPages(t *testing.T) {
 }
 
 func TestSearchNeedsASession(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	rec := e.send(get("/search?q=design"))
 	if rec.Code != http.StatusFound {
@@ -500,6 +513,7 @@ func TestSearchNeedsASession(t *testing.T) {
 }
 
 func TestSearchWrongMethod(t *testing.T) {
+	t.Parallel()
 	e := newSearchEnv(t)
 	rec := e.send(postForm("/search", url.Values{"q": {"design"}}, e.cookies["alice"]))
 	if rec.Code != http.StatusMethodNotAllowed {

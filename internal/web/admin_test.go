@@ -79,6 +79,7 @@ func rowOf(t *testing.T, body, username string) string {
 }
 
 func TestAdminUsersPage(t *testing.T) {
+	t.Parallel()
 	e := newAdminEnv(t)
 	if err := e.accounts.SetDisabled(e.t.Context(), app.Actor{UserID: e.admin.ID, Role: app.RoleAdmin}, e.bob.ID, true); err != nil {
 		t.Fatalf("SetDisabled: %+v", err)
@@ -127,6 +128,7 @@ func TestAdminUsersPage(t *testing.T) {
 }
 
 func TestAdminPagesAreInvisibleToMembers(t *testing.T) {
+	t.Parallel()
 	e := newAdminEnv(t)
 	form := url.Values{"role": {"admin"}, "disabled": {"true"}}
 	tests := []struct {
@@ -157,6 +159,7 @@ func TestAdminPagesAreInvisibleToMembers(t *testing.T) {
 }
 
 func TestAdminPagesNeedASession(t *testing.T) {
+	t.Parallel()
 	e := newAdminEnv(t)
 	tests := []struct {
 		name    string
@@ -178,6 +181,7 @@ func TestAdminPagesNeedASession(t *testing.T) {
 }
 
 func TestSidebarAdminLinkIsForAdminsOnly(t *testing.T) {
+	t.Parallel()
 	e := newAdminEnv(t)
 	tests := []struct {
 		name    string
@@ -198,6 +202,7 @@ func TestSidebarAdminLinkIsForAdminsOnly(t *testing.T) {
 }
 
 func TestAdminUserActions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		action    string
@@ -289,6 +294,7 @@ func requireRole(t *testing.T, e *adminEnv, username string, want app.Role) {
 }
 
 func TestAdminUserActionFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		action     string
@@ -369,6 +375,7 @@ func TestAdminUserActionFailures(t *testing.T) {
 }
 
 func TestAdminUserActionWithABadID(t *testing.T) {
+	t.Parallel()
 	e := newAdminEnv(t)
 	for _, id := range []string{"abc", "-1", "1.5", "99999999999999999999999"} {
 		for _, action := range []string{"role", "disabled"} {
@@ -383,6 +390,7 @@ func TestAdminUserActionWithABadID(t *testing.T) {
 }
 
 func TestAdminUserActionOtherFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		err        error
@@ -443,6 +451,7 @@ func TestAdminUserActionOtherFailures(t *testing.T) {
 var linkRE = regexp.MustCompile(`value="(http://localhost:8080/invite/([A-Za-z0-9_-]+))"`)
 
 func TestAdminInvitation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		role     string
@@ -500,6 +509,7 @@ func TestAdminInvitation(t *testing.T) {
 }
 
 func TestAdminInvitationLinkUsesTheBaseURL(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		baseURL string
 		want    string
@@ -520,6 +530,7 @@ func TestAdminInvitationLinkUsesTheBaseURL(t *testing.T) {
 }
 
 func TestAdminInvitationFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		datastar   bool

@@ -62,6 +62,7 @@ func attachmentPath(p app.Post, n int) string {
 }
 
 func TestDownloadHeaders(t *testing.T) {
+	t.Parallel()
 	e := newFilesEnv(t)
 	tests := []struct {
 		name        string
@@ -108,6 +109,7 @@ func TestDownloadHeaders(t *testing.T) {
 }
 
 func TestDownloadStoredTypeOfEachInlineImage(t *testing.T) {
+	t.Parallel()
 	// The inline types keep their own type; a file that merely has an image
 	// name but other content is a download.
 	e := newRoomsEnv(t)
@@ -150,6 +152,7 @@ func TestDownloadStoredTypeOfEachInlineImage(t *testing.T) {
 }
 
 func TestDownloadFileNames(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		want string
@@ -178,6 +181,7 @@ func TestDownloadFileNames(t *testing.T) {
 }
 
 func TestDownloadRange(t *testing.T) {
+	t.Parallel()
 	e := newFilesEnv(t)
 	path := attachmentPath(e.general, 1)
 	t.Run("a range", func(t *testing.T) {
@@ -227,6 +231,7 @@ func TestDownloadRange(t *testing.T) {
 }
 
 func TestDownloadPermissions(t *testing.T) {
+	t.Parallel()
 	e := newFilesEnv(t)
 	tests := []struct {
 		user string
@@ -273,6 +278,7 @@ func TestDownloadPermissions(t *testing.T) {
 }
 
 func TestDownloadNotFound(t *testing.T) {
+	t.Parallel()
 	e := newFilesEnv(t)
 	t.Run("a deleted post", func(t *testing.T) {
 		gone := e.withFiles("general", "gone.txt")
@@ -340,6 +346,7 @@ func TestDownloadNotFound(t *testing.T) {
 }
 
 func TestDownloadOnlyGet(t *testing.T) {
+	t.Parallel()
 	e := newFilesEnv(t)
 	rec := e.send(postForm(attachmentPath(e.general, 0), nil, e.cookies["alice"]))
 	if rec.Code != http.StatusMethodNotAllowed {

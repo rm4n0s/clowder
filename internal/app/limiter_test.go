@@ -12,6 +12,7 @@ import (
 )
 
 func TestLoginLimiter(t *testing.T) {
+	t.Parallel()
 	const window = 15 * time.Minute
 	fail := func(l *app.LoginLimiter, n int, user, ip string) {
 		for range n {
@@ -150,6 +151,7 @@ func TestLoginLimiter(t *testing.T) {
 }
 
 func TestLoginLimiterNilClockIsReal(t *testing.T) {
+	t.Parallel()
 	l := app.NewLoginLimiter(nil)
 	for range 5 {
 		l.Fail("ana", "10.0.0.1")
@@ -160,6 +162,7 @@ func TestLoginLimiterNilClockIsReal(t *testing.T) {
 }
 
 func TestLoginLimiterConcurrent(t *testing.T) {
+	t.Parallel()
 	l := app.NewLoginLimiter(clock.NewFake(start))
 	var wg sync.WaitGroup
 	for g := range 8 {

@@ -6,6 +6,7 @@ import (
 )
 
 func TestRoomStreamPatchesReactionsForEachViewer(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writePost("alice", "general", "react to me")
 	// Bob reacted with the fire already; carol has not joined the room.
@@ -49,6 +50,7 @@ func TestRoomStreamPatchesReactionsForEachViewer(t *testing.T) {
 }
 
 func TestRoomStreamIgnoresReactionsItDoesNotShow(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	post := e.writePost("alice", "general", "root")
 	comment := e.commentOn(post, "bob", "a comment")
@@ -80,6 +82,7 @@ func TestRoomStreamIgnoresReactionsItDoesNotShow(t *testing.T) {
 }
 
 func TestPostStreamPatchesReactions(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	d := e.demoThread()
 	e.react("bob", d.first, fireEmoji)
@@ -111,6 +114,7 @@ func TestPostStreamPatchesReactions(t *testing.T) {
 }
 
 func TestReactionEventForAPostThatVanishedIsHarmless(t *testing.T) {
+	t.Parallel()
 	// A comment reacted to and then deleted before the stream handles the event:
 	// the thread has no such comment and nothing is sent.
 	e := newRoomsEnv(t)

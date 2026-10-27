@@ -117,7 +117,7 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 ## Testing notes
 - The default tests run without network access, a browser or external services; a fake replaces each external dependency
 - Browser tests carry the `clowder_browser` build tag and use `internal/browsertest`; `chromedp` is imported only in files with that tag
-- Store and service tests use a fresh in-memory SQLite database per test, the fake clock (`internal/clock`) and a recording hub
+- Store and service tests use a fresh SQLite database per test (`storetest.Open`: a file copy of a database migrated once), the fake clock (`internal/clock`) and a recording hub; independent tests call `t.Parallel()`
 - Handler tests run the real handlers with `httptest`, logged in, and check the status, the HTML and the Datastar SSE patches
 - Every service method has a table of who may call it (admin, member, room member, non-member of a visible room, non-member of a private room, disabled user)
 - Every error Tag has a route test

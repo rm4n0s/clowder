@@ -83,6 +83,7 @@ func (e *auditEnv) insertEvent(t *testing.T, ev store.AuditEvent) {
 }
 
 func TestAdminAuditPage(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	rec := e.send(get("/admin/audit", e.cookies["admin"]))
 	if rec.Code != http.StatusOK {
@@ -120,6 +121,7 @@ func TestAdminAuditPage(t *testing.T) {
 }
 
 func TestAdminAuditRoomColumn(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	rec := e.send(get("/admin/audit", e.cookies["admin"]))
 	body := rec.Body.String()
@@ -188,6 +190,7 @@ func TestAdminAuditRoomColumn(t *testing.T) {
 }
 
 func TestAdminAuditDetails(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	body := e.send(get("/admin/audit", e.cookies["admin"])).Body.String()
 	for _, want := range []string{
@@ -211,6 +214,7 @@ func TestAdminAuditDetails(t *testing.T) {
 }
 
 func TestAdminAuditBodyChangeShape(t *testing.T) {
+	t.Parallel()
 	// No service writes post events yet: the shape of SPEC §7.10 is inserted
 	// by hand. Only that the body changed and how long it is is shown, never
 	// text.
@@ -249,6 +253,7 @@ func TestAdminAuditBodyChangeShape(t *testing.T) {
 }
 
 func TestAdminAuditFilters(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	id := idText
 	tests := []struct {
@@ -344,12 +349,14 @@ func TestAdminAuditFilters(t *testing.T) {
 }
 
 func TestAdminAuditNoMatch(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	rec := e.send(get("/admin/audit?actor="+idText(e.carol.ID), e.cookies["admin"]))
 	requireBody(t, rec, []string{"No events match.", `id="audit-panel"`}, `<table class="audit">`, "form-error")
 }
 
 func TestAdminAuditDateRangeEdges(t *testing.T) {
+	t.Parallel()
 	// Days are UTC days: From is the start of its day and To the start of the
 	// day after. Events at the last second of a day and the first of the next.
 	e := newAuditEnv(t)
@@ -401,6 +408,7 @@ func TestAdminAuditDateRangeEdges(t *testing.T) {
 }
 
 func TestAdminAuditFilterForm(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	t.Run("the options", func(t *testing.T) {
 		rec := e.send(get("/admin/audit", e.cookies["admin"]))
@@ -433,6 +441,7 @@ func TestAdminAuditFilterForm(t *testing.T) {
 }
 
 func TestAdminAuditInvalidFilters(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	tests := []struct {
 		name    string
@@ -483,6 +492,7 @@ func (e *auditEnv) manyEvents(t *testing.T, n int, actor app.User, room app.Room
 }
 
 func TestAdminAuditPagination(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	// 10 events of the log + 120 posts of carol = 130: three pages of 50, 50, 30.
 	e.manyEvents(t, 120, e.carol, e.secret)
@@ -562,6 +572,7 @@ func TestAdminAuditPagination(t *testing.T) {
 }
 
 func TestAdminAuditByDatastar(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	q := "?actor=" + idText(e.alice.ID) + "&page=1&entity=room"
 	rec := e.send(get("/admin/audit"+q, e.cookies["admin"], asDatastar()))
@@ -597,6 +608,7 @@ func TestAdminAuditByDatastar(t *testing.T) {
 }
 
 func TestAdminAuditIsInvisibleToMembers(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	for _, tt := range []struct {
 		name  string
@@ -628,6 +640,7 @@ func TestAdminAuditIsInvisibleToMembers(t *testing.T) {
 }
 
 func TestAdminAuditIgnoresUnknownParameters(t *testing.T) {
+	t.Parallel()
 	// The Datastar client adds a "datastar" parameter to a GET; others are
 	// ignored too.
 	e := newAuditEnv(t)

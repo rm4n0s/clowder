@@ -151,6 +151,7 @@ func redirectScript(target string) string {
 }
 
 func TestLoginPage(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		target   string
@@ -197,6 +198,7 @@ func TestLoginPage(t *testing.T) {
 }
 
 func TestLoginPageRedirectsALoggedInUser(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	e.addUser("alice", "Alice", store.RoleMember)
 	rec := e.send(get("/login?next=%2Frooms", withCookie(e.session("alice"))))
@@ -206,6 +208,7 @@ func TestLoginPageRedirectsALoggedInUser(t *testing.T) {
 }
 
 func TestHome(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	e.addUser("alice", "Alice", store.RoleMember)
 	e.addUser("mallory", "<script>alert(1)</script>", store.RoleMember)
@@ -241,6 +244,7 @@ func TestHome(t *testing.T) {
 }
 
 func TestProtectedRoutesNeedASession(t *testing.T) {
+	t.Parallel()
 	stranger := func(*testEnv) reqOpt { return func(*http.Request) {} }
 	tests := []struct {
 		name         string
@@ -356,6 +360,7 @@ func (e *testEnv) userID(username string) uint64 {
 }
 
 func TestPublicRoutesNeedNoSession(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	token := e.invitation()
 	for _, target := range []string{"/login", "/invite/" + token, "/static/app.css", "/static/datastar.js", "/nope"} {
@@ -369,6 +374,7 @@ func TestPublicRoutesNeedNoSession(t *testing.T) {
 }
 
 func TestStaleCookieOnAPublicPage(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	rec := e.send(get("/login", withCookie("stale")))
 	if rec.Code != http.StatusOK {
@@ -380,6 +386,7 @@ func TestStaleCookieOnAPublicPage(t *testing.T) {
 }
 
 func TestSessionLookupFailureIs500(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -405,6 +412,7 @@ func TestSessionLookupFailureIs500(t *testing.T) {
 }
 
 func TestLoginSuccess(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		form         url.Values
@@ -499,6 +507,7 @@ func TestLoginSuccess(t *testing.T) {
 }
 
 func TestLoginSuccessLogsTheUser(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	alice := e.addUser("alice", "Alice", store.RoleMember)
 	e.send(postForm("/login", loginForm("alice", testPassword), asDatastar()))
@@ -519,6 +528,7 @@ func TestLoginSuccessLogsTheUser(t *testing.T) {
 }
 
 func TestLoginNextValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		next string
@@ -560,6 +570,7 @@ func TestLoginNextValidation(t *testing.T) {
 }
 
 func TestLoginFailure(t *testing.T) {
+	t.Parallel()
 	const wrong = "Wrong username or password."
 	tests := []struct {
 		name       string
@@ -647,6 +658,7 @@ func TestLoginFailure(t *testing.T) {
 }
 
 func TestLoginFailureMessagesAreTheSame(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	e.addUser("alice", "Alice", store.RoleMember)
 	// The two answers differ only in the username that was typed.
@@ -658,6 +670,7 @@ func TestLoginFailureMessagesAreTheSame(t *testing.T) {
 }
 
 func TestLoginRateLimit(t *testing.T) {
+	t.Parallel()
 	const limited = "Too many attempts. Try again in a few minutes."
 	fail := func(e *testEnv, user, addr string, n int, opts ...reqOpt) {
 		for range n {
@@ -727,6 +740,7 @@ func TestLoginRateLimit(t *testing.T) {
 }
 
 func TestClientIP(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		addr  string
@@ -765,6 +779,7 @@ func TestClientIP(t *testing.T) {
 }
 
 func TestSignUpPage(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	used := e.invitation()
 	if _, err := e.accounts.SignUp(t.Context(), used, "first", "First", testPassword); err != nil {
@@ -814,6 +829,7 @@ func signUpForm(username, displayName, password string) url.Values {
 }
 
 func TestSignUpSuccess(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		datastar     bool
@@ -868,6 +884,7 @@ func TestSignUpSuccess(t *testing.T) {
 }
 
 func TestSignUpFailure(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		form       url.Values
@@ -954,6 +971,7 @@ func TestSignUpFailure(t *testing.T) {
 }
 
 func TestSignUpWithABadInvitation(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	used := e.invitation()
 	if _, err := e.accounts.SignUp(t.Context(), used, "first", "First", testPassword); err != nil {
@@ -982,6 +1000,7 @@ func TestSignUpWithABadInvitation(t *testing.T) {
 }
 
 func TestSignUpThenLoginFailsRedirectsToLogin(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	token := e.invitation()
 	// The address has failed too often to log in now.
@@ -1004,6 +1023,7 @@ func TestSignUpThenLoginFailsRedirectsToLogin(t *testing.T) {
 }
 
 func TestLogout(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		datastar     bool
@@ -1053,6 +1073,7 @@ func TestLogout(t *testing.T) {
 }
 
 func TestLogoutNeedsASession(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	rec := e.send(postForm("/logout", nil))
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/login" {
@@ -1061,6 +1082,7 @@ func TestLogoutNeedsASession(t *testing.T) {
 }
 
 func TestCrossOriginPostsAreRefused(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	e.addUser("alice", "Alice", store.RoleMember)
 	token := e.invitation()
@@ -1114,6 +1136,7 @@ func TestCrossOriginPostsAreRefused(t *testing.T) {
 }
 
 func TestBadForms(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		req  func(token string) *http.Request
@@ -1160,6 +1183,7 @@ func TestBadForms(t *testing.T) {
 }
 
 func TestStatusOf(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		err  error
@@ -1187,6 +1211,7 @@ func TestStatusOf(t *testing.T) {
 }
 
 func TestFail(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		err          error
@@ -1244,6 +1269,7 @@ type brokenStream struct{ *httptest.ResponseRecorder }
 func (brokenStream) Write([]byte) (int, error) { return 0, stdErrors.New("broken pipe") }
 
 func TestSSEWriteFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		send  func(s *Server, w http.ResponseWriter, r *http.Request)
@@ -1278,6 +1304,7 @@ func TestSSEWriteFailures(t *testing.T) {
 }
 
 func TestFormFailedWithOtherErrors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		err        error
@@ -1326,6 +1353,7 @@ func TestFormFailedWithOtherErrors(t *testing.T) {
 }
 
 func TestSessionInTheContext(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	if _, ok := actorFrom(ctx); ok {
 		t.Error("actorFrom found an actor in an empty context")
@@ -1348,6 +1376,7 @@ func TestSessionInTheContext(t *testing.T) {
 // TestHandlersSeeTheActor checks what the middleware puts in the context of a
 // protected route.
 func TestHandlersSeeTheActor(t *testing.T) {
+	t.Parallel()
 	var gotActor app.Actor
 	var gotUser app.User
 	e := newTestEnv(t, nil, route{pattern: "GET /whoami", handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -1362,6 +1391,7 @@ func TestHandlersSeeTheActor(t *testing.T) {
 }
 
 func TestSessionCookieSlidesWithTheSession(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	e.addUser("alice", "Alice", store.RoleMember)
 	token := e.session("alice")
@@ -1395,6 +1425,7 @@ func TestSessionCookieSlidesWithTheSession(t *testing.T) {
 }
 
 func TestLogoutAfterARefreshEndsWithTheClearingCookie(t *testing.T) {
+	t.Parallel()
 	e := newTestEnv(t, nil)
 	e.addUser("alice", "Alice", store.RoleMember)
 	token := e.session("alice")

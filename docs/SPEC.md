@@ -89,6 +89,8 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 | D31 | A page keeps one live stream (§8). The streams of the room, thread and board pages also keep the sidebar's counts (notifications, later messages) live through `user:<id>`. Every other logged-in page opens `GET /me/stream`, which only follows `user:<id>`. The notifications page shows the notifications as they were when it opened, marks read the ones it shows, and puts new ones at the top live | Decided by the manager, 2026-10-27. §7.9, §8 |
 | D32 | Private messages, decided by the manager: a direct conversation needs another enabled user (not oneself) and nobody leaves it; a group is started with at least two other enabled users (50 members at most, the starter included) and its name is optional (up to 80 characters); a user added to a group, or added back after leaving, sees its whole history; a message needs a body or an attachment; only the author edits or deletes a message, and a deleted one keeps its place as "message deleted" without its body, attachments or reactions; in a direct conversation whose other user is disabled, the messages are read but no new ones are sent; reading marks the conversation read up to its newest message, and sending marks it read up to the sent one; the unread count is the number of conversations with a message from someone else after the member's last read one | Decided by the manager, 2026-10-27. §7.11 |
 | D33 | Messages pages, decided by the manager: a new conversation is started on the Messages page from usernames (one makes or opens the direct conversation, several make a group with an optional name) and from a "Message" button beside each member of a room's member list; an open conversation counts as read: its stream marks it read up to each message it shows; message bodies are rendered as the text format of posts (escaped, line breaks kept, links clickable) | Decided by the manager, 2026-10-27. §7.11 |
+| D34 | The connection pool of a file database is bounded: two connections per CPU, at least 8 and at most 32, all kept open (`database/sql` keeps two idle ones and opens a new one whenever a query finds none free, and every new SQLite connection parses the schema). Measured in step 13.1: with 200 open streams the fan-out of a new post fell from 369 ms to 30 ms. Queries beyond the limit wait for a connection. No code may hold a connection and ask for another one | Decided by the manager, 2026-10-27; the owner may revise. §10, `docs/PERFORMANCE.md` |
+| D35 | `clowder demo -size large` makes the data set of §10 on top of the small demo (which stays exactly as it was): rooms, memberships and private conversations go through the services; users, posts, comments, tags, reactions, mentions, attachments, tasks and their audit events are written in bulk in one transaction by `store.BulkCreate`, and the full-text index is rebuilt from them. No notifications are made for the bulk data. The generator is seeded: a scale gives the same data every time | Decided by the manager, 2026-10-27; the owner may revise. §10, §14 |
 
 ## 5. Size estimate
 
@@ -326,7 +328,7 @@ Measured on the development machine with a database of 100 rooms, 200 users, 100
 ## 12. Testing strategy
 
 - Unit tests are table-driven and live next to the code.
-- `internal/store` and `internal/app` tests run on a fresh SQLite database in memory per test, with the fake clock and a recording hub.
+- `internal/store` and `internal/app` tests run on a fresh SQLite database per test (a copy of a database migrated once, D34 step 13.1), with the fake clock and a recording hub.
 - `internal/web` tests run the real handlers with `httptest`: they log in, send the requests a page sends (including Datastar's), and check the status, the HTML (with `golang.org/x/net/html` only if the standard library is not enough: ask first) and the SSE patches.
 - Permission tests: for every service method, a table of who may do it (admin, member, member of the room, non-member of a visible room, non-member of a private room, disabled user).
 - Every error tag has a route test (§9.3).
@@ -357,7 +359,7 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 
 ## 14. Demo data
 
-There is no `examples/` directory: Clowder is an application, not a library. `clowder demo` fills a database with users, rooms, posts, threads, reactions, attachments and tasks, and prints the login of a demo admin. Proofs and manual checks use it.
+There is no `examples/` directory: Clowder is an application, not a library. `clowder demo` fills a database with users, rooms, posts, threads, reactions, attachments and tasks, and prints the login of a demo admin. Proofs and manual checks use it. `clowder demo -size large` adds the data set of §10 (200 users, 100 rooms, 100,000 posts and comments, 20,000 tasks, a handful of private conversations) to it and prints the counts; it takes seconds, not minutes (D35). The default, `-size small`, is the demo the proofs and tests rely on.
 
 ## 15. Licensing and third-party code
 

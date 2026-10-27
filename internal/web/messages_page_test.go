@@ -66,6 +66,7 @@ func (e *roomsEnv) newScene() scene {
 }
 
 func TestConversationPageShowsTheMessages(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	s := e.newScene()
 	rec := e.send(get(convPath(s.conv), e.cookies["alice"]))
@@ -176,6 +177,7 @@ func TestConversationPageShowsTheMessages(t *testing.T) {
 }
 
 func TestConversationPageAsTheOtherMember(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	s := e.newScene()
 	body := e.send(get(convPath(s.conv), e.cookies["bob"])).Body.String()
@@ -191,6 +193,7 @@ func TestConversationPageAsTheOtherMember(t *testing.T) {
 }
 
 func TestOpeningAConversationMarksItRead(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	e.say("alice", conv, "one")
@@ -223,6 +226,7 @@ func TestOpeningAConversationMarksItRead(t *testing.T) {
 }
 
 func TestConversationPageOfADisabledCounterpart(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	e.say("bob", conv, "last words")
@@ -253,6 +257,7 @@ func TestConversationPageOfADisabledCounterpart(t *testing.T) {
 }
 
 func TestGroupConversationPage(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	crew := e.group("Launch crew", "alice", "bob", "carol")
 	first := e.say("alice", crew, "Welcome")
@@ -276,6 +281,7 @@ func TestGroupConversationPage(t *testing.T) {
 }
 
 func TestConversationPageSetsTheReply(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	s := e.newScene()
 	other := e.direct("alice", "carol")
@@ -317,6 +323,7 @@ func TestConversationPageSetsTheReply(t *testing.T) {
 }
 
 func TestConversationPaginates(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	var all []app.Message
@@ -400,6 +407,7 @@ func TestConversationPaginates(t *testing.T) {
 }
 
 func TestConversationEditorOpensWithoutJavaScript(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	mine := e.say("alice", conv, "a <b>draft</b>")

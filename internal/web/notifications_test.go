@@ -55,6 +55,7 @@ func badge(n int) string {
 func numText(n int) string { return idText(uint64(n)) }
 
 func TestSidebarShowsTheUnreadCount(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	post := e.mentionBob("general", "one")
 	e.mentionBob("general", "two")
@@ -103,6 +104,7 @@ func TestSidebarShowsTheUnreadCount(t *testing.T) {
 }
 
 func TestNotificationsPageText(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	gen := idText(e.general.ID)
 	sec := idText(e.secret.ID)
@@ -165,6 +167,7 @@ func TestNotificationsPageText(t *testing.T) {
 }
 
 func TestNotificationsPageShowsOnlyOwn(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.mentionBob("general", "for bob")
 	e.writePost("bob", "general", "Hi @alice")
@@ -175,6 +178,7 @@ func TestNotificationsPageShowsOnlyOwn(t *testing.T) {
 }
 
 func TestNotificationsPageHidesWhatTheUserCannotRead(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.mentionBob("secret", "secret news")
 	e.mentionBob("general", "public news")
@@ -199,6 +203,7 @@ func TestNotificationsPageHidesWhatTheUserCannotRead(t *testing.T) {
 }
 
 func TestNotificationsPagePagination(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	var posts []app.Post
 	for i := range 35 {
@@ -236,6 +241,7 @@ func TestNotificationsPagePagination(t *testing.T) {
 }
 
 func TestNotificationsPageMarksReadWhatItShows(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.mentionBob("general", "one")
 	e.mentionBob("general", "two")
@@ -271,6 +277,7 @@ func TestNotificationsPageMarksReadWhatItShows(t *testing.T) {
 }
 
 func TestNotificationsMarkAllRead(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		e.mentionBob("general", "one")
@@ -299,6 +306,7 @@ func TestNotificationsMarkAllRead(t *testing.T) {
 }
 
 func TestNotificationsMarkAllReadWithNothing(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		rec := e.post("carol", "/notifications/read", nil, datastar)
@@ -312,6 +320,7 @@ func TestNotificationsMarkAllReadWithNothing(t *testing.T) {
 }
 
 func TestNotificationsPageForms(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	rec := e.send(get("/notifications", e.cookies["bob"]))
 	requireBody(t, rec, []string{
@@ -322,6 +331,7 @@ func TestNotificationsPageForms(t *testing.T) {
 }
 
 func TestNotificationsRoutesNeedASession(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	tests := []struct {
 		name string
@@ -348,6 +358,7 @@ func TestNotificationsRoutesNeedASession(t *testing.T) {
 }
 
 func TestNotificationsWrongMethod(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodPost, "/notifications"}, {http.MethodGet, "/notifications/read"}, {http.MethodPost, "/me/stream"},
@@ -375,6 +386,7 @@ func (e *roomsEnv) breakNotifications() {
 }
 
 func TestNotificationsMarkAllReadFailure(t *testing.T) {
+	t.Parallel()
 	t.Run("datastar shows the message with status 200 and logs the failure", func(t *testing.T) {
 		e := newRoomsEnv(t)
 		e.breakNotifications()

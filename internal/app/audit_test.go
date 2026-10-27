@@ -65,6 +65,7 @@ func summaries(p app.AuditPage) []string {
 }
 
 func TestRecordAuditCommits(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	e.record(app.AuditEntry{
 		ActorID: e.alice.ID, Action: app.ActionMemberAdded, RoomID: 4,
@@ -92,6 +93,7 @@ func TestRecordAuditCommits(t *testing.T) {
 }
 
 func TestRecordAuditNilDetails(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	e.record(app.AuditEntry{ActorID: e.alice.ID, Action: app.ActionRoomCreated, RoomID: 1, EntityType: app.EntityRoom, EntityID: 1, Summary: "s"})
 	p := e.events(app.AuditFilter{}, 1)
@@ -101,6 +103,7 @@ func TestRecordAuditNilDetails(t *testing.T) {
 }
 
 func TestRecordAuditRollsBack(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	var boom error = errors.New("ChangeFailed", "the change failed")
 	err := e.st.Tx(t.Context(), func(tx *store.Store) error {
@@ -121,6 +124,7 @@ func TestRecordAuditRollsBack(t *testing.T) {
 }
 
 func TestRecordAuditErrors(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	tests := []struct {
 		name      string
@@ -158,6 +162,7 @@ func TestRecordAuditErrors(t *testing.T) {
 }
 
 func TestBodyChangeDetailsHoldNoText(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	tests := []struct {
 		name       string
@@ -195,6 +200,7 @@ func TestBodyChangeDetailsHoldNoText(t *testing.T) {
 }
 
 func TestAuditDetailsRoundTrip(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	details := map[string]any{
 		"title":     map[string]any{"old": "Draft", "new": "Final"},
@@ -215,6 +221,7 @@ func TestAuditDetailsRoundTrip(t *testing.T) {
 }
 
 func TestAuditEventsFilters(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	type seed struct {
 		actor   app.User
@@ -277,6 +284,7 @@ func TestAuditEventsFilters(t *testing.T) {
 }
 
 func TestAuditEventsPagination(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		n    int
@@ -325,6 +333,7 @@ func TestAuditEventsPagination(t *testing.T) {
 }
 
 func TestAuditEventsPageNumbers(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	e.record(app.AuditEntry{ActorID: e.alice.ID, Action: app.ActionRoomCreated, RoomID: 1, EntityType: app.EntityRoom, EntityID: 1, Summary: "only"})
 	tests := []struct {
@@ -350,6 +359,7 @@ func TestAuditEventsPageNumbers(t *testing.T) {
 }
 
 func TestAuditEventsViews(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	e.clk.Set(start.Add(time.Hour))
 	e.record(app.AuditEntry{
@@ -391,6 +401,7 @@ func TestAuditEventsViews(t *testing.T) {
 // TestAuditEventsOfDeletedRoomsAreListed: the log has no foreign key to rooms,
 // so the events of a room that no longer exists (or never had a row here) stay.
 func TestAuditEventsOfDeletedRoomsAreListed(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	const goneRoom = 4242
 	e.record(app.AuditEntry{ActorID: e.alice.ID, Action: app.ActionRoomCreated, RoomID: goneRoom, EntityType: app.EntityRoom, EntityID: goneRoom, Summary: "Alice created #old"})
@@ -403,6 +414,7 @@ func TestAuditEventsOfDeletedRoomsAreListed(t *testing.T) {
 }
 
 func TestAuditEventsPermissions(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	e.record(app.AuditEntry{ActorID: e.alice.ID, Action: app.ActionRoomCreated, RoomID: 1, EntityType: app.EntityRoom, EntityID: 1, Summary: "Alice created #general"})
 	tests := []struct {
@@ -434,6 +446,7 @@ func TestAuditEventsPermissions(t *testing.T) {
 }
 
 func TestAuditEventsErrors(t *testing.T) {
+	t.Parallel()
 	e := newAuditEnv(t)
 	t.Run("canceled context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -465,6 +478,7 @@ func TestAuditEventsErrors(t *testing.T) {
 }
 
 func TestAuditNames(t *testing.T) {
+	t.Parallel()
 	// The aliases are the store's values, so a stored event and an app
 	// constant compare equal.
 	if app.ActionRoomDeleted != store.ActionRoomDeleted || app.EntityColumn != store.EntityColumn {

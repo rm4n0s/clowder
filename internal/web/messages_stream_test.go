@@ -59,6 +59,7 @@ func countPatchesOf(ps []patch) (messageBadges []string, others []patch) {
 }
 
 func TestConversationStreamConnects(t *testing.T) {
+	t.Parallel()
 	t.Run("a group that is up to date sends nothing", func(t *testing.T) {
 		e := newRoomsEnv(t)
 		crew := e.group("crew", "alice", "bob", "carol")
@@ -167,6 +168,7 @@ func TestConversationStreamConnects(t *testing.T) {
 }
 
 func TestConversationStreamPutsNewMessagesAtTheEnd(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	crew := e.group("crew", "alice", "bob", "carol")
 	seen := e.say("alice", crew, "before")
@@ -210,6 +212,7 @@ func TestConversationStreamPutsNewMessagesAtTheEnd(t *testing.T) {
 }
 
 func TestConversationStreamOrdersTheInsertionBeforeTheRemoval(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	c := e.serveStreams().open("alice", streamOfConversation(conv, "seen=0"), asDatastar())
@@ -222,6 +225,7 @@ func TestConversationStreamOrdersTheInsertionBeforeTheRemoval(t *testing.T) {
 }
 
 func TestConversationStreamShowsEditsDeletionsAndReactions(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	msg := e.sayIn("alice", conv, app.MessageInput{Body: "original", Uploads: []app.Upload{e.uploadMessage("alice", "f.txt")}})
@@ -286,6 +290,7 @@ func TestConversationStreamShowsEditsDeletionsAndReactions(t *testing.T) {
 }
 
 func TestConversationStreamMovesSeen(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	first := e.say("alice", conv, "one")
@@ -332,6 +337,7 @@ func TestConversationStreamMovesSeen(t *testing.T) {
 }
 
 func TestConversationStreamUpdatesTheHeaderAndMembers(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	crew := e.group("crew", "alice", "bob", "carol")
 	last := e.say("alice", crew, "x")
@@ -364,6 +370,7 @@ func TestConversationStreamUpdatesTheHeaderAndMembers(t *testing.T) {
 }
 
 func TestConversationStreamEndsForWhoLeaves(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	crew := e.group("crew", "alice", "bob", "carol")
 	last := e.say("alice", crew, "x")
@@ -414,6 +421,7 @@ func TestConversationStreamEndsForWhoLeaves(t *testing.T) {
 }
 
 func TestConversationStreamKeepsTheCountsLive(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	here := e.direct("alice", "bob")
 	elsewhere := e.direct("alice", "carol")
@@ -447,6 +455,7 @@ func TestConversationStreamKeepsTheCountsLive(t *testing.T) {
 }
 
 func TestPageStreamsKeepTheMessageCountLive(t *testing.T) {
+	t.Parallel()
 	// The streams of the pages that have their own keep the count of unread
 	// conversations of the sidebar live too (SPEC D31).
 	tests := []struct {
@@ -503,6 +512,7 @@ func TestPageStreamsKeepTheMessageCountLive(t *testing.T) {
 }
 
 func TestMessagesPageStreamKeepsTheListLive(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	conv := e.direct("alice", "bob")
 	e.say("alice", conv, "first")
@@ -549,6 +559,7 @@ func TestMessagesPageStreamKeepsTheListLive(t *testing.T) {
 }
 
 func TestConversationStreamKeepAliveAndEnd(t *testing.T) {
+	t.Parallel()
 	t.Run("pings", func(t *testing.T) {
 		e := newRoomsEnv(t)
 		conv := e.group("crew", "alice", "bob", "carol")
@@ -590,6 +601,7 @@ func TestConversationStreamKeepAliveAndEnd(t *testing.T) {
 }
 
 func TestMessagesAreNotSentThroughTheRoomStreams(t *testing.T) {
+	t.Parallel()
 	// Messages are not rooms' events: the feed of a room stream stays quiet.
 	e := newRoomsEnv(t)
 	root := e.writePost("alice", "general", "root")

@@ -16,8 +16,11 @@ import (
 // streamTimeout is how long a test waits for an event, or for a stream to end.
 const streamTimeout = 3 * time.Second
 
-// quietTime is how long a test waits to see that nothing is sent.
-const quietTime = 150 * time.Millisecond
+// quietTime is how long a test waits to see that nothing is sent. The stream
+// of an event reads and renders under the load of the other tests that run in
+// parallel, with the race detector on, so a short wait sees nothing yet and the
+// test takes the late patch for the next one's.
+const quietTime = 400 * time.Millisecond
 
 // sseBlock is one block of an SSE stream: an event, a comment, or the id that
 // the server sends first.
@@ -289,6 +292,7 @@ func (e *roomsEnv) streamOfRoom(room string, query string) string {
 }
 
 func TestRoomStreamPatchesTheFeed(t *testing.T) {
+	t.Parallel()
 	// Each case acts after alice's stream on "general" is open; seeded posts
 	// are written before. The posts are bob's, written by the seed or by act.
 	type env = *roomsEnv
@@ -414,6 +418,7 @@ func newestOf(e *roomsEnv, room string) uint64 {
 }
 
 func TestRoomStreamPatchesTheRoom(t *testing.T) {
+	t.Parallel()
 	type env = *roomsEnv
 	tests := []struct {
 		name string
@@ -496,6 +501,7 @@ func TestRoomStreamPatchesTheRoom(t *testing.T) {
 }
 
 func TestRoomStreamEndsWhenTheRoomIsLost(t *testing.T) {
+	t.Parallel()
 	type env = *roomsEnv
 	tests := []struct {
 		name string
@@ -534,6 +540,7 @@ func TestRoomStreamEndsWhenTheRoomIsLost(t *testing.T) {
 }
 
 func TestRoomStreamEndsWhenTheRoomIsLostOnTheUserTopic(t *testing.T) {
+	t.Parallel()
 	// The event on the room's topic is not the only way: the user's topic says
 	// it too.
 	e := newRoomsEnv(t)
@@ -546,6 +553,7 @@ func TestRoomStreamEndsWhenTheRoomIsLostOnTheUserTopic(t *testing.T) {
 }
 
 func TestStreamsRefuseWhoCannotRead(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	ss := e.serveStreams()
 	secretPost := e.writePost("alice", "secret", "private words")
@@ -588,6 +596,7 @@ func TestStreamsRefuseWhoCannotRead(t *testing.T) {
 }
 
 func TestRoomStreamConnects(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		query  string
@@ -648,6 +657,7 @@ func TestRoomStreamConnects(t *testing.T) {
 }
 
 func TestRoomStreamLeavesOlderPagesAlone(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	old := e.writePost("bob", "general", "Old")
 	c := e.serveStreams().open("alice", e.streamOfRoom("general", "seen=0&before="+idText(old.ID+1)), asDatastar())
@@ -656,6 +666,7 @@ func TestRoomStreamLeavesOlderPagesAlone(t *testing.T) {
 }
 
 func TestStreamKeepAlive(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		path func(e *roomsEnv) string
@@ -680,6 +691,7 @@ func TestStreamKeepAlive(t *testing.T) {
 }
 
 func TestStreamEndsWhenTheSessionEnds(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		end  func(e *roomsEnv)
@@ -709,6 +721,7 @@ func TestStreamEndsWhenTheSessionEnds(t *testing.T) {
 }
 
 func TestStreamsEndWhenTheHubCloses(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	root := e.writePost("alice", "general", "root")
 	ss := e.serveStreams()
@@ -722,6 +735,7 @@ func TestStreamsEndWhenTheHubCloses(t *testing.T) {
 }
 
 func TestServerShutdownEndsOpenStreams(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -789,6 +803,7 @@ func (e *roomsEnv) streamOfPost(p app.Post, query string) string {
 }
 
 func TestPostStreamPatchesTheThread(t *testing.T) {
+	t.Parallel()
 	type env = *roomsEnv
 	type fixture struct{ root, first, second app.Post }
 	tests := []struct {
@@ -988,6 +1003,7 @@ func TestPostStreamPatchesTheThread(t *testing.T) {
 }
 
 func TestPostStreamTwoCommentsInARowAreBothShown(t *testing.T) {
+	t.Parallel()
 	// The second comment may already be in the database when the event of the
 	// first is handled: whichever happens, each comment is inserted once, after
 	// the card above it, and the order of the thread is kept.
@@ -1021,6 +1037,7 @@ func TestPostStreamTwoCommentsInARowAreBothShown(t *testing.T) {
 }
 
 func TestPostStreamEndsWhenTheRoomIsLost(t *testing.T) {
+	t.Parallel()
 	type env = *roomsEnv
 	tests := []struct {
 		name string
@@ -1051,6 +1068,7 @@ func TestPostStreamEndsWhenTheRoomIsLost(t *testing.T) {
 }
 
 func TestPostStreamIgnoresTheFeedOfTheRoom(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	root := e.writePost("alice", "general", "root")
 	c := e.serveStreams().open("bob", e.streamOfPost(root, "seen="+idText(root.ID)), asDatastar())
@@ -1062,6 +1080,7 @@ func TestPostStreamIgnoresTheFeedOfTheRoom(t *testing.T) {
 }
 
 func TestPostStreamConnects(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		seen      string
@@ -1106,6 +1125,7 @@ func TestPostStreamConnects(t *testing.T) {
 }
 
 func TestPostStreamOpensForAComment(t *testing.T) {
+	t.Parallel()
 	// The ID of a comment opens the stream of its thread.
 	e := newRoomsEnv(t)
 	root := e.writePost("alice", "general", "root")

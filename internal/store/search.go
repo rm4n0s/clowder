@@ -206,13 +206,16 @@ WHERE p.deleted_at IS NULL
 	if q.OnlyComments {
 		sb.WriteString(" AND p.parent_id IS NOT NULL")
 	}
-	if len(q.Tags) > 0 {
-		sb.WriteString(` AND (SELECT COUNT(*) FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
-  WHERE pt.post_id = p.id AND t.name IN (?` + strings.Repeat(",?", len(q.Tags)-1) + `)) = ?`)
-		for _, name := range q.Tags {
-			args = append(args, name)
-		}
-		args = append(args, len(q.Tags))
+	// One EXISTS per tag, with the tag's ID looked up once by the scalar
+	// subquery: a probe of the unique index (post_id, tag_id) per tag is far
+	// cheaper than counting a join of post_tags and tags for every row that
+	// the full-text index matches (13.1 measured 138 ms against 62 ms for a
+	// search of a very common word with two tags in the large demo). A tag
+	// that does not exist has no ID: nothing matches.
+	for _, name := range q.Tags {
+		sb.WriteString(` AND EXISTS (SELECT 1 FROM post_tags pt WHERE pt.post_id = p.id
+  AND pt.tag_id = (SELECT t.id FROM tags t WHERE t.name = ?))`)
+		args = append(args, name)
 	}
 	if words {
 		sb.WriteString(" ORDER BY bm25(posts_fts) ASC, p.id DESC")

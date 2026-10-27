@@ -180,6 +180,7 @@ func requireNotFound(t *testing.T, rec *httptest.ResponseRecorder, datastar bool
 }
 
 func TestSidebarListsTheRoomsOfTheUser(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	gen, sec := idText(e.general.ID), idText(e.secret.ID)
 	tests := []struct {
@@ -238,6 +239,7 @@ func TestSidebarListsTheRoomsOfTheUser(t *testing.T) {
 }
 
 func TestSidebarOnAFailedAdminInvitation(t *testing.T) {
+	t.Parallel()
 	// A plain post that fails shows the whole admin page, with the sidebar.
 	e := newRoomsEnv(t)
 	rec := e.post("admin", "/admin/invitations", url.Values{"role": {"owner"}}, false)
@@ -248,6 +250,7 @@ func TestSidebarOnAFailedAdminInvitation(t *testing.T) {
 }
 
 func TestRoomsBrowse(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	tests := []struct {
 		name    string
@@ -288,6 +291,7 @@ func TestRoomsBrowse(t *testing.T) {
 }
 
 func TestRoomNewPage(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	tests := []struct {
 		name    string
@@ -333,6 +337,7 @@ func (e *roomsEnv) roomNamed(user, name string) (app.Room, bool) {
 }
 
 func TestRoomCreate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		user       string
@@ -372,6 +377,7 @@ func TestRoomCreate(t *testing.T) {
 }
 
 func TestRoomCreateFailures(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("x", 501)
 	tests := []struct {
 		name       string
@@ -459,6 +465,7 @@ func mustAll(t *testing.T, e *roomsEnv) []app.Room {
 }
 
 func TestRoomCreateFailuresOtherThanInput(t *testing.T) {
+	t.Parallel()
 	// A name that is taken at the same moment is a conflict; a database
 	// failure is a 500. Neither shows the error; both keep the form.
 	e := newRoomsEnv(t)
@@ -487,6 +494,7 @@ func TestRoomCreateFailuresOtherThanInput(t *testing.T) {
 }
 
 func TestRoomPage(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	gen, sec := idText(e.general.ID), idText(e.secret.ID)
 	tests := []struct {
@@ -548,6 +556,7 @@ func TestRoomPage(t *testing.T) {
 }
 
 func TestRoomPageIsNotFoundForWhoMayNotReadIt(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	tests := []struct {
 		name string
@@ -572,6 +581,7 @@ func TestRoomPageIsNotFoundForWhoMayNotReadIt(t *testing.T) {
 }
 
 func TestRoomJoin(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		path := "/rooms/" + idText(e.random.ID)
@@ -594,6 +604,7 @@ func TestRoomJoin(t *testing.T) {
 }
 
 func TestRoomLeave(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		for _, tt := range []struct{ user, room string }{{"bob", "general"}, {"bob", "secret"}} {
@@ -622,6 +633,7 @@ func TestRoomLeave(t *testing.T) {
 }
 
 func TestRoomAddMember(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		path := "/rooms/" + idText(e.secret.ID)
@@ -643,6 +655,7 @@ func TestRoomAddMember(t *testing.T) {
 }
 
 func TestRoomAddMemberFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		user       string
@@ -708,6 +721,7 @@ func TestRoomAddMemberFailures(t *testing.T) {
 }
 
 func TestRoomRemoveMember(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		path := "/rooms/" + idText(e.general.ID)
@@ -728,6 +742,7 @@ func TestRoomRemoveMember(t *testing.T) {
 }
 
 func TestRoomRemoveMemberFailures(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		path := "/rooms/" + idText(e.general.ID)
@@ -763,6 +778,7 @@ func TestRoomRemoveMemberFailures(t *testing.T) {
 }
 
 func TestRoomRename(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		user string
@@ -797,6 +813,7 @@ func TestRoomRename(t *testing.T) {
 }
 
 func TestRoomRenameFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		user       string
@@ -848,6 +865,7 @@ func TestRoomRenameFailures(t *testing.T) {
 }
 
 func TestRoomDelete(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		user string
@@ -887,6 +905,7 @@ func TestRoomDelete(t *testing.T) {
 }
 
 func TestRoomDeleteByAMemberWhoDidNotMakeIt(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		path := "/rooms/" + idText(e.secret.ID)
@@ -907,6 +926,7 @@ func TestRoomDeleteByAMemberWhoDidNotMakeIt(t *testing.T) {
 }
 
 func TestRoomLeaveAndJoinOfAVisibleRoomByANonMemberStayInPlace(t *testing.T) {
+	t.Parallel()
 	// Joining a visible room as a non-member from the room page opens the room.
 	e := newRoomsEnv(t)
 	path := "/rooms/" + idText(e.general.ID)
@@ -919,6 +939,7 @@ func TestRoomLeaveAndJoinOfAVisibleRoomByANonMemberStayInPlace(t *testing.T) {
 // POST: a person who is not a member of a private room does not know it, admins
 // included (D29: they manage it from the admin rooms page).
 func TestRoomActionsOnAPrivateRoomOfOthersAre404(t *testing.T) {
+	t.Parallel()
 	for _, user := range []string{"carol", "admin"} {
 		modes(t, func(t *testing.T, datastar bool) {
 			e := newRoomsEnv(t)
@@ -955,6 +976,7 @@ func TestRoomActionsOnAPrivateRoomOfOthersAre404(t *testing.T) {
 }
 
 func TestRoomActionsOnRoomsThatDoNotExist(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		for _, action := range []string{"join", "leave", "rename", "delete", "members", "members/1/remove"} {
@@ -976,6 +998,7 @@ func TestRoomActionsOnRoomsThatDoNotExist(t *testing.T) {
 }
 
 func TestRoomRoutesNeedASession(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	id := idText(e.general.ID)
 	tests := []struct {
@@ -1007,6 +1030,7 @@ func TestRoomRoutesNeedASession(t *testing.T) {
 }
 
 func TestRoomWrongMethods(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodGet, "/rooms/1/join"},
@@ -1023,6 +1047,7 @@ func TestRoomWrongMethods(t *testing.T) {
 }
 
 func TestBadRoomForms(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	path := "/rooms/" + idText(e.general.ID)
 	big := strings.Repeat("x", maxFormBytes+1)
@@ -1041,6 +1066,7 @@ func TestBadRoomForms(t *testing.T) {
 // patched for Datastar (status 200) and the whole page with the status for a
 // plain post, and the error itself is never shown.
 func TestRoomActionFailed(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	room := e.general
 	tests := []struct {

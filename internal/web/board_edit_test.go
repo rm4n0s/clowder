@@ -20,6 +20,7 @@ func (e *roomsEnv) cardPath(card app.TaskCard, action string) string {
 }
 
 func TestBoardTaskEditForm(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		s := e.seedBoard()
@@ -46,6 +47,7 @@ func TestBoardTaskEditForm(t *testing.T) {
 }
 
 func TestBoardTaskEditFormKeepsAFormerMember(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	s := e.seedBoard()
 	if err := e.rooms.RemoveMember(t.Context(), e.actor(e.admin), e.general.ID, e.bob.ID); err != nil {
@@ -59,6 +61,7 @@ func TestBoardTaskEditFormKeepsAFormerMember(t *testing.T) {
 }
 
 func TestBoardTaskEditFormFailures(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		s := e.seedBoard()
@@ -99,6 +102,7 @@ func (e *roomsEnv) cardByID(id uint64) app.TaskCard {
 }
 
 func TestBoardTaskUpdate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		card  func(s boardSeed) app.TaskCard
@@ -208,6 +212,7 @@ func TestBoardTaskUpdate(t *testing.T) {
 }
 
 func TestBoardTaskUpdateKeepsAFormerMember(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		s := e.seedBoard()
@@ -231,6 +236,7 @@ func TestBoardTaskUpdateKeepsAFormerMember(t *testing.T) {
 }
 
 func TestBoardTaskUpdateMistakes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		form func(e *roomsEnv) url.Values
@@ -291,6 +297,7 @@ func TestBoardTaskUpdateMistakes(t *testing.T) {
 }
 
 func TestBoardTaskUpdateTyped(t *testing.T) {
+	t.Parallel()
 	// A failed save shows the form with what was typed: the title, the people
 	// ticked, the date and the box.
 	e := newRoomsEnv(t)
@@ -305,6 +312,7 @@ func TestBoardTaskUpdateTyped(t *testing.T) {
 }
 
 func TestBoardTaskUpdateByAPersonWhoHasNotJoined(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		s := e.seedBoard()

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,7 +24,23 @@ const (
 	slowQueryThreshold = 200 * time.Millisecond
 	// memoryMarker is the DSN parameter that makes a database live in memory.
 	memoryMarker = "mode=memory"
+	// minOpenConns and maxOpenConns bound the size of the connection pool of
+	// a file database; the pool has two connections per CPU within these
+	// bounds (see poolSize).
+	minOpenConns = 8
+	maxOpenConns = 32
 )
+
+// poolSize returns the number of connections the pool of a file database may
+// open, all of which it keeps open. database/sql keeps only two idle
+// connections by default and opens a new one whenever a query finds none
+// free, and every new SQLite connection parses the whole schema: with 200
+// open streams that each read the same post, the server spent half its CPU
+// opening connections and held a page cache for each (13.1, docs/PERFORMANCE.md).
+// A bounded pool queues the queries instead.
+func poolSize(cpus int) int {
+	return max(minOpenConns, min(2*cpus, maxOpenConns))
+}
 
 // Store is the database of Clowder: the only thing that knows GORM and SQLite
 // (SPEC D6). Make it with Open and release it with Close. A Store is safe for
@@ -91,6 +108,10 @@ func open(ctx context.Context, path string, clk clock.Clock, logger *slog.Logger
 		// and locks by table, not by busy timeout: one connection keeps it
 		// alive and avoids SQLITE_LOCKED.
 		sqlDB.SetMaxOpenConns(1)
+	} else {
+		n := poolSize(runtime.NumCPU())
+		sqlDB.SetMaxOpenConns(n)
+		sqlDB.SetMaxIdleConns(n)
 	}
 	s := &Store{gdb: gdb, clk: clk, logger: logger, closer: sqlDB}
 	if err := pingAndMigrate(ctx, s, sqlDB, opts); err != nil {

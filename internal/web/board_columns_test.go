@@ -25,6 +25,7 @@ func (e *roomsEnv) columnIDOf(name string) uint64 {
 }
 
 func TestBoardColumnAdd(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		rec := e.post("bob", e.boardURL("general", "/columns"), url.Values{"name": {"  Review "}}, datastar)
@@ -45,6 +46,7 @@ func TestBoardColumnAdd(t *testing.T) {
 }
 
 func TestBoardColumnMistakes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		path   func(e *roomsEnv) string
@@ -88,6 +90,7 @@ func TestBoardColumnMistakes(t *testing.T) {
 }
 
 func TestBoardColumnRename(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		e.seedBoard()
@@ -111,6 +114,7 @@ func TestBoardColumnRename(t *testing.T) {
 }
 
 func TestBoardColumnMove(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		column string
@@ -150,6 +154,7 @@ func TestBoardColumnMove(t *testing.T) {
 }
 
 func TestBoardColumnDelete(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		e.seedBoard()
@@ -190,6 +195,7 @@ func TestBoardColumnDelete(t *testing.T) {
 }
 
 func TestBoardColumnActionsOfAPersonWhoHasNotJoined(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		e.seedBoard()
@@ -222,6 +228,7 @@ func TestBoardColumnActionsOfAPersonWhoHasNotJoined(t *testing.T) {
 }
 
 func TestBoardColumnThatIsGone(t *testing.T) {
+	t.Parallel()
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
 		e.seedBoard()

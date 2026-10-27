@@ -21,6 +21,7 @@ func (e *boardEnv) ids(names ...string) []uint64 {
 }
 
 func TestTaskInputRules(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	var eleven, twentyOne = []uint64{}, []app.TaskInput{}
 	for i := range 11 {
@@ -89,6 +90,7 @@ func TestTaskInputRules(t *testing.T) {
 }
 
 func TestTaskCleaning(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	// 2026-11-03 23:30 in UTC-5 is 2026-11-04 04:30 UTC: the day is converted
 	// to UTC before the time is dropped.
@@ -123,6 +125,7 @@ func TestTaskCleaning(t *testing.T) {
 func ptr[T any](v T) *T { return &v }
 
 func TestTasksEmptyBody(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	ctx := t.Context()
 	p, err := e.posts.Create(ctx, e.as("bob"), e.lobby.ID, app.PostInput{Format: app.FormatText, Tasks: []app.TaskInput{{Title: "Only a task"}}})
@@ -152,6 +155,7 @@ func TestTasksEmptyBody(t *testing.T) {
 }
 
 func TestTasksGoToTheEndOfTheFirstColumn(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	ctx := t.Context()
 	due := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
@@ -250,6 +254,7 @@ func TestTasksGoToTheEndOfTheFirstColumn(t *testing.T) {
 }
 
 func TestTasksOverdueInPostViews(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	yesterday := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
 	p := e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "late", DueDate: &yesterday}, app.TaskInput{Title: "done", DueDate: &yesterday})
@@ -264,6 +269,7 @@ func TestTasksOverdueInPostViews(t *testing.T) {
 }
 
 func TestTasksEdit(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	ctx := t.Context()
 	due := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
@@ -429,6 +435,7 @@ func TestTasksEdit(t *testing.T) {
 }
 
 func TestTasksEditOfAComment(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	p := e.write("bob", "lobby", "root")
 	c, err := e.posts.Reply(t.Context(), e.as("admin"), p.ID, app.PostInput{Format: app.FormatText, Body: "c", Tasks: []app.TaskInput{{Title: "t"}}})
@@ -463,6 +470,7 @@ func TestTasksEditOfAComment(t *testing.T) {
 }
 
 func TestTasksEditRefusals(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	mine := e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "mine"}, app.TaskInput{Title: "mine 2"})
 	theirs := e.withTasks("admin", e.lobby.ID, app.TaskInput{Title: "theirs"})
@@ -507,6 +515,7 @@ func TestTasksEditRefusals(t *testing.T) {
 }
 
 func TestTasksDeleteWithThePost(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	ctx := t.Context()
 	e.withTasks("admin", e.lobby.ID, app.TaskInput{Title: "before"})
@@ -572,6 +581,7 @@ func TestTasksDeleteWithThePost(t *testing.T) {
 }
 
 func TestTasksDeleteOfAKeptPlaceholder(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	ctx := t.Context()
 	p := e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "a"})
@@ -631,6 +641,7 @@ func TestTasksDeleteOfAKeptPlaceholder(t *testing.T) {
 }
 
 func TestTasksOfARoomThatIsDeleted(t *testing.T) {
+	t.Parallel()
 	e := newBoardEnv(t)
 	e.withTasks("bob", e.lobby.ID, app.TaskInput{Title: "a", Assignees: e.ids("bob")})
 	before := len(e.events())
@@ -657,6 +668,7 @@ func formerMemberEnv(t *testing.T) (*boardEnv, app.Post) {
 }
 
 func TestTasksEditWithAFormerMember(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		// tasks builds the edit from the IDs of "t" and "u".
@@ -744,6 +756,7 @@ func TestTasksEditWithAFormerMember(t *testing.T) {
 }
 
 func TestBoardUpdateTaskWithAFormerMember(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		assignees func(e *boardEnv) []uint64

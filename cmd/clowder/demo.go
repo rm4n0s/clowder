@@ -54,13 +54,16 @@ var demoUsers = []struct {
 // mentions, replies, assignments and room additions of the data above, made
 // through the services, so that the rules of SPEC §7.9 and D30 apply. The
 // private messages (SPEC §7.11) come last: see makeDemoMessages. Later steps
-// add their own demo data here.
+// add their own demo data here. With -size large it then adds the data set of
+// SPEC §10 (see makeLargeDemo) and prints its counts.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
-	var dataDir string
+	var dataDir, size string
 	flags := flag.NewFlagSet("demo", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&dataDir, "data", envString(env, "CLOWDER_DATA", config.DefaultDataDir),
 		"data directory, made if missing and empty (CLOWDER_DATA)")
+	flags.StringVar(&size, "size", demoSizeSmall,
+		"size of the demo: small, or large, the data set of SPEC §10 (200 users, 100 rooms, 100,000 posts and comments, 20,000 tasks)")
 	if err := flags.Parse(args); err != nil {
 		return errors.NewErr(tagFlagsInvalid, err)
 	}
@@ -69,6 +72,10 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	}
 	if dataDir == "" {
 		return errors.New(tagFlagsInvalid, "data directory is empty", "flag", "data")
+	}
+	scale, err := demoScaleOf(size)
+	if err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(dataDir, dataDirMode); err != nil {
@@ -83,7 +90,14 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 			"dir", dataDir, "entries", len(entries))
 	}
 	_, _ = fmt.Fprintf(stdout, "demo data directory is ready: %s\n", dataDir)
+	return fillDemo(ctx, dataDir, scale, stdout, stderr, hasher)
+}
 
+// fillDemo makes the demo in the empty data directory dataDir: the small demo
+// and, when scale is not nil, the large one on top of it (makeLargeDemo).
+// runDemo calls it with the scale of the flag -size; the tests call it with a
+// smaller one.
+func fillDemo(ctx context.Context, dataDir string, scale *demoScale, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	logger := newLogger(config.DefaultLogLevel, stderr)
 	st, err := store.Open(ctx, filepath.Join(dataDir, databaseFile), clock.Real(), logger)
 	if err != nil {
@@ -146,7 +160,16 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 		MaxAttachments:    config.DefaultMaxAttachmentsPerPost,
 		Logger:            logger,
 	}, nil)
-	return makeDemoMessages(ctx, messages, actors, stdout)
+	if err := makeDemoMessages(ctx, messages, actors, stdout); err != nil {
+		return err
+	}
+	if scale == nil {
+		return nil
+	}
+	return makeLargeDemo(ctx, *scale, largeDeps{
+		st: st, rooms: app.NewRooms(st, fileStore, logger, nil), messages: messages,
+		files: fileStore, hasher: hasher, clk: clk,
+	}, stdout)
 }
 
 // makeDemoRooms makes the rooms of the demo through the rooms service, as the

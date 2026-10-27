@@ -113,6 +113,7 @@ func sameLayout(a, b [][]string) bool {
 }
 
 func TestBoardPage(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	s := e.seedBoard()
 	rec := e.getAs("alice", e.boardURL("general", ""), false)
@@ -163,6 +164,7 @@ func TestBoardPage(t *testing.T) {
 }
 
 func TestBoardPageIsReadOnlyForWhoHasNotJoined(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	s := e.seedBoard()
 	rec := e.getAs("carol", e.boardURL("general", ""), false)
@@ -179,6 +181,7 @@ func TestBoardPageIsReadOnlyForWhoHasNotJoined(t *testing.T) {
 }
 
 func TestBoardOfAPrivateRoom(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	// Bob is a member of secret and sees its board; the others do not know it.
 	rec := e.getAs("bob", e.boardURL("secret", ""), false)
@@ -196,6 +199,7 @@ func TestBoardOfAPrivateRoom(t *testing.T) {
 // every route of the board: a person who is not a member of a private room does
 // not know it, admins included (D29).
 func TestBoardRoutesOfAPrivateRoomOfOthersAre404(t *testing.T) {
+	t.Parallel()
 	for _, user := range []string{"carol", "admin"} {
 		modes(t, func(t *testing.T, datastar bool) {
 			e := newRoomsEnv(t)
@@ -244,6 +248,7 @@ func TestBoardRoutesOfAPrivateRoomOfOthersAre404(t *testing.T) {
 }
 
 func TestBoardRoutesOfRoomsThatDoNotExist(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	for _, id := range []string{"9999", "abc", "0"} {
 		paths := []string{"", "/columns", "/stream", "/tasks/1/edit"}
@@ -263,6 +268,7 @@ func TestBoardRoutesOfRoomsThatDoNotExist(t *testing.T) {
 }
 
 func TestBoardRoutesNeedASession(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	base := e.boardURL("general", "")
 	tests := []struct {
@@ -294,6 +300,7 @@ func TestBoardRoutesNeedASession(t *testing.T) {
 }
 
 func TestBoardTaskMove(t *testing.T) {
+	t.Parallel()
 	// The seed's layout is To do: Late, Soon, Plain, Comment task; In
 	// progress: -; Done: Finished.
 	tests := []struct {
@@ -361,6 +368,7 @@ func cardCountText(n int) string {
 }
 
 func TestBoardTaskMoveByTheSelect(t *testing.T) {
+	t.Parallel()
 	// The "Move to…" choice posts only the column: the card goes to its end.
 	modes(t, func(t *testing.T, datastar bool) {
 		e := newRoomsEnv(t)
@@ -379,6 +387,7 @@ func TestBoardTaskMoveByTheSelect(t *testing.T) {
 }
 
 func TestBoardTaskMoveFailures(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		user       string
@@ -479,6 +488,7 @@ func TestBoardTaskMoveFailures(t *testing.T) {
 }
 
 func TestBoardColumnsRefresh(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	e.seedBoard()
 	rec := e.getAs("alice", e.boardURL("general", "/columns"), true)

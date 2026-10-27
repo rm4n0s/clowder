@@ -121,6 +121,7 @@ const (
 const missingPost = "Store.PostByID.NotFound"
 
 func TestPostsAliasesMatchTheStore(t *testing.T) {
+	t.Parallel()
 	if app.FormatText != store.FormatText || app.FormatMarkdown != store.FormatMarkdown {
 		t.Error("the Format constants differ from the store's")
 	}
@@ -130,6 +131,7 @@ func TestPostsAliasesMatchTheStore(t *testing.T) {
 }
 
 func TestParseTags(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		in   string
@@ -157,6 +159,7 @@ func TestParseTags(t *testing.T) {
 }
 
 func TestPostsCreatePermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
 		app.TagForbidden: "Posts.Create.func1.Forbidden",
@@ -194,12 +197,14 @@ func TestPostsCreatePermissions(t *testing.T) {
 }
 
 func TestPostsCreateMissingRoom(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	_, err := e.posts.Create(t.Context(), e.as("admin"), 9999, app.PostInput{Format: app.FormatText, Body: "x"})
 	_ = requireTag(t, err, app.TagNotFound, notFoundMissing)
 }
 
 func TestPostsCreate(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	e.clk.Advance(5 * time.Minute)
 	before := len(e.events())
@@ -240,6 +245,7 @@ func TestPostsCreate(t *testing.T) {
 }
 
 func TestPostsCreateReusesTags(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	a := e.write("bob", "lobby", "one", "shared")
 	b := e.write("alice", "den", "two", "shared", "extra")
@@ -253,6 +259,7 @@ func TestPostsCreateReusesTags(t *testing.T) {
 }
 
 func TestPostsHTMLByFormat(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	tests := []struct {
 		name   string
@@ -286,6 +293,7 @@ func TestPostsHTMLByFormat(t *testing.T) {
 }
 
 func TestPostsCreateValidation(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("a", 20_000)
 	longUnicode := strings.Repeat("é", 20_000) // 40,000 bytes, 20,000 characters
 	tagOf := func(n int) string { return strings.Repeat("a", n) }
@@ -386,6 +394,7 @@ func nonNilTags(s []string) []string {
 }
 
 func TestPostsEditPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
 		app.TagForbidden: "Posts.Edit.func1.Forbidden",
@@ -405,6 +414,7 @@ func TestPostsEditPermissions(t *testing.T) {
 }
 
 func TestPostsEditMissingAndDeleted(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	in := app.PostInput{Format: app.FormatText, Body: "x"}
 	_, err := e.posts.Edit(t.Context(), e.as("bob"), 9999, in)
@@ -427,6 +437,7 @@ func TestPostsEditMissingAndDeleted(t *testing.T) {
 }
 
 func TestPostsEditValidation(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "original", "keep")
 	before := len(e.events())
@@ -455,6 +466,7 @@ func many11() []string {
 }
 
 func TestPostsEditAudit(t *testing.T) {
+	t.Parallel()
 	const secretOld, secretNew = "the old secret text", "the new secret text"
 	tests := []struct {
 		name    string
@@ -536,6 +548,7 @@ func TestPostsEditAudit(t *testing.T) {
 }
 
 func TestPostsDeletePermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
 		app.TagForbidden: "Posts.Delete.func1.Forbidden",
@@ -552,12 +565,14 @@ func TestPostsDeletePermissions(t *testing.T) {
 }
 
 func TestPostsDeleteMissing(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	err := e.posts.Delete(t.Context(), e.as("admin"), 9999)
 	_ = requireTag(t, err, app.TagNotFound, "Posts.Delete.func1->Store.PostByID.NotFound")
 }
 
 func TestPostsDeleteWithoutRepliesRemovesTheRow(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "private words", "x", "y")
 	other := e.write("bob", "lobby", "other", "x")
@@ -589,6 +604,7 @@ func TestPostsDeleteWithoutRepliesRemovesTheRow(t *testing.T) {
 }
 
 func TestPostsDeleteWithRepliesKeepsAPlaceholder(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "words that go away", "x", "y")
 	e.write("bob", "lobby", "newer")
@@ -653,6 +669,7 @@ func mustGet(t *testing.T, e *postsEnv, user string, id uint64) app.Post {
 }
 
 func TestPostsGetPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []postCase{
 		{"bob", "lobby", ""}, {"admin", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"carol", "lobby", ""},
@@ -669,6 +686,7 @@ func TestPostsGetPermissions(t *testing.T) {
 }
 
 func TestPostsGetView(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	p := e.write("bob", "lobby", "hello", "x")
 	e.reply(p, "admin")
@@ -699,6 +717,7 @@ func TestPostsGetView(t *testing.T) {
 }
 
 func TestPostsFeedPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []postCase{
 		{"bob", "lobby", ""}, {"admin", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"carol", "lobby", ""},
@@ -715,12 +734,14 @@ func TestPostsFeedPermissions(t *testing.T) {
 }
 
 func TestPostsFeedMissingRoom(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	_, err := e.posts.Feed(t.Context(), e.as("admin"), 9999, 0, 30)
 	_ = requireTag(t, err, app.TagNotFound, "Posts.Feed->loadReadableRoom->Store.RoomByID.NotFound")
 }
 
 func TestPostsFeedPaging(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		total int
 		limit int
@@ -785,6 +806,7 @@ func TestPostsFeedPaging(t *testing.T) {
 }
 
 func TestPostsFeedContent(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	first := e.write("bob", "lobby", "first", "a", "b")
 	e.write("alice", "den", "in another room", "secret")
@@ -850,6 +872,7 @@ func TestPostsFeedContent(t *testing.T) {
 }
 
 func TestPostsSuggestTags(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	e.write("bob", "lobby", "1", "design", "desktop", "release", "a_b", "ünï")
 	e.write("admin", "lobby", "2", "design", "DEBUG")
@@ -892,6 +915,7 @@ func TestPostsSuggestTags(t *testing.T) {
 }
 
 func TestPostsSuggestTagsAreLimitedToTen(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	for i := 0; i < 12; i += 6 {
 		var names []string
@@ -911,6 +935,7 @@ func TestPostsSuggestTagsAreLimitedToTen(t *testing.T) {
 }
 
 func TestPostsSuggestTagsForgetsDeletedPosts(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	gone := e.write("bob", "lobby", "gone", "gone-tag")
 	kept := e.write("bob", "lobby", "kept", "kept-tag")
@@ -937,12 +962,14 @@ func TestPostsSuggestTagsForgetsDeletedPosts(t *testing.T) {
 }
 
 func TestPostsGetMissing(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	_, err := e.posts.Get(t.Context(), e.as("admin"), 9999)
 	_ = requireTag(t, err, app.TagNotFound, "Posts.Get->Store.PostByID.NotFound")
 }
 
 func TestPostsPreview(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	tests := []struct {
 		name       string

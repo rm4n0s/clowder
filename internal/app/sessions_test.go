@@ -19,6 +19,7 @@ const (
 )
 
 func TestLogin(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		username string
@@ -92,6 +93,7 @@ func TestLogin(t *testing.T) {
 }
 
 func TestLoginErrorsAreTheSame(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice := e.signUp("alice", store.RoleMember)
 	e.signUp("dora", store.RoleMember)
@@ -115,6 +117,7 @@ func TestLoginErrorsAreTheSame(t *testing.T) {
 }
 
 func TestLoginTwiceMakesTwoSessions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice := e.signUp("alice", store.RoleMember)
 	t1, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
@@ -134,6 +137,7 @@ func TestLoginTwiceMakesTwoSessions(t *testing.T) {
 }
 
 func TestLoginRateLimit(t *testing.T) {
+	t.Parallel()
 	failN := func(e *env, n int, user, ip string) {
 		e.t.Helper()
 		for range n {
@@ -242,6 +246,7 @@ func TestLoginRateLimit(t *testing.T) {
 }
 
 func TestLoginUsesTheInjectedLimiter(t *testing.T) {
+	t.Parallel()
 	clk := clock.NewFake(start)
 	st := storetest.Open(t, clk)
 	limiter := app.NewLoginLimiter(clk)
@@ -256,6 +261,7 @@ func TestLoginUsesTheInjectedLimiter(t *testing.T) {
 }
 
 func TestLoginStoreErrorsPassUp(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.signUp("alice", store.RoleMember)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -275,6 +281,7 @@ func (e *env) login(username string) string {
 }
 
 func TestSessionActor(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		token     func(e *env, u app.User) string
@@ -362,6 +369,7 @@ func TestSessionActor(t *testing.T) {
 }
 
 func TestSessionActorReasons(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice := e.signUp("alice", store.RoleMember)
 	tok := e.login("alice")
@@ -392,6 +400,7 @@ func TestSessionActorReasons(t *testing.T) {
 }
 
 func TestSessionActorSlidingExpiry(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.signUp("alice", store.RoleMember)
 	tok := e.login("alice")
@@ -440,6 +449,7 @@ func TestSessionActorSlidingExpiry(t *testing.T) {
 }
 
 func TestSessionActorStoreErrorsPassUp(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.signUp("alice", store.RoleMember)
 	tok := e.login("alice")
@@ -450,6 +460,7 @@ func TestSessionActorStoreErrorsPassUp(t *testing.T) {
 }
 
 func TestLogout(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice := e.signUp("alice", store.RoleMember)
 	e.signUp("bob", store.RoleMember)
@@ -478,6 +489,7 @@ func TestLogout(t *testing.T) {
 }
 
 func TestLogoutStoreErrorsPassUp(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -486,12 +498,14 @@ func TestLogoutStoreErrorsPassUp(t *testing.T) {
 }
 
 func TestRateLimitedIsExported(t *testing.T) {
+	t.Parallel()
 	if app.TagRateLimited == "" || app.TagRateLimited == app.TagUnauthenticated {
 		t.Errorf("TagRateLimited = %q", app.TagRateLimited)
 	}
 }
 
 func TestSessionActorRefreshed(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.signUp("alice", store.RoleMember)
 	tok := e.login("alice")
@@ -523,6 +537,7 @@ func TestSessionActorRefreshed(t *testing.T) {
 }
 
 func TestExpiredSessionIsDeletedWhenFound(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice := e.signUp("alice", store.RoleMember)
 	tok, other := e.login("alice"), e.login("alice")
@@ -548,6 +563,7 @@ func TestExpiredSessionIsDeletedWhenFound(t *testing.T) {
 }
 
 func TestLoginDeletesTheExpiredSessionsOfTheUser(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice := e.signUp("alice", store.RoleMember)
 	bob := e.signUp("bob", store.RoleMember)

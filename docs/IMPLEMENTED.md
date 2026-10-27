@@ -607,3 +607,47 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The edit is saved at `POST /messages/m/{id}/edit`, because `POST /messages/m/{id}` conflicts with `/messages/{id}/members` in `ServeMux`.
   - When one person is given with a group name, the conversation is direct and the name is ignored.
   - A page of older messages (`?before=`) does not receive new messages live.
+
+## 13.1 Performance
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-13.1-performance
+- **Summary:**
+  - **Large demo (D35).** `clowder demo -size large` builds the §10 data set in about 8 s, on top of the unchanged small demo:
+    - 200 users and 100 rooms (14 private);
+    - 100,000 posts and comments, 20,000 tasks;
+    - tags, reactions, mentions and attachments;
+    - 13 conversations.
+
+    Rooms, memberships and conversations go through the services. The rest is written in bulk, with audit events and a full rebuild of the search index. The data is the same on every run (seeded). The command fails with `DemoInconsistent` if any service rule is broken.
+  - **Benchmarks.** The feed page and search have Go benchmarks that run on `CLOWDER_BENCH_DB` and are skipped when it is not set.
+  - **Fan-out and memory.** `scripts/perf.sh` with `cmd/clowder-perf` measures:
+    - how long a new post takes to reach 200 live room streams;
+    - server memory with 200 idle streams.
+  - **Fixes.**
+    - The connection pool of a file database is bounded at 2 per CPU, from 8 to 32 (D34). New SQLite connections had taken 53% of the CPU, and the slowest fan-out dropped from 369 ms to 26 ms.
+    - The search tag filter uses one `EXISTS` per tag, cutting a common-word search with two tags from 138 to 67 ms.
+  - **Test suites.**
+    - `storetest.Open` copies a database that was migrated once, instead of migrating per test.
+    - 597 tests now run in parallel.
+    - With `-race`, `internal/app` went from 179 s to 31–40 s, `internal/web` from 165 s to 30–37 s, and the whole suite takes about 41 s.
+- **Main files:** `cmd/clowder/{demo,demo_large,demo_words}.go`, `cmd/clowder-perf/`, `scripts/perf.sh`, `internal/store/{bulk,stats,template,store,search}.go`, `internal/store/storetest/storetest.go`, `internal/{app,web}/bench_test.go`, `docs/PERFORMANCE.md`.
+- **Tests:**
+  - The large demo at a reduced scale: counts, every consistency check, the same data on a second run, logins, files, and routes.
+  - Bulk, stats, template and pool tests.
+  - `clowder-perf` flags.
+  - Both large packages pass `-count=3 -shuffle=on`.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · perf.sh ✅ · no process left ✅
+- **Proof:** method B, `scripts/perf.sh` and the benchmarks, recorded in `docs/PERFORMANCE.md`:
+
+  | Target (§10) | Measured |
+  |---|---|
+  | Feed page < 50 ms | 2.8–7.1 ms ✅ |
+  | Search, words + two tags < 100 ms | 28–32 ms; 66–72 ms with a very common word ✅ |
+  | New post reaching 200 streams < 200 ms | p50 18.8 ms, max 73 ms (manager's run) ✅ |
+  | Idle memory with 200 streams < 150 MB | 117 MiB ✅ |
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Memory peaks at about 200 MiB while 200 streams render a new post at once; this is recorded.
+  - The tests now use file databases, and CLAUDE.md and SPEC §12 are updated to say so.
+  - The bulk data makes no notifications, edits or deletions.

@@ -86,6 +86,7 @@ func assigneeNamesOf(t app.TaskCard) []string {
 }
 
 func TestTaskCreate(t *testing.T) {
+	t.Parallel()
 	encodings(t, func(t *testing.T, e *roomsEnv, send func(string, string, url.Values) *httptest.ResponseRecorder, datastar bool) {
 		form := editorTasksForm("Plan the week",
 			taskRowOf{id: "0", title: "  Book the room ", assignees: []string{idText(e.bob.ID)}, due: futureDue},
@@ -131,6 +132,7 @@ func TestTaskCreate(t *testing.T) {
 }
 
 func TestTaskCreateWithTasksOnly(t *testing.T) {
+	t.Parallel()
 	encodings(t, func(t *testing.T, e *roomsEnv, send func(string, string, url.Values) *httptest.ResponseRecorder, datastar bool) {
 		send("alice", "/rooms/"+idText(e.general.ID)+"/posts", editorTasksForm("", taskRowOf{id: "0", title: "Only a task"}))
 		posts := e.feed("alice", "general")
@@ -141,6 +143,7 @@ func TestTaskCreateWithTasksOnly(t *testing.T) {
 }
 
 func TestTaskCreateMistakes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		rows func(e *roomsEnv) []taskRowOf
@@ -218,6 +221,7 @@ func TestTaskCreateMistakes(t *testing.T) {
 }
 
 func TestTaskInputsFromRoutes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		form  url.Values
@@ -255,6 +259,7 @@ func TestTaskInputsFromRoutes(t *testing.T) {
 }
 
 func TestTaskInputsSkipBlankRowsAndOrderByIndex(t *testing.T) {
+	t.Parallel()
 	form := url.Values{
 		"tasks[10][title]": {"last"}, "tasks[10][id]": {"0"},
 		"tasks[2][title]": {"first"}, "tasks[2][assignees]": {"3", "4"}, "tasks[2][due]": {futureDue},
@@ -290,6 +295,7 @@ func (e *roomsEnv) writeTasks(user, room, body string, tasks ...app.TaskInput) a
 }
 
 func TestTaskEditForm(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	due := mustDay(t, futureDue)
 	p := e.writeTasks("alice", "general", "With tasks",
@@ -328,6 +334,7 @@ func mustDay(t *testing.T, s string) time.Time {
 }
 
 func TestTaskEdit(t *testing.T) {
+	t.Parallel()
 	encodings(t, func(t *testing.T, e *roomsEnv, send func(string, string, url.Values) *httptest.ResponseRecorder, datastar bool) {
 		due := mustDay(t, futureDue)
 		p := e.writeTasks("alice", "general", "With tasks",
@@ -369,6 +376,7 @@ func TestTaskEdit(t *testing.T) {
 }
 
 func TestTaskEditRemovesWhatTheFormLeavesOut(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writeTasks("alice", "general", "With tasks", app.TaskInput{Title: "One"}, app.TaskInput{Title: "Two"})
 	rec := e.post("alice", postPathOf(p, "edit"), editorTasksForm("With tasks"), true)
@@ -379,6 +387,7 @@ func TestTaskEditRemovesWhatTheFormLeavesOut(t *testing.T) {
 }
 
 func TestTaskEditMistakesKeepTheRows(t *testing.T) {
+	t.Parallel()
 	for _, datastar := range []bool{true, false} {
 		e := newRoomsEnv(t)
 		p := e.writeTasks("alice", "general", "With tasks", app.TaskInput{Title: "One"}, app.TaskInput{Title: "Two"})
@@ -406,6 +415,7 @@ func TestTaskEditMistakesKeepTheRows(t *testing.T) {
 }
 
 func TestTaskFormerMembersStayAssignable(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	p := e.writeTasks("alice", "general", "Bob's work", app.TaskInput{Title: "Bob's task", Assignees: []uint64{e.bob.ID}})
 	if err := e.rooms.Leave(t.Context(), e.actor(e.bob), e.general.ID); err != nil {
@@ -436,6 +446,7 @@ func TestTaskFormerMembersStayAssignable(t *testing.T) {
 }
 
 func TestTaskRowsInEditorsOfTheRoomAndTheReply(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	root := e.writePost("alice", "general", "A post")
 	room := e.getAs("alice", "/rooms/"+idText(e.general.ID), false)
@@ -451,6 +462,7 @@ func TestTaskRowsInEditorsOfTheRoomAndTheReply(t *testing.T) {
 }
 
 func TestTaskRowRoute(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	path := func(room uint64, editor string, index string) string {
 		return "/editor/task-row?editor=" + editor + "&index=" + index + "&room=" + idText(room)
@@ -491,6 +503,7 @@ func TestTaskRowRoute(t *testing.T) {
 }
 
 func TestPostShowsItsTasks(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	past, future := mustDay(t, pastDue), mustDay(t, futureDue)
 	p := e.writeTasks("alice", "general", "Look at these",
@@ -558,6 +571,7 @@ func TestPostShowsItsTasks(t *testing.T) {
 }
 
 func TestCommentShowsItsTasks(t *testing.T) {
+	t.Parallel()
 	encodings(t, func(t *testing.T, e *roomsEnv, send func(string, string, url.Values) *httptest.ResponseRecorder, datastar bool) {
 		root := e.writePost("alice", "general", "Root")
 		form := editorTasksForm("", taskRowOf{id: "0", title: "Comment task", assignees: []string{idText(e.bob.ID)}, due: pastDue})
@@ -575,6 +589,7 @@ func TestCommentShowsItsTasks(t *testing.T) {
 }
 
 func TestReplyMistakesKeepTheTaskRows(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	root := e.writePost("alice", "general", "Root")
 	form := editorTasksForm("", taskRowOf{id: "0", title: "Mine", assignees: []string{idText(e.carol.ID)}})

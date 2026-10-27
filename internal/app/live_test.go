@@ -83,6 +83,7 @@ func memberEvts(kind string, room, user uint64) []live.Event {
 }
 
 func TestLiveRoomsPublish(t *testing.T) {
+	t.Parallel()
 	runLiveCases(t, []liveCase{
 		{"create publishes nothing", func(e *liveEnv) liveResult {
 			_, err := e.rooms.Create(e.t.Context(), e.as("carol"), app.RoomInput{Name: "new", Visibility: app.VisibilityPrivate})
@@ -241,6 +242,7 @@ func textInput(body string) app.PostInput {
 }
 
 func TestLivePostsPublish(t *testing.T) {
+	t.Parallel()
 	runLiveCases(t, []liveCase{
 		{"create a post", func(e *liveEnv) liveResult {
 			p, err := e.posts.Create(e.t.Context(), e.as("bob"), e.lobby.ID, textInput("hello"))
@@ -456,6 +458,7 @@ func (p *probe) Publish(ev live.Event) { p.fn(ev) }
 // TestLivePublishesAfterTheCommit checks that the change can be read when the
 // event arrives, which cannot be the case inside the transaction.
 func TestLivePublishesAfterTheCommit(t *testing.T) {
+	t.Parallel()
 	e := newLiveEnv(t)
 	pr := &probe{}
 	// Inside a transaction a read waits for the lock; the timeout makes that
@@ -509,6 +512,7 @@ func TestLivePublishesAfterTheCommit(t *testing.T) {
 }
 
 func TestLiveNilPublisher(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t) // both services were made with a nil Publisher
 	p := e.write("bob", "lobby", "post")
 	e.say("admin", p.ID, "comment")
@@ -523,6 +527,7 @@ func TestLiveNilPublisher(t *testing.T) {
 // TestLiveStoreErrorPublishesNothing closes the database under every method
 // that publishes: the transaction cannot begin, and nothing is published.
 func TestLiveStoreErrorPublishesNothing(t *testing.T) {
+	t.Parallel()
 	calls := []struct {
 		name string
 		call func(e *liveEnv, p, c app.Post) error

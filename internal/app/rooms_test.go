@@ -220,12 +220,14 @@ const (
 )
 
 func TestRoomsAliasesMatchTheStore(t *testing.T) {
+	t.Parallel()
 	if app.VisibilityVisible != store.VisibilityVisible || app.VisibilityPrivate != store.VisibilityPrivate {
 		t.Error("the Visibility constants differ from the store's")
 	}
 }
 
 func TestRoomsCreatePermissions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		actor      string
 		visibility app.Visibility
@@ -264,6 +266,7 @@ func TestRoomsCreatePermissions(t *testing.T) {
 }
 
 func TestRoomsCreate(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	before := len(e.events())
 	e.clk.Advance(5 * time.Minute)
@@ -326,6 +329,7 @@ func TestRoomsCreate(t *testing.T) {
 }
 
 func TestRoomsCreateValidation(t *testing.T) {
+	t.Parallel()
 	long := func(r string, n int) string { return strings.Repeat(r, n) }
 	tests := []struct {
 		name       string
@@ -401,6 +405,7 @@ func TestRoomsCreateValidation(t *testing.T) {
 }
 
 func TestRoomsCreateNameUniqueness(t *testing.T) {
+	t.Parallel()
 	// The case of any letter counts, not only a to z (the unique index folds
 	// only those, so the service checks).
 	tests := []struct{ first, second string }{
@@ -425,6 +430,7 @@ func TestRoomsCreateNameUniqueness(t *testing.T) {
 }
 
 func TestRoomsGet(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"bob", "lobby", ""}, {"carol", "lobby", ""},
@@ -439,6 +445,7 @@ func TestRoomsGet(t *testing.T) {
 }
 
 func TestRoomsGetView(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	tests := []struct {
 		actor, room string
@@ -469,6 +476,7 @@ func TestRoomsGetView(t *testing.T) {
 }
 
 func TestRoomsMissingRoom(t *testing.T) {
+	t.Parallel()
 	// A room that does not exist is TagNotFound for every method, for
 	// admins too (the store's tag, with the metadata "op").
 	const missing = 9999
@@ -513,6 +521,7 @@ func TestRoomsMissingRoom(t *testing.T) {
 }
 
 func TestRoomsPrivateAndMissingRoomsLookAlike(t *testing.T) {
+	t.Parallel()
 	// The tag is the same; only the metadata tells them apart, for the log.
 	e := newRoomsEnv(t)
 	_, errPrivate := e.rooms.Get(t.Context(), e.as("carol"), e.den.ID)
@@ -528,6 +537,7 @@ func TestRoomsPrivateAndMissingRoomsLookAlike(t *testing.T) {
 }
 
 func TestRoomsMembers(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"bob", "lobby", ""}, {"carol", "lobby", ""},
@@ -541,6 +551,7 @@ func TestRoomsMembers(t *testing.T) {
 }
 
 func TestRoomsMembersView(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	members, err := e.rooms.Members(t.Context(), e.as("bob"), e.den.ID)
 	if err != nil {
@@ -575,6 +586,7 @@ func TestRoomsMembersView(t *testing.T) {
 }
 
 func TestRoomsLists(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	ctx := t.Context()
 	// More rooms, to see the order (by name, ignoring case) and the filters.
@@ -661,6 +673,7 @@ func TestRoomsLists(t *testing.T) {
 }
 
 func TestRoomsAllRoomsPermissions(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		actor string
 		want  string
@@ -685,6 +698,7 @@ func TestRoomsAllRoomsPermissions(t *testing.T) {
 }
 
 func TestRoomsAdminMembersPermissions(t *testing.T) {
+	t.Parallel()
 	// Admins list the members of every room, private ones they are not in
 	// included (D29); anyone else is forbidden, whatever the room.
 	routes := map[string]string{app.TagForbidden: "Rooms.AdminMembers.Forbidden"}
@@ -704,6 +718,7 @@ func TestRoomsAdminMembersPermissions(t *testing.T) {
 }
 
 func TestRoomsAdminMembers(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	aliceID, bobID := e.users["alice"].ID, e.users["bob"].ID
 
@@ -760,6 +775,7 @@ func TestRoomsAdminMembers(t *testing.T) {
 }
 
 func TestRoomsJoin(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"bob", "lobby", ""}, {"carol", "lobby", ""},
@@ -773,6 +789,7 @@ func TestRoomsJoin(t *testing.T) {
 }
 
 func TestRoomsJoinAudit(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	before := len(e.events())
 	if err := e.rooms.Join(t.Context(), e.as("carol"), e.lobby.ID); err != nil {
@@ -803,6 +820,7 @@ func TestRoomsJoinAudit(t *testing.T) {
 }
 
 func TestRoomsLeave(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"bob", "lobby", ""}, {"carol", "lobby", ""},
@@ -815,6 +833,7 @@ func TestRoomsLeave(t *testing.T) {
 }
 
 func TestRoomsLeaveAudit(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	id := e.membershipID(e.lobby.ID, "bob")
 	before := len(e.events())
@@ -840,6 +859,7 @@ func TestRoomsLeaveAudit(t *testing.T) {
 }
 
 func TestRoomsPrivateRoomMayEndEmpty(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	for _, who := range []string{"alice", "bob"} {
 		if err := e.rooms.Leave(t.Context(), e.as(who), e.den.ID); err != nil {
@@ -872,6 +892,7 @@ func TestRoomsPrivateRoomMayEndEmpty(t *testing.T) {
 }
 
 func TestRoomsAddMember(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.AddMember.func1.Forbidden"}
 	cases := []permCase{
 		// Visible: only members add.
@@ -887,6 +908,7 @@ func TestRoomsAddMember(t *testing.T) {
 }
 
 func TestRoomsCandidatesPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.Candidates.Forbidden"}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"bob", "lobby", ""},
@@ -901,6 +923,7 @@ func TestRoomsCandidatesPermissions(t *testing.T) {
 }
 
 func TestRoomsCandidates(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		actor string
@@ -936,6 +959,7 @@ func TestRoomsCandidates(t *testing.T) {
 }
 
 func TestRoomsAddMemberAudit(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	before := len(e.events())
 	if err := e.rooms.AddMember(t.Context(), e.as("bob"), e.den.ID, e.users["carol"].ID); err != nil {
@@ -978,6 +1002,7 @@ func TestRoomsAddMemberAudit(t *testing.T) {
 }
 
 func TestRoomsAddMemberTargets(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		target func(e *roomsEnv) uint64
@@ -1014,6 +1039,7 @@ func TestRoomsAddMemberTargets(t *testing.T) {
 }
 
 func TestRoomsAddMemberChecksTheActorBeforeTheUser(t *testing.T) {
+	t.Parallel()
 	// A non-member learns nothing about users, and not that a private room exists.
 	e := newRoomsEnv(t)
 	err := e.rooms.AddMember(t.Context(), e.as("carol"), e.den.ID, 9999)
@@ -1023,6 +1049,7 @@ func TestRoomsAddMemberChecksTheActorBeforeTheUser(t *testing.T) {
 }
 
 func TestRoomsRemoveMember(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.RemoveMember.func1.Forbidden"}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""},
@@ -1038,6 +1065,7 @@ func TestRoomsRemoveMember(t *testing.T) {
 }
 
 func TestRoomsRemoveMemberAudit(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	id := e.membershipID(e.den.ID, "bob")
 	before := len(e.events())
@@ -1074,6 +1102,7 @@ func TestRoomsRemoveMemberAudit(t *testing.T) {
 }
 
 func TestRoomsUpdate(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.Update.func1->loadManageableRoom.Forbidden"}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""},
@@ -1087,6 +1116,7 @@ func TestRoomsUpdate(t *testing.T) {
 }
 
 func TestRoomsUpdateByTheCreatorOfAVisibleRoom(t *testing.T) {
+	t.Parallel()
 	// An admin made the room, then lost the role: still its creator.
 	e := newRoomsEnv(t)
 	if err := e.svc.SetRole(t.Context(), e.as("root"), e.users["admin"].ID, store.RoleMember); err != nil {
@@ -1102,6 +1132,7 @@ func TestRoomsUpdateByTheCreatorOfAVisibleRoom(t *testing.T) {
 }
 
 func TestRoomsUpdateAndDeleteNeedTheCreatorToStayInAPrivateRoom(t *testing.T) {
+	t.Parallel()
 	calls := map[string]func(e *roomsEnv, a app.Actor) error{
 		"Update": func(e *roomsEnv, a app.Actor) error {
 			return e.rooms.Update(t.Context(), a, e.den.ID, app.RoomInput{Name: "gone"})
@@ -1127,6 +1158,7 @@ func TestRoomsUpdateAndDeleteNeedTheCreatorToStayInAPrivateRoom(t *testing.T) {
 }
 
 func TestRoomsUpdateAudit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		in          app.RoomInput
@@ -1212,6 +1244,7 @@ func TestRoomsUpdateAudit(t *testing.T) {
 }
 
 func TestRoomsUpdateByAnAdmin(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	before := len(e.events())
 	if err := e.rooms.Update(t.Context(), e.as("root"), e.den.ID, app.RoomInput{Name: "burrow", Description: "Cozy"}); err != nil {
@@ -1228,6 +1261,7 @@ func TestRoomsUpdateByAnAdmin(t *testing.T) {
 }
 
 func TestRoomsUpdateValidation(t *testing.T) {
+	t.Parallel()
 	long := func(r string, n int) string { return strings.Repeat(r, n) }
 	nameErr := map[string]string{app.FieldName: "Use 1 to 64 characters."}
 	takenErr := map[string]string{app.FieldName: "This name is taken."}
@@ -1275,6 +1309,7 @@ func TestRoomsUpdateValidation(t *testing.T) {
 }
 
 func TestRoomsUpdateChecksThePermissionBeforeTheInput(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	bad := app.RoomInput{Name: ""}
 	_ = requireTag(t, e.rooms.Update(t.Context(), e.as("carol"), e.den.ID, bad), app.TagNotFound, notFoundPrivate)
@@ -1282,6 +1317,7 @@ func TestRoomsUpdateChecksThePermissionBeforeTheInput(t *testing.T) {
 }
 
 func TestRoomsDelete(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.Delete.func1->loadManageableRoom.Forbidden"}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""},
@@ -1295,6 +1331,7 @@ func TestRoomsDelete(t *testing.T) {
 }
 
 func TestRoomsDeleteCascadesButTheAuditStays(t *testing.T) {
+	t.Parallel()
 	e := newRoomsEnv(t)
 	before := len(e.events())
 	if err := e.rooms.Delete(t.Context(), e.as("root"), e.den.ID); err != nil {
@@ -1347,6 +1384,7 @@ func TestRoomsDeleteCascadesButTheAuditStays(t *testing.T) {
 }
 
 func TestRoomsEveryEventHasTheRoomAndTheActor(t *testing.T) {
+	t.Parallel()
 	// One walk through every action, to see that nothing else is written.
 	e := newRoomsEnv(t)
 	ctx := t.Context()
@@ -1387,6 +1425,7 @@ func TestRoomsEveryEventHasTheRoomAndTheActor(t *testing.T) {
 }
 
 func TestRoomsActorWithoutAUser(t *testing.T) {
+	t.Parallel()
 	// An actor whose user does not exist cannot write an event: the change
 	// rolls back with the store's TagNotFound.
 	e := newRoomsEnv(t)
@@ -1415,6 +1454,7 @@ func canceledContext(t *testing.T) context.Context {
 }
 
 func TestRoomsDatabaseFailuresPassThrough(t *testing.T) {
+	t.Parallel()
 	// A canceled context fails the first query. The store's error reaches the
 	// caller as it is, with its tag and its route from the method down.
 	e := newRoomsEnv(t)

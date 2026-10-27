@@ -66,6 +66,7 @@ func runCommentPermissions(t *testing.T, routes map[string]string, cases []postC
 }
 
 func TestCommentsReplyPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
 		app.TagForbidden: "Posts.Reply.func1.Forbidden",
@@ -101,6 +102,7 @@ func TestCommentsReplyPermissions(t *testing.T) {
 }
 
 func TestCommentsReplyMissing(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	before := len(e.events())
 	_, err := e.posts.Reply(t.Context(), e.as("admin"), 9999, app.PostInput{Format: app.FormatText, Body: "x"})
@@ -111,6 +113,7 @@ func TestCommentsReplyMissing(t *testing.T) {
 }
 
 func TestCommentsReplyValidation(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("a", 20_000)
 	many := func(n int) []string {
 		out := make([]string, n)
@@ -191,6 +194,7 @@ func TestCommentsReplyValidation(t *testing.T) {
 }
 
 func TestCommentsReplyToDeletedRow(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("bob", "lobby", "the post")
 	c1 := e.say("bob", post.ID, "first")
@@ -219,6 +223,7 @@ func TestCommentsReplyToDeletedRow(t *testing.T) {
 }
 
 func TestCommentsRootAndParentAtEveryDepth(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("bob", "lobby", "the post")
 	chain := []app.Post{post}
@@ -253,6 +258,7 @@ func TestCommentsRootAndParentAtEveryDepth(t *testing.T) {
 }
 
 func TestCommentsReplyView(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("alice", "den", "the post")
 	e.clk.Advance(3 * time.Minute)
@@ -274,6 +280,7 @@ func TestCommentsReplyView(t *testing.T) {
 }
 
 func TestCommentsReplyAudit(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("alice", "den", "the post")
 	e.clk.Advance(time.Minute)
@@ -297,6 +304,7 @@ func TestCommentsReplyAudit(t *testing.T) {
 }
 
 func TestCommentsEditAndDeleteAudit(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("bob", "lobby", "the post")
 	c := e.say("bob", post.ID, "the old comment text", "a")
@@ -330,6 +338,7 @@ func TestCommentsEditAndDeleteAudit(t *testing.T) {
 }
 
 func TestCommentsEditPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
 		app.TagForbidden: "Posts.Edit.func1.Forbidden",
@@ -349,6 +358,7 @@ func TestCommentsEditPermissions(t *testing.T) {
 }
 
 func TestCommentsDeletePermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
 		app.TagForbidden: "Posts.Delete.func1.Forbidden",
@@ -365,6 +375,7 @@ func TestCommentsDeletePermissions(t *testing.T) {
 }
 
 func TestCommentsGetPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []postCase{
 		{"bob", "lobby", ""}, {"admin", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"carol", "lobby", ""},
@@ -381,6 +392,7 @@ func TestCommentsGetPermissions(t *testing.T) {
 }
 
 func TestCommentsThreadPermissions(t *testing.T) {
+	t.Parallel()
 	routes := map[string]string{app.TagNotFound: notFoundPrivate}
 	cases := []postCase{
 		{"bob", "lobby", ""}, {"admin", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"carol", "lobby", ""},
@@ -405,12 +417,14 @@ func TestCommentsThreadPermissions(t *testing.T) {
 }
 
 func TestCommentsThreadMissing(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	_, err := e.posts.Thread(t.Context(), e.as("admin"), 9999)
 	_ = requireTag(t, err, app.TagNotFound, "Posts.Thread->Store.PostByID.NotFound")
 }
 
 func TestCommentsThreadOrder(t *testing.T) {
+	t.Parallel()
 	// Each case writes its comments in the order given; a comment names its
 	// parent by the label of an earlier one ("" for the post). The thread must
 	// read depth first, siblings oldest first, whatever the write order.
@@ -477,6 +491,7 @@ func TestCommentsThreadOrder(t *testing.T) {
 }
 
 func TestCommentsThreadContent(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("alice", "den", "the post", "p")
 	c1 := e.say("bob", post.ID, "from bob", "x", "y")
@@ -549,6 +564,7 @@ func TestCommentsThreadContent(t *testing.T) {
 }
 
 func TestCommentsThreadWithADeletedRoot(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("bob", "lobby", "the post", "x")
 	c1 := e.say("admin", post.ID, "a comment")
@@ -565,6 +581,7 @@ func TestCommentsThreadWithADeletedRoot(t *testing.T) {
 }
 
 func TestCommentsDeleteKeepsOrRemoves(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("bob", "lobby", "the post")
 	kept := e.say("bob", post.ID, "kept words", "k")
@@ -617,6 +634,7 @@ func TestCommentsDeleteKeepsOrRemoves(t *testing.T) {
 }
 
 func TestCommentsDeleteCleansUpPlaceholders(t *testing.T) {
+	t.Parallel()
 	// A thread is a list of comments: label, parent label ("" for the post)
 	// and author. Then the labels in "deleted" are deleted in order, and after
 	// each deletion the labels in "gone" must be removed from the database and
@@ -740,6 +758,7 @@ func TestCommentsDeleteCleansUpPlaceholders(t *testing.T) {
 }
 
 func TestCommentsCountsExcludeDeleted(t *testing.T) {
+	t.Parallel()
 	e := newPostsEnv(t)
 	post := e.write("bob", "lobby", "the post")
 	c1 := e.say("bob", post.ID, "c1")

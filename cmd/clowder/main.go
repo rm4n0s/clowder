@@ -51,7 +51,7 @@ func usage(w io.Writer) {
 commands:
   serve    run the server
   invite   print a one-time invitation link
-  demo     fill an empty database with demo data
+  demo     fill an empty database with demo data (-size large: the data set of SPEC §10)
 
 Run "clowder serve -h" for the flags of serve.
 `)

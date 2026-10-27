@@ -196,6 +196,7 @@ func requireInvalid(t *testing.T, err error, route string, fields ...string) {
 }
 
 func TestMessagesAliasesMatchTheStore(t *testing.T) {
+	t.Parallel()
 	if app.ConversationDirect != store.ConversationDirect || app.ConversationGroup != store.ConversationGroup {
 		t.Error("the ConversationKind constants differ from the store's")
 	}
@@ -220,6 +221,7 @@ func via(method, rest string) string {
 }
 
 func TestStartDirect(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		setup func(e *msgEnv)
@@ -267,6 +269,7 @@ func TestStartDirect(t *testing.T) {
 }
 
 func TestStartDirectNeedsALogin(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	_, err := e.msgs.StartDirect(t.Context(), app.Actor{}, e.uid("bob"))
 	_ = requireTag(t, err, app.TagUnauthenticated, "Messages.StartDirect.Unauthenticated")
@@ -281,6 +284,7 @@ func TestStartDirectNeedsALogin(t *testing.T) {
 }
 
 func TestResolveUsernames(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	e.disable("erin")
 	tests := []struct {
@@ -335,6 +339,7 @@ func TestResolveUsernames(t *testing.T) {
 }
 
 func TestMessageViewsAndQuotes(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.group("crew", "alice", "bob", "carol")
 	plain := e.send("bob", conv, "  a   long\n question  ")
@@ -369,6 +374,7 @@ func TestMessageViewsAndQuotes(t *testing.T) {
 }
 
 func TestStartDirectIsUniquePerPair(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	first := e.direct("alice", "bob")
 	if again := e.direct("alice", "bob"); again != first {
@@ -395,6 +401,7 @@ func TestStartDirectIsUniquePerPair(t *testing.T) {
 }
 
 func TestStartDirectInParallelMakesOne(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	const callers = 8
 	ids := make([]uint64, callers)
@@ -427,6 +434,7 @@ func TestStartDirectInParallelMakesOne(t *testing.T) {
 }
 
 func TestStartGroup(t *testing.T) {
+	t.Parallel()
 	many := func(e *msgEnv, n int) []uint64 {
 		ids := e.uids("bob", "carol", "dave", "erin")
 		for i := len(ids); i < n; i++ {
@@ -501,6 +509,7 @@ func TestStartGroup(t *testing.T) {
 }
 
 func TestGroupTitles(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	named := e.group("Launch crew", "alice", "bob", "carol")
 	unnamed := e.group("", "alice", "bob", "carol")
@@ -537,6 +546,7 @@ func TestGroupTitles(t *testing.T) {
 }
 
 func TestAddMembers(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		setup func(e *msgEnv, conv uint64)
@@ -623,6 +633,7 @@ func TestAddMembers(t *testing.T) {
 }
 
 func TestAddMembersLimitsTheGroupTo50(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	var ids []uint64
 	for i := range 47 {
@@ -652,6 +663,7 @@ func TestAddMembersLimitsTheGroupTo50(t *testing.T) {
 }
 
 func TestAReturningMemberSeesTheWholeHistory(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.group("crew", "alice", "bob", "carol")
 	e.send("alice", conv, "one")
@@ -671,6 +683,7 @@ func TestAReturningMemberSeesTheWholeHistory(t *testing.T) {
 }
 
 func TestRename(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		from   string
@@ -721,6 +734,7 @@ func TestRename(t *testing.T) {
 }
 
 func TestLeave(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.group("crew", "alice", "bob", "carol")
 	e.send("alice", conv, "hello")
@@ -803,6 +817,7 @@ func newPermEnv(t *testing.T) *permEnv {
 }
 
 func TestMessagesPermissions(t *testing.T) {
+	t.Parallel()
 	// outcomes of a member who may, a member who may not, and everyone else
 	type who struct{ alice, bob, erin, dave, admin, frank string }
 	everyoneElse := func(ok, bob string) who {
@@ -898,6 +913,7 @@ func TestMessagesPermissions(t *testing.T) {
 }
 
 func TestRefusedCallsChangeNothing(t *testing.T) {
+	t.Parallel()
 	e := newPermEnv(t)
 	for _, name := range []string{"bob", "dave", "admin", "erin"} {
 		_, _ = e.msgs.Edit(t.Context(), e.as(name), e.msg.ID, "hijacked")
@@ -916,6 +932,7 @@ func TestRefusedCallsChangeNothing(t *testing.T) {
 }
 
 func TestMissingThingsAreNotFound(t *testing.T) {
+	t.Parallel()
 	e := newPermEnv(t)
 	ctx := t.Context()
 	a := e.as("alice")
@@ -940,6 +957,7 @@ func TestMissingThingsAreNotFound(t *testing.T) {
 }
 
 func TestAttachmentDownload(t *testing.T) {
+	t.Parallel()
 	e := newPermEnv(t)
 	view, f, err := e.msgs.Attachment(t.Context(), e.as("bob"), e.att)
 	if err != nil {
@@ -960,6 +978,7 @@ func TestAttachmentDownload(t *testing.T) {
 }
 
 func TestSendRules(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.group("crew", "alice", "bob", "carol")
 	other := e.direct("alice", "dave")
@@ -1023,6 +1042,7 @@ func TestSendRules(t *testing.T) {
 }
 
 func TestSendAttachments(t *testing.T) {
+	t.Parallel()
 	t.Run("files only, no body", func(t *testing.T) {
 		e := newMsgEnv(t)
 		conv := e.direct("alice", "bob")
@@ -1114,6 +1134,7 @@ func TestSendAttachments(t *testing.T) {
 }
 
 func TestSendFailsWhenTheDiskFails(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: permission bits do not apply")
 	}
@@ -1129,6 +1150,7 @@ func TestSendFailsWhenTheDiskFails(t *testing.T) {
 }
 
 func TestSendToADisabledUser(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	direct := e.direct("alice", "bob")
 	group := e.group("crew", "alice", "bob", "carol")
@@ -1160,6 +1182,7 @@ func TestSendToADisabledUser(t *testing.T) {
 }
 
 func TestEdit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		// withFile makes the message carry a file, so that its body may be empty
@@ -1225,6 +1248,7 @@ func TestEdit(t *testing.T) {
 }
 
 func TestEditAndDeleteOfADeletedMessage(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.direct("alice", "bob")
 	m := e.send("alice", conv, "bye")
@@ -1242,6 +1266,7 @@ func TestEditAndDeleteOfADeletedMessage(t *testing.T) {
 }
 
 func TestDeleteLeavesAPlaceholder(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.group("crew", "alice", "bob", "carol")
 	first := e.send("bob", conv, "first")
@@ -1314,6 +1339,7 @@ func TestDeleteLeavesAPlaceholder(t *testing.T) {
 }
 
 func TestDeleteKeepsTheFilesOfOtherMessages(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.direct("alice", "bob")
 	a, err := e.msgs.Send(t.Context(), e.as("alice"), conv, app.MessageInput{Uploads: []app.Upload{e.upload("alice", "a.txt")}})
@@ -1338,6 +1364,7 @@ func TestDeleteKeepsTheFilesOfOtherMessages(t *testing.T) {
 }
 
 func TestReact(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.group("crew", "alice", "bob", "carol")
 	m := e.send("alice", conv, "react to me")
@@ -1381,6 +1408,7 @@ func TestReact(t *testing.T) {
 }
 
 func TestReadState(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.direct("alice", "bob")
 	other := e.direct("alice", "carol")
@@ -1457,6 +1485,7 @@ func TestReadState(t *testing.T) {
 }
 
 func TestUnreadIgnoresOwnAndDeletedMessages(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.direct("alice", "bob")
 	m := e.send("alice", conv, "oops")
@@ -1493,6 +1522,7 @@ func TestUnreadIgnoresOwnAndDeletedMessages(t *testing.T) {
 }
 
 func TestHistory(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.direct("alice", "bob")
 	var all []app.Message
@@ -1554,6 +1584,7 @@ func TestHistory(t *testing.T) {
 }
 
 func TestHistoryShowsQuotesAttachmentsAndEdits(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	conv := e.group("crew", "alice", "bob", "carol")
 	first := e.send("bob", conv, "  a   long\n question  ")
@@ -1603,6 +1634,7 @@ func TestHistoryShowsQuotesAttachmentsAndEdits(t *testing.T) {
 }
 
 func TestConversationsList(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	ctx := t.Context()
 	quiet := e.direct("alice", "dave") // no messages
@@ -1690,6 +1722,7 @@ func TestConversationsList(t *testing.T) {
 }
 
 func TestConversationsOrderByTheLatestMessage(t *testing.T) {
+	t.Parallel()
 	// Messages sent at the same moment: the newer message wins, then the newer conversation.
 	e := newMsgEnv(t)
 	a := e.direct("alice", "bob")
@@ -1707,6 +1740,7 @@ func TestConversationsOrderByTheLatestMessage(t *testing.T) {
 }
 
 func TestMessagesPublishEvents(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		run  func(e *msgEnv) ([]live.Event, error)
@@ -1813,6 +1847,7 @@ func TestMessagesPublishEvents(t *testing.T) {
 // TestMessagesPublishAfterTheCommit checks that the change can be read when
 // the event arrives, which cannot be the case inside the transaction.
 func TestMessagesPublishAfterTheCommit(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	pr := &probe{fn: func(live.Event) {}}
 	e.msgs = app.NewMessages(e.st, e.clk, e.files, app.MessagesConfig{MaxAttachmentSize: testMaxUpload, MaxAttachments: testMaxAttachments}, pr)
@@ -1845,6 +1880,7 @@ func TestMessagesPublishAfterTheCommit(t *testing.T) {
 }
 
 func TestMessagesWithoutAPublisher(t *testing.T) {
+	t.Parallel()
 	e := newMsgEnv(t)
 	msgs := app.NewMessages(e.st, e.clk, e.files, app.MessagesConfig{}, nil)
 	id, err := msgs.StartDirect(t.Context(), e.as("alice"), e.uid("bob"))
@@ -1863,6 +1899,7 @@ func TestMessagesWithoutAPublisher(t *testing.T) {
 // TestMessagesStoreErrorPublishesNothing closes the database under every
 // method that publishes: nothing is published.
 func TestMessagesStoreErrorPublishesNothing(t *testing.T) {
+	t.Parallel()
 	calls := []struct {
 		name string
 		call func(e *permEnv) error
