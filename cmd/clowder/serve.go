@@ -14,6 +14,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/web"
@@ -25,6 +26,8 @@ const (
 	dataDirMode = 0o750
 	// databaseFile is the name of the database inside the data directory.
 	databaseFile = "clowder.db"
+	// filesDir is the directory of the attachments inside the data directory.
+	filesDir = "files"
 )
 
 // runServe runs the server until ctx is done.
@@ -46,15 +49,23 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 			logger.Error("closing the store failed", "err", closeErr)
 		}
 	}()
+	fileStore, err := files.New(filepath.Join(cfg.DataDir, filesDir))
+	if err != nil {
+		return err
+	}
 	accounts := app.NewAccounts(st, clock.Real(), auth.DefaultHasher(), app.AccountsConfig{
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
 	})
 	srv, err := web.New(cfg, logger, web.Services{
 		Accounts: accounts,
-		Rooms:    app.NewRooms(st),
+		Rooms:    app.NewRooms(st, fileStore, logger),
 		Audit:    app.NewAudit(st),
-		Posts:    app.NewPosts(st, clock.Real(), markdown.New()),
+		Posts: app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{
+			MaxAttachmentSize: cfg.MaxAttachmentSize,
+			MaxAttachments:    cfg.MaxAttachmentsPerPost,
+			Logger:            logger,
+		}),
 	})
 	if err != nil {
 		return err

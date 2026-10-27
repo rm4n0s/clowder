@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +16,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
@@ -38,7 +43,8 @@ var demoUsers = []struct {
 // through the accounts service (an invitation and a sign-up for each), then
 // the rooms through the rooms service, their posts and the comments under
 // some of them through the posts service, and prints the directory, the users with their password, the rooms,
-// the number of posts and the number of comments to stdout.
+// the number of posts, the number of attachments and the number of comments
+// to stdout.
 // Later steps add their own demo data here.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	var dataDir string
@@ -94,11 +100,19 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 		actors[u.Username] = app.Actor{UserID: u.ID, Username: u.Username, Role: u.Role}
 		_, _ = fmt.Fprintf(stdout, "  %-6s %-6s %s\n", u.Username, u.Role, u.DisplayName)
 	}
-	made, err := makeDemoRooms(ctx, app.NewRooms(st), actors, stdout)
+	fileStore, err := files.New(filepath.Join(dataDir, filesDir))
 	if err != nil {
 		return err
 	}
-	posts := app.NewPosts(st, clock.Real(), markdown.New())
+	made, err := makeDemoRooms(ctx, app.NewRooms(st, fileStore, logger), actors, stdout)
+	if err != nil {
+		return err
+	}
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{
+		MaxAttachmentSize: config.DefaultMaxAttachmentSize,
+		MaxAttachments:    config.DefaultMaxAttachmentsPerPost,
+		Logger:            logger,
+	})
 	written, err := makeDemoPosts(ctx, posts, made, actors, stdout)
 	if err != nil {
 		return err
@@ -155,15 +169,17 @@ var demoPosts = []struct {
 	format app.Format
 	body   string
 	tags   string
+	// attach names the files that the post carries: demoFile makes their content.
+	attach []string
 }{
-	{"general", "alice", app.FormatMarkdown, "# Welcome to Clowder\n\nThis is **general**, where the whole team talks. A few things to know:\n\n- Posts can be *text* or *markdown*\n- Tags go in their own field\n- Everything is kept on your own server\n\nThe project lives at [the Clowder repository](https://github.com/rm4n0s/clowder).", "welcome, help"},
-	{"general", "bob", app.FormatText, "Quick question: where do we keep the design notes?\nI looked in the wiki and found nothing.", "help design"},
-	{"general", "carol", app.FormatMarkdown, "## Release checklist\n\n1. Run the tests\n2. Tag the release\n3. Write the notes\n\nThe check that most people forget:\n\n```go\nfunc main() {\n\tfmt.Println(\"ship it\")\n}\n```", "release"},
-	{"general", "alice", app.FormatMarkdown, "### Design review on Friday\n\n- [x] Mockups are ready\n- [ ] Colors are chosen\n\nSee the [style guide](https://example.com/style) and bring `questions`.", "design, release"},
-	{"general", "bob", app.FormatMarkdown, "Thanks all! I put the design notes in a ~~wiki page~~ shared folder, with a table of the screens:\n\n| Screen | Owner |\n|---|---|\n| Feed | Alice |\n| Board | Carol |", "design"},
-	{"random", "alice", app.FormatText, "Anyone up for lunch at noon? https://example.com/menu has the menu.", ""},
-	{"random", "bob", app.FormatMarkdown, "Today's **mood**: coffee, then more coffee.", "coffee"},
-	{"secret", "alice", app.FormatMarkdown, "Only a few of us read this room. Let's plan the *surprise* for the release party.", "release, party"},
+	{"general", "alice", app.FormatMarkdown, "# Welcome to Clowder\n\nThis is **general**, where the whole team talks. A few things to know:\n\n- Posts can be *text* or *markdown*\n- Tags go in their own field\n- Everything is kept on your own server\n\nThe project lives at [the Clowder repository](https://github.com/rm4n0s/clowder).", "welcome, help", nil},
+	{"general", "bob", app.FormatText, "Quick question: where do we keep the design notes?\nI looked in the wiki and found nothing.", "help design", nil},
+	{"general", "carol", app.FormatMarkdown, "## Release checklist\n\n1. Run the tests\n2. Tag the release\n3. Write the notes\n\nThe check that most people forget:\n\n```go\nfunc main() {\n\tfmt.Println(\"ship it\")\n}\n```", "release", nil},
+	{"general", "alice", app.FormatMarkdown, "### Design review on Friday\n\n- [x] Mockups are ready\n- [ ] Colors are chosen\n\nSee the [style guide](https://example.com/style) and bring `questions`.", "design, release", []string{"mockup.png", "notes.txt"}},
+	{"general", "bob", app.FormatMarkdown, "Thanks all! I put the design notes in a ~~wiki page~~ shared folder, with a table of the screens:\n\n| Screen | Owner |\n|---|---|\n| Feed | Alice |\n| Board | Carol |", "design", nil},
+	{"random", "alice", app.FormatText, "Anyone up for lunch at noon? https://example.com/menu has the menu.", "", nil},
+	{"random", "bob", app.FormatMarkdown, "Today's **mood**: coffee, then more coffee.", "coffee", nil},
+	{"secret", "alice", app.FormatMarkdown, "Only a few of us read this room. Let's plan the *surprise* for the release party.", "release, party", nil},
 }
 
 // makeDemoPosts writes the posts of the demo through the posts service, as the
@@ -171,19 +187,78 @@ var demoPosts = []struct {
 // users by username. It returns the posts, in the order of demoPosts.
 func makeDemoPosts(ctx context.Context, posts *app.Posts, rooms map[string]app.Room, actors map[string]app.Actor, stdout io.Writer) ([]app.Post, error) {
 	written := make([]app.Post, 0, len(demoPosts))
+	attachments := 0
 	for _, d := range demoPosts {
+		var uploads []app.Upload
+		for _, name := range d.attach {
+			content, err := demoFile(name)
+			if err != nil {
+				return nil, err
+			}
+			u, err := posts.Upload(ctx, actors[d.author], name, bytes.NewReader(content))
+			if err != nil {
+				return nil, err
+			}
+			uploads = append(uploads, u)
+		}
 		p, err := posts.Create(ctx, actors[d.author], rooms[d.room].ID, app.PostInput{
-			Format: d.format,
-			Body:   d.body,
-			Tags:   app.ParseTags(d.tags),
+			Format:  d.format,
+			Body:    d.body,
+			Tags:    app.ParseTags(d.tags),
+			Uploads: uploads,
 		})
 		if err != nil {
 			return nil, err
 		}
+		attachments += len(uploads)
 		written = append(written, p)
 	}
 	_, _ = fmt.Fprintf(stdout, "demo posts: %d\n", len(demoPosts))
+	_, _ = fmt.Fprintf(stdout, "demo attachments: %d\n", attachments)
 	return written, nil
+}
+
+// Size of the demo image in pixels.
+const (
+	demoImageWidth  = 320
+	demoImageHeight = 200
+)
+
+// writeDemoImage writes the demo image to w: a 320 by 200 PNG whose red grows
+// to the right and whose green grows downwards.
+func writeDemoImage(w io.Writer) error {
+	img := image.NewRGBA(image.Rect(0, 0, demoImageWidth, demoImageHeight))
+	for y := range demoImageHeight {
+		for x := range demoImageWidth {
+			img.Set(x, y, color.RGBA{
+				R: uint8(x * 255 / (demoImageWidth - 1)),
+				G: uint8(y * 255 / (demoImageHeight - 1)),
+				B: 160,
+				A: 255,
+			})
+		}
+	}
+	if err := png.Encode(w, img); err != nil {
+		return errors.NewErr(tagDemoImageFailed, err)
+	}
+	return nil
+}
+
+// demoFile returns the content of a file of the demo: mockup.png is a small
+// gradient made here, notes.txt a few lines of text.
+func demoFile(name string) ([]byte, error) {
+	switch name {
+	case "mockup.png":
+		var b bytes.Buffer
+		if err := writeDemoImage(&b); err != nil {
+			return nil, err
+		}
+		return b.Bytes(), nil
+	case "notes.txt":
+		return []byte("Design review notes\n\n- Mockups are ready\n- Pick the colors on Friday\n- Ship the style guide\n"), nil
+	default:
+		return nil, errors.New(tagDemoFileUnknown, "the demo has no such file", "name", name)
+	}
 }
 
 // demoComments are the comments of the demo, in the order they are written.
@@ -253,4 +328,6 @@ func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post,
 const (
 	tagDataDirNotEmpty   = "DataDirNotEmpty"
 	tagDataDirReadFailed = "DataDirReadFailed"
+	tagDemoImageFailed   = "DemoImageFailed"
+	tagDemoFileUnknown   = "DemoFileUnknown"
 )

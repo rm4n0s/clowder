@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"image"
+	_ "image/png" // the decoder for TestDemoFile
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,10 +18,21 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
+
+// openFiles opens the files directory of the data directory dir.
+func openFiles(t *testing.T, dir string) *files.Store {
+	t.Helper()
+	fs, err := files.New(filepath.Join(dir, "files"))
+	if err != nil {
+		t.Fatalf("files.New: %+v", err)
+	}
+	return fs
+}
 
 // mapEnv returns an env function backed by a map.
 func mapEnv(m map[string]string) func(string) string {
@@ -549,7 +563,7 @@ func TestRunDemoMakesTheDemoRooms(t *testing.T) {
 	}
 
 	_, st := openAccounts(t, dir)
-	rooms := app.NewRooms(st)
+	rooms := app.NewRooms(st, openFiles(t, dir), nil)
 	actors := map[string]app.Actor{}
 	for _, d := range demoUsers {
 		row, err := st.UserByUsername(t.Context(), d.username)
@@ -666,6 +680,9 @@ func TestServeOpensAndClosesTheStore(t *testing.T) {
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Errorf("database file not created while serving: %v", err)
 	}
+	if info, err := os.Stat(filepath.Join(dataDir, filesDir, "tmp")); err != nil || !info.IsDir() {
+		t.Errorf("files/tmp not created while serving: %v, %v", info, err)
+	}
 	cancel()
 	select {
 	case err := <-done:
@@ -681,6 +698,20 @@ func TestServeOpensAndClosesTheStore(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "closing the store failed") {
 		t.Errorf("close error logged:\n%s", stderr.String())
+	}
+}
+
+func TestServeFilesDirectoryFailure(t *testing.T) {
+	dataDir := t.TempDir()
+	// A file where the files directory should be.
+	if err := os.WriteFile(filepath.Join(dataDir, filesDir), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr syncBuffer
+	err := runServe(t.Context(), []string{"-data", dataDir, "-addr", "127.0.0.1:0"}, mapEnv(nil), &stderr)
+	appErr, ok := errors.FromError(err)
+	if !ok || !appErr.HasRoute("runServe->New.FilesDirCreateFailed") {
+		t.Errorf("err = %v", err)
 	}
 }
 
@@ -720,6 +751,99 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
+func TestRunDemoMakesTheDemoAttachments(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	if !strings.Contains(stdout.String(), "demo attachments: 2") {
+		t.Errorf("stdout lacks the number of attachments:\n%s", stdout.String())
+	}
+
+	_, st := openAccounts(t, dir)
+	fileStore := openFiles(t, dir)
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{})
+	reader := app.Actor{UserID: 1, Username: "admin", Role: store.RoleAdmin}
+	rooms, err := st.ListRooms(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var general uint64
+	for _, r := range rooms {
+		if r.Name == "general" {
+			general = r.ID
+		}
+	}
+	page, err := posts.Feed(t.Context(), reader, general, 0, 30)
+	if err != nil {
+		t.Fatalf("Feed: %+v", err)
+	}
+	var attached []app.AttachmentView
+	for _, p := range page.Posts {
+		attached = append(attached, p.Attachments...)
+	}
+	if len(attached) != 2 {
+		t.Fatalf("general has %d attachments, want 2: %+v", len(attached), attached)
+	}
+	byName := map[string]app.AttachmentView{}
+	for _, a := range attached {
+		byName[a.FileName] = a
+	}
+	img, txt := byName["mockup.png"], byName["notes.txt"]
+	if !img.IsImage || img.ContentType != "image/png" || img.Width != 320 || img.Height != 200 {
+		t.Errorf("mockup.png = %+v", img)
+	}
+	if txt.IsImage || !strings.HasPrefix(txt.ContentType, "text/plain") || txt.Size == 0 {
+		t.Errorf("notes.txt = %+v", txt)
+	}
+	for _, a := range attached {
+		view, f, err := posts.Attachment(t.Context(), reader, a.ID)
+		if err != nil {
+			t.Fatalf("Attachment %s: %+v", a.FileName, err)
+		}
+		b, err := io.ReadAll(f)
+		if cerr := f.Close(); err != nil || cerr != nil {
+			t.Fatalf("read %s: %v, %v", a.FileName, err, cerr)
+		}
+		if int64(len(b)) != view.Size {
+			t.Errorf("%s: %d bytes on disk, size %d", a.FileName, len(b), view.Size)
+		}
+	}
+}
+
+func TestDemoFile(t *testing.T) {
+	t.Run("an unknown file", func(t *testing.T) {
+		_, err := demoFile("nothing.bin")
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != tagDemoFileUnknown || !appErr.HasRoute("demoFile.DemoFileUnknown") {
+			t.Errorf("err = %v", err)
+		}
+	})
+	t.Run("the image is a PNG of 320 by 200", func(t *testing.T) {
+		b, err := demoFile("mockup.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(b))
+		if err != nil || format != "png" || cfg.Width != 320 || cfg.Height != 200 {
+			t.Errorf("DecodeConfig = %+v, %s, %v", cfg, format, err)
+		}
+	})
+	t.Run("an image that cannot be written", func(t *testing.T) {
+		err := writeDemoImage(failingWriter{})
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != tagDemoImageFailed || !appErr.HasRoute("writeDemoImage.DemoImageFailed") {
+			t.Errorf("err = %v", err)
+		}
+	})
+}
+
+// failingWriter fails every write.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, os.ErrClosed }
+
 func TestRunDemoMakesTheDemoPosts(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "demo")
 	var stdout, stderr bytes.Buffer
@@ -731,8 +855,9 @@ func TestRunDemoMakesTheDemoPosts(t *testing.T) {
 	}
 
 	_, st := openAccounts(t, dir)
-	rooms := app.NewRooms(st)
-	posts := app.NewPosts(st, clock.Real(), markdown.New())
+	fileStore := openFiles(t, dir)
+	rooms := app.NewRooms(st, fileStore, nil)
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{})
 	actors := map[string]app.Actor{}
 	for _, d := range demoUsers {
 		row, err := st.UserByUsername(t.Context(), d.username)
@@ -815,8 +940,9 @@ func TestRunDemoMakesTheDemoThreads(t *testing.T) {
 	}
 
 	_, st := openAccounts(t, dir)
-	rooms := app.NewRooms(st)
-	posts := app.NewPosts(st, clock.Real(), markdown.New())
+	fileStore := openFiles(t, dir)
+	rooms := app.NewRooms(st, fileStore, nil)
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{})
 	row, err := st.UserByUsername(t.Context(), "carol")
 	if err != nil {
 		t.Fatal(err)

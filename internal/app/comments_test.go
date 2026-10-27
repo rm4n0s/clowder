@@ -290,7 +290,7 @@ func TestCommentsReplyAudit(t *testing.T) {
 		summary: "Bob commented in #den",
 		details: map[string]any{
 			"format": "markdown", "length": float64(len("a deeper secret answer")), "tags": []any{"x", "y"},
-			"rootID": float64(post.ID), "parentID": float64(c1.ID),
+			"rootID": float64(post.ID), "parentID": float64(c1.ID), "attachments": float64(0),
 		},
 	})
 	e.requireNoBody("secret answer")
@@ -351,7 +351,7 @@ func TestCommentsEditPermissions(t *testing.T) {
 func TestCommentsDeletePermissions(t *testing.T) {
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
-		app.TagForbidden: "Posts.Delete.1.Forbidden",
+		app.TagForbidden: "Posts.Delete.func1.Forbidden",
 	}
 	cases := []postCase{
 		{"bob", "lobby", ""}, {"admin", "lobby", ""}, {"root", "lobby", ""},

@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/app"
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/store"
 )
 
@@ -26,15 +28,23 @@ import (
 type roomsEnv struct {
 	*env
 	rooms *app.Rooms
-	users map[string]app.User
-	lobby app.Room
-	den   app.Room
+	// files holds the attachments, in filesDir.
+	files    *files.Store
+	filesDir string
+	users    map[string]app.User
+	lobby    app.Room
+	den      app.Room
 }
 
 func newRoomsEnv(t *testing.T) *roomsEnv {
 	t.Helper()
 	e := &roomsEnv{env: newEnv(t), users: map[string]app.User{}}
-	e.rooms = app.NewRooms(e.st)
+	e.filesDir = filepath.Join(t.TempDir(), "files")
+	var err error
+	if e.files, err = files.New(e.filesDir); err != nil {
+		t.Fatalf("files.New: %+v", err)
+	}
+	e.rooms = app.NewRooms(e.st, e.files, nil)
 	for _, u := range []struct {
 		name string
 		role store.Role
@@ -44,7 +54,6 @@ func newRoomsEnv(t *testing.T) *roomsEnv {
 	} {
 		e.users[u.name] = e.signUp(u.name, u.role)
 	}
-	var err error
 	if e.lobby, err = e.rooms.Create(e.t.Context(), e.as("admin"), app.RoomInput{Name: "lobby", Description: "Everyone", Visibility: app.VisibilityVisible}); err != nil {
 		t.Fatalf("Create lobby: %+v", err)
 	}
@@ -1273,7 +1282,7 @@ func TestRoomsUpdateChecksThePermissionBeforeTheInput(t *testing.T) {
 }
 
 func TestRoomsDelete(t *testing.T) {
-	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.Delete.1->loadManageableRoom.Forbidden"}
+	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.Delete.func1->loadManageableRoom.Forbidden"}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""},
 		{"alice", "lobby", app.TagForbidden}, {"bob", "lobby", app.TagForbidden}, {"carol", "lobby", app.TagForbidden},

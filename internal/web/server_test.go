@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/store/storetest"
@@ -113,9 +115,17 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
 	})
-	rooms := app.NewRooms(st)
+	fileStore, err := files.New(filepath.Join(t.TempDir(), "files"))
+	if err != nil {
+		t.Fatalf("files.New: %+v", err)
+	}
+	rooms := app.NewRooms(st, fileStore, logger)
 	audit := app.NewAudit(st)
-	posts := app.NewPosts(st, clk, markdown.New())
+	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
+		MaxAttachmentSize: cfg.MaxAttachmentSize,
+		MaxAttachments:    cfg.MaxAttachmentsPerPost,
+		Logger:            logger,
+	})
 	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)

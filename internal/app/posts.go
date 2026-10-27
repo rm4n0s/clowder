@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/rm4n0s/clowder/internal/clock"
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
@@ -66,6 +67,15 @@ type PostInput struct {
 	// Tags are the labels of the post, as typed (ParseTags splits the field of
 	// the editor). Each is normalized (SPEC §7.7); at most 10 remain.
 	Tags []string
+	// Uploads are the new files of the post, as Posts.Upload returned them.
+	// They are attached to the post. The body may be empty when the post has
+	// at least one attachment.
+	Uploads []Upload
+	// KeepAttachments is used by Edit only: the IDs of the attachments of the
+	// post that stay. Every other attachment of the post is removed, so a nil
+	// list removes them all. An ID that is not an attachment of the post makes
+	// the input invalid.
+	KeepAttachments []uint64
 }
 
 // UserRef names a user on a post.
@@ -97,6 +107,9 @@ type Post struct {
 	// Tags are the normalized tags, in the order the author gave them; empty
 	// for a deleted post.
 	Tags []string
+	// Attachments are the files of the post, in the order they were attached;
+	// empty for a deleted post.
+	Attachments []AttachmentView
 	// CommentCount is the number of comments in the thread of the post, at any
 	// depth, not counting deleted ones. It is 0 for a comment.
 	CommentCount int
@@ -164,15 +177,20 @@ type Thread struct {
 // Posts is the service of posts, their tags and their feeds (SPEC §7.3, §7.7).
 // Make it with NewPosts. It is safe for concurrent use.
 type Posts struct {
-	st  *store.Store
-	clk clock.Clock
-	md  *markdown.Renderer
+	st      *store.Store
+	clk     clock.Clock
+	md      *markdown.Renderer
+	files   *files.Store
+	cfg     PostsConfig
+	cleaner fileCleaner
 }
 
 // NewPosts makes the service. The clock times the edits and deletions; the
-// renderer makes the HTML of the bodies.
-func NewPosts(st *store.Store, clk clock.Clock, md *markdown.Renderer) *Posts {
-	return &Posts{st: st, clk: clk, md: md}
+// renderer makes the HTML of the bodies; fs holds the files of the
+// attachments; cfg has the limits of the attachments.
+func NewPosts(st *store.Store, clk clock.Clock, md *markdown.Renderer, fs *files.Store, cfg PostsConfig) *Posts {
+	cfg = cfg.withDefaults()
+	return &Posts{st: st, clk: clk, md: md, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger)}
 }
 
 // ParseTags splits the tags field of the editor on spaces and commas. It
@@ -188,7 +206,9 @@ func ParseTags(s string) []string {
 // never holds the body). Only members of the room post: a room that the actor
 // may not read fails with TagNotFound, a visible room that the actor has not
 // joined with TagForbidden. It fails with TagInvalidInput, with all the
-// problems in the metadata "fields", for input that breaks a rule.
+// problems in the metadata "fields", for input that breaks a rule. in.Uploads
+// become the attachments of the post; when Create fails for any reason, their
+// files are removed from disk.
 func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostInput) (Post, error) {
 	var created store.Post
 	var room store.Room
@@ -206,7 +226,10 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 			return errors.New(TagForbidden, "only members post",
 				"userID", actor.UserID, "roomID", room.ID)
 		}
-		clean, fields := checkPostInput(in)
+		clean, fields := checkPostInput(in, len(in.Uploads))
+		if err := p.checkUploads(ctx, tx, fields, in.Uploads, 0); err != nil {
+			return err
+		}
 		if len(fields) > 0 {
 			return errors.New(TagInvalidInput, "the post has mistakes", "fields", fields)
 		}
@@ -221,6 +244,9 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 		if err := tx.ReplacePostTags(ctx, created.ID, clean.Tags); err != nil {
 			return err
 		}
+		if err := tx.CreateAttachments(ctx, attachmentRows(created.ID, actor.UserID, in.Uploads)); err != nil {
+			return err
+		}
 		// TODO(step 11.1): mentions and notifications.
 		// TODO(step 7.1): publish live events.
 		return recordAudit(ctx, tx, auditEntry{
@@ -231,13 +257,15 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 			EntityID:   created.ID,
 			Summary:    who + " posted in #" + room.Name,
 			Details: map[string]any{
-				"format": string(clean.Format),
-				"length": utf8.RuneCountInString(clean.Body),
-				"tags":   clean.Tags,
+				"format":      string(clean.Format),
+				"length":      utf8.RuneCountInString(clean.Body),
+				"tags":        clean.Tags,
+				"attachments": len(in.Uploads),
 			},
 		})
 	})
 	if err != nil {
+		p.cleaner.discard(ctx, p.st, in.Uploads)
 		return Post{}, err
 	}
 	return p.viewOne(ctx, actor, room, created.ID)
@@ -249,7 +277,9 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 // reply: a room that the actor may not read, a missing parent and a parent
 // that is deleted fail with TagNotFound, a visible room that the actor has
 // not joined with TagForbidden. It fails with TagInvalidInput, with all the
-// problems in the metadata "fields", for input that breaks a rule.
+// problems in the metadata "fields", for input that breaks a rule. in.Uploads
+// become the attachments of the comment; when Reply fails for any reason,
+// their files are removed from disk.
 func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in PostInput) (Post, error) {
 	var created store.Post
 	var room store.Room
@@ -273,7 +303,10 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 			return errors.New(TagForbidden, "only members comment",
 				"userID", actor.UserID, "roomID", room.ID)
 		}
-		clean, fields := checkPostInput(in)
+		clean, fields := checkPostInput(in, len(in.Uploads))
+		if err := p.checkUploads(ctx, tx, fields, in.Uploads, 0); err != nil {
+			return err
+		}
 		if len(fields) > 0 {
 			return errors.New(TagInvalidInput, "the comment has mistakes", "fields", fields)
 		}
@@ -295,6 +328,9 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 		if err := tx.ReplacePostTags(ctx, created.ID, clean.Tags); err != nil {
 			return err
 		}
+		if err := tx.CreateAttachments(ctx, attachmentRows(created.ID, actor.UserID, in.Uploads)); err != nil {
+			return err
+		}
 		// TODO(step 11.1): notify the parent's author (reply) and mentions.
 		// TODO(step 7.1): publish live events.
 		return recordAudit(ctx, tx, auditEntry{
@@ -305,30 +341,38 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 			EntityID:   created.ID,
 			Summary:    who + " commented in #" + room.Name,
 			Details: map[string]any{
-				"format":   string(clean.Format),
-				"length":   utf8.RuneCountInString(clean.Body),
-				"tags":     clean.Tags,
-				"rootID":   rootID,
-				"parentID": parent.ID,
+				"format":      string(clean.Format),
+				"length":      utf8.RuneCountInString(clean.Body),
+				"tags":        clean.Tags,
+				"rootID":      rootID,
+				"parentID":    parent.ID,
+				"attachments": len(in.Uploads),
 			},
 		})
 	})
 	if err != nil {
+		p.cleaner.discard(ctx, p.st, in.Uploads)
 		return Post{}, err
 	}
 	return p.viewOne(ctx, actor, room, created.ID)
 }
 
-// Edit changes the body, the format and the tags of a post or comment and
-// writes post.edited (entity type comment for a comment) with only what changed (for the body that it changed and its
-// length, never the text). It does nothing, and writes no event, when nothing
-// changed. Only the author may: another reader gets TagForbidden. A room that
+// Edit changes the body, the format, the tags and the attachments of a post or
+// comment and writes post.edited (entity type comment for a comment) with only
+// what changed (for the body that it changed and its length, never the text;
+// for the attachments the names added and removed). The attachments listed in
+// in.KeepAttachments stay, in.Uploads are added and the others are removed,
+// their files from disk after the change is committed; when Edit fails for
+// any reason, the files of in.Uploads are removed from disk. It does nothing,
+// and writes no event, when nothing changed. Only the author may: another reader gets TagForbidden. A room that
 // the actor may not read, a missing post and a deleted post fail with
 // TagNotFound. It fails with TagInvalidInput, with all the problems in the
 // metadata "fields", for input that breaks a rule.
 func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInput) (Post, error) {
 	var room store.Room
+	var removedKeys []string
 	err := p.st.Tx(ctx, func(tx *store.Store) error {
+		removedKeys = nil
 		row, err := tx.PostByID(ctx, postID)
 		if err != nil {
 			return err
@@ -344,7 +388,18 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 			return errors.New(TagForbidden, "only the author edits a post",
 				"userID", actor.UserID, "postID", postID)
 		}
-		clean, fields := checkPostInput(in)
+		current, err := tx.AttachmentsOfPosts(ctx, []uint64{row.ID})
+		if err != nil {
+			return err
+		}
+		kept, removed, unknown := splitAttachments(current[row.ID], in.KeepAttachments)
+		clean, fields := checkPostInput(in, len(kept)+len(in.Uploads))
+		if unknown {
+			fields[FieldAttachments] = messageUploadAgain
+		}
+		if err := p.checkUploads(ctx, tx, fields, in.Uploads, len(kept)); err != nil {
+			return err
+		}
 		if len(fields) > 0 {
 			return errors.New(TagInvalidInput, "the post has mistakes", "fields", fields)
 		}
@@ -367,6 +422,17 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		if tagsChanged {
 			details["tags"] = changeOf(nonNil(before), clean.Tags)
 		}
+		if len(in.Uploads) > 0 || len(removed) > 0 {
+			added := make([]string, len(in.Uploads))
+			for i, u := range in.Uploads {
+				added[i] = cleanFileName(u.FileName)
+			}
+			gone := make([]string, len(removed))
+			for i, a := range removed {
+				gone[i] = a.FileName
+			}
+			details["attachments"] = map[string]any{"added": added, "removed": gone}
+		}
 		if len(details) == 0 {
 			return nil
 		}
@@ -383,6 +449,17 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 				return err
 			}
 		}
+		if err := tx.CreateAttachments(ctx, attachmentRows(row.ID, actor.UserID, in.Uploads)); err != nil {
+			return err
+		}
+		removedIDs := make([]uint64, len(removed))
+		for i, a := range removed {
+			removedIDs[i] = a.ID
+		}
+		if err := tx.DeleteAttachments(ctx, removedIDs); err != nil {
+			return err
+		}
+		removedKeys = storageKeys(removed)
 		// TODO(step 11.1): rebuild the mentions and notify the new ones.
 		// TODO(step 7.1): publish live events.
 		return recordAudit(ctx, tx, auditEntry{
@@ -396,8 +473,10 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		})
 	})
 	if err != nil {
+		p.cleaner.discard(ctx, p.st, in.Uploads)
 		return Post{}, err
 	}
+	p.cleaner.remove(ctx, removedKeys)
 	return p.viewOne(ctx, actor, room, postID)
 }
 
@@ -410,9 +489,12 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 // without replies disappears with everything on it (D21). When a comment
 // disappears and its parent is a deleted placeholder with no other replies, the
 // parent disappears too, and so on up the thread, up to the top-level post;
-// those cleanups write no events.
+// those cleanups write no events. The files of the attachments that go are
+// removed from disk after the change is committed.
 func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
-	return p.st.Tx(ctx, func(tx *store.Store) error {
+	var keys []string
+	err := p.st.Tx(ctx, func(tx *store.Store) error {
+		keys = nil
 		row, err := tx.PostByID(ctx, postID)
 		if err != nil {
 			return err
@@ -437,6 +519,11 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 		if err != nil {
 			return err
 		}
+		own, err := tx.AttachmentsOfPosts(ctx, []uint64{row.ID})
+		if err != nil {
+			return err
+		}
+		keys = storageKeys(own[row.ID])
 		if kept {
 			// TODO(step 9.1): the tasks of the post leave the board.
 			if err := tx.DeletePostExtras(ctx, row.ID); err != nil {
@@ -449,11 +536,12 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			if err := tx.DeletePost(ctx, row.ID); err != nil {
 				return err
 			}
-			if err := removeEmptyPlaceholders(ctx, tx, row.ParentID); err != nil {
+			chainKeys, err := removeEmptyPlaceholders(ctx, tx, row.ParentID)
+			if err != nil {
 				return err
 			}
+			keys = append(keys, chainKeys...)
 		}
-		// TODO(step 6.1): remove the files of the attachments.
 		// TODO(step 7.1): publish live events.
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
@@ -465,6 +553,11 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			Details:    map[string]any{"kept": kept},
 		})
 	})
+	if err != nil {
+		return err
+	}
+	p.cleaner.remove(ctx, keys)
+	return nil
 }
 
 // Feed returns a page of the top-level posts of a room that the actor may
@@ -559,17 +652,21 @@ func (p *Posts) Thread(ctx context.Context, actor Actor, postID uint64) (Thread,
 	if err != nil {
 		return Thread{}, err
 	}
+	atts, err := p.st.AttachmentsOfPosts(ctx, ids)
+	if err != nil {
+		return Thread{}, err
+	}
 	count := 0
 	for _, r := range rows {
 		if r.DeletedAt == nil {
 			count++
 		}
 	}
-	rootView, err := p.buildViews(actor, room, []store.Post{root}, tags, map[uint64]int{root.ID: count})
+	rootView, err := p.buildViews(actor, room, []store.Post{root}, tags, atts, map[uint64]int{root.ID: count})
 	if err != nil {
 		return Thread{}, err
 	}
-	views, err := p.buildViews(actor, room, rows, tags, nil)
+	views, err := p.buildViews(actor, room, rows, tags, atts, nil)
 	if err != nil {
 		return Thread{}, err
 	}
@@ -641,7 +738,8 @@ func (p *Posts) viewOne(ctx context.Context, actor Actor, room store.Room, postI
 }
 
 // postViews makes the views of posts of one room for the actor, in the order
-// of rows, with two queries: the tags and the comment counts. The rows have
+// of rows, with three queries: the tags, the attachments and the comment
+// counts. The rows have
 // Author loaded.
 func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, room store.Room, rows []store.Post) ([]Post, error) {
 	ids := make([]uint64, len(rows))
@@ -652,17 +750,21 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 	if err != nil {
 		return nil, err
 	}
+	atts, err := st.AttachmentsOfPosts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	counts, err := st.CommentCounts(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	return p.buildViews(actor, room, rows, tags, counts)
+	return p.buildViews(actor, room, rows, tags, atts, counts)
 }
 
 // buildViews makes the views of posts of one room for the actor, in the order
-// of rows, from the tags and the comment counts that the caller has read. The
-// rows have Author loaded.
-func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, tags map[uint64][]string, counts map[uint64]int) ([]Post, error) {
+// of rows, from the tags, the attachments and the comment counts that the
+// caller has read. The rows have Author loaded.
+func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, tags map[uint64][]string, atts map[uint64][]store.Attachment, counts map[uint64]int) ([]Post, error) {
 	views := make([]Post, len(rows))
 	for i, row := range rows {
 		v := Post{
@@ -671,6 +773,7 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, tags
 			RoomName:     room.Name,
 			Format:       row.Format,
 			Tags:         []string{},
+			Attachments:  []AttachmentView{},
 			CommentCount: counts[row.ID],
 			IsComment:    row.ParentID != nil,
 			CreatedAt:    row.CreatedAt,
@@ -686,6 +789,7 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, tags
 		if !v.Deleted {
 			v.Body = row.Body
 			v.Tags = nonNil(tags[row.ID])
+			v.Attachments = attachmentViews(atts[row.ID])
 			if row.Author != nil {
 				v.Author = UserRef{ID: row.Author.ID, Username: row.Author.Username, DisplayName: row.Author.DisplayName}
 			}
@@ -750,36 +854,66 @@ func entityOf(row store.Post) (EntityType, string) {
 // removeEmptyPlaceholders removes, from the comment parentID upwards, every
 // ancestor that is a deleted placeholder with no replies left (D21), up to the
 // top-level post. It stops at the first ancestor that is not deleted or still
-// has replies. A nil parentID does nothing.
-func removeEmptyPlaceholders(ctx context.Context, tx *store.Store, parentID *uint64) error {
+// has replies. A nil parentID does nothing. It returns the storage keys of the
+// attachments of the posts it removed (a placeholder has none left, but the
+// rows are the authority), for the caller to remove from disk after the
+// commit.
+func removeEmptyPlaceholders(ctx context.Context, tx *store.Store, parentID *uint64) ([]string, error) {
+	var keys []string
 	for parentID != nil {
 		parent, err := tx.PostByID(ctx, *parentID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if parent.DeletedAt == nil {
-			return nil
+			return keys, nil
 		}
 		hasReplies, err := tx.PostHasReplies(ctx, parent.ID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if hasReplies {
-			return nil
+			return keys, nil
 		}
+		atts, err := tx.AttachmentsOfPosts(ctx, []uint64{parent.ID})
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, storageKeys(atts[parent.ID])...)
 		if err := tx.DeletePost(ctx, parent.ID); err != nil {
-			return err
+			return nil, err
 		}
 		parentID = parent.ParentID
 	}
-	return nil
+	return keys, nil
 }
 
-// checkPostInput applies the rules of SPEC §7.3 and §7.7 to in. It returns the
-// input as it is stored (body without trailing whitespace, tags normalized and
-// without duplicates) and the problems as field name to message; the problems
-// are empty when all rules hold.
-func checkPostInput(in PostInput) (PostInput, map[string]string) {
+// splitAttachments divides the attachments of a post into those that stay
+// (their IDs are in keep) and those that go. unknown is true when keep holds
+// an ID that is not an attachment of the post.
+func splitAttachments(current []store.Attachment, keep []uint64) (kept, removed []store.Attachment, unknown bool) {
+	want := make(map[uint64]bool, len(keep))
+	for _, id := range keep {
+		want[id] = true
+	}
+	for _, a := range current {
+		if want[a.ID] {
+			kept = append(kept, a)
+			delete(want, a.ID)
+		} else {
+			removed = append(removed, a)
+		}
+	}
+	return kept, removed, len(want) > 0
+}
+
+// checkPostInput applies the rules of SPEC §7.3 and §7.7 to in; attachments is
+// the number of attachments the post has when the call is done, and a post
+// with at least one may have an empty body. It returns the input as it is
+// stored (body without trailing whitespace, tags normalized and without
+// duplicates) and the problems as field name to message; the problems are
+// empty when all rules hold.
+func checkPostInput(in PostInput, attachments int) (PostInput, map[string]string) {
 	fields := map[string]string{}
 	clean := PostInput{Format: in.Format}
 	if in.Format != FormatText && in.Format != FormatMarkdown {
@@ -787,11 +921,11 @@ func checkPostInput(in PostInput) (PostInput, map[string]string) {
 	}
 
 	clean.Body = strings.TrimRightFunc(in.Body, unicode.IsSpace)
-	// TODO(step 6.1/9.1): allow an empty body with attachments or tasks.
+	// TODO(step 9.1): allow an empty body with tasks.
 	switch {
 	case !utf8.ValidString(clean.Body):
 		fields[FieldBody] = "Use valid text."
-	case clean.Body == "":
+	case clean.Body == "" && attachments == 0:
 		fields[FieldBody] = "Write something."
 	case utf8.RuneCountInString(clean.Body) > postBodyMaxLength:
 		fields[FieldBody] = "Use at most 20,000 characters."

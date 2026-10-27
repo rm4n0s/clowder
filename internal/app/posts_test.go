@@ -24,7 +24,10 @@ type postsEnv struct {
 func newPostsEnv(t *testing.T) *postsEnv {
 	t.Helper()
 	e := &postsEnv{roomsEnv: newRoomsEnv(t)}
-	e.posts = app.NewPosts(e.st, e.clk, markdown.New())
+	e.posts = app.NewPosts(e.st, e.clk, markdown.New(), e.files, app.PostsConfig{
+		MaxAttachmentSize: testMaxUpload,
+		MaxAttachments:    testMaxAttachments,
+	})
 	return e
 }
 
@@ -108,6 +111,12 @@ func (e *postsEnv) requireNoBody(body string) {
 		}
 	}
 }
+
+// The limits of the posts service in the tests.
+const (
+	testMaxUpload      = 2000
+	testMaxAttachments = 3
+)
 
 const missingPost = "Store.PostByID.NotFound"
 
@@ -225,7 +234,7 @@ func TestPostsCreate(t *testing.T) {
 	e.requireNewEvents(before, wantEvent{
 		actor: "bob", action: app.ActionPostCreated, room: e.lobby.ID, entityType: app.EntityPost, entityID: p.ID,
 		summary: "Bob posted in #lobby",
-		details: map[string]any{"format": "markdown", "length": float64(len("Release **notes** go here")), "tags": []any{"release", "go"}},
+		details: map[string]any{"format": "markdown", "length": float64(len("Release **notes** go here")), "tags": []any{"release", "go"}, "attachments": float64(0)},
 	})
 	e.requireNoBody("Release")
 }
@@ -529,7 +538,7 @@ func TestPostsEditAudit(t *testing.T) {
 func TestPostsDeletePermissions(t *testing.T) {
 	routes := map[string]string{
 		app.TagNotFound:  notFoundPrivate,
-		app.TagForbidden: "Posts.Delete.1.Forbidden",
+		app.TagForbidden: "Posts.Delete.func1.Forbidden",
 	}
 	cases := []postCase{
 		{"bob", "lobby", ""}, {"admin", "lobby", ""}, {"root", "lobby", ""},

@@ -12,6 +12,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/browsertest"
 	"github.com/rm4n0s/clowder/internal/clock"
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 )
@@ -257,7 +258,11 @@ func seedPosts(t *testing.T, srv *browsertest.Server, username, room string, n i
 	if roomID == 0 {
 		t.Fatalf("no room %q", room)
 	}
-	posts := app.NewPosts(st, clock.Real(), markdown.New())
+	fileStore, err := files.New(filepath.Join(srv.DataDir, "files"))
+	if err != nil {
+		t.Fatalf("open the files of the server: %+v", err)
+	}
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{})
 	actor := app.Actor{UserID: user.ID, Username: user.Username, Role: user.Role}
 	for i := 1; i <= n; i++ {
 		_, err := posts.Create(ctx, actor, roomID, app.PostInput{Format: app.FormatText, Body: "seeded post " + strconv.Itoa(i)})

@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -100,12 +102,15 @@ type Member struct {
 // Rooms is the service of rooms and their memberships (SPEC §7.2). Make it
 // with NewRooms. It is safe for concurrent use.
 type Rooms struct {
-	st *store.Store
+	st      *store.Store
+	cleaner fileCleaner
 }
 
-// NewRooms makes the service.
-func NewRooms(st *store.Store) *Rooms {
-	return &Rooms{st: st}
+// NewRooms makes the service. fs holds the files of the attachments, which
+// Delete removes with the room; the logger receives the files that could not
+// be removed, and may be nil.
+func NewRooms(st *store.Store, fs *files.Store, logger *slog.Logger) *Rooms {
+	return &Rooms{st: st, cleaner: newFileCleaner(fs, logger)}
 }
 
 // Create makes a room and makes the actor its first member, with the columns
@@ -542,10 +547,16 @@ func (r *Rooms) Update(ctx context.Context, actor Actor, roomID uint64, in RoomI
 // Delete deletes a room with everything in it and writes room.deleted, which
 // stays after the room is gone. Admins and the creator may; the creator of a
 // private room must still be a member. Anyone else gets TagForbidden, or
-// TagNotFound for a private room they are not a member of.
+// TagNotFound for a private room they are not a member of. The files of every
+// attachment in the room are removed from disk after the change is committed.
 func (r *Rooms) Delete(ctx context.Context, actor Actor, roomID uint64) error {
-	return r.st.Tx(ctx, func(tx *store.Store) error {
+	var keys []string
+	err := r.st.Tx(ctx, func(tx *store.Store) error {
 		room, err := loadManageableRoom(ctx, tx, actor, roomID)
+		if err != nil {
+			return err
+		}
+		keys, err = tx.AttachmentKeysOfRoom(ctx, room.ID)
 		if err != nil {
 			return err
 		}
@@ -573,6 +584,11 @@ func (r *Rooms) Delete(ctx context.Context, actor Actor, roomID uint64) error {
 		}
 		return tx.DeleteRoom(ctx, room.ID)
 	})
+	if err != nil {
+		return err
+	}
+	r.cleaner.remove(ctx, keys)
+	return nil
 }
 
 // AllRooms returns every room, private ones included, ordered by name, for
