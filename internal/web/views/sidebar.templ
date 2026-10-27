@@ -14,13 +14,17 @@ type SidebarData struct {
 	// CurrentRoomID is the ID of the room whose page is shown, which the
 	// sidebar highlights; 0 on every other page.
 	CurrentRoomID uint64
+	// Unread is the number of unread notifications of the user, shown on the
+	// Notifications link; the badge is left out when it is 0.
+	Unread int
 	// HideSearch leaves out the search box of the sidebar. The search page
 	// sets it: it has a box of its own.
 	HideSearch bool
 }
 
 // Sidebar is the sidebar of the pages of a logged-in user: the display name of
-// the user, the search box, the navigation (Home, and Admin for admins), the
+// the user, the search box, the navigation (Home, Notifications with its unread
+// count, and Admin for admins), the
 // rooms of the user with the links to browse and to make rooms, and the logout
 // button.
 templ Sidebar(d SidebarData) {
@@ -31,6 +35,12 @@ templ Sidebar(d SidebarData) {
 	<nav aria-label="Main">
 		<ul>
 			<li><a href="/">Home</a></li>
+			<li>
+				<a class="sidebar-notifications" href="/notifications">
+					<span>Notifications</span>
+					@NotificationCount(d.Unread)
+				</a>
+			</li>
 			if d.User.IsAdmin() {
 				<li><a href="/admin/users">Admin</a></li>
 			}
@@ -65,6 +75,25 @@ templ Sidebar(d SidebarData) {
 	<form id="logout-form" method="post" action="/logout" data-on:submit={ FormPost("/logout") }>
 		<button type="submit" class="secondary">Log out</button>
 	</form>
+}
+
+// NotificationCount is the badge with the number of unread notifications, on
+// the Notifications link of the sidebar. The element is always there, so that
+// a patch finds it; it is empty, and not shown, when the count is 0.
+templ NotificationCount(n int) {
+	if n > 0 {
+		<span id="notification-count" class="count-badge" title={ unreadTitle(n) }>{ strconv.Itoa(n) }</span>
+	} else {
+		<span id="notification-count" class="count-badge"></span>
+	}
+}
+
+// unreadTitle is "1 unread notification" or "5 unread notifications".
+func unreadTitle(n int) string {
+	if n == 1 {
+		return "1 unread notification"
+	}
+	return strconv.Itoa(n) + " unread notifications"
 }
 
 // lockIcon is the small padlock that marks a private room.

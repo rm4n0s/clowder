@@ -136,10 +136,14 @@ func (bs *boardStream) event(ctx context.Context, ev live.Event) (end bool, err 
 	return false, bs.patch(views.BoardColumns(d))
 }
 
-// userEvent handles an event about the memberships of the user: the sidebar
-// changes, and when the event is about this room the user may have lost it, or
-// joined or left it, which changes what they may do on the board.
+// userEvent handles an event of the user's topic: a count of the sidebar
+// changes, or a membership does, then the sidebar is sent, and when the event
+// is about this room the user may have lost it, or joined or left it, which
+// changes what they may do on the board.
 func (bs *boardStream) userEvent(ctx context.Context, ev live.Event) (end bool, err error) {
+	if handled, err := bs.countsEvent(ctx, ev); handled {
+		return false, err
+	}
 	if ev.RoomID != bs.id {
 		return false, bs.sidebar(ctx, bs.id)
 	}

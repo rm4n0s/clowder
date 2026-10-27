@@ -8,5 +8,6 @@ templ Home(sb SidebarData) {
 		<p>A place where the team talks in rooms.</p>
 		<p id="signed-in-as">Signed in as { sb.User.DisplayName }</p>
 		<p id="datastar-check" data-signals="{status: 'Datastar is running'}" data-text="$status">Datastar is not running</p>
+		@liveStream(MeStreamPath)
 	}
 }

@@ -52,6 +52,7 @@ templ AuditPage(d AuditData) {
 		<h1>Audit log</h1>
 		@AuditFilters(d)
 		@AuditPanel(d)
+		@liveStream(MeStreamPath)
 	}
 }
 

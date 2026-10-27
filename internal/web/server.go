@@ -50,6 +50,9 @@ type Services struct {
 	Board *app.Board
 	// Search is the service of search.
 	Search *app.Search
+	// Notifications is the service of the notifications of a user: their
+	// unread count in the sidebar and their page.
+	Notifications *app.Notifications
 	// Hub delivers the live events of the services to the streams of the
 	// pages (SPEC §8). The services must publish to the same hub. Nil makes a
 	// hub that nothing publishes to.
@@ -164,6 +167,9 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /preview", handler: http.HandlerFunc(s.postPreview)},
 		{pattern: "GET /files/{id}/{name}", handler: http.HandlerFunc(s.fileDownload)},
 		{pattern: "GET /search", handler: http.HandlerFunc(s.search)},
+		{pattern: "GET /notifications", handler: http.HandlerFunc(s.notificationsPage)},
+		{pattern: "POST /notifications/read", handler: http.HandlerFunc(s.notificationsMarkRead)},
+		{pattern: "GET " + views.MeStreamPath, handler: http.HandlerFunc(s.meStream)},
 		{pattern: "GET /tags/suggest", handler: http.HandlerFunc(s.tagSuggest)},
 		{pattern: "GET /editor/task-row", handler: http.HandlerFunc(s.taskRowForm)},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},

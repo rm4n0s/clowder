@@ -450,3 +450,41 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - D30 records the full ranking and that a self-mention is linked but not notified.
   - Events carry `UserID`, `RoomID` and `PostID`, not a notification ID.
   - The preview shows mentions as plain text.
+
+## 11.2 The bell and the notifications page
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-11.2-notifications-page
+- **Summary:**
+  - **The bell.** The sidebar of every logged-in page has a "Notifications" link with an unread badge (`#notification-count`, hidden when empty).
+  - **Live updates (D31).** A page keeps one stream:
+    - The room, thread and board streams patch the badge on `notification.created` and `notification.read` through a shared `countOps` helper. Step 12.2 adds the messages count to it.
+    - Every other logged-in page opens `GET /me/stream`. It follows only `user:<id>` and sends the count when it opens; on a reconnect it sends the whole sidebar. It patches the room list on membership changes and has the same pings, session checks and shutdown handling as the other streams.
+  - **`/notifications`.**
+    - Lists 30 at a time, newest first, with "Older" links.
+    - Each item shows who acted, a sentence for its kind, the room link, the time, "Open post" (`/posts/<root>#post-<id>`) or "Open room", and an "Unread" pill.
+    - Opening the page marks read everything up to the newest it shows. The marks stay on that view, and the badge drops.
+    - New notifications appear at the top live as unread.
+    - "Mark all as read" (Datastar or plain POST) clears the marks through a `readUpTo` signal and updates the badge.
+- **Main files:** `internal/web/{notifications,me_stream,stream,board_stream,rooms,server}.go`, `internal/web/views/{notifications.templ,notifications.go,sidebar.templ}` and the pages that now open `/me/stream`, `internal/web/static/app.css`, `cmd/clowder/serve.go`.
+- **Tests:**
+  - **Handler tests:** the badge on 11 page cases and the stream each one opens, item text and links per kind, escaping, pagination (30 + 6), only one's own notifications, hidden rooms, the marking limits, mark-all in both modes and on failure, and session and method checks.
+  - **`/me/stream` tests:** the first count, count patches, membership patches, reconnects, pings, a disabled user, hub close, and the live list.
+  - **Room, thread and board stream tests:** the badge.
+  - **View tests.**
+  - **Browser tests:**
+    - bob's badge rises live on a room page;
+    - it rises on `/search` through `/me/stream`;
+    - bob opens `/notifications`: the badge drops to 0, a live mention appears at the top, and "Mark all as read" clears the marks;
+    - a board assignment raises the badge live.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ (two full runs) · no process left ✅
+- **Proof:**
+  ![11.2 notifications](implemented-proof-images/11.2-notifications.png)
+  Bob's notifications page: 8 demo notifications, all unread (replies, three assignments with task titles, a mention, "added you to secret" with "Open room"). The sidebar badge is gone because opening the page marked them read.
+  ![11.2 bell live](implemented-proof-images/11.2-bell-live.png)
+  Bob on `general` after alice posts "Hey @bob, …" in another browser: the badge shows 9 and the post is at the top of his feed with the `@bob` link.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Opening the newest page also marks older pages read; D30 now says "everything up to the newest it shows".
+  - The room, thread and board streams don't resend the count when they open; a reconnect resends the sidebar.
+  - The live list inserts at most 30 new notifications at once.

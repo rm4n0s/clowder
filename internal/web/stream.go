@@ -157,6 +157,43 @@ func (ls *liveStream) sidebar(ctx context.Context, current uint64) error {
 	return ls.patch(op.component, op.options...)
 }
 
+// countOps are the patches of the counts that the sidebar shows next to its
+// links, as they are now for the user: today the unread notifications. A count
+// that a later step adds (the unread messages) is added here, so that every
+// stream and answer that keeps the counts live gets it.
+func (s *Server) countOps(ctx context.Context, actor app.Actor) ([]patchOp, error) {
+	unread, err := s.svc.Notifications.UnreadCount(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return []patchOp{{component: views.NotificationCount(unread)}}, nil
+}
+
+// counts sends the counts of the sidebar of the user.
+func (ls *liveStream) counts(ctx context.Context) error {
+	ops, err := ls.s.countOps(ctx, ls.actor)
+	if err != nil {
+		return err
+	}
+	for _, op := range ops {
+		if err := ls.patch(op.component, op.options...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// countsEvent handles an event of the user's topic that only changes a count
+// of the sidebar (a notification was made or read). It returns true when ev
+// was such an event, so that the stream has nothing more to do with it.
+func (ls *liveStream) countsEvent(ctx context.Context, ev live.Event) (handled bool, err error) {
+	switch ev.Kind {
+	case live.KindNotificationCreated, live.KindNotificationRead:
+		return true, ls.counts(ctx)
+	}
+	return false, nil
+}
+
 // gone handles the error of a read that the stream makes for its user. A
 // NotFound means the user may no longer read what the page shows (the room was
 // deleted, or the user was removed from a private room): the page is sent to
@@ -418,9 +455,13 @@ func (rs *roomStream) event(ctx context.Context, ev live.Event) (end bool, err e
 	return false, nil
 }
 
-// userEvent handles an event about the memberships of the user: the sidebar
-// changes, and when the event is about this room the user may have lost it.
+// userEvent handles an event of the user's topic: a count of the sidebar
+// changes, or a membership does, then the sidebar is sent, and when the event
+// is about this room the user may have lost it.
 func (rs *roomStream) userEvent(ctx context.Context, ev live.Event) (end bool, err error) {
+	if handled, err := rs.countsEvent(ctx, ev); handled {
+		return false, err
+	}
 	if ev.RoomID == rs.id {
 		if _, err := rs.s.svc.Rooms.Get(ctx, rs.actor, rs.id); err != nil {
 			return rs.gone(err, "/")
@@ -733,10 +774,13 @@ func (ts *threadStream) event(ctx context.Context, ev live.Event) (end bool, err
 	return ts.postEvent(ctx, ev)
 }
 
-// userEvent handles an event about the memberships of the user: the sidebar
-// changes, and when the event is about the room of the thread the user may have
-// lost it.
+// userEvent handles an event of the user's topic: a count of the sidebar
+// changes, or a membership does, then the sidebar is sent, and when the event
+// is about the room of the thread the user may have lost it.
 func (ts *threadStream) userEvent(ctx context.Context, ev live.Event) (end bool, err error) {
+	if handled, err := ts.countsEvent(ctx, ev); handled {
+		return false, err
+	}
 	if ev.RoomID == ts.roomID {
 		if _, err := ts.reread(ctx); err != nil {
 			return ts.lost(ctx, err)

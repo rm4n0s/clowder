@@ -1,0 +1,73 @@
+package views
+
+import "github.com/rm4n0s/clowder/internal/app"
+
+// NotificationsPage is the page of the notifications of the user, newest first.
+// The unread marks are those of the notifications that were unread when the
+// page opened; "Mark all as read" clears them through the signal readUpTo.
+templ NotificationsPage(d NotificationsData) {
+	@Layout("Notifications", Sidebar(d.Sidebar)) {
+		<h1>Notifications</h1>
+		<section id="notifications" data-signals="{readUpTo: 0}">
+			@NotificationsMessage(d.Message)
+			<form id="mark-all-form" class="mark-all-form" method="post" action={ templ.SafeURL(NotificationsReadPath) } data-on:submit={ FormPost(NotificationsReadPath) }>
+				<button type="submit" class="secondary">Mark all as read</button>
+			</form>
+			if len(d.Items) == 0 {
+				<p class="empty" id="notifications-empty">No notifications yet.</p>
+			}
+			<ol id="notification-list" class="notification-list">
+				for _, n := range d.Items {
+					@NotificationItem(n)
+				}
+			</ol>
+			if d.HasNext {
+				<nav class="pager" aria-label="Pages">
+					<a class="older" href={ templ.SafeURL(NotificationsOlderPath(d.NextBefore)) }>Older</a>
+				</nav>
+			}
+		</section>
+		@liveStream(NotificationsStreamPath(d.NewestID(), d.Before == 0))
+	}
+}
+
+// NotificationsMessage is the place of the message about the last action of
+// the page, such as a failed "Mark all as read"; empty it shows nothing.
+templ NotificationsMessage(message string) {
+	if message != "" {
+		<p class="field-error" id="notifications-message" role="alert">{ message }</p>
+	} else {
+		<p class="field-error" id="notifications-message" role="alert" hidden></p>
+	}
+}
+
+// NotificationItem is one notification: who did what in which room, when, a
+// link to it and, if it was unread, the unread mark. The mark goes when the
+// signal readUpTo reaches the ID of the notification.
+templ NotificationItem(n app.Notification) {
+	<li
+		id={ NotificationElementID(n.ID) }
+		class={ "notification", templ.KV("unread", !n.Read) }
+		data-kind={ string(n.Kind) }
+		if !n.Read {
+			data-class:unread={ unreadWhile(n.ID) }
+		}
+	>
+		<p class="notification-text">
+			<span class="notification-actor">{ n.Actor.DisplayName }</span> <span class="notification-username">{ "@" + n.Actor.Username }</span> { NotificationSentence(n) } <a class="notification-room" href={ templ.SafeURL(RoomPath(n.RoomID)) }>{ n.RoomName }</a>
+		</p>
+		<p class="notification-meta">
+			<time class="post-time" datetime={ postTimeStamp(n.CreatedAt) } title={ postTimeStamp(n.CreatedAt) }>{ postTimeText(n.CreatedAt) }</time>
+			<a class="notification-link" href={ templ.SafeURL(NotificationPath(n)) }>
+				if n.Kind == app.NotificationAddedToRoom {
+					Open room
+				} else {
+					Open post
+				}
+			</a>
+			if !n.Read {
+				<span class="notification-mark" data-show={ unreadWhile(n.ID) }>Unread</span>
+			}
+		</p>
+	</li>
+}
