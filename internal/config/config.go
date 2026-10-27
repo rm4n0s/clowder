@@ -55,6 +55,11 @@ type Config struct {
 	// postgresql://, SPEC D38). Empty means SQLite in DataDir/clowder.db. It
 	// holds a password: print it only through RedactURL.
 	DatabaseURL string
+	// RedisURL is the URL of the Redis server (redis:// or rediss://, SPEC
+	// D41) that carries the live events between several Clowder processes.
+	// Empty means one process with in-process events. It needs DatabaseURL
+	// (PostgreSQL) and may hold a password: print it only through RedactURL.
+	RedisURL string
 }
 
 // Default returns the configuration with every setting at its default.
@@ -129,6 +134,26 @@ func (c Config) Validate() error {
 				"databaseURL", RedactURL(c.DatabaseURL))
 		}
 	}
+	if c.RedisURL != "" {
+		// The error holds the redacted URL only, and not the error of
+		// url.Parse, which quotes the URL.
+		ru, err := url.Parse(c.RedisURL)
+		if err != nil {
+			return errors.New(TagRedisURLInvalid, "Redis URL cannot be parsed",
+				"redisURL", RedactURL(c.RedisURL))
+		}
+		scheme := strings.ToLower(ru.Scheme)
+		if (scheme != "redis" && scheme != "rediss") || ru.Host == "" {
+			return errors.New(TagRedisURLInvalid,
+				"Redis URL must be empty or a redis:// or rediss:// URL with a host",
+				"redisURL", RedactURL(c.RedisURL))
+		}
+		if c.DatabaseURL == "" {
+			return errors.New(TagRedisNeedsPostgres,
+				"a Redis URL needs a PostgreSQL database URL: several processes cannot share a SQLite file",
+				"redisURL", RedactURL(c.RedisURL))
+		}
+	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":
 	default:
@@ -179,6 +204,10 @@ func RedactURL(raw string) string {
 }
 
 const (
+	// TagRedisURLInvalid is the tag of a Redis URL that is not empty and not a redis:// or rediss:// URL with a host.
+	TagRedisURLInvalid = "RedisURLInvalid"
+	// TagRedisNeedsPostgres is the tag of a Redis URL given without a PostgreSQL database URL.
+	TagRedisNeedsPostgres = "RedisNeedsPostgres"
 	// TagDatabaseURLInvalid is the tag of a database URL that is not empty and not a postgres:// or postgresql:// URL with a host.
 	TagDatabaseURLInvalid = "DatabaseURLInvalid"
 	// TagListenAddrEmpty is the tag of a listen address that is empty.

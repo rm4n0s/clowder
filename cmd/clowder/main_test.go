@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	_ "image/png" // the decoder for TestDemoFile
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,6 +21,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/files"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
@@ -226,6 +229,30 @@ func TestParseServeConfig(t *testing.T) {
 				return c
 			}(),
 		},
+		{
+			name: "Redis URL from the environment",
+			env: map[string]string{
+				"CLOWDER_DATABASE_URL": "postgres://u:p@db:5432/clowder",
+				"CLOWDER_REDIS_URL":    "redis://:p@redis:6379/0",
+			},
+			want: func() config.Config {
+				c := def
+				c.DatabaseURL = "postgres://u:p@db:5432/clowder"
+				c.RedisURL = "redis://:p@redis:6379/0"
+				return c
+			}(),
+		},
+		{
+			name: "Redis URL: flag beats environment",
+			args: []string{"-database-url", "postgres://db/clowder", "-redis-url", "rediss://flag:6380"},
+			env:  map[string]string{"CLOWDER_REDIS_URL": "redis://env:6379"},
+			want: func() config.Config {
+				c := def
+				c.DatabaseURL = "postgres://db/clowder"
+				c.RedisURL = "rediss://flag:6380"
+				return c
+			}(),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -335,6 +362,20 @@ func TestParseServeConfigErrors(t *testing.T) {
 			env:       map[string]string{"CLOWDER_DATABASE_URL": "clowder.db"},
 			wantTag:   config.TagDatabaseURLInvalid,
 			wantRoute: "parseServeConfig->Config.Validate.DatabaseURLInvalid",
+		},
+		{
+			name:      "invalid config: Redis URL flag",
+			args:      []string{"-database-url", "postgres://db/clowder", "-redis-url", "http://:secret@redis"},
+			wantTag:   config.TagRedisURLInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.RedisURLInvalid",
+			wantMeta:  map[string]any{"redisURL": "http://:xxxxx@redis"},
+		},
+		{
+			name:      "invalid config: Redis URL without PostgreSQL",
+			env:       map[string]string{"CLOWDER_REDIS_URL": "redis://:secret@redis:6379/0"},
+			wantTag:   config.TagRedisNeedsPostgres,
+			wantRoute: "parseServeConfig->Config.Validate.RedisNeedsPostgres",
+			wantMeta:  map[string]any{"redisURL": "redis://:xxxxx@redis:6379/0"},
 		},
 		{
 			name:      "invalid config: session lifetime",
@@ -1439,5 +1480,136 @@ func TestRunDemoMakesTheDemoMessages(t *testing.T) {
 	gp, err := msgs.History(t.Context(), actors["carol"], group.ID, 0, 0)
 	if err != nil || len(gp.Messages) != 3 || gp.Messages[2].ReplyTo == nil || gp.Messages[2].ReplyTo.Author.Username != "carol" {
 		t.Errorf("group history = %+v, %v", gp, err)
+	}
+}
+
+// fakeBridge is a publisherCloser that records what it gets.
+type fakeBridge struct {
+	events   []live.Event
+	closed   int
+	closeErr error
+}
+
+func (f *fakeBridge) Publish(ev live.Event) { f.events = append(f.events, ev) }
+
+func (f *fakeBridge) Close() error {
+	f.closed++
+	return f.closeErr
+}
+
+func TestNewPublisher(t *testing.T) {
+	t.Run("without a Redis URL the hub is the publisher", func(t *testing.T) {
+		hub := live.New()
+		defer hub.Close()
+		var logs syncBuffer
+		opened := false
+		pub, closeBridge, err := newPublisher(t.Context(), "", hub, newLogger("info", &logs),
+			func(context.Context, string, *live.Hub, *slog.Logger) (publisherCloser, error) {
+				opened = true
+				return nil, nil
+			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pub != app.Publisher(hub) {
+			t.Errorf("publisher = %T, want the hub", pub)
+		}
+		if opened {
+			t.Error("the bridge was opened without a Redis URL")
+		}
+		closeBridge() // does nothing
+		if strings.Contains(logs.String(), "Redis") {
+			t.Errorf("logged about Redis:\n%s", logs.String())
+		}
+	})
+	t.Run("with a Redis URL the bridge is the publisher", func(t *testing.T) {
+		hub := live.New()
+		defer hub.Close()
+		bridge := &fakeBridge{}
+		var logs syncBuffer
+		var gotURL string
+		var gotHub *live.Hub
+		pub, closeBridge, err := newPublisher(t.Context(), "redis://:hunter2@redis:6379/0", hub, newLogger("info", &logs),
+			func(_ context.Context, url string, h *live.Hub, _ *slog.Logger) (publisherCloser, error) {
+				gotURL, gotHub = url, h
+				return bridge, nil
+			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pub != app.Publisher(bridge) {
+			t.Errorf("publisher = %T, want the bridge", pub)
+		}
+		if gotURL != "redis://:hunter2@redis:6379/0" || gotHub != hub {
+			t.Errorf("the bridge was opened with %q and %p, want the URL and the hub", gotURL, gotHub)
+		}
+		out := logs.String()
+		if !strings.Contains(out, "live events go through Redis") || !strings.Contains(out, "redis://:xxxxx@redis:6379/0") {
+			t.Errorf("no info line with the redacted URL:\n%s", out)
+		}
+		if strings.Contains(out, "hunter2") {
+			t.Errorf("the log holds the password:\n%s", out)
+		}
+		if bridge.closed != 0 {
+			t.Error("the bridge is closed before the function is called")
+		}
+		closeBridge()
+		if bridge.closed != 1 {
+			t.Errorf("Close was called %d times, want 1", bridge.closed)
+		}
+	})
+	t.Run("a failure to close the bridge is logged", func(t *testing.T) {
+		hub := live.New()
+		defer hub.Close()
+		var logs syncBuffer
+		bridge := &fakeBridge{closeErr: errors.New("RedisCloseFailed", "boom")}
+		_, closeBridge, err := newPublisher(t.Context(), "redis://redis", hub, newLogger("info", &logs),
+			func(context.Context, string, *live.Hub, *slog.Logger) (publisherCloser, error) { return bridge, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		closeBridge()
+		if !strings.Contains(logs.String(), "closing the Redis bridge failed") {
+			t.Errorf("not logged:\n%s", logs.String())
+		}
+	})
+	t.Run("the error of the opener is returned as it is", func(t *testing.T) {
+		hub := live.New()
+		defer hub.Close()
+		_, _, err := newPublisher(t.Context(), "redis://redis", hub, newLogger("info", &syncBuffer{}),
+			func(context.Context, string, *live.Hub, *slog.Logger) (publisherCloser, error) {
+				return nil, errors.New("RedisPingFailed", "no server")
+			})
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != "RedisPingFailed" || !appErr.HasRoute("newPublisher") {
+			t.Errorf("err = %v", err)
+		}
+	})
+}
+
+func TestOpenBridgeWithoutAServer(t *testing.T) {
+	hub := live.New()
+	defer hub.Close()
+	// Nothing listens on port 1.
+	b, err := openBridge(t.Context(), "redis://:hunter2@127.0.0.1:1/0", hub, newLogger("info", &syncBuffer{}))
+	if b != nil {
+		t.Errorf("bridge = %v, want nil", b)
+	}
+	appErr, ok := errors.FromError(err)
+	if !ok || !appErr.HasRoute("openBridge->NewBridge->openRedis.RedisPingFailed") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(appErr.Error(), "hunter2") || strings.Contains(fmt.Sprint(appErr.Metadata), "hunter2") {
+		t.Errorf("the error holds the password: %v", appErr)
+	}
+}
+
+func TestServeWithRedisURLNeedsPostgres(t *testing.T) {
+	var stderr syncBuffer
+	err := runServe(t.Context(), []string{"-data", t.TempDir(), "-addr", "127.0.0.1:0", "-redis-url", "redis://localhost:6379"},
+		mapEnv(nil), &stderr)
+	appErr, ok := errors.FromError(err)
+	if !ok || !appErr.HasRoute("runServe->parseServeConfig->Config.Validate.RedisNeedsPostgres") {
+		t.Errorf("err = %v", err)
 	}
 }

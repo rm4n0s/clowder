@@ -96,15 +96,36 @@ func (h *Hub) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.closed = true
+	for s := range h.allLocked() {
+		h.removeLocked(s)
+	}
+}
+
+// DropAll closes every current subscription as if it were too slow:
+// Dropped reports true on each, so their subscribers reconnect and reload what
+// they show. The hub itself stays open: later Subscribe and Publish calls work
+// as before. The bridge between processes calls it when its connection to
+// Redis came back after a break, because events may have been missed (SPEC
+// D41). On a closed hub it does nothing.
+func (h *Hub) DropAll() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for s := range h.allLocked() {
+		s.dropped.Store(true)
+		h.removeLocked(s)
+	}
+}
+
+// allLocked returns the set of every current subscription. The caller holds
+// h.mu.
+func (h *Hub) allLocked() map[*Subscription]struct{} {
 	all := map[*Subscription]struct{}{}
 	for _, set := range h.subs {
 		for s := range set {
 			all[s] = struct{}{}
 		}
 	}
-	for s := range all {
-		h.removeLocked(s)
-	}
+	return all
 }
 
 // removeLocked closes the subscription and takes it out of the hub. The
@@ -140,7 +161,7 @@ func (s *Subscription) Close() {
 }
 
 // Dropped reports whether the hub closed the subscription because its buffer
-// was full. The subscriber should reconnect and reload what it shows.
+// was full, or because of DropAll. The subscriber should reconnect and reload what it shows.
 func (s *Subscription) Dropped() bool {
 	return s.dropped.Load()
 }

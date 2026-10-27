@@ -275,6 +275,71 @@ func TestHubClose(t *testing.T) {
 	late.Close()                           // does not panic
 }
 
+func TestDropAll(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// subscribe lists the topics of each subscription made before DropAll.
+		subscribe [][]string
+		// closeSub is the index of a subscription closed before DropAll; -1 for none.
+		closeSub int
+	}{
+		{"no subscriptions", nil, -1},
+		{"one subscription", [][]string{{"room:1"}}, -1},
+		{"several subscriptions on several topics", [][]string{{"room:1"}, {"room:1", "post:2"}, {"user:3"}}, -1},
+		{"a subscription already closed", [][]string{{"room:1"}, {"room:1"}}, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := live.New()
+			defer h.Close()
+			subs := make([]*live.Subscription, len(tc.subscribe))
+			for i, topics := range tc.subscribe {
+				subs[i] = h.Subscribe(t.Context(), topics...)
+			}
+			if tc.closeSub >= 0 {
+				subs[tc.closeSub].Close()
+			}
+			h.DropAll()
+			h.DropAll() // twice is fine
+			for i, s := range subs {
+				if !closedWithin(s.C()) {
+					t.Errorf("subscription %d is not closed by DropAll", i)
+				}
+				wantDropped := i != tc.closeSub
+				if s.Dropped() != wantDropped {
+					t.Errorf("subscription %d: Dropped() = %v, want %v", i, s.Dropped(), wantDropped)
+				}
+			}
+			// The hub still works.
+			fresh := h.Subscribe(t.Context(), "room:1")
+			h.Publish(live.Event{Topic: "room:1", Kind: live.KindPostCreated})
+			if got := next(t, fresh); got.Kind != live.KindPostCreated {
+				t.Errorf("a subscription made after DropAll got %+v", got)
+			}
+			if fresh.Dropped() {
+				t.Errorf("a new subscription is Dropped")
+			}
+		})
+	}
+}
+
+func TestDropAllAfterClose(t *testing.T) {
+	t.Parallel()
+	h := live.New()
+	s := h.Subscribe(t.Context(), "room:1")
+	h.Close()
+	h.DropAll() // does nothing, does not panic
+	if s.Dropped() {
+		t.Errorf("a subscription closed by Hub.Close is Dropped after DropAll")
+	}
+	late := h.Subscribe(t.Context(), "room:1")
+	if !closedWithin(late.C()) {
+		t.Errorf("a subscription made after Close is not closed")
+	}
+}
+
 func TestPublishNeverBlocks(t *testing.T) {
 	h := live.New()
 	defer h.Close()

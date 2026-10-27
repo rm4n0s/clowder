@@ -13,6 +13,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
+	"github.com/rm4n0s/clowder/internal/cluster"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
@@ -44,6 +45,11 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	if err != nil {
 		return err
 	}
+	// The deferred closes run in the reverse order of their declaration, which
+	// is the order of SPEC §8 and D41: the HTTP server stopped (and ended the
+	// streams) before serve returns, then the bridge to Redis, then the hub,
+	// then the database. The services publish while requests run, and the
+	// bridge publishes to the hub, so each is closed after what uses it.
 	defer func() {
 		if closeErr := st.Close(); closeErr != nil {
 			logger.Error("closing the store failed", "err", closeErr)
@@ -53,14 +59,17 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	if err != nil {
 		return err
 	}
-	// The hub is closed when serve returns, which is after the HTTP server
-	// stopped: the services publish to it while requests run.
 	hub := live.New()
 	defer hub.Close()
+	pub, closeBridge, err := newPublisher(ctx, cfg.RedisURL, hub, logger, openBridge)
+	if err != nil {
+		return err
+	}
+	defer closeBridge()
 	accounts := app.NewAccounts(st, clock.Real(), auth.DefaultHasher(), app.AccountsConfig{
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
-		Publisher:          hub,
+		Publisher:          pub,
 	})
 	postsConfig := app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
@@ -69,20 +78,61 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	}
 	srv, err := web.New(cfg, logger, web.Services{
 		Accounts:      accounts,
-		Rooms:         app.NewRooms(st, fileStore, logger, hub),
+		Rooms:         app.NewRooms(st, fileStore, logger, pub),
 		Audit:         app.NewAudit(st),
-		Board:         app.NewBoard(st, clock.Real(), hub),
+		Board:         app.NewBoard(st, clock.Real(), pub),
 		Search:        app.NewSearch(st),
 		Health:        app.NewHealth(st),
 		Hub:           hub,
-		Notifications: app.NewNotifications(st, hub),
-		Posts:         app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, hub),
-		Messages:      app.NewMessages(st, clock.Real(), fileStore, postsConfig, hub),
+		Notifications: app.NewNotifications(st, pub),
+		Posts:         app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, pub),
+		Messages:      app.NewMessages(st, clock.Real(), fileStore, postsConfig, pub),
 	})
 	if err != nil {
 		return err
 	}
 	return srv.Run(ctx)
+}
+
+// publisherCloser is the Publisher of the services when events go through
+// Redis: it also has to be closed. *cluster.Bridge is one.
+type publisherCloser interface {
+	app.Publisher
+	Close() error
+}
+
+// bridgeOpener opens the bridge to Redis; openBridge is the real one and tests
+// pass a fake.
+type bridgeOpener func(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger) (publisherCloser, error)
+
+// openBridge opens a cluster.Bridge.
+func openBridge(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger) (publisherCloser, error) {
+	b, err := cluster.NewBridge(ctx, redisURL, hub, logger)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// newPublisher chooses the Publisher of the services: the hub itself when
+// redisURL is empty, else a bridge that also carries the events to the other
+// processes (SPEC D41). The web handlers subscribe to the hub in both cases.
+// The returned function stops the bridge, and does nothing for the hub; the
+// caller closes the hub after it.
+func newPublisher(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger, open bridgeOpener) (app.Publisher, func(), error) {
+	if redisURL == "" {
+		return hub, func() {}, nil
+	}
+	bridge, err := open(ctx, redisURL, hub, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	logger.Info("live events go through Redis", "redis", config.RedactURL(redisURL))
+	return bridge, func() {
+		if closeErr := bridge.Close(); closeErr != nil {
+			logger.Error("closing the Redis bridge failed", "err", closeErr)
+		}
+	}, nil
 }
 
 // parseServeConfig builds the configuration of serve. Each setting is the flag
@@ -121,6 +171,8 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		"data directory (CLOWDER_DATA)")
 	fs.StringVar(&cfg.DatabaseURL, "database-url", envString(env, "CLOWDER_DATABASE_URL", def.DatabaseURL),
 		"PostgreSQL URL, postgres://...; empty: SQLite in the data directory (CLOWDER_DATABASE_URL)")
+	fs.StringVar(&cfg.RedisURL, "redis-url", envString(env, "CLOWDER_REDIS_URL", def.RedisURL),
+		"Redis URL, redis://...; carries the live events between several processes; needs -database-url (CLOWDER_REDIS_URL)")
 	fs.StringVar(&cfg.BaseURL, "base-url", envString(env, "CLOWDER_BASE_URL", def.BaseURL),
 		"base URL of invitation links (CLOWDER_BASE_URL)")
 	fs.Int64Var(&cfg.MaxAttachmentSize, "max-attachment-size", maxAttachmentSize,

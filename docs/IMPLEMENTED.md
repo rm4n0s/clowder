@@ -775,3 +775,32 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The smoke script builds its own image tag, so it never overwrites `clowder:local`.
   - `.env.example` also has `CLOWDER_DB_USER`, `CLOWDER_DB_NAME`, `CLOWDER_TRUST_PROXY` and `CLOWDER_LOG_LEVEL`.
   - `-cluster` of the smoke script is left for step 15.2.
+
+## 15.1 Live events through Redis
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-15.1-redis-events
+- **Summary:**
+  - `clowder serve -redis-url` (`CLOWDER_REDIS_URL`; refused without PostgreSQL) gives every service a `cluster.Bridge` as its Publisher.
+  - The bridge delivers each event to the local hub at once. It also queues the event (up to 1024; a full queue drops it with a rate-limited warn and never blocks) for the Redis channel `clowder:events`, as JSON with the process's random origin.
+  - A receiver goroutine delivers the events of the other processes to the local hub, skips its own and logs malformed ones without their payload.
+  - When go-redis re-subscribes after a broken connection, a "subscribe" confirmation arrives again, and the bridge then calls the new `Hub.DropAll`, so every page reloads.
+  - `Close` stops and waits for both goroutines. Events still queued get up to a second to reach Redis.
+- **Main files:** `internal/cluster/{doc,client,wire,bridge,redis}.go`, `internal/live/hub.go` (`DropAll`), `internal/config/config.go` (`RedisURL`, `TagRedisURLInvalid`, `TagRedisNeedsPostgres`), `cmd/clowder/serve.go` (`newPublisher`, the order of the closes: bridge, hub, store), `go.mod` (`github.com/redis/go-redis/v9` v9.23.0).
+- **Tests:**
+  - `internal/cluster`: 26 tests.
+    - With a fake broker, two or three processes: delivery exactly once, no echo, 9 kinds of malformed message, log rate limiting, reconnects dropping the subscriptions, receive retries, a full queue, publish and encode failures, and `Close` (no goroutine left, idempotent, concurrent, bounded).
+    - With real Redis: delivery, the first confirmation not counted as a reconnect, and a real reconnect forced with `CLIENT KILL TYPE pubsub`.
+  - `internal/live`: `TestDropAll` (4 cases) and `TestDropAllAfterClose`.
+  - `internal/config`: about 16 rows, and no password leaks.
+  - `cmd/clowder`: the choice of publisher, and the routes.
+  - Each of the 11 new tags has a route test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅
+- **Proof:**
+  [15.1 bridge](implemented-proof-images/15.1-bridge.txt)
+  The verbose run of `internal/cluster` through `scripts/test-docker.sh`: 57 passing tests and subtests, no SKIP, and the real-Redis delivery and reconnect tests among them.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Only `serve` takes `-redis-url`, because `invite` and `demo` publish no events.
+  - go-redis writes its own "failed to dial" lines to stderr through its package-level logger. Replacing that logger would be global mutable state, so it is left as it is. The lines name the address, not the password.
+  - A half-open TCP connection is noticed only through the kernel keepalive that go-redis sets.

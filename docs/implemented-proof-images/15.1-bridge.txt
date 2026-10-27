@@ -1,0 +1,232 @@
+test-docker.sh: waiting for PostgreSQL on port 32787 and Redis on port 32788
+=== RUN   TestEventsReachTheOtherProcessOnce
+=== PAUSE TestEventsReachTheOtherProcessOnce
+=== RUN   TestOtherTopicsAreNotDelivered
+=== PAUSE TestOtherTopicsAreNotDelivered
+=== RUN   TestEventOfEveryProcessReachesEveryOther
+=== PAUSE TestEventOfEveryProcessReachesEveryOther
+=== RUN   TestMalformedMessagesAreSkippedAndLogged
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged
+=== RUN   TestMalformedMessageLogsAreRateLimited
+=== PAUSE TestMalformedMessageLogsAreRateLimited
+=== RUN   TestReconnectDropsTheLocalSubscriptions
+=== PAUSE TestReconnectDropsTheLocalSubscriptions
+=== RUN   TestReceiveErrorIsLoggedAndRetried
+=== PAUSE TestReceiveErrorIsLoggedAndRetried
+=== RUN   TestFullQueueDoesNotBlockPublish
+=== PAUSE TestFullQueueDoesNotBlockPublish
+=== RUN   TestPublishFailureIsCountedAndLogged
+=== PAUSE TestPublishFailureIsCountedAndLogged
+=== RUN   TestEncodeFailureIsLogged
+=== PAUSE TestEncodeFailureIsLogged
+=== RUN   TestNewBridgeFailures
+=== PAUSE TestNewBridgeFailures
+=== RUN   TestOriginsDiffer
+=== PAUSE TestOriginsDiffer
+=== RUN   TestCloseStopsTheGoroutines
+--- PASS: TestCloseStopsTheGoroutines (0.00s)
+=== RUN   TestCloseIsSafeFromSeveralGoroutines
+=== PAUSE TestCloseIsSafeFromSeveralGoroutines
+=== RUN   TestConcurrentPublishAndClose
+=== PAUSE TestConcurrentPublishAndClose
+=== RUN   TestLogGate
+=== PAUSE TestLogGate
+=== RUN   TestCloseDoesNotWaitLongerThanTheFlushTimeout
+=== PAUSE TestCloseDoesNotWaitLongerThanTheFlushTimeout
+=== RUN   TestRedisBridgesDeliverToEachOther
+=== PAUSE TestRedisBridgesDeliverToEachOther
+=== RUN   TestRedisFirstConfirmationIsNotAReconnect
+=== PAUSE TestRedisFirstConfirmationIsNotAReconnect
+=== RUN   TestRedisReconnectDropsTheSubscriptions
+--- PASS: TestRedisReconnectDropsTheSubscriptions (0.11s)
+=== RUN   TestOpenRedisFailures
+=== PAUSE TestOpenRedisFailures
+=== RUN   TestRedisClientFailureRoutes
+=== PAUSE TestRedisClientFailureRoutes
+=== RUN   TestWireRoundTrip
+=== PAUSE TestWireRoundTrip
+=== RUN   TestWireFormat
+=== PAUSE TestWireFormat
+=== RUN   TestDecodeMessageIgnoresUnknownFields
+=== PAUSE TestDecodeMessageIgnoresUnknownFields
+=== RUN   TestDecodeMessageErrors
+=== PAUSE TestDecodeMessageErrors
+=== CONT  TestEventsReachTheOtherProcessOnce
+=== CONT  TestRedisFirstConfirmationIsNotAReconnect
+=== CONT  TestReconnectDropsTheLocalSubscriptions
+=== CONT  TestCloseIsSafeFromSeveralGoroutines
+=== CONT  TestEventOfEveryProcessReachesEveryOther
+=== CONT  TestWireRoundTrip
+=== RUN   TestEventsReachTheOtherProcessOnce/one_event_with_every_field
+=== CONT  TestMalformedMessagesAreSkippedAndLogged
+=== CONT  TestRedisClientFailureRoutes
+=== PAUSE TestEventsReachTheOtherProcessOnce/one_event_with_every_field
+=== CONT  TestDecodeMessageIgnoresUnknownFields
+=== CONT  TestWireFormat
+=== CONT  TestMalformedMessageLogsAreRateLimited
+=== CONT  TestPublishFailureIsCountedAndLogged
+=== CONT  TestFullQueueDoesNotBlockPublish
+=== RUN   TestWireRoundTrip/every_field
+=== CONT  TestOriginsDiffer
+=== CONT  TestCloseDoesNotWaitLongerThanTheFlushTimeout
+=== CONT  TestLogGate
+=== CONT  TestRedisBridgesDeliverToEachOther
+=== CONT  TestOpenRedisFailures
+=== RUN   TestRedisClientFailureRoutes/publish
+=== CONT  TestNewBridgeFailures
+=== PAUSE TestRedisClientFailureRoutes/publish
+=== RUN   TestEventsReachTheOtherProcessOnce/several_events_keep_their_order
+=== CONT  TestOtherTopicsAreNotDelivered
+=== PAUSE TestEventsReachTheOtherProcessOnce/several_events_keep_their_order
+=== CONT  TestConcurrentPublishAndClose
+=== CONT  TestReceiveErrorIsLoggedAndRetried
+=== RUN   TestNewBridgeFailures/the_subscription_fails
+=== CONT  TestEncodeFailureIsLogged
+=== CONT  TestDecodeMessageErrors
+--- PASS: TestDecodeMessageIgnoresUnknownFields (0.00s)
+=== PAUSE TestWireRoundTrip/every_field
+=== RUN   TestOpenRedisFailures/nothing_listens
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/not_JSON
+--- PASS: TestCloseIsSafeFromSeveralGoroutines (0.00s)
+=== RUN   TestRedisClientFailureRoutes/subscribe
+=== PAUSE TestNewBridgeFailures/the_subscription_fails
+=== RUN   TestDecodeMessageErrors/not_JSON
+=== RUN   TestEventsReachTheOtherProcessOnce/an_event_with_only_a_topic_and_a_kind
+=== RUN   TestWireRoundTrip/only_topic_and_kind
+=== PAUSE TestRedisClientFailureRoutes/subscribe
+=== RUN   TestNewBridgeFailures/no_random_bytes
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/not_JSON
+=== PAUSE TestOpenRedisFailures/nothing_listens
+--- PASS: TestWireFormat (0.00s)
+--- PASS: TestLogGate (0.00s)
+--- PASS: TestOtherTopicsAreNotDelivered (0.00s)
+--- PASS: TestReconnectDropsTheLocalSubscriptions (0.00s)
+--- PASS: TestEventOfEveryProcessReachesEveryOther (0.00s)
+=== PAUSE TestDecodeMessageErrors/not_JSON
+=== PAUSE TestEventsReachTheOtherProcessOnce/an_event_with_only_a_topic_and_a_kind
+=== PAUSE TestWireRoundTrip/only_topic_and_kind
+=== PAUSE TestNewBridgeFailures/no_random_bytes
+=== CONT  TestNewBridgeFailures/the_subscription_fails
+=== CONT  TestNewBridgeFailures/no_random_bytes
+=== RUN   TestWireRoundTrip/largest_ids
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/a_JSON_array
+=== PAUSE TestWireRoundTrip/largest_ids
+--- PASS: TestNewBridgeFailures (0.00s)
+    --- PASS: TestNewBridgeFailures/the_subscription_fails (0.00s)
+    --- PASS: TestNewBridgeFailures/no_random_bytes (0.00s)
+=== CONT  TestWireRoundTrip/every_field
+=== CONT  TestWireRoundTrip/largest_ids
+--- PASS: TestConcurrentPublishAndClose (0.00s)
+=== RUN   TestRedisClientFailureRoutes/close_twice
+=== RUN   TestOpenRedisFailures/the_URL_does_not_parse
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/a_JSON_array
+=== PAUSE TestRedisClientFailureRoutes/close_twice
+=== PAUSE TestOpenRedisFailures/the_URL_does_not_parse
+=== CONT  TestWireRoundTrip/only_topic_and_kind
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/a_number
+=== RUN   TestRedisClientFailureRoutes/receive_and_close_of_a_closed_subscription
+=== RUN   TestEventsReachTheOtherProcessOnce/large_ids
+=== RUN   TestOpenRedisFailures/wrong_scheme
+=== RUN   TestDecodeMessageErrors/array
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/a_number
+--- PASS: TestWireRoundTrip (0.00s)
+    --- PASS: TestWireRoundTrip/largest_ids (0.00s)
+    --- PASS: TestWireRoundTrip/every_field (0.00s)
+    --- PASS: TestWireRoundTrip/only_topic_and_kind (0.00s)
+=== PAUSE TestOpenRedisFailures/wrong_scheme
+=== CONT  TestOpenRedisFailures/the_URL_does_not_parse
+=== CONT  TestOpenRedisFailures/wrong_scheme
+=== CONT  TestOpenRedisFailures/nothing_listens
+=== PAUSE TestEventsReachTheOtherProcessOnce/large_ids
+=== PAUSE TestDecodeMessageErrors/array
+=== CONT  TestEventsReachTheOtherProcessOnce/large_ids
+=== CONT  TestEventsReachTheOtherProcessOnce/an_event_with_only_a_topic_and_a_kind
+=== CONT  TestEventsReachTheOtherProcessOnce/one_event_with_every_field
+=== PAUSE TestRedisClientFailureRoutes/receive_and_close_of_a_closed_subscription
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/truncated_JSON
+=== CONT  TestRedisClientFailureRoutes/publish
+=== CONT  TestEventsReachTheOtherProcessOnce/several_events_keep_their_order
+=== RUN   TestDecodeMessageErrors/no_origin
+=== PAUSE TestDecodeMessageErrors/no_origin
+--- PASS: TestMalformedMessageLogsAreRateLimited (0.00s)
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/truncated_JSON
+=== CONT  TestRedisClientFailureRoutes/receive_and_close_of_a_closed_subscription
+=== RUN   TestDecodeMessageErrors/no_topic
+=== CONT  TestRedisClientFailureRoutes/subscribe
+=== CONT  TestRedisClientFailureRoutes/close_twice
+=== PAUSE TestDecodeMessageErrors/no_topic
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/no_origin
+=== RUN   TestDecodeMessageErrors/no_kind
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/no_origin
+=== PAUSE TestDecodeMessageErrors/no_kind
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/no_topic
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/no_topic
+=== RUN   TestDecodeMessageErrors/empty
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/no_kind
+--- PASS: TestRedisFirstConfirmationIsNotAReconnect (0.00s)
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/no_kind
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/wrong_type_of_an_id
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/wrong_type_of_an_id
+=== RUN   TestMalformedMessagesAreSkippedAndLogged/empty
+=== PAUSE TestMalformedMessagesAreSkippedAndLogged/empty
+=== PAUSE TestDecodeMessageErrors/empty
+=== CONT  TestDecodeMessageErrors/array
+=== CONT  TestDecodeMessageErrors/no_topic
+=== CONT  TestDecodeMessageErrors/empty
+=== CONT  TestDecodeMessageErrors/no_kind
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/truncated_JSON
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/no_origin
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/a_JSON_array
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/a_number
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/no_topic
+=== CONT  TestDecodeMessageErrors/not_JSON
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/no_kind
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/not_JSON
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/empty
+=== CONT  TestDecodeMessageErrors/no_origin
+=== CONT  TestMalformedMessagesAreSkippedAndLogged/wrong_type_of_an_id
+--- PASS: TestDecodeMessageErrors (0.00s)
+    --- PASS: TestDecodeMessageErrors/no_kind (0.00s)
+    --- PASS: TestDecodeMessageErrors/empty (0.00s)
+    --- PASS: TestDecodeMessageErrors/no_topic (0.00s)
+    --- PASS: TestDecodeMessageErrors/array (0.00s)
+    --- PASS: TestDecodeMessageErrors/not_JSON (0.00s)
+    --- PASS: TestDecodeMessageErrors/no_origin (0.00s)
+--- PASS: TestEventsReachTheOtherProcessOnce (0.00s)
+    --- PASS: TestEventsReachTheOtherProcessOnce/an_event_with_only_a_topic_and_a_kind (0.00s)
+    --- PASS: TestEventsReachTheOtherProcessOnce/one_event_with_every_field (0.00s)
+    --- PASS: TestEventsReachTheOtherProcessOnce/large_ids (0.00s)
+    --- PASS: TestEventsReachTheOtherProcessOnce/several_events_keep_their_order (0.00s)
+--- PASS: TestPublishFailureIsCountedAndLogged (0.01s)
+--- PASS: TestMalformedMessagesAreSkippedAndLogged (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/no_topic (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/not_JSON (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/no_origin (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/truncated_JSON (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/no_kind (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/empty (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/a_JSON_array (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/a_number (0.00s)
+    --- PASS: TestMalformedMessagesAreSkippedAndLogged/wrong_type_of_an_id (0.00s)
+--- PASS: TestOriginsDiffer (0.01s)
+--- PASS: TestEncodeFailureIsLogged (0.01s)
+--- PASS: TestRedisBridgesDeliverToEachOther (0.01s)
+--- PASS: TestFullQueueDoesNotBlockPublish (0.10s)
+--- PASS: TestReceiveErrorIsLoggedAndRetried (0.30s)
+redis: 2026/10/27 16:19:46 pool.go:770: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:36977: connect: connection refused
+redis: 2026/10/27 16:19:46 pool.go:770: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:38529: connect: connection refused
+--- PASS: TestRedisClientFailureRoutes (0.00s)
+    --- PASS: TestRedisClientFailureRoutes/receive_and_close_of_a_closed_subscription (0.00s)
+    --- PASS: TestRedisClientFailureRoutes/close_twice (0.00s)
+    --- PASS: TestRedisClientFailureRoutes/subscribe (0.00s)
+    --- PASS: TestRedisClientFailureRoutes/publish (0.40s)
+redis: 2026/10/27 16:19:46 pool.go:770: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:36977: connect: connection refused
+--- PASS: TestCloseDoesNotWaitLongerThanTheFlushTimeout (1.00s)
+redis: 2026/10/27 16:19:46 pool.go:770: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:36977: connect: connection refused
+redis: 2026/10/27 16:19:47 pool.go:770: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:36977: connect: connection refused
+--- PASS: TestOpenRedisFailures (0.00s)
+    --- PASS: TestOpenRedisFailures/the_URL_does_not_parse (0.00s)
+    --- PASS: TestOpenRedisFailures/wrong_scheme (0.00s)
+    --- PASS: TestOpenRedisFailures/nothing_listens (1.68s)
+PASS
+ok  	github.com/rm4n0s/clowder/internal/cluster	2.820s

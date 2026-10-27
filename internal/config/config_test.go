@@ -64,6 +64,35 @@ func TestValidate(t *testing.T) {
 		{"database URL garbage", func(c *Config) { c.DatabaseURL = "not a url" }, TagDatabaseURLInvalid},
 		{"database URL without host", func(c *Config) { c.DatabaseURL = "postgres:///clowder" }, TagDatabaseURLInvalid},
 		{"database URL that does not parse", func(c *Config) { c.DatabaseURL = "postgres://u:secret@exa mple.com/%zz" }, TagDatabaseURLInvalid},
+		{"redis URL", func(c *Config) {
+			c.DatabaseURL = "postgres://localhost/clowder"
+			c.RedisURL = "redis://localhost:6379/0"
+		}, ""},
+		{"redis URL with password", func(c *Config) {
+			c.DatabaseURL = "postgres://localhost/clowder"
+			c.RedisURL = "redis://:secret@redis:6379/0"
+		}, ""},
+		{"rediss URL with user and password", func(c *Config) {
+			c.DatabaseURL = "postgres://localhost/clowder"
+			c.RedisURL = "rediss://default:secret@redis.example.com:6380"
+		}, ""},
+		{"redis URL with an upper case scheme", func(c *Config) {
+			c.DatabaseURL = "postgres://localhost/clowder"
+			c.RedisURL = "REDIS://localhost"
+		}, ""},
+		{"redis URL http scheme", func(c *Config) { c.DatabaseURL = "postgres://localhost/clowder"; c.RedisURL = "http://localhost:6379" }, TagRedisURLInvalid},
+		{"redis URL postgres scheme", func(c *Config) {
+			c.DatabaseURL = "postgres://localhost/clowder"
+			c.RedisURL = "postgres://localhost/clowder"
+		}, TagRedisURLInvalid},
+		{"redis URL garbage", func(c *Config) { c.DatabaseURL = "postgres://localhost/clowder"; c.RedisURL = "not a url" }, TagRedisURLInvalid},
+		{"redis URL without host", func(c *Config) { c.DatabaseURL = "postgres://localhost/clowder"; c.RedisURL = "redis:///0" }, TagRedisURLInvalid},
+		{"redis URL that does not parse", func(c *Config) {
+			c.DatabaseURL = "postgres://localhost/clowder"
+			c.RedisURL = "redis://u:secret@exa mple.com/%zz"
+		}, TagRedisURLInvalid},
+		{"redis URL with SQLite", func(c *Config) { c.RedisURL = "redis://localhost:6379/0" }, TagRedisNeedsPostgres},
+		{"invalid redis URL is reported before the missing PostgreSQL", func(c *Config) { c.RedisURL = "http://localhost" }, TagRedisURLInvalid},
 		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }, TagLogLevelUnknown},
 		{"empty log level", func(c *Config) { c.LogLevel = "" }, TagLogLevelUnknown},
 	}
@@ -151,6 +180,29 @@ func TestValidateDatabaseURLNeverLeaksThePassword(t *testing.T) {
 	}
 }
 
+func TestValidateRedisURLNeverLeaksThePassword(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct{ name, database, redis string }{
+		{"wrong scheme", "postgres://localhost/db", "http://:hunter2@localhost/0"},
+		{"does not parse", "postgres://localhost/db", "redis://:hunter2@exa mple.com/%zz"},
+		{"needs PostgreSQL", "", "redis://default:hunter2@localhost/0"},
+		{"no host", "postgres://localhost/db", "redis://:hunter2@/0"},
+	} {
+		cfg := Default()
+		cfg.DatabaseURL = tt.database
+		cfg.RedisURL = tt.redis
+		err := cfg.Validate()
+		appErr, ok := errors.FromError(err)
+		if !ok {
+			t.Fatalf("%s: expected *errors.Error, got %T", tt.name, err)
+		}
+		if strings.Contains(appErr.Message, "hunter2") || strings.Contains(fmt.Sprint(appErr.Metadata), "hunter2") ||
+			strings.Contains(appErr.Error(), "hunter2") {
+			t.Errorf("%s: the error leaks the password: %v %v", tt.name, appErr.Message, appErr.Metadata)
+		}
+	}
+}
+
 func TestRedactURL(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -165,6 +217,10 @@ func TestRedactURL(t *testing.T) {
 		{"password in the query", "postgres://u@db/clowder?password=hunter2&sslmode=disable",
 			"postgres://u@db/clowder?password=xxxxx&sslmode=disable"},
 		{"special characters in the password", "postgres://u:p%40ss%2Fword@db/clowder", "postgres://u:xxxxx@db/clowder"},
+		{"redis with password and no user", "redis://:hunter2@redis:6379/0", "redis://:xxxxx@redis:6379/0"},
+		{"redis with user and password", "redis://default:hunter2@redis:6379/0", "redis://default:xxxxx@redis:6379/0"},
+		{"rediss with password", "rediss://:hunter2@redis.example.com:6380", "rediss://:xxxxx@redis.example.com:6380"},
+		{"redis without password", "redis://redis:6379/0", "redis://redis:6379/0"},
 		{"unparseable", "postgres://u:hunter2@exa mple.com/%zz", unparseableURL},
 	}
 	for _, tt := range tests {
