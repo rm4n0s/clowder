@@ -394,6 +394,8 @@ func (rs *roomStream) event(ctx context.Context, ev live.Event) (end bool, err e
 	switch ev.Kind {
 	case live.KindPostCreated, live.KindPostUpdated, live.KindPostDeleted:
 		return rs.postEvent(ctx, ev)
+	case live.KindReactionChanged:
+		return rs.reactionEvent(ctx, ev)
 	case live.KindMemberJoined, live.KindMemberLeft:
 		return rs.memberEvent(ctx, ev)
 	case live.KindRoomUpdated:
@@ -462,6 +464,27 @@ func (rs *roomStream) postEvent(ctx context.Context, ev live.Event) (end bool, e
 		// A deleted post stays as a placeholder.
 		return false, rs.patch(views.PostCard(card))
 	}
+}
+
+// reactionEvent handles a change to the reactions of a post. The post is read
+// again for the user, so that the chips are theirs (the ones they put are
+// highlighted), and only the reaction bar is patched. A comment is not in the
+// feed, and a post that is gone or hidden has nothing to patch.
+func (rs *roomStream) reactionEvent(ctx context.Context, ev live.Event) (end bool, err error) {
+	if rs.before != 0 {
+		return false, nil
+	}
+	post, err := rs.s.svc.Posts.Get(ctx, rs.actor, ev.PostID)
+	if err != nil {
+		if isTag(err, app.TagNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if post.IsComment || post.Deleted || post.RoomID != rs.id {
+		return false, nil
+	}
+	return false, rs.patch(views.Reactions(views.ReactionsData{Post: post}))
 }
 
 // memberEvent handles someone joining or leaving the room: the members and
@@ -709,8 +732,33 @@ func (ts *threadStream) postEvent(ctx context.Context, ev live.Event) (end bool,
 			return false, ts.patch(views.PostCard(d.RootCard()))
 		}
 		return false, ts.patch(views.PostContent(d.RootCard()))
+	case live.KindReactionChanged:
+		return false, ts.reactionChanged(d, ev.PostID)
 	}
 	return false, nil
+}
+
+// reactionChanged patches the reaction bar of the post or comment id, with the
+// reactions as this user sees them. A post that is not on the page (it was
+// deleted since) has nothing to patch.
+func (ts *threadStream) reactionChanged(d views.PostPageData, id uint64) error {
+	card := d.RootCard()
+	if id != d.Post.ID {
+		found := false
+		for _, c := range d.Comments {
+			if c.ID == id {
+				card, found = d.CommentCard(c), true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+	if card.Post.Deleted {
+		return nil
+	}
+	return ts.patch(views.Reactions(views.ReactionsData{Post: card.Post, From: card.From}))
 }
 
 // commentCreated puts the comments that the page does not show yet at their

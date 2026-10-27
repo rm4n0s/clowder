@@ -2,6 +2,7 @@ package views
 
 import (
 	"html/template"
+	"strconv"
 
 	"github.com/rm4n0s/clowder/internal/app"
 )
@@ -228,6 +229,10 @@ templ PostContent(d PostCardData) {
 					}
 				</ul>
 			}
+			<div class="reaction-bar">
+				@Reactions(d.reactions())
+				@ReactionPicker(d.reactions())
+			</div>
 		}
 		<footer class="post-footer">
 			if !d.Post.IsComment {
@@ -248,6 +253,92 @@ templ PostContent(d PostCardData) {
 				</form>
 			}
 		</footer>
+	</div>
+}
+
+// Reactions are the chips of a post or comment: one for each emoji with its
+// count, highlighted when the person reacted, with the names of the people as
+// its title; clicking a chip adds or removes the person's reaction. Anyone who
+// has not joined the room sees the chips and cannot click them. The server
+// sends it alone as a Datastar patch after a reaction and, to every open page,
+// when the reactions of a post change; the picker next to it is not part of it,
+// so that a live change does not close it or clear what the person typed.
+templ Reactions(d ReactionsData) {
+	<div id={ reactionsID(d.Post.ID) } class="reactions">
+		@formProblem(d.Message)
+		if len(d.Post.Reactions) > 0 {
+			if d.Post.CanReact {
+				<form class="reaction-chips" method="post" action={ templ.SafeURL(reactionsPath(d.Post.ID)) } data-on:submit={ FormPost(reactionsPath(d.Post.ID)) }>
+					if d.From != "" {
+						<input type="hidden" name="from" value={ d.From }/>
+					}
+					for _, r := range d.Post.Reactions {
+						<button type="submit" name="emoji" value={ r.Emoji } class={ reactionClasses(r) } title={ reactionTitle(r) } aria-label={ reactionLabel(r) } aria-pressed={ strconv.FormatBool(r.Mine) }>
+							<span class="reaction-emoji">{ r.Emoji }</span>
+							<span class="reaction-count">{ strconv.Itoa(r.Count) }</span>
+						</button>
+					}
+				</form>
+			} else {
+				<ul class="reaction-chips" aria-label="Reactions">
+					for _, r := range d.Post.Reactions {
+						<li class={ reactionClasses(r) } title={ reactionTitle(r) }>
+							<span class="reaction-emoji">{ r.Emoji }</span>
+							<span class="reaction-count">{ strconv.Itoa(r.Count) }</span>
+						</li>
+					}
+				</ul>
+			}
+		}
+	</div>
+}
+
+// ReactionPicker is the add button of the reaction bar of a member and the
+// picker it opens: the common emoji and a field for any other emoji. It is empty
+// for anyone who has not joined the room. The server sends it alone as a
+// Datastar patch after the person's own reaction (which closes it) or a
+// mistake in the field (which opens it); live changes of the reactions leave it
+// alone.
+templ ReactionPicker(d ReactionsData) {
+	<div id={ reactionPickerID(d.Post.ID) } class="reaction-picker-box">
+		if d.Post.CanReact {
+			<details class="reaction-add" open?={ d.Problem != "" }>
+				<summary title="Add a reaction" aria-label="Add a reaction">+</summary>
+				<div class="reaction-picker">
+					<form class="reaction-grid" method="post" action={ templ.SafeURL(reactionsPath(d.Post.ID)) } data-on:submit={ FormPost(reactionsPath(d.Post.ID)) }>
+						if d.From != "" {
+							<input type="hidden" name="from" value={ d.From }/>
+						}
+						for _, e := range pickerEmoji {
+							<button type="submit" name="emoji" value={ e } class="reaction-option" aria-label={ "React with " + e }>{ e }</button>
+						}
+					</form>
+					<form class="reaction-custom" method="post" action={ templ.SafeURL(reactionsPath(d.Post.ID)) } data-on:submit={ FormPost(reactionsPath(d.Post.ID)) }>
+						if d.From != "" {
+							<input type="hidden" name="from" value={ d.From }/>
+						}
+						<label for={ "reaction-text-" + roomIDText(d.Post.ID) }>Any emoji</label>
+						<input
+							id={ "reaction-text-" + roomIDText(d.Post.ID) }
+							name="emoji"
+							type="text"
+							value={ d.Typed }
+							maxlength="32"
+							autocomplete="off"
+							placeholder="🦄"
+							if d.Problem != "" {
+								aria-invalid="true"
+								aria-describedby={ "reaction-text-" + roomIDText(d.Post.ID) + "-error" }
+							}
+						/>
+						<button type="submit" class="reaction-submit">React</button>
+						if d.Problem != "" {
+							<p class="field-error" id={ "reaction-text-" + roomIDText(d.Post.ID) + "-error" } role="alert">{ d.Problem }</p>
+						}
+					</form>
+				</div>
+			</details>
+		}
 	</div>
 }
 

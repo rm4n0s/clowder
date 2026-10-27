@@ -1028,3 +1028,109 @@ func TestRunDemoMakesTheDemoThreads(t *testing.T) {
 		t.Errorf("the reply to the deleted comment = %+v", reply)
 	}
 }
+
+func TestRunDemoMakesTheDemoReactions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	if !strings.Contains(stdout.String(), "demo reactions: 13\n") {
+		t.Errorf("stdout lacks the number of reactions:\n%s", stdout.String())
+	}
+
+	_, st := openAccounts(t, dir)
+	fileStore := openFiles(t, dir)
+	rooms := app.NewRooms(st, fileStore, nil, nil)
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{}, nil)
+	actorOf := func(username string) app.Actor {
+		row, err := st.UserByUsername(t.Context(), username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return app.Actor{UserID: row.ID, Username: row.Username, Role: row.Role}
+	}
+	carol := actorOf("carol")
+	all, err := rooms.AllRooms(t.Context(), actorOf("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var general app.Room
+	for _, r := range all {
+		if r.Name == "general" {
+			general = r
+		}
+	}
+	page, err := posts.Feed(t.Context(), carol, general.ID, 0, 30)
+	if err != nil {
+		t.Fatalf("Feed: %+v", err)
+	}
+	if len(page.Posts) != 5 {
+		t.Fatalf("general has %d posts, want 5", len(page.Posts))
+	}
+	// Newest first: page.Posts[0] is the last of demoPosts. The chips are in the
+	// order of first use, and carol's own are marked.
+	tests := []struct {
+		name string
+		post app.Post
+		want []app.ReactionCount
+	}{
+		{"welcome", page.Posts[4], []app.ReactionCount{
+			{Emoji: "\U0001F44D", Count: 3, Mine: true, Names: []string{"Bob", "Carol", "Admin"}},
+			{Emoji: "❤️", Count: 1, Names: []string{"Bob"}},
+		}},
+		{"question", page.Posts[3], []app.ReactionCount{{Emoji: "\U0001F914", Count: 1, Names: []string{"Alice"}}}},
+		{"checklist", page.Posts[2], []app.ReactionCount{
+			{Emoji: "\U0001F680", Count: 2, Names: []string{"Alice", "Bob"}},
+			{Emoji: "\U0001F440", Count: 1, Names: []string{"Admin"}},
+		}},
+		{"design review", page.Posts[1], []app.ReactionCount{
+			{Emoji: "✅", Count: 1, Names: []string{"Bob"}},
+			{Emoji: "\U0001F44D", Count: 1, Mine: true, Names: []string{"Carol"}},
+		}},
+		// The newest post has no party popper: the proof puts it there live.
+		{"thanks", page.Posts[0], []app.ReactionCount{{Emoji: "\U0001F64F", Count: 2, Mine: true, Names: []string{"Alice", "Carol"}}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !reflect.DeepEqual(tt.post.Reactions, tt.want) {
+				t.Errorf("reactions = %+v, want %+v", tt.post.Reactions, tt.want)
+			}
+		})
+	}
+	// One comment has a reaction too; the others none.
+	th, err := posts.Thread(t.Context(), carol, page.Posts[3].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withReactions := 0
+	for _, c := range th.Comments {
+		if len(c.Reactions) > 0 {
+			withReactions++
+			want := []app.ReactionCount{{Emoji: "\U0001F44D", Count: 1, Names: []string{"Alice"}}}
+			if c.Author.Username != "bob" || !reflect.DeepEqual(c.Reactions, want) {
+				t.Errorf("reacted comment = %s %+v", c.Author.Username, c.Reactions)
+			}
+		}
+	}
+	if withReactions != 1 {
+		t.Errorf("%d comments have reactions, want 1", withReactions)
+	}
+	// Other rooms have none.
+	for _, name := range []string{"random", "secret"} {
+		for _, r := range all {
+			if r.Name != name {
+				continue
+			}
+			feed, err := posts.Feed(t.Context(), actorOf("alice"), r.ID, 0, 30)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, p := range feed.Posts {
+				if len(p.Reactions) != 0 {
+					t.Errorf("a post in %s has reactions: %+v", name, p.Reactions)
+				}
+			}
+		}
+	}
+}

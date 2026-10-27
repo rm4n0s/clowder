@@ -22,3 +22,6 @@ const (
 	TagAuditDetailsFailed  = tagAuditDetailsFailed
 	TagAuditDetailsInvalid = tagAuditDetailsInvalid
 )
+
+// CleanEmoji gives the tests cleanEmoji.
+var CleanEmoji = cleanEmoji

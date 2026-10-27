@@ -201,6 +201,8 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 ### 7.4 Reactions
 
 - Any member reacts to a post or comment with an emoji, chosen from a picker of common emoji or typed. Each (user, post, emoji) is there once; clicking it again removes it. Each emoji shows its count and, on hover, who reacted.
+- A reaction is exactly one emoji. A typed one is trimmed, at most 32 bytes, and is: one emoji code point (the emoji blocks U+1F000–1FAFF, U+2600–27BF, U+2300–23FF, U+2B00–2BFF, U+2190–21FF, U+2900–297F, and ©, ®, ™, U+3030, U+303D, U+3297, U+3299), optionally followed by a variation selector and then one skin tone modifier, and optionally joined by the zero width joiner to further such units (at most 4 in all); or exactly two regional indicators (a flag); or a keycap (`0-9`, `#` or `*`, an optional U+FE0F, U+20E3); or a tag sequence (the black flag, tag characters, the cancel tag). Anything else, such as several emoji in a row, a lone regional indicator, letters, digits, spaces or punctuation, is refused with `TagInvalidInput` (decided by the manager, 2026-10-27; the owner may revise).
+- Reactions are not audited (§7.10). Changes are published as `reaction.changed` to the room and the thread; each open page re-reads the post for its user and replaces only the chips (not the picker, so an open picker and what is typed in it stay), so every viewer sees their own chips highlighted. People who have not joined a visible room see the chips but cannot react; a deleted post shows no reactions.
 
 ### 7.5 Attachments
 

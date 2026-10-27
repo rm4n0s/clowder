@@ -697,6 +697,107 @@ func (s *Server) postReplyFailed(w http.ResponseWriter, r *http.Request, err err
 	})
 }
 
+// typedEmojiMax is the longest text of the emoji field that an answer to a
+// mistake puts back in the field; the field itself takes 32 characters.
+const typedEmojiMax = 64
+
+// postReact answers POST /posts/{id}/reactions with the form value "emoji": the
+// emoji is put on the post or comment, or taken off when the person put it
+// there already. A Datastar request gets the reaction bar of the post alone; a
+// plain post is sent to the post. A mistake shows the problem in the picker of
+// the bar.
+func (s *Server) postReact(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.postID(w, r)
+	if !ok {
+		return
+	}
+	if !s.parseForm(w, r) {
+		return
+	}
+	actor, _ := actorFrom(r.Context())
+	emoji := r.PostFormValue("emoji")
+	if _, err := s.svc.Posts.ToggleReaction(r.Context(), actor, id, emoji); err != nil {
+		s.postReactFailed(w, r, err, id, emoji)
+		return
+	}
+	post, err := s.svc.Posts.Get(r.Context(), actor, id)
+	if err != nil {
+		s.postFail(w, r, err, id)
+		return
+	}
+	from := fromOf(r)
+	if !isDatastar(r) {
+		http.Redirect(w, r, afterReactPath(post, from), http.StatusSeeOther)
+		return
+	}
+	// The chips, and the picker, which the person's own reaction closes and
+	// empties (a reaction made by someone else leaves it alone).
+	data := views.ReactionsData{Post: post, From: from}
+	ops := []patchOp{{component: views.Reactions(data)}}
+	if post.CanReact {
+		ops = append(ops, patchOp{component: views.ReactionPicker(data)})
+	}
+	s.patchAll(w, r, ops...)
+}
+
+// afterReactPath is where a plain form goes after a reaction: the comment in
+// its thread, the page of the post when it was shown there, else the post in
+// its room.
+func afterReactPath(post app.Post, from string) string {
+	switch {
+	case post.IsComment:
+		return views.CommentPath(post.RootID, post.ID)
+	case from == views.FromPost:
+		return views.PostPath(post.ID)
+	default:
+		return views.RoomPath(post.RoomID) + "#post-" + strconv.FormatUint(post.ID, 10)
+	}
+}
+
+// postReactFailed shows the problem of a reaction that was not made. A post
+// that is gone or hidden is the 404 page. Text that is not an emoji is
+// reported in the picker of the reaction bar (only the picker is patched, the
+// chips stay), and a person who has not joined the room is told so above the
+// chips; for a plain post these are the page of the
+// thread with the message above the post, and the status of the problem.
+func (s *Server) postReactFailed(w http.ResponseWriter, r *http.Request, err error, id uint64, emoji string) {
+	invalid := isTag(err, app.TagInvalidInput)
+	if !invalid && !isTag(err, app.TagForbidden) {
+		s.postActionFailed(w, r, err, id)
+		return
+	}
+	data := views.ReactionsData{From: fromOf(r)}
+	if invalid {
+		data.Problem = firstNonEmpty(formErrorsOf(err).Fields[app.FieldEmoji], messageInvalid)
+		if len(emoji) <= typedEmojiMax {
+			data.Typed = emoji
+		}
+	} else {
+		data.Message = messageForbidden
+	}
+	if !isDatastar(r) {
+		d, ok := s.postPageData(w, r, id)
+		if !ok {
+			return
+		}
+		d.ActiveID, d.Message = id, firstNonEmpty(data.Problem, data.Message)
+		s.render(w, r, statusOf(err), views.PostPage(d))
+		return
+	}
+	actor, _ := actorFrom(r.Context())
+	post, getErr := s.svc.Posts.Get(r.Context(), actor, id)
+	if getErr != nil {
+		s.postFail(w, r, getErr, id)
+		return
+	}
+	data.Post = post
+	if invalid {
+		s.patch(w, r, views.ReactionPicker(data))
+		return
+	}
+	s.patch(w, r, views.Reactions(data))
+}
+
 // postPreview answers POST /preview with the form values "editor", "format" and
 // "body": the box of that editor, patched with the body rendered the way a post
 // shows it (or the reason it cannot be, such as a body that is too long). Any

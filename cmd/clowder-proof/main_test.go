@@ -36,7 +36,7 @@ func TestParseFlags(t *testing.T) {
 			},
 			want: options{
 				page: "/invite/{invite}", out: "x.png", width: 1280, height: 800, wait: 500 * time.Millisecond,
-				invite: true, click: "button[type=submit]",
+				invite: true, clicks: clicks{"button[type=submit]"},
 				fills: fills{{"#username", "ab"}, {"input[name=password]", "short=1"}},
 			},
 		},
@@ -59,9 +59,21 @@ func TestParseFlags(t *testing.T) {
 			want: options{
 				page: "{room:general}", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond,
 				other: script{
-					user: "alice", page: "{room:general}", click: "button[type=submit]",
+					user: "alice", page: "{room:general}", clicks: clicks{"button[type=submit]"},
 					fills: fills{{"#post-body-new", "Live from **alice**"}, {"#post-tags-new", "a=b"}},
 				},
+			},
+		},
+		{
+			name: "clicks are made in order",
+			args: []string{
+				"-o", "x.png", "-as", "bob", "-click", "summary", "-click", "button.pick",
+				"-other", "alice", "-other-click", "summary", "-other-click", "button.pick",
+			},
+			want: options{
+				page: "/", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond,
+				clicks: clicks{"summary", "button.pick"},
+				other:  script{user: "alice", page: "/", clicks: clicks{"summary", "button.pick"}},
 			},
 		},
 		{
@@ -72,6 +84,7 @@ func TestParseFlags(t *testing.T) {
 		{name: "other-page without other", args: []string{"-o", "x.png", "-other-page", "/rooms"}, wantTag: tagFlagsInvalid},
 		{name: "other-fill without other", args: []string{"-o", "x.png", "-other-fill", "#a=b"}, wantTag: tagFlagsInvalid},
 		{name: "other-click without other", args: []string{"-o", "x.png", "-other-click", "button"}, wantTag: tagFlagsInvalid},
+		{name: "click without a selector", args: []string{"-o", "x.png", "-click", ""}, wantTag: tagFlagsInvalid},
 		{name: "other without as", args: []string{"-o", "x.png", "-other", "alice"}, wantTag: tagFlagsInvalid},
 		{name: "other-page without slash", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-other-page", "rooms"}, wantTag: tagFlagsInvalid},
 		{name: "post placeholder without a user", args: []string{"-o", "x.png", "-page", "{post:Quick question}"}, wantTag: tagFlagsInvalid},

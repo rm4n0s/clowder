@@ -119,6 +119,22 @@ func splitFill(v string) (selector, value string, ok bool) {
 	return "", "", false
 }
 
+// clicks is the repeatable -click flag: the selectors of the elements to click,
+// in order.
+type clicks []string
+
+// String implements flag.Value.
+func (c *clicks) String() string { return strings.Join(*c, " ") }
+
+// Set implements flag.Value: it adds one selector.
+func (c *clicks) Set(v string) error {
+	if v == "" {
+		return errors.New(tagFlagsInvalid, "-click needs a selector", "value", v)
+	}
+	*c = append(*c, v)
+	return nil
+}
+
 // options are the flags of the tool.
 type options struct {
 	page   string
@@ -132,9 +148,9 @@ type options struct {
 	invite bool
 	// fills are typed into the page, in order, before the click.
 	fills fills
-	// click is the selector of the element to click after the fills; the tool
-	// then waits for the page to settle.
-	click string
+	// clicks are the selectors of the elements to click after the fills, in
+	// order; the tool waits for the page to settle after each.
+	clicks clicks
 	// other is a second user who acts in a second browser after the page of
 	// the first one has loaded and its live stream is open.
 	other script
@@ -151,8 +167,9 @@ type script struct {
 	page string
 	// fills are typed into the page, in order, before the click.
 	fills fills
-	// click is the selector of the element to click after the fills.
-	click string
+	// clicks are the selectors of the elements to click after the fills, in
+	// order.
+	clicks clicks
 }
 
 // run takes one screenshot. It stops the server and the browser it started
@@ -200,11 +217,11 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.DurationVar(&o.wait, "wait", 500*time.Millisecond, "extra time to settle after the page has loaded and after the click")
 	fs.BoolVar(&o.invite, "invite", false, "start with an invitation for a new member and put its token in -page where it says "+invitePlaceholder)
 	fs.Var(&o.fills, "fill", "type text into an element before the click, as selector=value, such as '#username=ana' (repeatable)")
-	fs.StringVar(&o.click, "click", "", "CSS selector of an element to click after the -fill flags; the tool then waits for the page to settle")
+	fs.Var(&o.clicks, "click", "CSS selector of an element to click after the -fill flags; the tool then waits for the page to settle (repeatable: the clicks are made in order, such as to open a menu and then pick from it)")
 	fs.StringVar(&o.other.user, "other", "", "a second demo user who acts in a second browser once the page has loaded and its live stream is open, before the screenshot of the first one; see -other-page, -other-fill and -other-click")
 	fs.StringVar(&o.other.page, "other-page", "", "path of the page the -other user opens (default /); {room:name} and {post:text} are looked up for that user")
 	fs.Var(&o.other.fills, "other-fill", "type text into an element of the -other user's page before the click, as selector=value (repeatable)")
-	fs.StringVar(&o.other.click, "other-click", "", "CSS selector of an element the -other user clicks after the -other-fill flags")
+	fs.Var(&o.other.clicks, "other-click", "CSS selector of an element the -other user clicks after the -other-fill flags (repeatable, in order)")
 	if err := fs.Parse(args); err != nil {
 		return options{}, errors.NewErr(tagFlagsInvalid, err)
 	}
@@ -226,7 +243,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	case o.as == "" && postPlaceholder.MatchString(o.page):
 		return options{}, errors.New(tagFlagsInvalid, "{post:text} in -page needs -as: the post is found in the rooms of a user",
 			"page", o.page)
-	case o.other.user == "" && (o.other.page != "" || len(o.other.fills) > 0 || o.other.click != ""):
+	case o.other.user == "" && (o.other.page != "" || len(o.other.fills) > 0 || len(o.other.clicks) > 0):
 		return options{}, errors.New(tagFlagsInvalid, "-other-page, -other-fill and -other-click need -other", "flag", "other")
 	case o.other.user != "" && o.as == "":
 		return options{}, errors.New(tagFlagsInvalid, "-other needs -as: the second user acts while the first one watches", "flag", "other")
@@ -258,7 +275,7 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 	// page.
 	pageCtx, cancelPage := context.WithTimeout(browser, pageTimeout)
 	defer cancelPage()
-	first := script{user: o.as, page: o.page, fills: o.fills, click: o.click}
+	first := script{user: o.as, page: o.page, fills: o.fills, clicks: o.clicks}
 	url, err := first.open(pageCtx, srv, o)
 	if err != nil {
 		return nil, err
@@ -329,8 +346,8 @@ func (sc script) open(ctx context.Context, srv *browsertest.Server, o options) (
 	return url, nil
 }
 
-// interact types the fills of the script into the page, then clicks and waits
-// for the page to settle.
+// interact types the fills of the script into the page, then makes the clicks,
+// waiting for the page to settle after each.
 func (sc script) interact(ctx context.Context, url string, o options) error {
 	for _, f := range sc.fills {
 		err := chromedp.Do(ctx, browsertest.Fill(f.selector, f.value))
@@ -342,13 +359,13 @@ func (sc script) interact(ctx context.Context, url string, o options) error {
 			return err
 		}
 	}
-	if sc.click != "" {
+	for _, selector := range sc.clicks {
 		err := chromedp.Do(ctx,
-			chromedp.Click(sc.click),
+			chromedp.Click(selector),
 			chromedp.Sleep(o.wait),
 		)
 		if err != nil {
-			return errors.NewErr(tagClickFailed, err).SetMetadata("url", url, "selector", sc.click)
+			return errors.NewErr(tagClickFailed, err).SetMetadata("url", url, "selector", selector)
 		}
 	}
 	return nil

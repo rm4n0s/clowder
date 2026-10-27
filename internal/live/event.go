@@ -19,6 +19,9 @@ const (
 	KindCommentUpdated = "comment.updated"
 	// KindCommentDeleted says a comment was deleted.
 	KindCommentDeleted = "comment.deleted"
+	// KindReactionChanged says a reaction was added to or removed from a post
+	// or comment; PostID is that post or comment.
+	KindReactionChanged = "reaction.changed"
 	// KindRoomUpdated says a room was renamed or its description changed.
 	KindRoomUpdated = "room.updated"
 	// KindRoomDeleted says a room was deleted.

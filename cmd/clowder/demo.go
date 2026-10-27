@@ -43,8 +43,8 @@ var demoUsers = []struct {
 // through the accounts service (an invitation and a sign-up for each), then
 // the rooms through the rooms service, their posts and the comments under
 // some of them through the posts service, and prints the directory, the users with their password, the rooms,
-// the number of posts, the number of attachments and the number of comments
-// to stdout.
+// the number of posts, the number of attachments, the number of comments and
+// the number of reactions to stdout.
 // Later steps add their own demo data here.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	var dataDir string
@@ -117,7 +117,11 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	if err != nil {
 		return err
 	}
-	return makeDemoComments(ctx, posts, written, actors, stdout)
+	comments, err := makeDemoComments(ctx, posts, written, actors, stdout)
+	if err != nil {
+		return err
+	}
+	return makeDemoReactions(ctx, posts, written, comments, actors, stdout)
 }
 
 // makeDemoRooms makes the rooms of the demo through the rooms service, as the
@@ -293,8 +297,9 @@ var demoComments = []struct {
 // makeDemoComments writes the comments of the demo through the posts service,
 // as the users who would write them, under the posts that makeDemoPosts wrote
 // (written, in the order of demoPosts), and then the deletions. actors holds
-// the demo users by username.
-func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post, actors map[string]app.Actor, stdout io.Writer) error {
+// the demo users by username. It returns the comments by their id in
+// demoComments.
+func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post, actors map[string]app.Actor, stdout io.Writer) (map[string]app.Post, error) {
 	byID := map[string]app.Post{}
 	for _, d := range demoComments {
 		parent := written[d.post]
@@ -307,7 +312,7 @@ func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post,
 			Tags:   app.ParseTags(d.tags),
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		byID[d.id] = c
 	}
@@ -317,11 +322,56 @@ func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post,
 			continue
 		}
 		if err := posts.Delete(ctx, actors[d.deletedBy], byID[d.id].ID); err != nil {
-			return err
+			return nil, err
 		}
 		deleted++
 	}
 	_, _ = fmt.Fprintf(stdout, "demo comments: %d (%d deleted)\n", len(demoComments), deleted)
+	return byID, nil
+}
+
+// demoReactions are the reactions of the demo, in the order they are made, so
+// that the emoji of a post come in this order. A reaction is on the comment
+// with the id in comment (as in demoComments) or, when that is empty, on the
+// post with the index post in demoPosts. Every user is in general, where all of
+// them are. The newest post has none with a party popper: the proof and the
+// browser tests put that one on it live.
+var demoReactions = []struct {
+	post    int
+	comment string
+	emoji   string
+	by      []string
+}{
+	{0, "", "\U0001F44D", []string{"bob", "carol", "admin"}},
+	{0, "", "\u2764\uFE0F", []string{"bob"}},
+	{1, "", "\U0001F914", []string{"alice"}},
+	{2, "", "\U0001F680", []string{"alice", "bob"}},
+	{2, "", "\U0001F440", []string{"admin"}},
+	{3, "", "\u2705", []string{"bob"}},
+	{3, "", "\U0001F44D", []string{"carol"}},
+	{4, "", "\U0001F64F", []string{"alice", "carol"}},
+	{0, "a2", "\U0001F44D", []string{"alice"}},
+}
+
+// makeDemoReactions puts the reactions of the demo on the posts and comments
+// that the earlier steps wrote (written, in the order of demoPosts; comments by
+// id), through the posts service, as the users who would react. actors holds
+// the demo users by username.
+func makeDemoReactions(ctx context.Context, posts *app.Posts, written []app.Post, comments map[string]app.Post, actors map[string]app.Actor, stdout io.Writer) error {
+	n := 0
+	for _, d := range demoReactions {
+		target := written[d.post]
+		if d.comment != "" {
+			target = comments[d.comment]
+		}
+		for _, username := range d.by {
+			if _, err := posts.ToggleReaction(ctx, actors[username], target.ID, d.emoji); err != nil {
+				return err
+			}
+			n++
+		}
+	}
+	_, _ = fmt.Fprintf(stdout, "demo reactions: %d\n", n)
 	return nil
 }
 

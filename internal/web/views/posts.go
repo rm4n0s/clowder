@@ -139,6 +139,91 @@ type PostCardData struct {
 	Reply *PostEditorData
 }
 
+// reactions makes the data of the reaction bar of the card.
+func (d PostCardData) reactions() ReactionsData {
+	return ReactionsData{Post: d.Post, From: d.From}
+}
+
+// ReactionsData is what the reaction bar of a post or comment shows.
+type ReactionsData struct {
+	// Post is the post or comment: its reactions, and whether the person may
+	// react.
+	Post app.Post
+	// From says where the post is shown (FromPost or empty), so that a plain
+	// form post is sent back to the right page.
+	From string
+	// Message is the problem of the last reaction, shown above the bar (the
+	// person may not react); empty shows none.
+	Message string
+	// Problem is the message of the emoji field of the last reaction that was
+	// not an emoji; the picker is open and shows it (see ReactionPicker).
+	Problem string
+	// Typed is what the person typed in the emoji field, kept with Problem.
+	Typed string
+}
+
+// pickerEmoji are the emoji of the picker of the reaction bar, in the order
+// they are shown (SPEC §7.4).
+var pickerEmoji = []string{
+	"\U0001F44D", "\U0001F44E", "\U0001F600", "\U0001F602", "\U0001F389", "\u2764\uFE0F",
+	"\U0001F64F", "\U0001F440", "\U0001F525", "\U0001F680", "\u2705", "\u274C",
+	"\U0001F914", "\U0001F62E", "\U0001F622", "\U0001F621", "\U0001F4AF", "\U0001F44F",
+	"\U0001F64C", "\U0001F4A1", "\u2B50", "\U0001F355", "\u2615", "\U0001F41B",
+}
+
+// reactionNamesShown is how many names the title of a reaction lists; the rest
+// are counted.
+const reactionNamesShown = 20
+
+// reactionsID is the id of the reaction bar of a post or comment.
+func reactionsID(id uint64) string {
+	return "reactions-" + roomIDText(id)
+}
+
+// reactionPickerID is the id of the picker of the reaction bar of a post or
+// comment, which the live changes of the reactions do not patch.
+func reactionPickerID(id uint64) string {
+	return "reaction-picker-" + roomIDText(id)
+}
+
+// reactionsPath is the path that adds or removes a reaction of a post or
+// comment.
+func reactionsPath(id uint64) string {
+	return PostPath(id) + "/reactions"
+}
+
+// reactionClasses are the classes of the chip of a reaction.
+func reactionClasses(r app.ReactionCount) string {
+	if r.Mine {
+		return "reaction-chip mine"
+	}
+	return "reaction-chip"
+}
+
+// reactionTitle is the hover text of a reaction: who reacted, the first 20 by
+// name and the rest counted.
+func reactionTitle(r app.ReactionCount) string {
+	names := r.Names
+	more := 0
+	if len(names) > reactionNamesShown {
+		names, more = names[:reactionNamesShown], len(names)-reactionNamesShown
+	}
+	title := strings.Join(names, ", ")
+	if more > 0 {
+		title += " and " + strconv.Itoa(more) + " more"
+	}
+	return title
+}
+
+// reactionLabel is the accessible name of the chip of a reaction.
+func reactionLabel(r app.ReactionCount) string {
+	label := r.Emoji + " " + strconv.Itoa(r.Count)
+	if r.Mine {
+		label += ", you reacted"
+	}
+	return label
+}
+
 // NewestID is the ID of the newest post of the page, 0 when it has none. The
 // stream of the page is told it, to find out what was written while the page
 // was loading.

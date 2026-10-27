@@ -114,6 +114,9 @@ type Post struct {
 	// CommentCount is the number of comments in the thread of the post, at any
 	// depth, not counting deleted ones. It is 0 for a comment.
 	CommentCount int
+	// Reactions are the emoji that people put on the post, in the order the
+	// emoji were first used, with their counts; empty for a deleted post.
+	Reactions []ReactionCount
 	// ParentID is the ID of the post or comment that this comment answers; 0
 	// for a top-level post.
 	ParentID uint64
@@ -135,6 +138,9 @@ type Post struct {
 	// CanDelete is true when the asking actor may delete the post: its author
 	// or an admin, if the post is not deleted.
 	CanDelete bool
+	// CanReact is true when the asking actor may react to the post: a member
+	// of its room, if the post is not deleted.
+	CanReact bool
 }
 
 // FeedPage is a page of the feed of a room.
@@ -680,17 +686,28 @@ func (p *Posts) Thread(ctx context.Context, actor Actor, postID uint64) (Thread,
 	if err != nil {
 		return Thread{}, err
 	}
+	reacts, err := p.st.ReactionsOfPosts(ctx, ids)
+	if err != nil {
+		return Thread{}, err
+	}
+	member, err := isMember(ctx, p.st, actor.UserID, room.ID)
+	if err != nil {
+		return Thread{}, err
+	}
 	count := 0
 	for _, r := range rows {
 		if r.DeletedAt == nil {
 			count++
 		}
 	}
-	rootView, err := p.buildViews(actor, room, []store.Post{root}, tags, atts, map[uint64]int{root.ID: count})
+	extras := postExtras{tags: tags, atts: atts, reacts: reacts, member: member}
+	rootExtras := extras
+	rootExtras.counts = map[uint64]int{root.ID: count}
+	rootView, err := p.buildViews(actor, room, []store.Post{root}, rootExtras)
 	if err != nil {
 		return Thread{}, err
 	}
-	views, err := p.buildViews(actor, room, rows, tags, atts, nil)
+	views, err := p.buildViews(actor, room, rows, extras)
 	if err != nil {
 		return Thread{}, err
 	}
@@ -762,9 +779,8 @@ func (p *Posts) viewOne(ctx context.Context, actor Actor, room store.Room, postI
 }
 
 // postViews makes the views of posts of one room for the actor, in the order
-// of rows, with three queries: the tags, the attachments and the comment
-// counts. The rows have
-// Author loaded.
+// of rows, with five queries: the tags, the attachments, the comment counts,
+// the reactions and the membership of the actor. The rows have Author loaded.
 func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, room store.Room, rows []store.Post) ([]Post, error) {
 	ids := make([]uint64, len(rows))
 	for i, row := range rows {
@@ -782,13 +798,34 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 	if err != nil {
 		return nil, err
 	}
-	return p.buildViews(actor, room, rows, tags, atts, counts)
+	reacts, err := st.ReactionsOfPosts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	member, err := isMember(ctx, st, actor.UserID, room.ID)
+	if err != nil {
+		return nil, err
+	}
+	return p.buildViews(actor, room, rows, postExtras{tags: tags, atts: atts, counts: counts, reacts: reacts, member: member})
+}
+
+// postExtras is what hangs on a set of posts of one room, read by the caller
+// of buildViews.
+type postExtras struct {
+	// tags, atts and reacts are the tags, attachments and reactions of each
+	// post, by post ID.
+	tags   map[uint64][]string
+	atts   map[uint64][]store.Attachment
+	reacts map[uint64][]store.ReactionRow
+	// counts are the comment counts of the posts.
+	counts map[uint64]int
+	// member is true when the actor is a member of the room.
+	member bool
 }
 
 // buildViews makes the views of posts of one room for the actor, in the order
-// of rows, from the tags, the attachments and the comment counts that the
-// caller has read. The rows have Author loaded.
-func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, tags map[uint64][]string, atts map[uint64][]store.Attachment, counts map[uint64]int) ([]Post, error) {
+// of rows, from what the caller has read. The rows have Author loaded.
+func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, x postExtras) ([]Post, error) {
 	views := make([]Post, len(rows))
 	for i, row := range rows {
 		v := Post{
@@ -798,7 +835,8 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, tags
 			Format:       row.Format,
 			Tags:         []string{},
 			Attachments:  []AttachmentView{},
-			CommentCount: counts[row.ID],
+			CommentCount: x.counts[row.ID],
+			Reactions:    []ReactionCount{},
 			IsComment:    row.ParentID != nil,
 			CreatedAt:    row.CreatedAt,
 			EditedAt:     row.EditedAt,
@@ -812,8 +850,10 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, tags
 		}
 		if !v.Deleted {
 			v.Body = row.Body
-			v.Tags = nonNil(tags[row.ID])
-			v.Attachments = attachmentViews(atts[row.ID])
+			v.Tags = nonNil(x.tags[row.ID])
+			v.Attachments = attachmentViews(x.atts[row.ID])
+			v.Reactions = reactionCounts(x.reacts[row.ID], actor.UserID)
+			v.CanReact = x.member
 			if row.Author != nil {
 				v.Author = UserRef{ID: row.Author.ID, Username: row.Author.Username, DisplayName: row.Author.DisplayName}
 			}
