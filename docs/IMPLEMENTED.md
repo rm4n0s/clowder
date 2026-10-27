@@ -389,3 +389,21 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** Only the first 500 characters and 32 terms of a query count (FTS5 expression depth). Invalid `#tags`, empty filter values and unknown keys are words; terms without a letter or digit are dropped; the last of a repeated filter wins. `Search` takes a markdown renderer it does not use yet (step 10.2 removes it).
+
+## 10.2 Search page
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-10.2-search-page
+- **Summary:** `GET /search` shows the search box with a one-line help, the parsed filters as chips (each with an × link that removes it from the query), and 20 results a page: the room, the author, the time, a "comment" marker, the highlighted snippet, the tags, and a link to the post (or to `/posts/<root>#post-<id>` for a comment). Newer/Older links keep `q`. With Datastar the form patches the results panel and keeps the URL shareable. Without JavaScript the plain GET works. A bad date shows the field message (Datastar 200, plain 422). The sidebar has a search box on every page except `/search`, so tag links in posts land here. `app.NewSearch` takes only the store; `web.Services.Search` is built by `serve`. The flaky `TestAliceWritesAndEditsAPost` had two causes. The first was a real race: the create answer and the room stream each did "remove the card, then prepend it", and the client could interleave the two into two cards. Both now prepend, then remove `#post-N ~ #post-N`. The second was a stale tag-suggestion answer moving the feed under a click; the test now sets the second tag in one step.
+- **Main files:** `internal/web/{search,posts,stream,server}.go`, `internal/web/views/{search.templ,search.go,sidebar.templ}`, `internal/web/static/app.css`, `internal/app/search.go`, `cmd/clowder/serve.go`.
+- **Tests:**
+  - Handler tests: the empty query, words with highlight, tag links, filters and chip removal, no results, bad dates in both modes, pagination, private rooms hidden from non-members (admins included), comment anchors, escaped `<b>`, the sidebar box, the login redirect, and the duplicate-removal patch on create.
+  - View tests.
+  - Browser test: alice follows `#design`, adds a word and removes the chip; carol finds nothing from `secret`.
+  - The fixed post test failed 0 of 100 runs under CPU load.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ (5 consecutive full runs) · no process left ✅
+- **Proof:**
+  ![10.2 search](implemented-proof-images/10.2-search.png)
+  The search page as alice for `design #release`: the `#release ×` chip and one result in `general` with "Design" highlighted, its tags and its link.
+- **Manual checks:** none
+- **Deviations and follow-ups:** Results update on submit, not while typing. A tag-suggestion answer that arrives after a post is made can still show a stale list in the fresh editor until the next keystroke (harmless).

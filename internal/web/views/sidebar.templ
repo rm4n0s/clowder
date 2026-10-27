@@ -14,13 +14,20 @@ type SidebarData struct {
 	// CurrentRoomID is the ID of the room whose page is shown, which the
 	// sidebar highlights; 0 on every other page.
 	CurrentRoomID uint64
+	// HideSearch leaves out the search box of the sidebar. The search page
+	// sets it: it has a box of its own.
+	HideSearch bool
 }
 
 // Sidebar is the sidebar of the pages of a logged-in user: the display name of
-// the user, the navigation (Home, and Admin for admins), the rooms of the user
-// with the links to browse and to make rooms, and the logout button.
+// the user, the search box, the navigation (Home, and Admin for admins), the
+// rooms of the user with the links to browse and to make rooms, and the logout
+// button.
 templ Sidebar(d SidebarData) {
 	<p class="sidebar-user" id="sidebar-user">{ d.User.DisplayName }</p>
+	if !d.HideSearch {
+		@SearchBar()
+	}
 	<nav aria-label="Main">
 		<ul>
 			<li><a href="/">Home</a></li>

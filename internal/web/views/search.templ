@@ -1,0 +1,106 @@
+package views
+
+import "strconv"
+
+// SearchPage is the page of the search: the box, the help, the filters as
+// chips and the results.
+templ SearchPage(d SearchData) {
+	@Layout("Search", Sidebar(d.Sidebar)) {
+		<h1>Search</h1>
+		@SearchBox(d.Query)
+		@SearchPanel(d)
+	}
+}
+
+// SearchBox is the search box of the search page. It is a plain GET form, so
+// the result can be shared by its URL; with Datastar the results are fetched
+// and patched in place after a short pause in the typing.
+templ SearchBox(query string) {
+	<form id="search-form" class="search-form" role="search" method="get" action="/search" data-on:submit={ searchBoxAction }>
+		<label for="search-q">Search</label>
+		<div class="search-form-row">
+			<input id="search-q" name="q" type="search" value={ query } autocomplete="off" aria-describedby="search-help" data-on:input__debounce.300ms={ searchBoxAction }/>
+			<button type="submit">Search</button>
+		</div>
+	</form>
+}
+
+// SearchBar is the small search box of the sidebar, on every page but the
+// search page. It is a plain GET form.
+templ SearchBar() {
+	<form id="sidebar-search" class="sidebar-search" role="search" method="get" action="/search">
+		<label class="visually-hidden" for="sidebar-search-q">Search</label>
+		<input id="sidebar-search-q" name="q" type="search" placeholder="Search" autocomplete="off"/>
+	</form>
+}
+
+// SearchPanel is the message about the query, the help, the filters as chips,
+// the results and the links to the newer and older page. The server sends it
+// alone as a Datastar patch when the query or the page changes.
+templ SearchPanel(d SearchData) {
+	<section id="search-panel">
+		if d.Message != "" {
+			<p class="field-error search-error" id="search-error" role="alert">{ d.Message }</p>
+		}
+		<p class="hint search-help" id="search-help">{ searchHelp }</p>
+		if len(d.Chips) > 0 {
+			<ul class="chips" aria-label="Filters">
+				for _, chip := range d.Chips {
+					<li class="chip">
+						<span class="chip-label">{ chip.Label }</span>
+						<a class="chip-remove" href={ templ.SafeURL(chip.Path) } data-on:click__prevent={ chipAction(chip.Path) } aria-label={ "Remove " + chip.Label } title={ "Remove " + chip.Label }>×</a>
+					</li>
+				}
+			</ul>
+		}
+		if d.Searched {
+			if len(d.Results) == 0 {
+				<p class="empty">Nothing found.</p>
+			} else {
+				<ol class="search-results">
+					for _, r := range d.Results {
+						<li class="search-result" id={ "result-" + strconv.FormatUint(r.PostID, 10) }>
+							<header class="post-meta">
+								<a class="search-room" href={ templ.SafeURL(RoomPath(r.RoomID)) }>{ r.RoomName }</a>
+								<span class="post-author">{ r.Author.DisplayName }</span>
+								<span class="post-username">{ "@" + r.Author.Username }</span>
+								<time class="post-time" datetime={ postTimeStamp(r.CreatedAt) } title={ postTimeStamp(r.CreatedAt) }>{ searchResultTime(r.CreatedAt) }</time>
+								if r.IsComment {
+									<span class="badge">comment</span>
+								}
+							</header>
+							<p class="search-snippet">
+								@templ.Raw(string(r.Snippet))
+							</p>
+							if len(r.Tags) > 0 {
+								<ul class="tags" aria-label="Tags">
+									for _, tag := range r.Tags {
+										<li><a class="tag" href={ templ.SafeURL(TagSearchPath(tag)) }>{ "#" + tag }</a></li>
+									}
+								</ul>
+							}
+							<a class="search-open" href={ templ.SafeURL(searchResultPath(r)) }>
+								if r.IsComment {
+									Open the comment
+								} else {
+									Open the post
+								}
+							</a>
+						</li>
+					}
+				</ol>
+			}
+			if d.Page > 1 || d.HasNext {
+				<nav class="pager" aria-label="Pages">
+					if d.Page > 1 {
+						<a class="newer" href={ templ.SafeURL(SearchPath(d.Query, d.Page-1)) } data-on:click__prevent={ searchGet(SearchPath(d.Query, d.Page-1)) }>Newer</a>
+					}
+					<span class="hint">Page { strconv.Itoa(d.Page) }</span>
+					if d.HasNext {
+						<a class="older" href={ templ.SafeURL(SearchPath(d.Query, d.Page+1)) } data-on:click__prevent={ searchGet(SearchPath(d.Query, d.Page+1)) }>Older</a>
+					}
+				</nav>
+			}
+		}
+	</section>
+}

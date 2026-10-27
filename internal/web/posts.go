@@ -217,15 +217,15 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.patchAll(w, r,
-		// The live stream of the page may have put the card at the top
-		// already (the event reaches it before this answer does): it is
-		// removed first, so that the feed never shows it twice. The stream
-		// does the same.
-		patchOp{remove: "#post-" + strconv.FormatUint(post.ID, 10)},
 		patchOp{
 			component: views.PostCard(views.PostCardData{Post: post}),
 			options:   []datastar.PatchElementOption{datastar.WithSelector("#feed-posts"), datastar.WithModePrepend()},
 		},
+		// The live stream of the page puts the same card at the top too (the
+		// event reaches it before or after this answer, and the two are
+		// applied by the client in any interleaving): the copies after the
+		// first are removed. The stream does the same.
+		patchOp{remove: duplicateCardSelector(post.ID)},
 		// Replaced, not morphed: a morph leaves the text the person typed in
 		// the fields, and the editor must be empty again.
 		patchOp{

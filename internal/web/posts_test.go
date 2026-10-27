@@ -117,6 +117,8 @@ func TestPostCreate(t *testing.T) {
 		requireBody(t, rec, []string{
 			"data: selector #feed-posts", "data: mode prepend",
 			`id="post-` + idText(p.ID) + `"`, "<strong>team</strong>", `href="/search?q=%23design"`, `href="/search?q=%23release"`,
+			// The copies of the card after the first (the live stream puts it in too) are removed.
+			"data: mode remove", "data: selector #post-" + idText(p.ID) + " ~ #post-" + idText(p.ID),
 			// A fresh editor replaces the old one, empty.
 			"data: selector #post-editor-new", "data: mode replace", `id="post-editor-new"`, `action="/rooms/` + idText(e.general.ID) + `/posts"`,
 		}, "Hello **team**")

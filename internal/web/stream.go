@@ -242,6 +242,12 @@ func postSelector(id uint64) string {
 	return "#post-" + strconv.FormatUint(id, 10)
 }
 
+// duplicateCardSelector finds the copies of the card of a post that come after
+// the first one. Removing them leaves one card, the first.
+func duplicateCardSelector(id uint64) string {
+	return postSelector(id) + " ~ " + postSelector(id)
+}
+
 // uintQuery reads the query value key as a number; a missing or wrong value is
 // 0.
 func uintQuery(r *http.Request, key string) uint64 {
@@ -453,12 +459,16 @@ func (rs *roomStream) postEvent(ctx context.Context, ev live.Event) (end bool, e
 	}
 	switch {
 	case ev.Kind == live.KindPostCreated:
-		// The author's own page has the card already, from the answer to the
-		// form: it is removed first, so that the feed never shows it twice.
-		if err := rs.remove(postSelector(post.ID)); err != nil {
+		// The author's own page has the card already, or gets it from the
+		// answer to the form at about the same time: the client applies the
+		// patches of the two in any interleaving, so a card put in first and
+		// removed after would be put in twice. The card is put at the top,
+		// then the copies after the first are removed; the last of these
+		// removals comes after both insertions, whatever the order.
+		if err := rs.patch(views.PostCard(card), datastar.WithSelector("#feed-posts"), datastar.WithModePrepend()); err != nil {
 			return false, err
 		}
-		return false, rs.patch(views.PostCard(card), datastar.WithSelector("#feed-posts"), datastar.WithModePrepend())
+		return false, rs.remove(duplicateCardSelector(post.ID))
 	case ev.Kind == live.KindPostUpdated && !post.Deleted:
 		// Only the content: an author who is editing the post has its editor
 		// in the article, and this finds nothing to replace.

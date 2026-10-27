@@ -302,16 +302,16 @@ func TestRoomStreamPatchesTheFeed(t *testing.T) {
 		want func(t *testing.T, c *streamClient, p app.Post)
 	}{
 		{
-			name: "a new post of someone else is removed then put at the top, for the viewer",
+			name: "a new post of someone else is put at the top, then its copies after the first are removed, for the viewer",
 			as:   "alice",
 			seed: func(env) app.Post { return app.Post{} },
 			act:  func(e env, _ app.Post) app.Post { return e.writePost("bob", "general", "Hello from bob") },
 			want: func(t *testing.T, c *streamClient, p app.Post) {
 				got := c.patches(2)
-				requirePatch(t, got[0], "#post-"+idText(p.ID), "remove", nil, nil)
-				requirePatch(t, got[1], "#feed-posts", "prepend",
+				requirePatch(t, got[0], "#feed-posts", "prepend",
 					[]string{`id="post-` + idText(p.ID) + `"`, "Hello from bob", "Bob"},
 					[]string{`class="post-edit"`, "post-delete", "post-reply"})
+				requirePatch(t, got[1], "#post-"+idText(p.ID)+" ~ #post-"+idText(p.ID), "remove", nil, nil)
 			},
 		},
 		{
@@ -321,7 +321,7 @@ func TestRoomStreamPatchesTheFeed(t *testing.T) {
 			act:  func(e env, _ app.Post) app.Post { return e.writePost("bob", "general", "Mine") },
 			want: func(t *testing.T, c *streamClient, p app.Post) {
 				got := c.patches(2)
-				requirePatch(t, got[1], "#feed-posts", "prepend", []string{"Mine", `class="post-edit"`, "post-delete"}, nil)
+				requirePatch(t, got[0], "#feed-posts", "prepend", []string{"Mine", `class="post-edit"`, "post-delete"}, nil)
 			},
 		},
 		{

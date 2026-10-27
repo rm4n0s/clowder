@@ -8,7 +8,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -289,14 +288,11 @@ type SearchPage struct {
 // safe for concurrent use.
 type Search struct {
 	st *store.Store
-	// md renders the bodies of posts; the snippets are plain text and do not
-	// need it yet.
-	md *markdown.Renderer
 }
 
 // NewSearch makes the service.
-func NewSearch(st *store.Store, md *markdown.Renderer) *Search {
-	return &Search{st: st, md: md}
+func NewSearch(st *store.Store) *Search {
+	return &Search{st: st}
 }
 
 // Query searches the posts and comments that the actor may read: those in

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/app"
-	"github.com/rm4n0s/clowder/internal/markdown"
 )
 
 func day(y int, m time.Month, d int) time.Time {
@@ -178,7 +177,7 @@ type searchEnv struct {
 func newSearchEnv(t *testing.T) *searchEnv {
 	t.Helper()
 	e := &searchEnv{boardEnv: newBoardEnv(t)}
-	e.search = app.NewSearch(e.st, markdown.New())
+	e.search = app.NewSearch(e.st)
 	return e
 }
 

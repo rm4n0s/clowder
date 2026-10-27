@@ -108,7 +108,13 @@ func TestAliceWritesAndEditsAPost(t *testing.T) {
 	if err := waitFor(ctx, `document.querySelectorAll('#post-tag-suggest-new li').length === 0`); err != nil {
 		t.Errorf("the suggestions stayed after the click: %v", err)
 	}
-	if err := chromedp.Do(ctx, chromedp.SendKeys("#post-tags-new", "browser"), chromedp.Click(submit)); err != nil {
+	// The second tag is put in the field in one step, not typed: a typed tag
+	// starts the debounced request for suggestions, whose answer can arrive
+	// after the post is made and put a stale list ("#browser", which exists
+	// by then) into the fresh editor, which pushes the feed down under the
+	// clicks that follow. The suggestions are tested above.
+	runJS(t, ctx, `document.getElementById('post-tags-new').value += 'browser'; true`)
+	if err := chromedp.Do(ctx, chromedp.Click(submit)); err != nil {
 		t.Fatalf("submit the post: %v", err)
 	}
 
