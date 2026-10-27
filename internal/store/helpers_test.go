@@ -90,6 +90,9 @@ func testStore(tb testing.TB, mutate func(*options)) (*Store, *clock.Fake, *byte
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	opts := defaultOptions()
 	opts.models = []any{&widget{}}
+	// The raw migrations of the application need its tables, which this store
+	// does not have.
+	opts.migrations = []migration{}
 	if mutate != nil {
 		mutate(&opts)
 	}

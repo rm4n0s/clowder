@@ -637,6 +637,10 @@ func (r *Rooms) Delete(ctx context.Context, actor Actor, roomID uint64) error {
 		if err != nil {
 			return err
 		}
+		// The posts of the room leave the search index before they cascade away.
+		if err := tx.UnindexRoom(ctx, room.ID); err != nil {
+			return err
+		}
 		return tx.DeleteRoom(ctx, room.ID)
 	})
 	if err != nil {

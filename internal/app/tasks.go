@@ -304,6 +304,23 @@ func (p taskPlan) planDetails() map[string]any {
 // changed ones are updated, then the new ones are appended to the end of the
 // first column of the board, in the order given.
 func applyTasks(ctx context.Context, tx *store.Store, actor Actor, who string, room store.Room, post store.Post, plan taskPlan, names map[uint64]string) ([]auditEntry, error) {
+	audits, err := changeTasks(ctx, tx, actor, who, room, post, plan, names)
+	if err != nil {
+		return nil, err
+	}
+	if plan.empty() {
+		return audits, nil
+	}
+	// The titles of the tasks are part of the search index of the post.
+	if err := tx.ReindexPost(ctx, post.ID); err != nil {
+		return nil, err
+	}
+	return audits, nil
+}
+
+// changeTasks is the part of applyTasks that writes the tasks and their audit
+// events.
+func changeTasks(ctx context.Context, tx *store.Store, actor Actor, who string, room store.Room, post store.Post, plan taskPlan, names map[uint64]string) ([]auditEntry, error) {
 	var audits []auditEntry
 	entry := func(action AuditAction, taskID uint64, summary string, details map[string]any) auditEntry {
 		return auditEntry{

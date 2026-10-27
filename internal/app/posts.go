@@ -271,6 +271,9 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 		if err := tx.CreateAttachments(ctx, attachmentRows(created.ID, actor.UserID, in.Uploads)); err != nil {
 			return err
 		}
+		if err := tx.ReindexPost(ctx, created.ID); err != nil {
+			return err
+		}
 		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
 		// TODO(step 11.1): mentions and notifications.
 		details := map[string]any{
@@ -367,6 +370,9 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 			return err
 		}
 		if err := tx.CreateAttachments(ctx, attachmentRows(created.ID, actor.UserID, in.Uploads)); err != nil {
+			return err
+		}
+		if err := tx.ReindexPost(ctx, created.ID); err != nil {
 			return err
 		}
 		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
@@ -519,6 +525,9 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		if err := tx.DeleteAttachments(ctx, removedIDs); err != nil {
 			return err
 		}
+		if err := tx.ReindexPost(ctx, row.ID); err != nil {
+			return err
+		}
 		removedKeys = storageKeys(removed)
 		events = postEvents(refOf(row), live.KindPostUpdated, live.KindCommentUpdated)
 		// TODO(step 11.1): rebuild the mentions and notify the new ones.
@@ -616,8 +625,14 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			if err := tx.MarkPostDeleted(ctx, row.ID, p.clk.Now()); err != nil {
 				return err
 			}
+			if err := tx.ReindexPost(ctx, row.ID); err != nil {
+				return err
+			}
 		} else {
 			if err := tx.DeletePost(ctx, row.ID); err != nil {
+				return err
+			}
+			if err := tx.ReindexPost(ctx, row.ID); err != nil {
 				return err
 			}
 			chainKeys, goneRoot, err := removeEmptyPlaceholders(ctx, tx, row.ParentID)
@@ -1028,6 +1043,9 @@ func removeEmptyPlaceholders(ctx context.Context, tx *store.Store, parentID *uin
 		}
 		keys = append(keys, storageKeys(atts[parent.ID])...)
 		if err := tx.DeletePost(ctx, parent.ID); err != nil {
+			return nil, 0, err
+		}
+		if err := tx.ReindexPost(ctx, parent.ID); err != nil {
 			return nil, 0, err
 		}
 		if parent.ParentID == nil {

@@ -377,3 +377,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   The board of `general` as alice (1440×1000): To do (4 cards, "Write the release notes" overdue in red), In progress (2), Done (1, struck through), each card with assignees, date, Open post, Details and Move to…, the column controls and the New column form.
 - **Manual checks:** none
 - **Deviations and follow-ups:** Touch drag is not supported (the select works everywhere). A live update can replace a column's rename field while someone types in it. Skipped patches during a drag are recovered by the drop's answer or a refresh when the drag is cancelled.
+
+## 10.1 Search index and service
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-10.1-search-service
+- **Summary:** FTS5 is compiled into the pure-Go SQLite (tested). Migration `0001_posts_fts` creates `posts_fts` (unicode61, diacritics removed; one row per post or comment: body, attachment names and task titles) and backfills existing posts; `ReindexPost` keeps it exact in the same transaction as every create, edit, delete, placeholder, clean-up, task change (also from the board) and room delete. `ParseQuery` reads words (prefix), "phrases", `#tags`, `room:`, `from:`, `after:`, `before:` and `is:post`/`is:comment`, quoting every term so no FTS operator can be injected. `Search.Query` returns 20 results a page from visible rooms and the actor's private rooms only (admins included, D29), ranked by bm25 then newest (newest first without words), with snippets highlighted by private-use markers turned into `<mark>` after escaping.
+- **Main files:** `internal/store/{migrations,search}.go`, `internal/app/search.go`, `internal/app/{posts,tasks,rooms}.go`.
+- **Tests:** FTS5 availability, the tokenizer, match expressions, reindexing and backfill in two phases, rollback, store-level and service-level injection tables (300 `(` and 300 `"` included), about 70 parser rows and 11 bad dates with routes, permissions for six users, every filter, tags, ordering, pages of 0 to 41 results, snippets with `<script>` and marker characters, diacritics, attachment names, exact index state after every kind of change.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · no process left ✅
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** Only the first 500 characters and 32 terms of a query count (FTS5 expression depth). Invalid `#tags`, empty filter values and unknown keys are words; terms without a letter or digit are dropped; the last of a repeated filter wins. `Search` takes a markdown renderer it does not use yet (step 10.2 removes it).
