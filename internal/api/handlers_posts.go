@@ -15,10 +15,7 @@ const (
 	// messageLimitInvalid is the problem with the query "limit".
 	messageLimitInvalid = "Use a number from 1 to 100."
 	// messageBeforeInvalid is the problem with the query "before".
-	messageBeforeInvalid = "Use the ID of a post."
-	// messageUploadsUnavailable is the problem with upload_ids until the
-	// uploads exist.
-	messageUploadsUnavailable = "Uploading files is not available yet."
+	messageBeforeInvalid = "Use the next_before of the previous page."
 	// messageKeepOnCreate is the problem with attachment_ids on a new post.
 	messageKeepOnCreate = "A new post has no attachments to keep. Use upload_ids."
 )
@@ -167,12 +164,6 @@ func postInput(in postRequest, current *app.Post) (app.PostInput, error) {
 		}
 		out.KeepAttachments = *in.AttachmentIDs
 	}
-	if len(in.UploadIDs) > 0 {
-		// TODO(step 16.3): turn the IDs that POST /uploads returns into
-		// app.Uploads and put them in out.Uploads.
-		return app.PostInput{}, errors.New(tagUploadsUnavailable, "uploads are not available yet",
-			"fields", map[string]string{"upload_ids": messageUploadsUnavailable})
-	}
 	return out, nil
 }
 
@@ -194,7 +185,12 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	if in.Uploads, err = s.svc.Posts.StagedUploads(r.Context(), c.actor, body.UploadIDs); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
 	post, err := s.svc.Posts.Create(r.Context(), c.actor, id, in)
+	s.svc.Posts.ForgetStaged(r.Context(), c.actor, in.Uploads)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -221,7 +217,12 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	if in.Uploads, err = s.svc.Posts.StagedUploads(r.Context(), c.actor, body.UploadIDs); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
 	post, err := s.svc.Posts.Reply(r.Context(), c.actor, id, in)
+	s.svc.Posts.ForgetStaged(r.Context(), c.actor, in.Uploads)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -303,7 +304,12 @@ func (s *Server) patchPost(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	if in.Uploads, err = s.svc.Posts.StagedUploads(r.Context(), c.actor, body.UploadIDs); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
 	post, err := s.svc.Posts.Edit(r.Context(), c.actor, id, in)
+	s.svc.Posts.ForgetStaged(r.Context(), c.actor, in.Uploads)
 	if err != nil {
 		// The attachments of an edit are the attachment_ids it keeps.
 		s.writeError(w, r, renameField(err, app.FieldAttachments, "attachment_ids"))
@@ -374,9 +380,8 @@ func (s *Server) tags(w http.ResponseWriter, r *http.Request) {
 }
 
 const (
-	tagBeforeInvalid      = "BeforeInvalid"
-	tagLimitInvalid       = "LimitInvalid"
-	tagDueDateInvalid     = "DueDateInvalid"
-	tagUploadsUnavailable = "UploadsUnavailable"
-	tagKeepOnCreate       = "KeepOnCreate"
+	tagBeforeInvalid  = "BeforeInvalid"
+	tagLimitInvalid   = "LimitInvalid"
+	tagDueDateInvalid = "DueDateInvalid"
+	tagKeepOnCreate   = "KeepOnCreate"
 )

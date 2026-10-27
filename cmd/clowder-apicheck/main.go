@@ -21,6 +21,14 @@ import (
 // is not given.
 const passwordEnv = "CLOWDER_APICHECK_PASSWORD"
 
+// otherPasswordEnv is the environment variable that holds the password of the
+// other user when -other-password is not given.
+const otherPasswordEnv = "CLOWDER_APICHECK_OTHER_PASSWORD"
+
+// demoPassword is the password of the users of `clowder demo`, which the other
+// user has unless it is told otherwise.
+const demoPassword = "demo-password-1234"
+
 // requestTimeout bounds each request.
 const requestTimeout = 30 * time.Second
 
@@ -41,6 +49,8 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	username := fs.String("username", "", "username to log in as")
 	password := fs.String("password", "", "password ("+passwordEnv+" when empty)")
 	clientName := fs.String("client-name", "clowder-apicheck", "name of this client in the user's sessions")
+	otherUsername := fs.String("other-username", "bob", "the other user, whom the board scenario assigns a task to and who reads the notifications")
+	otherPassword := fs.String("other-password", "", "password of the other user ("+otherPasswordEnv+" when empty; the demo password if that is empty too)")
 	only := fs.String("only", "", "run only these scenarios, separated by commas")
 	list := fs.Bool("list", false, "print the names of the scenarios and stop")
 	if err := fs.Parse(args); err != nil {
@@ -63,6 +73,12 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		_, _ = fmt.Fprintf(stderr, "clowder-apicheck: -username and -password (or %s) are required\n", passwordEnv)
 		return 2
 	}
+	if *otherPassword == "" {
+		*otherPassword = env(otherPasswordEnv)
+	}
+	if *otherPassword == "" {
+		*otherPassword = demoPassword
+	}
 	chosen, err := choose(scenarios(), *only)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "clowder-apicheck: %s\n", err.Error())
@@ -75,7 +91,8 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		out:   stdout,
 		redac: &redactor{},
 	}
-	r := &runner{c: c, username: *username, password: *password, clientName: *clientName}
+	r := &runner{c: c, username: *username, password: *password, clientName: *clientName,
+		otherUsername: *otherUsername, otherPassword: *otherPassword}
 	for _, s := range chosen {
 		_, _ = fmt.Fprintf(stdout, "== %s: %s\n\n", s.name, s.summary)
 		if err := s.run(ctx, r); err != nil {

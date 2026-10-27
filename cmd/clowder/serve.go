@@ -87,11 +87,22 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	messages := app.NewMessages(st, clock.Real(), fileStore, postsConfig, pub)
 	rooms := app.NewRooms(st, fileStore, logger, pub)
 	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, pub)
+	// Uploads of the API that no post takes are removed after a day. The
+	// sweeper stops before the store is closed (the deferred calls run in
+	// reverse order).
+	stopSweeper := startStagedSweeper(ctx, posts, stagedSweepInterval, logger)
+	defer stopSweeper()
+	board := app.NewBoard(st, clock.Real(), pub)
+	search := app.NewSearch(st)
 	apiServer, err := api.New(api.Options{
-		Services: api.Services{Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts},
-		Logger:   logger,
-		NoteUser: web.NoteUser,
-		ClientIP: web.ClientIPFunc(cfg.TrustProxyHeaders),
+		Services: api.Services{
+			Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts,
+			Board: board, Search: search,
+		},
+		Logger:        logger,
+		NoteUser:      web.NoteUser,
+		ClientIP:      web.ClientIPFunc(cfg.TrustProxyHeaders),
+		MaxUploadSize: cfg.MaxAttachmentSize,
 	})
 	if err != nil {
 		return err
@@ -101,8 +112,8 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Accounts:      accounts,
 		Rooms:         rooms,
 		Audit:         app.NewAudit(st),
-		Board:         app.NewBoard(st, clock.Real(), pub),
-		Search:        app.NewSearch(st),
+		Board:         board,
+		Search:        search,
 		Health:        app.NewHealth(st),
 		Hub:           hub,
 		Notifications: notifications,

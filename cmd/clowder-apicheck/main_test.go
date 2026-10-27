@@ -24,8 +24,8 @@ import (
 
 const testPassword = "demo-password-1234"
 
-// startAPI runs the real API on a test store with the users alice (member)
-// and root (admin), and returns its address.
+// startAPI runs the real API on a test store with the users alice and bob
+// (members) and root (admin), and returns its address.
 func startAPI(t *testing.T) string {
 	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC))
@@ -36,7 +36,7 @@ func startAPI(t *testing.T) string {
 	for _, u := range []struct {
 		name string
 		role store.Role
-	}{{"alice", store.RoleMember}, {"root", store.RoleAdmin}} {
+	}{{"alice", store.RoleMember}, {"bob", store.RoleMember}, {"root", store.RoleAdmin}} {
 		inv, err := accounts.CreateSystemInvitation(t.Context(), u.role)
 		if err != nil {
 			t.Fatal(err)
@@ -67,7 +67,9 @@ func startAPI(t *testing.T) string {
 		Posts: app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
 			MaxAttachmentSize: 1 << 20, MaxAttachments: 2,
 		}, nil),
-	}})
+		Board:  app.NewBoard(st, clk, nil),
+		Search: app.NewSearch(st),
+	}, MaxUploadSize: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +149,39 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 			wantCode:  0, wantOut: []string{"ok rooms"},
 		},
 		{
+			name:      "the board scenario",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "board"},
+			ownServer: true,
+			env:       nil,
+			wantCode:  0,
+			wantOut: []string{
+				"== board:", "> POST /api/v1/uploads", "> Content-Type: multipart/form-data; boundary=<boundary>",
+				"> (the field file: notes.txt, 57 bytes)", "> (the field file: pixel.png,", `"content_type": "image/png"`,
+				`"upload_ids"`, `"title": "Move this card"`, "> GET /api/v1/rooms/", "/board", `"name": "In progress"`,
+				"/move", "< 204 No Content", `"due_date": "2030-02-15"`, "/columns", `"name": "In review"`,
+				"> DELETE /api/v1/columns/", "> GET /api/v1/attachments/", "< Content-Type: application/octet-stream",
+				"< Content-Type: image/png", "< Content-Disposition: attachment; filename=\"notes.txt\"",
+				"< Content-Disposition: inline; filename=\"pixel.png\"", "< X-Content-Type-Options: nosniff",
+				"< Cache-Control: private, max-age=86400", "< (57 bytes)", "> GET /api/v1/search?q=boardcheck+%23apicheck",
+				`"match": true`, "> GET /api/v1/notifications", `"kind": "assigned"`, "> POST /api/v1/notifications/read",
+				`"unread_notifications": 0`, "ok board", "all scenarios passed",
+			},
+			notWantOut: []string{testPassword, "Board check: a small text"},
+		},
+		{
+			name:      "the board scenario with another user that is not there",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "board", "-other-username", "nobody"},
+			ownServer: true,
+			wantCode:  1, wantOut: []string{"FAILED board", "the other user is not among the users"},
+		},
+		{
+			name:      "the board scenario with the password of the other user from the environment",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "board", "-other-username", "root"},
+			ownServer: true,
+			env:       map[string]string{otherPasswordEnv: "a wrong password!"},
+			wantCode:  1, wantOut: []string{"FAILED board", "got=401"}, notWantOut: []string{"a wrong password!"},
+		},
+		{
 			name:       "a wrong password",
 			args:       []string{"-base-url", base, "-username", "alice", "-password", "a wrong password!"},
 			wantCode:   1,
@@ -187,7 +222,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 		{
 			name:     "the list",
 			args:     []string{"-list"},
-			wantCode: 0, wantOut: []string{"session\t", "rooms\t"},
+			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t"},
 		},
 		{
 			name:     "a server that is not there",

@@ -12,10 +12,11 @@ import (
 // snake_case (dueDate is due_date). The tasks of a post are one field, tasks,
 // whose message names the row ("Task 2: ..."). The attachments of a post are
 // upload_ids on a new post and a new comment; the edit says attachment_ids
-// (see renameField).
+// (see renameField). The assignees of a task are assignee_ids.
 var fieldNames = map[string]string{
 	app.FieldUser:        "user_id",
 	app.FieldAttachments: "upload_ids",
+	app.FieldAssignees:   "assignee_ids",
 }
 
 // apiFieldName returns the name of the field in the JSON of the API.

@@ -147,6 +147,47 @@ func (b *Board) Board(ctx context.Context, actor Actor, roomID uint64) (BoardVie
 	return view, nil
 }
 
+// Task returns one task as the board shows it, with its place in its column:
+// for a client that changes a card and needs the card back. For a task of a
+// room that the actor may not read, and a missing task, it fails with
+// TagNotFound. Any reader may (the board of a visible room is readable by
+// non-members).
+func (b *Board) Task(ctx context.Context, actor Actor, taskID uint64) (TaskCard, error) {
+	task, _, _, err := loadTaskRoom(ctx, b.st, actor, taskID)
+	if err != nil {
+		return TaskCard{}, err
+	}
+	rows, err := b.st.TaskRowsOfPosts(ctx, []uint64{task.PostID})
+	if err != nil {
+		return TaskCard{}, err
+	}
+	i := slices.IndexFunc(rows[task.PostID], func(r store.TaskRow) bool { return r.ID == task.ID })
+	if i < 0 {
+		return TaskCard{}, errors.New(TagNotFound, "no such task", "reason", "missing", "taskID", taskID)
+	}
+	return taskCards([]store.TaskRow{rows[task.PostID][i]}, dayOf(b.clk.Now()))[0], nil
+}
+
+// Column returns one column of a board with its cards, for a client that
+// changes a column and needs it back. For a column of a room that the actor
+// may not read, and a missing column, it fails with TagNotFound. Any reader
+// may.
+func (b *Board) Column(ctx context.Context, actor Actor, columnID uint64) (ColumnView, error) {
+	col, room, _, err := loadColumnRoom(ctx, b.st, actor, columnID)
+	if err != nil {
+		return ColumnView{}, err
+	}
+	view, err := b.Board(ctx, actor, room.ID)
+	if err != nil {
+		return ColumnView{}, err
+	}
+	i := slices.IndexFunc(view.Columns, func(c ColumnView) bool { return c.ID == col.ID })
+	if i < 0 {
+		return ColumnView{}, errors.New(TagNotFound, "no such column", "reason", "missing", "columnID", columnID)
+	}
+	return view.Columns[i], nil
+}
+
 // MoveTask puts the task in the column at the position (from 0, the top). The
 // position counts in the target column without the task, and is clamped to
 // 0..the number of cards there. The positions of the cards stay 0..n-1 in

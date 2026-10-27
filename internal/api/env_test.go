@@ -60,6 +60,9 @@ type testEnv struct {
 	msgs     *app.Messages
 	rooms    *app.Rooms
 	posts    *app.Posts
+	board    *app.Board
+	// filesDir is where the files of the attachments are.
+	filesDir string
 	st       *store.Store
 	clk      *clock.Fake
 	rec      *live.Recorder
@@ -100,7 +103,8 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 		SessionLifetime:    30 * 24 * time.Hour,
 		Publisher:          rec,
 	})
-	fileStore, err := files.New(filepath.Join(t.TempDir(), "files"))
+	filesDir := filepath.Join(t.TempDir(), "files")
+	fileStore, err := files.New(filesDir)
 	if err != nil {
 		t.Fatalf("files.New: %+v", err)
 	}
@@ -108,11 +112,13 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 	notifs := app.NewNotifications(st, rec)
 	rooms := app.NewRooms(st, fileStore, logger, rec)
 	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4, Logger: logger}, rec)
+	board := app.NewBoard(st, clk, rec)
 	noted := &noteLog{}
 	opts := Options{
-		Services: Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts},
-		Logger:   logger,
-		NoteUser: func(_ *http.Request, id uint64) { noted.add(id) },
+		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st)},
+		Logger:        logger,
+		NoteUser:      func(_ *http.Request, id uint64) { noted.add(id) },
+		MaxUploadSize: 1 << 20,
 	}
 	if mutate != nil {
 		mutate(&opts)
@@ -125,7 +131,7 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 	for _, rt := range srv.Routes() {
 		mux.Handle(rt.Pattern, rt.Handler)
 	}
-	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, st: st, clk: clk, rec: rec, log: buf, noted: noted}
+	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, board: board, filesDir: filesDir, st: st, clk: clk, rec: rec, log: buf, noted: noted}
 }
 
 // addUser makes a user with the password testPassword.

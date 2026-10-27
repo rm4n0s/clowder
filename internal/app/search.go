@@ -269,8 +269,20 @@ type SearchResult struct {
 	// holds no other HTML. Without words in the query it is the start of the
 	// post, cut at 200 characters.
 	Snippet template.HTML
+	// Segments are Snippet as plain text in pieces: each piece is text and
+	// says whether it is a match. Joined, the texts are the snippet without
+	// the markup; it is what a client that shows no HTML uses.
+	Segments []SnippetSegment
 	// Tags are the tags of the post, in the order the author gave them.
 	Tags []string
+}
+
+// SnippetSegment is a piece of the snippet of a search result.
+type SnippetSegment struct {
+	// Text is the piece, as written (not escaped).
+	Text string
+	// Match is true for the words the query found.
+	Match bool
 }
 
 // SearchPage is a page of search results.
@@ -359,6 +371,7 @@ func (s *Search) Query(ctx context.Context, actor Actor, q string, page int) (Se
 			Author:    UserRef{ID: h.AuthorID, Username: h.AuthorUsername, DisplayName: h.AuthorDisplayName},
 			CreatedAt: h.CreatedAt,
 			Snippet:   snippetHTML(h.Snippet),
+			Segments:  snippetSegments(h.Snippet),
 			Tags:      nonNil(tags[h.PostID]),
 		})
 	}
@@ -373,4 +386,30 @@ func snippetHTML(raw string) template.HTML {
 	escaped = strings.ReplaceAll(escaped, store.SearchMarkStart, "<mark>")
 	escaped = strings.ReplaceAll(escaped, store.SearchMarkEnd, "</mark>")
 	return template.HTML(escaped) //nolint:gosec // escaped above; the only markup is the <mark> made here
+}
+
+// snippetSegments splits the snippet of a hit at its match markers, in
+// plain text. The markers cannot be in user text (the index drops them), so
+// each start marker begins a match and the next end marker ends it. A match
+// that never ends runs to the end of the text, and an end marker with no start
+// is part of the text. Empty pieces are left out.
+func snippetSegments(raw string) []SnippetSegment {
+	segments := []SnippetSegment{}
+	match := false
+	for raw != "" {
+		marker := store.SearchMarkStart
+		if match {
+			marker = store.SearchMarkEnd
+		}
+		text, rest, found := strings.Cut(raw, marker)
+		if text != "" {
+			segments = append(segments, SnippetSegment{Text: text, Match: match})
+		}
+		if !found {
+			break
+		}
+		raw = rest
+		match = !match
+	}
+	return segments
 }

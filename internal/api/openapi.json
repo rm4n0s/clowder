@@ -45,6 +45,22 @@
       "description": "Tag suggestions."
     },
     {
+      "name": "uploads",
+      "description": "Files for posts, and their download."
+    },
+    {
+      "name": "board",
+      "description": "The Kanban board of a room: columns and cards."
+    },
+    {
+      "name": "search",
+      "description": "Search of posts and comments."
+    },
+    {
+      "name": "notifications",
+      "description": "Mentions, replies, assignments and additions to rooms."
+    },
+    {
       "name": "meta",
       "description": "The API itself."
     }
@@ -1425,6 +1441,750 @@
         }
       }
     },
+    "/uploads": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Upload a file",
+        "operationId": "uploadFile",
+        "description": "Stores one file, to be attached to a post or comment that is written or edited next: put the ID of the answer in its upload_ids. The body is multipart/form-data with exactly one file in the field file and nothing else (422 on file otherwise; 415 for another Content-Type). The file is at most the attachment limit of the installation, 25 MB by default (413 too_large), and the request body is cut early when it is much larger. Any logged-in user may upload. The upload is for the user who made it: nobody else can attach it. An upload that no post takes stays on the server until an administrator removes it, so attach what you upload.",
+        "requestBody": {
+          "required": true,
+          "description": "A form with the file.",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The file."
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The file is stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/attachments/{id}": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "summary": "Download an attachment",
+        "operationId": "downloadAttachment",
+        "description": "Sends the file of an attachment of a post or comment in a room the user can read, with the checks and the headers of the pages' download. Only an image of the types PNG, JPEG, GIF and WebP is served inline with its own Content-Type; every other file is application/octet-stream with Content-Disposition: attachment, whatever its name says. Ranges and If-Modified-Since work. 404 for a room the user cannot read (a private room's non-member, admins included), for a deleted post and for an attachment that does not exist.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the attachment (the id of an attachment of a post).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "description": "inline for an image of the types PNG, JPEG, GIF and WebP; attachment with the file name for every other file.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "description": "Always nosniff.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "description": "A policy that sandboxes the file and lets nothing load or run.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "private, max-age=86400.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "When the file was attached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "The part of the file that the Range header asked for.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "description": "inline for an image of the types PNG, JPEG, GIF and WebP; attachment with the file name for every other file.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "description": "Always nosniff.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "description": "A policy that sandboxes the file and lets nothing load or run.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "private, max-age=86400.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "When the file was attached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The file has not changed since If-Modified-Since."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "416": {
+            "description": "The Range header asks for bytes the file does not have.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/board": {
+      "get": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Read the board of a room",
+        "operationId": "getBoard",
+        "description": "Returns the columns of the board of a room the user can read, left to right, each with its cards from top to bottom. Every card is a task of a post or comment of the room. The last column counts as done. A non-member of a visible room reads the board but cannot change it. A private room the user is not in is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The board.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Board"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/columns": {
+      "post": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Add a column",
+        "operationId": "addColumn",
+        "description": "Adds a column at the right end of the board. Any member of the room may (SPEC D25); a visible room the user has not joined is 403 forbidden. The name is trimmed, 1 to 40 characters, and unique in the room without regard to case (422 on name).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The name.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ColumnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new column, with no cards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardColumn"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "The path of the board of the room.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/columns/{id}": {
+      "patch": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Rename a column",
+        "operationId": "renameColumn",
+        "description": "Renames a column. The rules of the name and of who may are those of adding a column. Renaming it to its own name, or to another case of it, is allowed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the column.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new name.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ColumnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The column.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardColumn"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Delete a column",
+        "operationId": "deleteColumn",
+        "description": "Removes a column. A column with cards cannot be removed until its cards are moved, and a room always keeps one column: both are 409 conflict. The rules of who may are those of adding a column.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the column.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The column is gone."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/columns/{id}/move": {
+      "post": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Move a column",
+        "operationId": "moveColumn",
+        "description": "Puts the column at a position from the left (from 0). A position below 0 is 0 and one past the end is the end; the positions of the columns stay 0 to n-1. Moving a column to where it is changes nothing. The rules of who may are those of adding a column.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the column.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The position.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveColumnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The column is where it was asked to be."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/tasks/{id}": {
+      "patch": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Change a card",
+        "operationId": "patchTask",
+        "description": "Changes the assignees and the due date of a task and gets the card back. A field that is not in the body stays; due_date null removes the due date; assignee_ids [] unassigns everybody. The title is not here: it is edited with the post (PATCH /posts/{id}), and a title in this body is 422. Any member of the room may; a visible room the user has not joined is 403 forbidden. Newly assigned people are notified.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the task.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "What to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskPatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The card.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardTask"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/tasks/{id}/move": {
+      "post": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Move a card",
+        "operationId": "moveTask",
+        "description": "Puts the card in a column of its board at a position (from 0, the top, counted in the column without the card). A position below 0 is 0 and one past the end is the end; the positions stay 0 to n-1 in both columns. Moving a card to where it is changes nothing. A column of another room is 404. Any member of the room may; a visible room the user has not joined is 403 forbidden.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the task.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The column and the position.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The card is where it was asked to be."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Search posts and comments",
+        "operationId": "search",
+        "description": "Searches the posts and comments of the rooms the user can read: visible rooms and the private rooms the user is a member of (admins are no exception). The query q has words (matched as prefixes, in bodies, attachment names and task titles), phrases in double quotes, and the filters #tag (all must match), room:name, from:username, after:YYYY-MM-DD, before:YYYY-MM-DD and is:post or is:comment. A mistake in a date is 422 on q. A query with neither words nor filters finds nothing. A page has 20 results and a page after the 1000th is empty.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "The query; the first 500 characters count.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "The page, from 1; 1 when left out.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "List the notifications",
+        "operationId": "listNotifications",
+        "description": "Returns a page of the notifications of the user, newest first. Without before it starts at the newest; with before it returns the ones older than that ID. limit is 30 by default and at most 100 (422 above, and for anything that is not a positive number). next_before is the before of the next page and null on the last. Notifications of a room the user can no longer read are left out.",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "The next_before of the previous page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The size of the page, 1 to 100; 30 when left out.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of notifications.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/notifications/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark notifications read",
+        "operationId": "readNotifications",
+        "description": "Marks the notifications of the user up to an ID as read; newer ones stay unread. Marking ones that are read is not an error.",
+        "requestBody": {
+          "required": true,
+          "description": "The newest notification to mark.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationsReadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The notifications are read."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/openapi.json": {
       "get": {
         "tags": [
@@ -2366,7 +3126,7 @@
           },
           "upload_ids": {
             "type": "array",
-            "description": "The IDs of files uploaded with POST /uploads, to attach. Not available yet: any ID is 422.",
+            "description": "The IDs of files uploaded with POST /uploads, to attach to the post. An ID is used once: the post takes it, and a post that is refused removes the file, so upload it again. An ID that is unknown, or that someone else uploaded, is 422 on this field. At most the attachment limit of the installation (10 by default) files per post, with the ones an edit keeps.",
             "items": {
               "type": "string"
             }
@@ -2478,6 +3238,489 @@
           "tags"
         ],
         "additionalProperties": false
+      },
+      "UploadResult": {
+        "type": "object",
+        "description": "A file uploaded and waiting to be attached to a post.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The upload ID, for upload_ids of a post or comment. Unguessable; it works for the user who uploaded the file."
+          },
+          "file_name": {
+            "type": "string",
+            "description": "The name the server keeps: only the base name, without control characters, at most 255 bytes."
+          },
+          "content_type": {
+            "type": "string",
+            "description": "The type found by looking at the content."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The size in bytes."
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The width in pixels of an image, otherwise null."
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The height in pixels of an image, otherwise null."
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "content_type",
+          "size",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false
+      },
+      "BoardTask": {
+        "type": "object",
+        "description": "A card of the board: a task with the post it was written in and its place in its column.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the task."
+          },
+          "title": {
+            "type": "string",
+            "description": "The title, 1 to 200 characters."
+          },
+          "column_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the column of the board the task is in."
+          },
+          "assignees": {
+            "type": "array",
+            "description": "The people the task is assigned to.",
+            "items": {
+              "$ref": "#/components/schemas/UserRef"
+            }
+          },
+          "due_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The day the task is due as YYYY-MM-DD, or null.",
+            "format": "date"
+          },
+          "post_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the post or comment the task was written in; GET /posts/{id}/thread opens its thread."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The place of the card in its column, from 0 at the top."
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "column_id",
+          "assignees",
+          "due_date",
+          "post_id",
+          "position"
+        ],
+        "additionalProperties": false
+      },
+      "BoardColumn": {
+        "type": "object",
+        "description": "A column of a board with its cards.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the column."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name, 1 to 40 characters, unique in the room without regard to case."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The place of the column from the left, from 0."
+          },
+          "done": {
+            "type": "boolean",
+            "description": "True for the last column, which counts as done: its cards are never overdue."
+          },
+          "tasks": {
+            "type": "array",
+            "description": "The cards from top to bottom.",
+            "items": {
+              "$ref": "#/components/schemas/BoardTask"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "position",
+          "done",
+          "tasks"
+        ],
+        "additionalProperties": false
+      },
+      "Board": {
+        "type": "object",
+        "description": "The board of a room.",
+        "properties": {
+          "room_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the room."
+          },
+          "columns": {
+            "type": "array",
+            "description": "The columns from left to right.",
+            "items": {
+              "$ref": "#/components/schemas/BoardColumn"
+            }
+          }
+        },
+        "required": [
+          "room_id",
+          "columns"
+        ],
+        "additionalProperties": false
+      },
+      "ColumnRequest": {
+        "type": "object",
+        "description": "The name of a new column, or the new name of a column.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "1 to 40 characters, unique in the room without regard to case."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "MoveColumnRequest": {
+        "type": "object",
+        "description": "Where a column goes.",
+        "properties": {
+          "position": {
+            "type": "integer",
+            "description": "The place from the left, from 0. Below 0 is 0, past the end is the end."
+          }
+        },
+        "required": [
+          "position"
+        ],
+        "additionalProperties": false
+      },
+      "MoveTaskRequest": {
+        "type": "object",
+        "description": "Where a card goes.",
+        "properties": {
+          "column_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of a column of the same board."
+          },
+          "position": {
+            "type": "integer",
+            "description": "The place in that column without the card, from 0 at the top. Below 0 is 0, past the end is the end."
+          }
+        },
+        "required": [
+          "column_id",
+          "position"
+        ],
+        "additionalProperties": false
+      },
+      "TaskPatchRequest": {
+        "type": "object",
+        "description": "A change to a card. A field that is not there stays as it is. The title is edited with the post (PATCH /posts/{id}), not here.",
+        "properties": {
+          "assignee_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 10,
+            "description": "The people the card is assigned to, members of the room, at most 10: the list replaces the old one and [] unassigns everybody. Null is like not there.",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The ID of a member."
+            }
+          },
+          "due_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "The day it is due as YYYY-MM-DD; null removes the due date."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "RoomRef": {
+        "type": "object",
+        "description": "A room named on a search result or a notification.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the room."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of the room."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "SnippetSegment": {
+        "type": "object",
+        "description": "A piece of the matching text of a search result.",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The piece as written: plain text, not escaped."
+          },
+          "match": {
+            "type": "boolean",
+            "description": "True for the words the query found."
+          }
+        },
+        "required": [
+          "text",
+          "match"
+        ],
+        "additionalProperties": false
+      },
+      "SearchResult": {
+        "type": "object",
+        "description": "A post or comment that a search found.",
+        "properties": {
+          "post_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the post or comment."
+          },
+          "root_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the top-level post of its thread; the post itself for a top-level post."
+          },
+          "room": {
+            "$ref": "#/components/schemas/RoomRef"
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was written."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "post",
+              "comment"
+            ],
+            "description": "Whether it is a top-level post or a comment."
+          },
+          "snippet": {
+            "type": "array",
+            "description": "The matching text in pieces; joined, they are the text to show. Without words in the query it is the start of the post.",
+            "items": {
+              "$ref": "#/components/schemas/SnippetSegment"
+            }
+          }
+        },
+        "required": [
+          "post_id",
+          "root_id",
+          "room",
+          "author",
+          "created_at",
+          "kind",
+          "snippet"
+        ],
+        "additionalProperties": false
+      },
+      "SearchPage": {
+        "type": "object",
+        "description": "A page of search results.",
+        "properties": {
+          "results": {
+            "type": "array",
+            "description": "The results, by relevance and then newest first; newest first when the query has no words.",
+            "items": {
+              "$ref": "#/components/schemas/SearchResult"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The number of this page."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "True when a next page has results."
+          }
+        },
+        "required": [
+          "results",
+          "page",
+          "has_more"
+        ],
+        "additionalProperties": false
+      },
+      "Notification": {
+        "type": "object",
+        "description": "Something that happened to the user or that involves them.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the notification; a larger ID is a newer one."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mention",
+              "reply",
+              "assigned",
+              "added_to_room"
+            ],
+            "description": "Why the user is notified: an @mention, a comment under their post or comment, a task assigned to them, or their addition to a room by someone else."
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who did it; null when that user is gone."
+          },
+          "room": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The room of the notification."
+          },
+          "post_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The post or comment of a mention, a reply or an assignment; null for an addition to a room. GET /posts/{id}/thread opens it."
+          },
+          "task_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The task of an assignment, otherwise null."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was made."
+          },
+          "read": {
+            "type": "boolean",
+            "description": "True when the user has marked it read."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "actor",
+          "room",
+          "post_id",
+          "task_id",
+          "created_at",
+          "read"
+        ],
+        "additionalProperties": false
+      },
+      "NotificationList": {
+        "type": "object",
+        "description": "A page of the notifications of the user.",
+        "properties": {
+          "notifications": {
+            "type": "array",
+            "description": "The notifications, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            }
+          },
+          "next_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The before of the next page; null when this is the last."
+          }
+        },
+        "required": [
+          "notifications",
+          "next_before"
+        ],
+        "additionalProperties": false
+      },
+      "NotificationsReadRequest": {
+        "type": "object",
+        "description": "How far the notifications are read.",
+        "properties": {
+          "up_to_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the newest notification to mark read; every older one is marked too, newer ones stay unread."
+          }
+        },
+        "required": [
+          "up_to_id"
+        ],
+        "additionalProperties": false
       }
     },
     "responses": {
@@ -2558,7 +3801,7 @@
         }
       },
       "TooLarge": {
-        "description": "The body is over 64 KiB.",
+        "description": "The JSON body is over 64 KiB, or the file of an upload is over the limit of the attachments.",
         "content": {
           "application/json": {
             "schema": {
@@ -2568,7 +3811,7 @@
         }
       },
       "UnsupportedMediaType": {
-        "description": "The Content-Type of the body is not application/json.",
+        "description": "The Content-Type of the body is not the one the route reads: application/json, or multipart/form-data for POST /uploads.",
         "content": {
           "application/json": {
             "schema": {

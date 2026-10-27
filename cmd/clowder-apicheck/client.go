@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 
@@ -175,6 +176,99 @@ func (c *client) do(ctx context.Context, method, path string, body any, want int
 			a.json = v
 		}
 	}
+	if resp.StatusCode != want {
+		return a, errors.New(tagStatusUnexpected, "the server answered with another status",
+			"method", method, "path", path, "want", want, "got", resp.StatusCode)
+	}
+	return a, nil
+}
+
+// upload sends one file as the multipart form of POST /uploads (the field
+// "file") and prints the request without the content of the file, only its
+// name and size. The answer is read like that of do.
+func (c *client) upload(ctx context.Context, path, fileName string, content []byte, want int) (answer, error) {
+	var form bytes.Buffer
+	w := multipart.NewWriter(&form)
+	part, err := w.CreateFormFile("file", fileName)
+	if err != nil {
+		return answer{}, errors.NewErr(tagRequestEncodeFailed, err).SetMetadata("path", path)
+	}
+	if _, err := part.Write(content); err != nil {
+		return answer{}, errors.NewErr(tagRequestEncodeFailed, err).SetMetadata("path", path)
+	}
+	if err := w.Close(); err != nil {
+		return answer{}, errors.NewErr(tagRequestEncodeFailed, err).SetMetadata("path", path)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, &form)
+	if err != nil {
+		return answer{}, errors.NewErr(tagRequestFailed, err).SetMetadata("method", http.MethodPost, "path", path)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	c.printRequest(http.MethodPost, path, req)
+	_, _ = fmt.Fprintln(c.out, "> Content-Type: multipart/form-data; boundary=<boundary>")
+	_, _ = fmt.Fprintf(c.out, "> (the field file: %s, %d bytes)\n", fileName, len(content))
+	return c.finish(req, http.MethodPost, path, want, false)
+}
+
+// download fetches a file and prints the status, the headers that matter for
+// a download and the number of bytes, not the content. The returned answer
+// has the header and the body.
+func (c *client) download(ctx context.Context, path string, want int) (answer, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return answer{}, errors.NewErr(tagRequestFailed, err).SetMetadata("method", http.MethodGet, "path", path)
+	}
+	c.printRequest(http.MethodGet, path, req)
+	return c.finish(req, http.MethodGet, path, want, true)
+}
+
+// printRequest counts the request, prints its first line and sets and prints
+// the bearer token when the client has one.
+func (c *client) printRequest(method, path string, req *http.Request) {
+	c.requests++
+	_, _ = fmt.Fprintf(c.out, "> %s %s\n", method, path)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		_, _ = fmt.Fprintln(c.out, "> Authorization: Bearer <token>")
+	}
+}
+
+// downloadHeaders are the headers of a download that are printed.
+var downloadHeaders = []string{
+	"Content-Type", "Content-Disposition", "X-Content-Type-Options", "Content-Security-Policy", "Cache-Control",
+}
+
+// finish sends the request, prints the answer and checks the status. A file
+// answer is printed as its headers and its size.
+func (c *client) finish(req *http.Request, method, path string, want int, file bool) (answer, error) {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return answer{}, errors.NewErr(tagRequestFailed, err).SetMetadata("method", method, "path", path)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswerBytes))
+	if err != nil {
+		return answer{}, errors.NewErr(tagRequestFailed, err).SetMetadata("method", method, "path", path)
+	}
+	_, _ = fmt.Fprintf(c.out, "< %d %s\n", resp.StatusCode, http.StatusText(resp.StatusCode))
+	a := answer{status: resp.StatusCode, header: resp.Header, body: raw}
+	if file && resp.StatusCode == http.StatusOK {
+		for _, h := range downloadHeaders {
+			if v := resp.Header.Get(h); v != "" {
+				_, _ = fmt.Fprintf(c.out, "< %s: %s\n", h, v)
+			}
+		}
+		_, _ = fmt.Fprintf(c.out, "< (%d bytes)\n", len(raw))
+	} else {
+		if text := c.redac.printable(raw); text != "" {
+			_, _ = fmt.Fprintln(c.out, indent(text, "< "))
+		}
+		var v any
+		if len(raw) > 0 && json.Unmarshal(raw, &v) == nil {
+			a.json = v
+		}
+	}
+	_, _ = fmt.Fprintln(c.out)
 	if resp.StatusCode != want {
 		return a, errors.New(tagStatusUnexpected, "the server answered with another status",
 			"method", method, "path", path, "want", want, "got", resp.StatusCode)

@@ -13,6 +13,11 @@
 // is 0 when every step got the status it expects, 1 when one did not (the run
 // stops there), and 2 for wrong flags.
 //
+// The board scenario also needs a second user, who is assigned a task and
+// reads the notifications: -other-username (bob) and -other-password (the
+// environment variable CLOWDER_APICHECK_OTHER_PASSWORD, or the password of
+// the demo users).
+//
 // Each scenario is a named function of scenarios.go; -only runs just the named
 // ones, and -list prints their names. A later step adds its scenarios to the
 // list.

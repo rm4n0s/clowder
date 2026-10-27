@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rm4n0s/clowder/internal/app"
+	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/errors"
 )
 
@@ -30,8 +31,12 @@ type Services struct {
 	Messages *app.Messages
 	// Rooms is the service of rooms and their members.
 	Rooms *app.Rooms
-	// Posts is the service of posts, comments, reactions and tags.
+	// Posts is the service of posts, comments, reactions, tags and uploads.
 	Posts *app.Posts
+	// Board is the service of the boards, their columns and their cards.
+	Board *app.Board
+	// Search is the service of search.
+	Search *app.Search
 }
 
 // Options are the parts a Server is made of.
@@ -50,6 +55,11 @@ type Options struct {
 	// limiter. Nil uses the host of the connection's address; a server behind
 	// a reverse proxy passes its own function.
 	ClientIP func(r *http.Request) string
+	// MaxUploadSize is the largest file POST /uploads takes, in bytes; it
+	// must be the limit the posts service was made with. 0 means the default
+	// (config.DefaultMaxAttachmentSize). The body of an upload request may be
+	// a megabyte more, for the framing of the form.
+	MaxUploadSize int64
 }
 
 // Route is a pattern of http.ServeMux, with the method and the whole path
@@ -68,7 +78,9 @@ type Server struct {
 	logger   *slog.Logger
 	noteUser func(r *http.Request, userID uint64)
 	clientIP func(r *http.Request) string
-	routes   []Route
+	// maxUploadBody is the cap on the body of an upload request.
+	maxUploadBody int64
+	routes        []Route
 	// lookup holds the routes without the catch-all, to find the methods a
 	// path has.
 	lookup *http.ServeMux
@@ -78,10 +90,16 @@ type Server struct {
 // are not all there.
 func New(opts Options) (*Server, error) {
 	svc := opts.Services
-	if svc.Accounts == nil || svc.Notifications == nil || svc.Messages == nil || svc.Rooms == nil || svc.Posts == nil {
-		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications, messages, rooms and posts services")
+	if svc.Accounts == nil || svc.Notifications == nil || svc.Messages == nil || svc.Rooms == nil || svc.Posts == nil ||
+		svc.Board == nil || svc.Search == nil {
+		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications, messages, rooms, posts, board and search services")
 	}
 	s := &Server{svc: opts.Services, logger: opts.Logger, noteUser: opts.NoteUser, clientIP: opts.ClientIP}
+	maxUpload := opts.MaxUploadSize
+	if maxUpload <= 0 {
+		maxUpload = config.DefaultMaxAttachmentSize
+	}
+	s.maxUploadBody = maxUpload + uploadBodySlack
 	if s.logger == nil {
 		s.logger = slog.New(slog.DiscardHandler)
 	}
@@ -125,6 +143,10 @@ func (s *Server) defineRoutes() []Route {
 	routes = append(routes, s.userRoutes()...)
 	routes = append(routes, s.roomRoutes()...)
 	routes = append(routes, s.postRoutes()...)
+	routes = append(routes, s.uploadRoutes()...)
+	routes = append(routes, s.boardRoutes()...)
+	routes = append(routes, s.searchRoutes()...)
+	routes = append(routes, s.notificationRoutes()...)
 	routes = append(routes, s.documentRoutes()...)
 	return routes
 }

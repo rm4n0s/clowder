@@ -1168,9 +1168,9 @@ func TestNotificationsList(t *testing.T) {
 			t.Fatalf("last page = %+v", last)
 		}
 	})
-	t.Run("30 a page by default and at most 50", func(t *testing.T) {
+	t.Run("30 a page by default and at most 100", func(t *testing.T) {
 		e := newNotifEnv(t)
-		for range 35 {
+		for range 105 {
 			e.mustCreate("bob", "lobby", app.FormatText, "@carol")
 		}
 		if page := e.list("carol", 0, 0); len(page.Notifications) != 30 || !page.HasNext {
@@ -1179,8 +1179,11 @@ func TestNotificationsList(t *testing.T) {
 		if page := e.list("carol", 0, -1); len(page.Notifications) != 30 {
 			t.Errorf("negative limit page = %d", len(page.Notifications))
 		}
-		if page := e.list("carol", 0, 500); len(page.Notifications) != 35 || page.HasNext {
+		if page := e.list("carol", 0, 500); len(page.Notifications) != 100 || !page.HasNext {
 			t.Errorf("a limit over the maximum gave %d, next %v", len(page.Notifications), page.HasNext)
+		}
+		if page := e.list("carol", 0, 100); len(page.Notifications) != 100 || !page.HasNext {
+			t.Errorf("a limit of 100 gave %d, next %v", len(page.Notifications), page.HasNext)
 		}
 	})
 	t.Run("only one's own", func(t *testing.T) {

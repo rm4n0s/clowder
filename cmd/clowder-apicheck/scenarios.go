@@ -17,6 +17,10 @@ type runner struct {
 	username   string
 	password   string
 	clientName string
+	// otherUsername and otherPassword are the second user of the board
+	// scenario.
+	otherUsername string
+	otherPassword string
 }
 
 // scenario is a named list of steps against the API. A later step of the plan
@@ -32,15 +36,21 @@ func scenarios() []scenario {
 	return []scenario{
 		{name: "session", summary: "log in, read who I am and my sessions, find users, log out", run: sessionScenario},
 		{name: "rooms", summary: "list the rooms, leave and join one, make a room with a member, post, comment, react, edit, read the thread, delete", run: roomsScenario},
+		{name: "board", summary: "upload files, post them with a task, work the board, download, search, and read the notifications as the assignee", run: boardScenario},
 	}
 }
 
 // login logs in as the runner's user and keeps the token for the next
 // requests. The token and the password are hidden in everything printed.
 func (r *runner) login(ctx context.Context) (answer, error) {
-	r.c.redac.add(r.password)
+	return r.loginAs(ctx, r.username, r.password)
+}
+
+// loginAs logs in as the user and keeps the token for the next requests.
+func (r *runner) loginAs(ctx context.Context, username, password string) (answer, error) {
+	r.c.redac.add(password)
 	a, err := r.c.do(ctx, "POST", "/api/v1/auth/login", map[string]string{
-		"username": r.username, "password": r.password, "client_name": r.clientName,
+		"username": username, "password": password, "client_name": r.clientName,
 	}, 200)
 	if err != nil {
 		return a, err

@@ -173,10 +173,6 @@ func TestRoutesOfTheErrorsOfTheAPI(t *testing.T) {
 			_, err := postInput(postRequest{Tasks: &[]taskRequest{{Title: "t", DueDate: str("soon")}}}, nil)
 			return err
 		}, "tasks"},
-		{"upload IDs", tagUploadsUnavailable, "postInput.UploadsUnavailable", func() error {
-			_, err := postInput(postRequest{UploadIDs: []string{"a"}}, nil)
-			return err
-		}, "upload_ids"},
 		{"attachments to keep on a new post", tagKeepOnCreate, "postInput.KeepOnCreate", func() error {
 			_, err := postInput(postRequest{AttachmentIDs: &[]uint64{3}}, nil)
 			return err
@@ -250,6 +246,8 @@ func TestNewNeedsEveryService(t *testing.T) {
 		{"no messages", func(s *Services) { s.Messages = nil }},
 		{"no rooms", func(s *Services) { s.Rooms = nil }},
 		{"no posts", func(s *Services) { s.Posts = nil }},
+		{"no board", func(s *Services) { s.Board = nil }},
+		{"no search", func(s *Services) { s.Search = nil }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

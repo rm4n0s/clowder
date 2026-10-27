@@ -37,3 +37,6 @@ go.work.sum
 
 # The data directory of a local run (database, attachments)
 /data/
+
+# Temporary files of local test runs (TMPDIR), on disk rather than in a tmpfs /tmp
+/.tmp/

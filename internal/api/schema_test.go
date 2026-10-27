@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -333,7 +334,28 @@ func responseProblems(req *http.Request, rec *httptest.ResponseRecorder) []strin
 		}
 		return problems
 	}
+	if _, isJSON := content["application/json"]; !isJSON {
+		// A file or a plain text: the body is not checked, the type is.
+		return append(problems, contentTypeProblems(content, rec, name)...)
+	}
 	return append(problems, bodyProblems(v, rec, at(content, "application/json", "schema"), name)...)
+}
+
+// contentTypeProblems checks that the Content-Type of rec is one of the media
+// types of content, whose keys may be a type (text/plain), a range
+// (image/*) or any (*/*).
+func contentTypeProblems(content map[string]any, rec *httptest.ResponseRecorder, name string) []string {
+	got, _, err := mime.ParseMediaType(rec.Header().Get("Content-Type"))
+	if err != nil {
+		return []string{fmt.Sprintf("%s: Content-Type = %q is not a media type", name, rec.Header().Get("Content-Type"))}
+	}
+	for want := range content {
+		group, _, _ := strings.Cut(want, "/")
+		if want == "*/*" || want == got || (strings.HasSuffix(want, "/*") && strings.HasPrefix(got, group+"/")) {
+			return nil
+		}
+	}
+	return []string{fmt.Sprintf("%s: Content-Type = %q, the document has %v", name, got, keysOf(content))}
 }
 
 // bodyProblems validates the JSON body of rec against schema.

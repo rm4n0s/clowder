@@ -34,7 +34,7 @@ const (
 	// none.
 	notificationsDefaultLimit = 30
 	// notificationsMaxLimit is the largest page List gives.
-	notificationsMaxLimit = 50
+	notificationsMaxLimit = 100
 )
 
 // Notification is a notification of the asking user, with what a page needs
@@ -93,7 +93,7 @@ func NewNotifications(st *store.Store, pub Publisher) *Notifications {
 
 // List returns a page of the actor's notifications, newest first. before 0
 // starts from the newest; another value returns the notifications older than
-// that ID. limit is the page size: 30 when it is 0 or less, at most 50.
+// that ID. limit is the page size: 30 when it is 0 or less, at most 100.
 // Notifications of a room that the actor can no longer read are left out (SPEC
 // D29, D30). An actor with no ID fails with TagUnauthenticated.
 func (n *Notifications) List(ctx context.Context, actor Actor, before uint64, limit int) (NotificationPage, error) {

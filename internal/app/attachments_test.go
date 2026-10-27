@@ -60,7 +60,7 @@ func (e *postsEnv) onDisk() []string {
 	}
 	keys := []string{}
 	for _, en := range entries {
-		if en.Name() != "tmp" {
+		if en.Name() != "tmp" && en.Name() != "notes" {
 			keys = append(keys, en.Name())
 		}
 	}

@@ -89,8 +89,9 @@ type problem struct {
 //     unauthenticated with WWW-Authenticate;
 //   - the tags of this package: a body over the limit 413 too_large, a body
 //     that cannot be read, a query before or limit that is wrong, a due date
-//     that is not a day, upload_ids before the uploads exist and attachment_ids
-//     on a new post 422 invalid_input, a Content-Type that is not JSON
+//     that is not a day, a field that must be there and is not, a wrong page,
+//     a form of an upload that is not one file in the field "file" and
+//     attachment_ids on a new post 422 invalid_input, a Content-Type that is not JSON
 //     415 unsupported_media_type, an unknown path 404 not_found, a wrong
 //     method 405 method_not_allowed with Allow;
 //   - anything else, and an error that is not tagged, 500 internal, whose
@@ -111,7 +112,8 @@ func problemOf(err error) (problem, bool) {
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, apiFieldName)}}, false
-	case tagBodyInvalid, tagBeforeInvalid, tagLimitInvalid, tagDueDateInvalid, tagUploadsUnavailable, tagKeepOnCreate:
+	case tagBodyInvalid, tagBeforeInvalid, tagLimitInvalid, tagDueDateInvalid, tagKeepOnCreate,
+		tagUploadInvalid, tagFieldMissing, tagPageInvalid, tagTaskDueInvalid:
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, snakeCase)}}, false

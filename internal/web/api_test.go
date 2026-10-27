@@ -2,11 +2,13 @@ package web
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/store"
@@ -265,5 +267,68 @@ func TestNoteUserAndClientIPFunc(t *testing.T) {
 		if got := ClientIPFunc(tt.trust)(tt.req()); got != tt.want {
 			t.Errorf("%s: client IP = %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+// TestAPIUploadHasTheUploadDeadline checks that a body that arrives slowly is
+// cut after the time of a form for a JSON route, and after the time of an
+// upload for the multipart body of POST /api/v1/uploads (SPEC D37): the
+// deadline of the body (bodyDeadline) goes by the Content-Type, and the API
+// is behind it like the pages.
+func TestAPIUploadHasTheUploadDeadline(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t, nil)
+	e.addUser("alice", "Alice", store.RoleMember)
+	rec := e.send(jsonPost("/api/v1/auth/login", `{"username":"alice","password":"`+testPassword+`","client_name":"web test"}`))
+	var login struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &login); err != nil || login.Token == "" {
+		t.Fatalf("login: %v\n%s", err, rec.Body)
+	}
+	e.srv.formTimeout = 100 * time.Millisecond
+	e.srv.uploadTimeout = 10 * time.Second
+	ts := httptest.NewServer(e.srv.Handler())
+	t.Cleanup(ts.Close)
+
+	// slowBody gives the first half of the body at once and the rest after a
+	// pause longer than a form may take.
+	slowBody := func(first, rest string) io.Reader {
+		pr, pw := io.Pipe()
+		go func() {
+			_, _ = io.WriteString(pw, first)
+			time.Sleep(400 * time.Millisecond)
+			_, _ = io.WriteString(pw, rest)
+			_ = pw.Close()
+		}()
+		return pr
+	}
+	post := func(target, contentType string, body io.Reader) (int, error) {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, ts.URL+target, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Authorization", "Bearer "+login.Token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return resp.StatusCode, nil
+	}
+
+	const boundary = "xyz"
+	head := "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"slow.txt\"\r\n\r\nthe first half "
+	tail := "and the second half\r\n--" + boundary + "--\r\n"
+	status, err := post("/api/v1/uploads", "multipart/form-data; boundary="+boundary, slowBody(head, tail))
+	if err != nil || status != http.StatusCreated {
+		t.Errorf("a slow upload: status %d, error %v, want 201 within the upload deadline", status, err)
+	}
+	// The same pause in a JSON body is too slow for a form.
+	status, err = post("/api/v1/rooms", "application/json", slowBody(`{"name": "x",`, ` "visibility": "visible"}`))
+	if err == nil && status >= 200 && status < 300 {
+		t.Errorf("a slow JSON body was accepted: status %d", status)
 	}
 }

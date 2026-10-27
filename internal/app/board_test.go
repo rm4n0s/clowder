@@ -1020,3 +1020,63 @@ func TestBoardDeleteColumn(t *testing.T) {
 		t.Errorf("board = %v", got)
 	}
 }
+
+func TestBoardTaskAndColumnPermissions(t *testing.T) {
+	t.Parallel()
+	// Any reader may read a task and a column: members and non-members of a
+	// visible room; a private room is not found for anyone outside it.
+	cases := []boardCase{
+		{"admin", "lobby", ""}, {"bob", "lobby", ""}, {"root", "lobby", ""}, {"alice", "lobby", ""}, {"carol", "lobby", ""},
+		{"alice", "den", ""}, {"bob", "den", ""},
+		{"admin", "den", app.TagNotFound}, {"root", "den", app.TagNotFound}, {"carol", "den", app.TagNotFound},
+	}
+	t.Run("Task", func(t *testing.T) {
+		routes := map[string]string{app.TagNotFound: "Board.Task->loadTaskRoom->loadReadableRoom.NotFound"}
+		runBoardPermissions(t, routes, cases, func(e *boardEnv, a app.Actor, room app.Room, task app.TaskCard) error {
+			got, err := e.board.Task(t.Context(), a, task.ID)
+			if err == nil && (got.ID != task.ID || got.Title != "Fix login" || got.PostID != task.PostID) {
+				t.Errorf("Task = %+v, want the card %+v", got, task)
+			}
+			return err
+		})
+	})
+	t.Run("Column", func(t *testing.T) {
+		routes := map[string]string{app.TagNotFound: "Board.Column->loadColumnRoom->loadReadableRoom.NotFound"}
+		runBoardPermissions(t, routes, cases, func(e *boardEnv, a app.Actor, room app.Room, task app.TaskCard) error {
+			got, err := e.board.Column(t.Context(), a, task.ColumnID)
+			if err == nil && (got.ID != task.ColumnID || len(got.Tasks) != 1 || got.Tasks[0].ID != task.ID) {
+				t.Errorf("Column = %+v, want the column of the card %+v", got, task)
+			}
+			return err
+		})
+	})
+}
+
+func TestBoardTaskAndColumn(t *testing.T) {
+	t.Parallel()
+	e := newBoardEnv(t)
+	ctx := t.Context()
+	room := e.newRoom("work")
+	e.seed(room, [][]string{{"first", "second"}, {"third"}, {}})
+	view := e.view("bob", room.ID)
+	second := card(t, view, "second")
+	if second.Position != 1 || second.ColumnName != view.Columns[0].Name {
+		t.Fatalf("the seeded card = %+v", second)
+	}
+	got, err := e.board.Task(ctx, e.as("carol"), second.ID)
+	if err != nil || !reflect.DeepEqual(got, second) {
+		t.Errorf("Task = %+v, %v, want %+v", got, err, second)
+	}
+	col, err := e.board.Column(ctx, e.as("carol"), view.Columns[2].ID)
+	if err != nil || !reflect.DeepEqual(col, view.Columns[2]) || !col.Last {
+		t.Errorf("Column = %+v, %v, want %+v", col, err, view.Columns[2])
+	}
+	col, err = e.board.Column(ctx, e.as("carol"), view.Columns[0].ID)
+	if err != nil || !reflect.DeepEqual(col, view.Columns[0]) || len(col.Tasks) != 2 {
+		t.Errorf("Column = %+v, %v, want %+v", col, err, view.Columns[0])
+	}
+	_, err = e.board.Task(ctx, e.as("bob"), 9999)
+	_ = requireTag(t, err, app.TagNotFound, "Board.Task->loadTaskRoom->Store.TaskByID.NotFound")
+	_, err = e.board.Column(ctx, e.as("bob"), 9999)
+	_ = requireTag(t, err, app.TagNotFound, "Board.Column->loadColumnRoom->Store.BoardColumnByID.NotFound")
+}

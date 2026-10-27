@@ -54,6 +54,19 @@ func securedRoutes() []securedRoute {
 		{"react", http.MethodPut, reactPath, http.StatusNotFound, nil},
 		{"unreact", http.MethodDelete, reactPath, http.StatusNotFound, nil},
 		{"tags", http.MethodGet, "/api/v1/tags?prefix=a", http.StatusOK, nil},
+		// The upload reads a form: a JSON body is the wrong type for everybody.
+		{"upload", http.MethodPost, "/api/v1/uploads", http.StatusUnsupportedMediaType, map[string]any{}},
+		{"download", http.MethodGet, "/api/v1/attachments" + missing, http.StatusNotFound, nil},
+		{"board", http.MethodGet, "/api/v1/rooms" + missing + "/board", http.StatusNotFound, nil},
+		{"add a column", http.MethodPost, "/api/v1/rooms" + missing + "/columns", http.StatusNotFound, map[string]any{"name": "x"}},
+		{"rename a column", http.MethodPatch, "/api/v1/columns" + missing, http.StatusNotFound, map[string]any{"name": "x"}},
+		{"move a column", http.MethodPost, "/api/v1/columns" + missing + "/move", http.StatusNotFound, map[string]any{"position": 0}},
+		{"delete a column", http.MethodDelete, "/api/v1/columns" + missing, http.StatusNotFound, nil},
+		{"change a card", http.MethodPatch, "/api/v1/tasks" + missing, http.StatusNotFound, map[string]any{}},
+		{"move a card", http.MethodPost, "/api/v1/tasks" + missing + "/move", http.StatusNotFound, map[string]any{"column_id": 1, "position": 0}},
+		{"search", http.MethodGet, "/api/v1/search?q=a", http.StatusOK, nil},
+		{"notifications", http.MethodGet, "/api/v1/notifications", http.StatusOK, nil},
+		{"read notifications", http.MethodPost, "/api/v1/notifications/read", http.StatusNoContent, map[string]any{"up_to_id": 1}},
 	}
 }
 

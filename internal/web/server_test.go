@@ -148,10 +148,11 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		Logger:            logger,
 	}, hub)
 	apiServer, err := api.New(api.Options{
-		Services: api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts},
-		Logger:   logger,
-		NoteUser: NoteUser,
-		ClientIP: ClientIPFunc(cfg.TrustProxyHeaders),
+		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search},
+		Logger:        logger,
+		NoteUser:      NoteUser,
+		ClientIP:      ClientIPFunc(cfg.TrustProxyHeaders),
+		MaxUploadSize: cfg.MaxAttachmentSize,
 	})
 	if err != nil {
 		t.Fatalf("api.New: %+v", err)

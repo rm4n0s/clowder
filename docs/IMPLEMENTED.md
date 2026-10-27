@@ -877,3 +877,40 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The admin, thread and PATCH decisions are recorded in SPEC D42 and §7.12.
   - The task errors of a post come back under `tasks`, because the service has one field for all its tasks.
   - `upload_ids` is refused (422) until 16.3 adds `POST /uploads`.
+
+## 16.3 Attachments, board, search and notifications
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-16.3-api-board-search
+- **Summary:**
+  - `POST /uploads` stages one file (multipart, the limits of §7.5, the body cut early). A staged upload is bound to its uploader by a note in the shared `files/notes/`, used once, and removed after 24 hours if no post takes it. A sweep runs at start and every hour; it is owned by `serve` and safe in several processes.
+  - Posts and comments take `upload_ids`.
+  - `GET /attachments/{id}` sends the same headers as the pages' downloads, now shared through `internal/files.ServeDownload`.
+  - The board routes are in: `GET /rooms/{id}/board`, columns create, rename, move and delete, and task `PATCH` and move. Moves answer 204. A task `PATCH` keeps an absent field, and `due_date: null` clears the date.
+  - `GET /search` gives its snippets as text/match segments, so a client needs no HTML.
+  - `GET /notifications` is paged by id, and `POST /notifications/read` marks them read.
+- **Main files:**
+  - The API: `internal/api/{handlers_uploads,handlers_board,handlers_search,types_board}.go`, `openapi.json`.
+  - The services: `internal/app/{staged,board,search,notifications}.go`.
+  - The files: `internal/files/{notes,serve}.go`, `internal/web/files.go`.
+  - The server and the client: `cmd/clowder/{serve,sweep}.go`, `cmd/clowder-apicheck` (the `board` scenario, `-other-username`/`-other-password`).
+  - SPEC D42, §7.12 and §8.1.
+- **Tests:**
+  - `internal/api` now has 110 top-level tests, among them the access matrix extended to the 12 new routes.
+  - The uploads: over the limit, no file, two files, not multipart, someone else's upload id, a failed create discarding its uploads, a body cut mid-file.
+  - The download headers, the board moves and column rules, the task `PATCH` semantics, search paging and segments, and notifications paging.
+  - The staged sweep: age, taken uploads, concurrent sweeps, the messages scope, and the serve goroutine stopping.
+  - `TestAPIUploadHasTheUploadDeadline` in `internal/web`.
+  - Every new tag has a route test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests: not listed for this step; the extra run could not be made (see below)
+- **Proof:**
+  [16.3 apicheck](implemented-proof-images/16.3-apicheck.txt)
+  `clowder-apicheck` as alice with bob as the second user runs 55 requests on demo data. Two files are uploaded and posted with a task, the card is moved and dated, a column is added, renamed, moved and deleted, both attachments are downloaded, and the post is found by a word and a tag. Then bob, as the assignee, reads his notifications and marks them read.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Added on the manager's review: the 24-hour sweep of uploads that no post takes.
+  - The notifications' largest page went from 50 to 100.
+  - There is a small accepted window: a 24-hour-old upload being taken at the moment of a sweep could lose its file.
+  - On this run the host was short of memory: a QEMU VM of 11 GB, full swap and a RAM-backed `/tmp`. Test processes were killed by the system, never failed. The suites were therefore run package by package (`-p 1`), on SQLite and through `scripts/test-docker.sh`, retrying a package only when it was killed from outside. Every package passed on both databases.
+  - The browser tests, which this step does not list, were killed each time. They are run again in a later step.
+  - `.gitignore` now has `/.tmp/` (a `TMPDIR` on disk for local test runs).

@@ -515,6 +515,26 @@ func TestSearchQueryTextAndSnippets(t *testing.T) {
 		}
 	})
 
+	t.Run("the segments are the snippet as plain text", func(t *testing.T) {
+		res := e.find("bob", "cafe munster", 1)
+		want := []app.SnippetSegment{{Text: "Lunch at the "}, {Text: "Café", Match: true}, {Text: " "}, {Text: "Münster", Match: true}}
+		if len(res.Results) != 1 || !reflect.DeepEqual(res.Results[0].Segments, want) {
+			t.Errorf("segments = %+v, want %+v", res.Results[0].Segments, want)
+		}
+		// The text is as written: no escaping, no markup.
+		res = e.find("bob", "world", 1)
+		want = []app.SnippetSegment{{Text: "Hello <script>alert('x')</script> & \"quotes\" "}, {Text: "world", Match: true}}
+		if len(res.Results) != 1 || !reflect.DeepEqual(res.Results[0].Segments, want) {
+			t.Errorf("segments = %+v, want %+v", res.Results[0].Segments, want)
+		}
+		// A search without words shows the start of the post, all plain.
+		for _, r := range e.find("bob", "from:bob", 1).Results {
+			if len(r.Segments) == 0 || slices.ContainsFunc(r.Segments, func(s app.SnippetSegment) bool { return s.Match }) {
+				t.Errorf("segments of a search without words = %+v", r.Segments)
+			}
+		}
+	})
+
 	t.Run("user text cannot make markup", func(t *testing.T) {
 		res := e.find("bob", "world", 1)
 		want := "Hello &lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt; &amp; &#34;quotes&#34; <mark>world</mark>"
@@ -893,5 +913,34 @@ func TestSearchQueryInjection(t *testing.T) {
 	// The index survived all of it.
 	if got := e.found("bob", "alpha"); !slices.Equal(got, []uint64{lobby.ID}) {
 		t.Errorf("found %v after the injections", got)
+	}
+}
+
+func TestSnippetSegments(t *testing.T) {
+	t.Parallel()
+	const start, end = "\ue000", "\ue001"
+	tests := []struct {
+		name string
+		raw  string
+		want []app.SnippetSegment
+	}{
+		{"empty", "", []app.SnippetSegment{}},
+		{"plain", "just text", []app.SnippetSegment{{Text: "just text"}}},
+		{"one match", "a " + start + "b" + end + " c", []app.SnippetSegment{{Text: "a "}, {Text: "b", Match: true}, {Text: " c"}}},
+		{"a match at the start and at the end", start + "a" + end + " b " + start + "c" + end,
+			[]app.SnippetSegment{{Text: "a", Match: true}, {Text: " b "}, {Text: "c", Match: true}}},
+		{"matches side by side", start + "a" + end + start + "b" + end,
+			[]app.SnippetSegment{{Text: "a", Match: true}, {Text: "b", Match: true}}},
+		{"empty matches are dropped", "a" + start + end + "b", []app.SnippetSegment{{Text: "a"}, {Text: "b"}}},
+		{"a match that never ends", "a " + start + "b", []app.SnippetSegment{{Text: "a "}, {Text: "b", Match: true}}},
+		{"an end without a start", "a" + end + "b", []app.SnippetSegment{{Text: "a" + end + "b"}}},
+		{"unicode", "… " + start + "Café" + end + " …", []app.SnippetSegment{{Text: "… "}, {Text: "Café", Match: true}, {Text: " …"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := app.SnippetSegments(tt.raw); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("segments = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }

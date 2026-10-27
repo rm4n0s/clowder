@@ -1,0 +1,1398 @@
+# commands that ran (data directory: a temporary one):
+#   clowder demo -data <tmp>
+#   clowder serve -data <tmp> -addr 127.0.0.1:18083
+#   clowder-apicheck -base-url http://127.0.0.1:18083 -username alice -password demo-password-1234 -other-username bob
+#   (all three scenarios, session, rooms and board, in the one run; bob's password is the demo password by default)
+
+== session: log in, read who I am and my sessions, find users, log out
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "alice"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-26T16:43:57Z",
+<   "token": "<token>",
+<   "user": {
+<     "created_at": "2026-10-27T16:43:46Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "unread_conversations": 0,
+<   "unread_notifications": 4,
+<   "user": {
+<     "created_at": "2026-10-27T16:43:46Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/me/sessions
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "sessions": [
+<     {
+<       "client_name": "clowder-apicheck",
+<       "created_at": "2026-10-27T16:43:57Z",
+<       "current": true,
+<       "expires_at": "2026-11-26T16:43:57Z",
+<       "id": 1,
+<       "kind": "api",
+<       "last_seen_at": "2026-10-27T16:43:57Z"
+<     }
+<   ]
+< }
+
+> GET /api/v1/users?q=al
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "users": [
+<     {
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "display_name": "Alice",
+<       "id": 2,
+<       "role": "member",
+<       "username": "alice"
+<     }
+<   ]
+< }
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 401 Unauthorized
+< WWW-Authenticate: Bearer realm="clowder"
+< {
+<   "error": {
+<     "code": "unauthenticated",
+<     "message": "Log in to use this."
+<   }
+< }
+
+ok session
+== rooms: list the rooms, leave and join one, make a room with a member, post, comment, react, edit, read the thread, delete
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "alice"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-26T16:43:57Z",
+<   "token": "<token>",
+<   "user": {
+<     "created_at": "2026-10-27T16:43:46Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/rooms
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "rooms": [
+<     {
+<       "can_manage": false,
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "created_by": {
+<         "display_name": "Admin",
+<         "id": 1,
+<         "username": "admin"
+<       },
+<       "description": "Everything",
+<       "id": 1,
+<       "is_member": true,
+<       "member_count": 4,
+<       "name": "general",
+<       "visibility": "visible"
+<     },
+<     {
+<       "can_manage": false,
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "created_by": {
+<         "display_name": "Admin",
+<         "id": 1,
+<         "username": "admin"
+<       },
+<       "description": "Off topic",
+<       "id": 2,
+<       "is_member": true,
+<       "member_count": 3,
+<       "name": "random",
+<       "visibility": "visible"
+<     },
+<     {
+<       "can_manage": true,
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "created_by": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "description": "Just for a few of us",
+<       "id": 3,
+<       "is_member": true,
+<       "member_count": 2,
+<       "name": "secret",
+<       "visibility": "private"
+<     }
+<   ]
+< }
+
+> GET /api/v1/rooms/1
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "can_manage": false,
+<   "created_at": "2026-10-27T16:43:46Z",
+<   "created_by": {
+<     "display_name": "Admin",
+<     "id": 1,
+<     "username": "admin"
+<   },
+<   "description": "Everything",
+<   "id": 1,
+<   "is_member": true,
+<   "member_count": 4,
+<   "name": "general",
+<   "visibility": "visible"
+< }
+
+> POST /api/v1/rooms/1/leave
+> Authorization: Bearer <token>
+< 204 No Content
+
+> POST /api/v1/rooms/1/join
+> Authorization: Bearer <token>
+< 204 No Content
+
+> POST /api/v1/rooms
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "description": "Made by clowder-apicheck",
+>   "name": "apicheck-1793119437498812790",
+>   "visibility": "private"
+> }
+< 201 Created
+< {
+<   "can_manage": true,
+<   "created_at": "2026-10-27T16:43:57Z",
+<   "created_by": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "description": "Made by clowder-apicheck",
+<   "id": 4,
+<   "is_member": true,
+<   "member_count": 1,
+<   "name": "apicheck-1793119437498812790",
+<   "visibility": "private"
+< }
+
+> GET /api/v1/rooms/4/candidates
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "users": [
+<     {
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "display_name": "Admin",
+<       "id": 1,
+<       "role": "admin",
+<       "username": "admin"
+<     },
+<     {
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "display_name": "Bob",
+<       "id": 3,
+<       "role": "member",
+<       "username": "bob"
+<     },
+<     {
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "display_name": "Carol",
+<       "id": 4,
+<       "role": "member",
+<       "username": "carol"
+<     }
+<   ]
+< }
+
+> POST /api/v1/rooms/4/members
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "user_id": 1
+> }
+< 204 No Content
+
+> GET /api/v1/rooms/4/members
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "members": [
+<     {
+<       "added_by": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "joined_at": "2026-10-27T16:43:57Z",
+<       "user": {
+<         "display_name": "Admin",
+<         "id": 1,
+<         "username": "admin"
+<       }
+<     },
+<     {
+<       "added_by": null,
+<       "joined_at": "2026-10-27T16:43:57Z",
+<       "user": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       }
+<     }
+<   ]
+< }
+
+> POST /api/v1/rooms/4/posts
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "# Plan\n\nThe **first** post of the apicheck room.",
+>   "format": "markdown",
+>   "tags": [
+>     "apicheck",
+>     "plan"
+>   ],
+>   "tasks": [
+>     {
+>       "assignee_ids": [
+>         1
+>       ],
+>       "due_date": "2030-01-31",
+>       "title": "Read the plan"
+>     }
+>   ]
+> }
+< 201 Created
+< {
+<   "attachments": [],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "# Plan\n\nThe **first** post of the apicheck room.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:43:57Z",
+<   "deleted": false,
+<   "edited_at": null,
+<   "format": "markdown",
+<   "html": "<h3>Plan</h3>\n<p>The <strong>first</strong> post of the apicheck room.</p>\n",
+<   "id": 18,
+<   "parent_id": null,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [
+<     "apicheck",
+<     "plan"
+<   ],
+<   "tasks": [
+<     {
+<       "assignees": [
+<         {
+<           "display_name": "Admin",
+<           "id": 1,
+<           "username": "admin"
+<         }
+<       ],
+<       "column_id": 10,
+<       "due_date": "2030-01-31",
+<       "id": 10,
+<       "title": "Read the plan"
+<     }
+<   ]
+< }
+
+> GET /api/v1/rooms/4/posts?limit=10
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "next_before": null,
+<   "posts": [
+<     {
+<       "attachments": [],
+<       "author": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "body": "# Plan\n\nThe **first** post of the apicheck room.",
+<       "can_delete": true,
+<       "can_edit": true,
+<       "comment_count": 0,
+<       "created_at": "2026-10-27T16:43:57Z",
+<       "deleted": false,
+<       "edited_at": null,
+<       "format": "markdown",
+<       "html": "<h3>Plan</h3>\n<p>The <strong>first</strong> post of the apicheck room.</p>\n",
+<       "id": 18,
+<       "parent_id": null,
+<       "reactions": [],
+<       "room_id": 4,
+<       "root_id": 18,
+<       "tags": [
+<         "apicheck",
+<         "plan"
+<       ],
+<       "tasks": [
+<         {
+<           "assignees": [
+<             {
+<               "display_name": "Admin",
+<               "id": 1,
+<               "username": "admin"
+<             }
+<           ],
+<           "column_id": 10,
+<           "due_date": "2030-01-31",
+<           "id": 10,
+<           "title": "Read the plan"
+<         }
+<       ]
+<     }
+<   ]
+< }
+
+> POST /api/v1/posts/18/comments
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "A comment on the plan."
+> }
+< 201 Created
+< {
+<   "attachments": [],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "A comment on the plan.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:43:57Z",
+<   "deleted": false,
+<   "edited_at": null,
+<   "format": "text",
+<   "html": "<p>A comment on the plan.</p>\n",
+<   "id": 19,
+<   "parent_id": 18,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [],
+<   "tasks": []
+< }
+
+> POST /api/v1/posts/19/comments
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "A *reply* to the comment.",
+>   "format": "markdown"
+> }
+< 201 Created
+< {
+<   "attachments": [],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "A *reply* to the comment.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:43:57Z",
+<   "deleted": false,
+<   "edited_at": null,
+<   "format": "markdown",
+<   "html": "<p>A <em>reply</em> to the comment.</p>\n",
+<   "id": 20,
+<   "parent_id": 19,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [],
+<   "tasks": []
+< }
+
+> PUT /api/v1/posts/18/reactions/%F0%9F%91%8D
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "reactions": [
+<     {
+<       "count": 1,
+<       "emoji": "👍",
+<       "mine": true,
+<       "users": [
+<         {
+<           "display_name": "Alice",
+<           "id": 2,
+<           "username": "alice"
+<         }
+<       ]
+<     }
+<   ]
+< }
+
+> DELETE /api/v1/posts/18/reactions/%F0%9F%91%8D
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "reactions": []
+< }
+
+> PATCH /api/v1/posts/18
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "# Plan\n\nThe **edited** post of the apicheck room."
+> }
+< 200 OK
+< {
+<   "attachments": [],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "# Plan\n\nThe **edited** post of the apicheck room.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 2,
+<   "created_at": "2026-10-27T16:43:57Z",
+<   "deleted": false,
+<   "edited_at": "2026-10-27T16:43:57Z",
+<   "format": "markdown",
+<   "html": "<h3>Plan</h3>\n<p>The <strong>edited</strong> post of the apicheck room.</p>\n",
+<   "id": 18,
+<   "parent_id": null,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [
+<     "apicheck",
+<     "plan"
+<   ],
+<   "tasks": [
+<     {
+<       "assignees": [
+<         {
+<           "display_name": "Admin",
+<           "id": 1,
+<           "username": "admin"
+<         }
+<       ],
+<       "column_id": 10,
+<       "due_date": "2030-01-31",
+<       "id": 10,
+<       "title": "Read the plan"
+<     }
+<   ]
+< }
+
+> GET /api/v1/posts/18/thread
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "comments": [
+<     {
+<       "comment": {
+<         "attachments": [],
+<         "author": {
+<           "display_name": "Alice",
+<           "id": 2,
+<           "username": "alice"
+<         },
+<         "body": "A comment on the plan.",
+<         "can_delete": true,
+<         "can_edit": true,
+<         "comment_count": 0,
+<         "created_at": "2026-10-27T16:43:57Z",
+<         "deleted": false,
+<         "edited_at": null,
+<         "format": "text",
+<         "html": "<p>A comment on the plan.</p>\n",
+<         "id": 19,
+<         "parent_id": 18,
+<         "reactions": [],
+<         "room_id": 4,
+<         "root_id": 18,
+<         "tags": [],
+<         "tasks": []
+<       },
+<       "depth": 1
+<     },
+<     {
+<       "comment": {
+<         "attachments": [],
+<         "author": {
+<           "display_name": "Alice",
+<           "id": 2,
+<           "username": "alice"
+<         },
+<         "body": "A *reply* to the comment.",
+<         "can_delete": true,
+<         "can_edit": true,
+<         "comment_count": 0,
+<         "created_at": "2026-10-27T16:43:57Z",
+<         "deleted": false,
+<         "edited_at": null,
+<         "format": "markdown",
+<         "html": "<p>A <em>reply</em> to the comment.</p>\n",
+<         "id": 20,
+<         "parent_id": 19,
+<         "reactions": [],
+<         "room_id": 4,
+<         "root_id": 18,
+<         "tags": [],
+<         "tasks": []
+<       },
+<       "depth": 2
+<     }
+<   ],
+<   "focus_id": null,
+<   "post": {
+<     "attachments": [],
+<     "author": {
+<       "display_name": "Alice",
+<       "id": 2,
+<       "username": "alice"
+<     },
+<     "body": "# Plan\n\nThe **edited** post of the apicheck room.",
+<     "can_delete": true,
+<     "can_edit": true,
+<     "comment_count": 2,
+<     "created_at": "2026-10-27T16:43:57Z",
+<     "deleted": false,
+<     "edited_at": "2026-10-27T16:43:57Z",
+<     "format": "markdown",
+<     "html": "<h3>Plan</h3>\n<p>The <strong>edited</strong> post of the apicheck room.</p>\n",
+<     "id": 18,
+<     "parent_id": null,
+<     "reactions": [],
+<     "room_id": 4,
+<     "root_id": 18,
+<     "tags": [
+<       "apicheck",
+<       "plan"
+<     ],
+<     "tasks": [
+<       {
+<         "assignees": [
+<           {
+<             "display_name": "Admin",
+<             "id": 1,
+<             "username": "admin"
+<           }
+<         ],
+<         "column_id": 10,
+<         "due_date": "2030-01-31",
+<         "id": 10,
+<         "title": "Read the plan"
+<       }
+<     ]
+<   }
+< }
+
+> DELETE /api/v1/posts/19
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/posts/19
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "attachments": [],
+<   "author": null,
+<   "body": null,
+<   "can_delete": false,
+<   "can_edit": false,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:43:57Z",
+<   "deleted": true,
+<   "edited_at": null,
+<   "format": "text",
+<   "html": null,
+<   "id": 19,
+<   "parent_id": 18,
+<   "reactions": [],
+<   "room_id": 4,
+<   "root_id": 18,
+<   "tags": [],
+<   "tasks": []
+< }
+
+> GET /api/v1/tags?prefix=apic
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "tags": [
+<     "apicheck"
+<   ]
+< }
+
+> DELETE /api/v1/rooms/4
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/rooms/4
+> Authorization: Bearer <token>
+< 404 Not Found
+< {
+<   "error": {
+<     "code": "not_found",
+<     "message": "Not found."
+<   }
+< }
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+ok rooms
+== board: upload files, post them with a task, work the board, download, search, and read the notifications as the assignee
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "alice"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-26T16:43:57Z",
+<   "token": "<token>",
+<   "user": {
+<     "created_at": "2026-10-27T16:43:46Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/users?q=bob
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "users": [
+<     {
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "display_name": "Bob",
+<       "id": 3,
+<       "role": "member",
+<       "username": "bob"
+<     }
+<   ]
+< }
+
+> POST /api/v1/rooms
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "description": "Made by clowder-apicheck",
+>   "name": "apicheck-board-1793119437641545057",
+>   "visibility": "private"
+> }
+< 201 Created
+< {
+<   "can_manage": true,
+<   "created_at": "2026-10-27T16:43:57Z",
+<   "created_by": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "description": "Made by clowder-apicheck",
+<   "id": 5,
+<   "is_member": true,
+<   "member_count": 1,
+<   "name": "apicheck-board-1793119437641545057",
+<   "visibility": "private"
+< }
+
+> POST /api/v1/rooms/5/members
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "user_id": 3
+> }
+< 204 No Content
+
+> POST /api/v1/uploads
+> Authorization: Bearer <token>
+> Content-Type: multipart/form-data; boundary=<boundary>
+> (the field file: notes.txt, 57 bytes)
+< 201 Created
+< {
+<   "content_type": "text/plain; charset=utf-8",
+<   "file_name": "notes.txt",
+<   "height": null,
+<   "id": "23bdba7ec1cd8aee3b19abc93d0983decb47d20cbd886d07b03eb91faf1060c4",
+<   "size": 57,
+<   "width": null
+< }
+
+> POST /api/v1/uploads
+> Authorization: Bearer <token>
+> Content-Type: multipart/form-data; boundary=<boundary>
+> (the field file: pixel.png, 122 bytes)
+< 201 Created
+< {
+<   "content_type": "image/png",
+<   "file_name": "pixel.png",
+<   "height": 4,
+<   "id": "3100d9776646d5c2d019c022fa9ea2a846df38d6ee46f29aa4d289de96e7da2f",
+<   "size": 122,
+<   "width": 4
+< }
+
+> POST /api/v1/rooms/5/posts
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "body": "# boardcheck\n\nThe **first** card of the board, with a note and a picture.",
+>   "format": "markdown",
+>   "tags": [
+>     "apicheck",
+>     "board"
+>   ],
+>   "tasks": [
+>     {
+>       "assignee_ids": [
+>         3
+>       ],
+>       "title": "Move this card"
+>     }
+>   ],
+>   "upload_ids": [
+>     "23bdba7ec1cd8aee3b19abc93d0983decb47d20cbd886d07b03eb91faf1060c4",
+>     "3100d9776646d5c2d019c022fa9ea2a846df38d6ee46f29aa4d289de96e7da2f"
+>   ]
+> }
+< 201 Created
+< {
+<   "attachments": [
+<     {
+<       "content_type": "text/plain; charset=utf-8",
+<       "file_name": "notes.txt",
+<       "height": null,
+<       "id": 3,
+<       "size": 57,
+<       "url": "/api/v1/attachments/3",
+<       "width": null
+<     },
+<     {
+<       "content_type": "image/png",
+<       "file_name": "pixel.png",
+<       "height": 4,
+<       "id": 4,
+<       "size": 122,
+<       "url": "/api/v1/attachments/4",
+<       "width": 4
+<     }
+<   ],
+<   "author": {
+<     "display_name": "Alice",
+<     "id": 2,
+<     "username": "alice"
+<   },
+<   "body": "# boardcheck\n\nThe **first** card of the board, with a note and a picture.",
+<   "can_delete": true,
+<   "can_edit": true,
+<   "comment_count": 0,
+<   "created_at": "2026-10-27T16:43:57Z",
+<   "deleted": false,
+<   "edited_at": null,
+<   "format": "markdown",
+<   "html": "<h3>boardcheck</h3>\n<p>The <strong>first</strong> card of the board, with a note and a picture.</p>\n",
+<   "id": 21,
+<   "parent_id": null,
+<   "reactions": [],
+<   "room_id": 5,
+<   "root_id": 21,
+<   "tags": [
+<     "apicheck",
+<     "board"
+<   ],
+<   "tasks": [
+<     {
+<       "assignees": [
+<         {
+<           "display_name": "Bob",
+<           "id": 3,
+<           "username": "bob"
+<         }
+<       ],
+<       "column_id": 13,
+<       "due_date": null,
+<       "id": 11,
+<       "title": "Move this card"
+<     }
+<   ]
+< }
+
+> GET /api/v1/rooms/5/board
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "columns": [
+<     {
+<       "done": false,
+<       "id": 13,
+<       "name": "To do",
+<       "position": 0,
+<       "tasks": [
+<         {
+<           "assignees": [
+<             {
+<               "display_name": "Bob",
+<               "id": 3,
+<               "username": "bob"
+<             }
+<           ],
+<           "column_id": 13,
+<           "due_date": null,
+<           "id": 11,
+<           "position": 0,
+<           "post_id": 21,
+<           "title": "Move this card"
+<         }
+<       ]
+<     },
+<     {
+<       "done": false,
+<       "id": 14,
+<       "name": "In progress",
+<       "position": 1,
+<       "tasks": []
+<     },
+<     {
+<       "done": true,
+<       "id": 15,
+<       "name": "Done",
+<       "position": 2,
+<       "tasks": []
+<     }
+<   ],
+<   "room_id": 5
+< }
+
+> POST /api/v1/tasks/11/move
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "column_id": 14,
+>   "position": 0
+> }
+< 204 No Content
+
+> GET /api/v1/rooms/5/board
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "columns": [
+<     {
+<       "done": false,
+<       "id": 13,
+<       "name": "To do",
+<       "position": 0,
+<       "tasks": []
+<     },
+<     {
+<       "done": false,
+<       "id": 14,
+<       "name": "In progress",
+<       "position": 1,
+<       "tasks": [
+<         {
+<           "assignees": [
+<             {
+<               "display_name": "Bob",
+<               "id": 3,
+<               "username": "bob"
+<             }
+<           ],
+<           "column_id": 14,
+<           "due_date": null,
+<           "id": 11,
+<           "position": 0,
+<           "post_id": 21,
+<           "title": "Move this card"
+<         }
+<       ]
+<     },
+<     {
+<       "done": true,
+<       "id": 15,
+<       "name": "Done",
+<       "position": 2,
+<       "tasks": []
+<     }
+<   ],
+<   "room_id": 5
+< }
+
+> PATCH /api/v1/tasks/11
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "due_date": "2030-02-15"
+> }
+< 200 OK
+< {
+<   "assignees": [
+<     {
+<       "display_name": "Bob",
+<       "id": 3,
+<       "username": "bob"
+<     }
+<   ],
+<   "column_id": 14,
+<   "due_date": "2030-02-15",
+<   "id": 11,
+<   "position": 0,
+<   "post_id": 21,
+<   "title": "Move this card"
+< }
+
+> POST /api/v1/rooms/5/columns
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "name": "Review"
+> }
+< 201 Created
+< {
+<   "done": true,
+<   "id": 16,
+<   "name": "Review",
+<   "position": 3,
+<   "tasks": []
+< }
+
+> PATCH /api/v1/columns/16
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "name": "In review"
+> }
+< 200 OK
+< {
+<   "done": true,
+<   "id": 16,
+<   "name": "In review",
+<   "position": 3,
+<   "tasks": []
+< }
+
+> POST /api/v1/columns/16/move
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "position": 1
+> }
+< 204 No Content
+
+> GET /api/v1/rooms/5/board
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "columns": [
+<     {
+<       "done": false,
+<       "id": 13,
+<       "name": "To do",
+<       "position": 0,
+<       "tasks": []
+<     },
+<     {
+<       "done": false,
+<       "id": 16,
+<       "name": "In review",
+<       "position": 1,
+<       "tasks": []
+<     },
+<     {
+<       "done": false,
+<       "id": 14,
+<       "name": "In progress",
+<       "position": 2,
+<       "tasks": [
+<         {
+<           "assignees": [
+<             {
+<               "display_name": "Bob",
+<               "id": 3,
+<               "username": "bob"
+<             }
+<           ],
+<           "column_id": 14,
+<           "due_date": "2030-02-15",
+<           "id": 11,
+<           "position": 0,
+<           "post_id": 21,
+<           "title": "Move this card"
+<         }
+<       ]
+<     },
+<     {
+<       "done": true,
+<       "id": 15,
+<       "name": "Done",
+<       "position": 3,
+<       "tasks": []
+<     }
+<   ],
+<   "room_id": 5
+< }
+
+> DELETE /api/v1/columns/16
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/attachments/3
+> Authorization: Bearer <token>
+< 200 OK
+< Content-Type: application/octet-stream
+< Content-Disposition: attachment; filename="notes.txt"
+< X-Content-Type-Options: nosniff
+< Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox
+< Cache-Control: private, max-age=86400
+< (57 bytes)
+
+> GET /api/v1/attachments/4
+> Authorization: Bearer <token>
+< 200 OK
+< Content-Type: image/png
+< Content-Disposition: inline; filename="pixel.png"
+< X-Content-Type-Options: nosniff
+< Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox
+< Cache-Control: private, max-age=86400
+< (122 bytes)
+
+> GET /api/v1/search?q=boardcheck+%23apicheck
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "has_more": false,
+<   "page": 1,
+<   "results": [
+<     {
+<       "author": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "created_at": "2026-10-27T16:43:57Z",
+<       "kind": "post",
+<       "post_id": 21,
+<       "room": {
+<         "id": 5,
+<         "name": "apicheck-board-1793119437641545057"
+<       },
+<       "root_id": 21,
+<       "snippet": [
+<         {
+<           "match": false,
+<           "text": "# "
+<         },
+<         {
+<           "match": true,
+<           "text": "boardcheck"
+<         },
+<         {
+<           "match": false,
+<           "text": "\n\nThe **first** card of the board, with a note and a picture.\nnotes.txt\npixel.png\nMove this card"
+<         }
+<       ]
+<     }
+<   ]
+< }
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "bob"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-26T16:43:57Z",
+<   "token": "<token>",
+<   "user": {
+<     "created_at": "2026-10-27T16:43:46Z",
+<     "display_name": "Bob",
+<     "id": 3,
+<     "role": "member",
+<     "username": "bob"
+<   }
+< }
+
+> GET /api/v1/notifications
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "next_before": null,
+<   "notifications": [
+<     {
+<       "actor": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "created_at": "2026-10-27T16:43:57Z",
+<       "id": 22,
+<       "kind": "assigned",
+<       "post_id": 21,
+<       "read": false,
+<       "room": {
+<         "id": 5,
+<         "name": "apicheck-board-1793119437641545057"
+<       },
+<       "task_id": 11
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "created_at": "2026-10-27T16:43:57Z",
+<       "id": 21,
+<       "kind": "added_to_room",
+<       "post_id": null,
+<       "read": false,
+<       "room": {
+<         "id": 5,
+<         "name": "apicheck-board-1793119437641545057"
+<       },
+<       "task_id": null
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Carol",
+<         "id": 4,
+<         "username": "carol"
+<       },
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "id": 16,
+<       "kind": "reply",
+<       "post_id": 15,
+<       "read": false,
+<       "room": {
+<         "id": 1,
+<         "name": "general"
+<       },
+<       "task_id": null
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Carol",
+<         "id": 4,
+<         "username": "carol"
+<       },
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "id": 11,
+<       "kind": "reply",
+<       "post_id": 11,
+<       "read": false,
+<       "room": {
+<         "id": 1,
+<         "name": "general"
+<       },
+<       "task_id": null
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "id": 9,
+<       "kind": "reply",
+<       "post_id": 9,
+<       "read": false,
+<       "room": {
+<         "id": 1,
+<         "name": "general"
+<       },
+<       "task_id": null
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "id": 8,
+<       "kind": "assigned",
+<       "post_id": 8,
+<       "read": false,
+<       "room": {
+<         "id": 3,
+<         "name": "secret"
+<       },
+<       "task_id": 7
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "id": 7,
+<       "kind": "assigned",
+<       "post_id": 4,
+<       "read": false,
+<       "room": {
+<         "id": 1,
+<         "name": "general"
+<       },
+<       "task_id": 6
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Carol",
+<         "id": 4,
+<         "username": "carol"
+<       },
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "id": 5,
+<       "kind": "assigned",
+<       "post_id": 3,
+<       "read": false,
+<       "room": {
+<         "id": 1,
+<         "name": "general"
+<       },
+<       "task_id": 3
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "id": 3,
+<       "kind": "mention",
+<       "post_id": 1,
+<       "read": false,
+<       "room": {
+<         "id": 1,
+<         "name": "general"
+<       },
+<       "task_id": null
+<     },
+<     {
+<       "actor": {
+<         "display_name": "Alice",
+<         "id": 2,
+<         "username": "alice"
+<       },
+<       "created_at": "2026-10-27T16:43:46Z",
+<       "id": 1,
+<       "kind": "added_to_room",
+<       "post_id": null,
+<       "read": false,
+<       "room": {
+<         "id": 3,
+<         "name": "secret"
+<       },
+<       "task_id": null
+<     }
+<   ]
+< }
+
+> POST /api/v1/notifications/read
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {
+>   "up_to_id": 22
+> }
+< 204 No Content
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "unread_conversations": 1,
+<   "unread_notifications": 0,
+<   "user": {
+<     "created_at": "2026-10-27T16:43:46Z",
+<     "display_name": "Bob",
+<     "id": 3,
+<     "role": "member",
+<     "username": "bob"
+<   }
+< }
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+> DELETE /api/v1/rooms/5
+> Authorization: Bearer <token>
+< 204 No Content
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+ok board
+
+all scenarios passed (55 requests)
+# exit status: 0
