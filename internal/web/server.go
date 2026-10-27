@@ -13,6 +13,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/web/static"
 	"github.com/rm4n0s/clowder/internal/web/views"
 	"github.com/rm4n0s/errors"
@@ -53,6 +54,9 @@ type Services struct {
 	// Notifications is the service of the notifications of a user: their
 	// unread count in the sidebar and their page.
 	Notifications *app.Notifications
+	// Messages is the service of private conversations and messages: their
+	// pages, their streams and the unread count in the sidebar.
+	Messages *app.Messages
 	// Hub delivers the live events of the services to the streams of the
 	// pages (SPEC §8). The services must publish to the same hub. Nil makes a
 	// hub that nothing publishes to.
@@ -62,9 +66,11 @@ type Services struct {
 // Server is the HTTP server of Clowder: the routes, the middleware and the
 // handlers. Make it with New.
 type Server struct {
-	cfg             config.Config
-	logger          *slog.Logger
-	svc             Services
+	cfg    config.Config
+	logger *slog.Logger
+	svc    Services
+	// md renders the bodies of the private messages (D33).
+	md              *markdown.Renderer
 	handler         http.Handler
 	shutdownTimeout time.Duration
 	// pingInterval is how often an open stream writes a comment line, so that
@@ -108,7 +114,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 	if svc.Hub == nil {
 		svc.Hub = live.New()
 	}
-	s := &Server{cfg: cfg, logger: logger, svc: svc, shutdownTimeout: shutdownTimeout, pingInterval: pingInterval}
+	s := &Server{cfg: cfg, logger: logger, svc: svc, md: markdown.New(), shutdownTimeout: shutdownTimeout, pingInterval: pingInterval}
 
 	notFound := http.HandlerFunc(s.notFound)
 	staticFiles, err := newStaticHandler(staticFS, staticPrefix, notFound)
@@ -166,6 +172,22 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /posts/{id}/reactions", handler: http.HandlerFunc(s.postReact)},
 		{pattern: "POST /preview", handler: http.HandlerFunc(s.postPreview)},
 		{pattern: "GET /files/{id}/{name}", handler: http.HandlerFunc(s.fileDownload)},
+		{pattern: "GET " + views.MessagesPath, handler: http.HandlerFunc(s.messagesPage)},
+		{pattern: "POST " + views.MessagesPath, handler: http.HandlerFunc(s.conversationStart)},
+		{pattern: "GET /messages/{id}", handler: http.HandlerFunc(s.conversationPage)},
+		{pattern: "GET /messages/{id}/older", handler: http.HandlerFunc(s.conversationOlder)},
+		{pattern: "GET /messages/{id}/stream", handler: http.HandlerFunc(s.conversationStream)},
+		{pattern: "POST /messages/{id}", handler: http.HandlerFunc(s.messageSend)},
+		{pattern: "POST /messages/{id}/members", handler: http.HandlerFunc(s.conversationAddMembers)},
+		{pattern: "POST /messages/{id}/rename", handler: http.HandlerFunc(s.conversationRename)},
+		{pattern: "POST /messages/{id}/leave", handler: http.HandlerFunc(s.conversationLeave)},
+		{pattern: "GET /messages/m/{msgID}/view", handler: http.HandlerFunc(s.messageView)},
+		{pattern: "GET /messages/m/{msgID}/edit", handler: http.HandlerFunc(s.messageEditForm)},
+		{pattern: "POST /messages/m/{msgID}/edit", handler: http.HandlerFunc(s.messageEditSave)},
+		{pattern: "POST /messages/m/{msgID}/delete", handler: http.HandlerFunc(s.messageDelete)},
+		{pattern: "POST /messages/m/{msgID}/react", handler: http.HandlerFunc(s.messageReact)},
+		{pattern: "GET /messages/m/{msgID}/reply", handler: http.HandlerFunc(s.messageReplySlot)},
+		{pattern: "GET /messages/files/{id}/{name}", handler: http.HandlerFunc(s.messageFileDownload)},
 		{pattern: "GET /search", handler: http.HandlerFunc(s.search)},
 		{pattern: "GET /notifications", handler: http.HandlerFunc(s.notificationsPage)},
 		{pattern: "POST /notifications/read", handler: http.HandlerFunc(s.notificationsMarkRead)},

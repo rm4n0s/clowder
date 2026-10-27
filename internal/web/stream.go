@@ -158,15 +158,22 @@ func (ls *liveStream) sidebar(ctx context.Context, current uint64) error {
 }
 
 // countOps are the patches of the counts that the sidebar shows next to its
-// links, as they are now for the user: today the unread notifications. A count
-// that a later step adds (the unread messages) is added here, so that every
-// stream and answer that keeps the counts live gets it.
+// links, as they are now for the user: the unread notifications and the
+// conversations with unread messages. A count that a later step adds is added
+// here, so that every stream and answer that keeps the counts live gets it.
 func (s *Server) countOps(ctx context.Context, actor app.Actor) ([]patchOp, error) {
 	unread, err := s.svc.Notifications.UnreadCount(ctx, actor)
 	if err != nil {
 		return nil, err
 	}
-	return []patchOp{{component: views.NotificationCount(unread)}}, nil
+	unreadMessages, err := s.svc.Messages.UnreadCount(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return []patchOp{
+		{component: views.NotificationCount(unread)},
+		{component: views.MessageCount(unreadMessages)},
+	}, nil
 }
 
 // counts sends the counts of the sidebar of the user.
@@ -184,11 +191,13 @@ func (ls *liveStream) counts(ctx context.Context) error {
 }
 
 // countsEvent handles an event of the user's topic that only changes a count
-// of the sidebar (a notification was made or read). It returns true when ev
-// was such an event, so that the stream has nothing more to do with it.
+// of the sidebar (a notification was made or read, a conversation changed or
+// was read). It returns true when ev was such an event, so that the stream has
+// nothing more to do with it.
 func (ls *liveStream) countsEvent(ctx context.Context, ev live.Event) (handled bool, err error) {
 	switch ev.Kind {
-	case live.KindNotificationCreated, live.KindNotificationRead:
+	case live.KindNotificationCreated, live.KindNotificationRead,
+		live.KindConversationChanged, live.KindConversationRead:
 		return true, ls.counts(ctx)
 	}
 	return false, nil

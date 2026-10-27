@@ -308,6 +308,20 @@ func (m *Messages) Attachment(ctx context.Context, actor Actor, attachmentID uin
 	return messageAttachmentView(att), f, nil
 }
 
+// Message returns one message as the actor sees it, deleted or not. It fails
+// with TagNotFound for a message that does not exist and for one of a
+// conversation the actor is no member of (admins included), or left.
+func (m *Messages) Message(ctx context.Context, actor Actor, msgID uint64) (Message, error) {
+	msg, err := m.st.MessageByID(ctx, msgID)
+	if err != nil {
+		return Message{}, err
+	}
+	if _, _, err := loadConversation(ctx, m.st, actor, msg.ConversationID); err != nil {
+		return Message{}, err
+	}
+	return m.viewOne(ctx, actor, msgID)
+}
+
 // viewOne returns the view of one message for the actor.
 func (m *Messages) viewOne(ctx context.Context, actor Actor, msgID uint64) (Message, error) {
 	rows, err := m.st.MessageRowsByIDs(ctx, []uint64{msgID})

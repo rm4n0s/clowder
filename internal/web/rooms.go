@@ -50,7 +50,11 @@ func (s *Server) sidebarData(ctx context.Context, actor app.Actor, user app.User
 	if err != nil {
 		return views.SidebarData{}, err
 	}
-	return views.SidebarData{User: user, Rooms: rooms, CurrentRoomID: current, Unread: unread}, nil
+	unreadMessages, err := s.svc.Messages.UnreadCount(ctx, actor)
+	if err != nil {
+		return views.SidebarData{}, err
+	}
+	return views.SidebarData{User: user, Rooms: rooms, CurrentRoomID: current, Unread: unread, UnreadMessages: unreadMessages}, nil
 }
 
 // roomFail answers a failed read of a room: the error page, except that a
@@ -259,7 +263,7 @@ func (s *Server) roomActionFailed(w http.ResponseWriter, r *http.Request, err er
 	switch {
 	case isTag(err, app.TagInvalidInput):
 		problems := formErrorsOf(err)
-		message = firstNonEmpty(problems.Fields[app.FieldUser], problems.Form, messageActionInvalid)
+		message = firstNonEmpty(problems.Fields[app.FieldUser], problems.Fields[app.FieldUsers], problems.Form, messageActionInvalid)
 	case isTag(err, app.TagConflict):
 		message = messageConflict
 	case isTag(err, app.TagForbidden):

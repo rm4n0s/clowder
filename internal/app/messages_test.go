@@ -280,6 +280,94 @@ func TestStartDirectNeedsALogin(t *testing.T) {
 	_ = requireTag(t, err, app.TagUnauthenticated, "Messages.Upload.Unauthenticated")
 }
 
+func TestResolveUsernames(t *testing.T) {
+	e := newMsgEnv(t)
+	e.disable("erin")
+	tests := []struct {
+		name  string
+		names []string
+		want  []string
+		// invalid is the text the message must contain; empty when it works.
+		invalid string
+	}{
+		{"one", []string{"bob"}, []string{"bob"}, ""},
+		{"in the order given, trimmed and lower cased", []string{" Carol ", "BOB", "alice"}, []string{"carol", "bob", "alice"}, ""},
+		{"repeats and empty names are dropped", []string{"bob", "", "  ", "bob"}, []string{"bob"}, ""},
+		{"nobody", []string{"", " "}, nil, "Name at least one person."},
+		{"no list", nil, nil, "Name at least one person."},
+		{"unknown", []string{"bob", "nobody", "ghost"}, nil, "No active user named nobody, ghost."},
+		{"disabled", []string{"erin"}, nil, "No active user named erin."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := e.msgs.ResolveUsernames(t.Context(), e.as("alice"), tt.names)
+			if tt.invalid != "" {
+				appErr := requireTag(t, err, app.TagInvalidInput, "Messages.ResolveUsernames.InvalidInput")
+				if f := fieldsOf(t, appErr); len(f) != 1 || f[app.FieldUsers] != tt.invalid {
+					t.Errorf("fields = %v, want users: %q", f, tt.invalid)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveUsernames: %+v", err)
+			}
+			if want := e.uids(tt.want...); !slices.Equal(got, want) {
+				t.Errorf("ids = %v, want %v", got, want)
+			}
+		})
+	}
+
+	t.Run("more than 50 names", func(t *testing.T) {
+		many := make([]string, 51)
+		for i := range many {
+			many[i] = "user" + strconv.Itoa(i)
+		}
+		_, err := e.msgs.ResolveUsernames(t.Context(), e.as("alice"), many)
+		appErr := requireTag(t, err, app.TagInvalidInput, "Messages.ResolveUsernames.InvalidInput")
+		if f := fieldsOf(t, appErr); f[app.FieldUsers] != "A group has at most 50 members." {
+			t.Errorf("fields = %v", f)
+		}
+	})
+	t.Run("needs a login", func(t *testing.T) {
+		_, err := e.msgs.ResolveUsernames(t.Context(), app.Actor{}, []string{"bob"})
+		_ = requireTag(t, err, app.TagUnauthenticated, "Messages.ResolveUsernames.Unauthenticated")
+	})
+}
+
+func TestMessageViewsAndQuotes(t *testing.T) {
+	e := newMsgEnv(t)
+	conv := e.group("crew", "alice", "bob", "carol")
+	plain := e.send("bob", conv, "  a   long\n question  ")
+	files, err := e.msgs.Send(t.Context(), e.as("carol"), conv, app.MessageInput{Uploads: []app.Upload{e.upload("carol", "x.txt")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.msgs.Message(t.Context(), e.as("bob"), plain.ID)
+	if err != nil || got.ID != plain.ID || !got.CanEdit || got.Body != "a   long\n question" {
+		t.Fatalf("Message as the author = %+v, %v", got, err)
+	}
+	if q := got.Quote(); q.ID != plain.ID || q.Preview != "a long question" || q.Author.Username != "bob" || q.Deleted {
+		t.Errorf("Quote = %+v", q)
+	}
+	got, err = e.msgs.Message(t.Context(), e.as("alice"), files.ID)
+	if err != nil || got.CanEdit {
+		t.Fatalf("Message as another member = %+v, %v", got, err)
+	}
+	if q := got.Quote(); q.Preview != "x.txt" {
+		t.Errorf("Quote of a file = %+v", q)
+	}
+	if err := e.msgs.Delete(t.Context(), e.as("bob"), plain.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = e.msgs.Message(t.Context(), e.as("alice"), plain.ID)
+	if err != nil || !got.Deleted || got.Body != "" {
+		t.Fatalf("deleted Message = %+v, %v", got, err)
+	}
+	if q := got.Quote(); !q.Deleted || q.Preview != app.MessageDeletedPreview {
+		t.Errorf("Quote of a deleted one = %+v", q)
+	}
+}
+
 func TestStartDirectIsUniquePerPair(t *testing.T) {
 	e := newMsgEnv(t)
 	first := e.direct("alice", "bob")
@@ -752,6 +840,14 @@ func TestMessagesPermissions(t *testing.T) {
 			_, err := e.msgs.React(t.Context(), a, e.msg.ID, "\U0001F44D")
 			return err
 		}, everyoneElse("", "")},
+		{"Message", "Messages.Message->" + notMember, func(e *permEnv, a app.Actor) error {
+			_, err := e.msgs.Message(t.Context(), a, e.msg.ID)
+			return err
+		}, everyoneElse("", "")},
+		{"ResolveUsernames", "Messages.ResolveUsernames", func(e *permEnv, a app.Actor) error {
+			_, err := e.msgs.ResolveUsernames(t.Context(), a, []string{"bob"})
+			return err
+		}, who{}},
 		{"Attachment", "Messages.Attachment->" + notMember, func(e *permEnv, a app.Actor) error {
 			_, f, err := e.msgs.Attachment(t.Context(), a, e.att)
 			if err == nil {
@@ -839,6 +935,8 @@ func TestMissingThingsAreNotFound(t *testing.T) {
 	_ = requireTag(t, err, app.TagNotFound, via("MarkRead", missing))
 	_, _, err = e.msgs.Attachment(ctx, a, 9999)
 	_ = requireTag(t, err, app.TagNotFound, "Messages.Attachment->Store.MessageAttachmentByID.NotFound")
+	_, err = e.msgs.Message(ctx, a, 9999)
+	_ = requireTag(t, err, app.TagNotFound, "Messages.Message->Store.MessageByID.NotFound")
 }
 
 func TestAttachmentDownload(t *testing.T) {

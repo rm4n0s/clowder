@@ -17,14 +17,17 @@ type SidebarData struct {
 	// Unread is the number of unread notifications of the user, shown on the
 	// Notifications link; the badge is left out when it is 0.
 	Unread int
+	// UnreadMessages is the number of conversations of the user with unread
+	// messages, shown on the Messages link; the badge is left out when it is 0.
+	UnreadMessages int
 	// HideSearch leaves out the search box of the sidebar. The search page
 	// sets it: it has a box of its own.
 	HideSearch bool
 }
 
 // Sidebar is the sidebar of the pages of a logged-in user: the display name of
-// the user, the search box, the navigation (Home, Notifications with its unread
-// count, and Admin for admins), the
+// the user, the search box, the navigation (Home, Messages and Notifications with
+// their unread counts, and Admin for admins), the
 // rooms of the user with the links to browse and to make rooms, and the logout
 // button.
 templ Sidebar(d SidebarData) {
@@ -35,6 +38,12 @@ templ Sidebar(d SidebarData) {
 	<nav aria-label="Main">
 		<ul>
 			<li><a href="/">Home</a></li>
+			<li>
+				<a class="sidebar-messages" href="/messages">
+					<span>Messages</span>
+					@MessageCount(d.UnreadMessages)
+				</a>
+			</li>
 			<li>
 				<a class="sidebar-notifications" href="/notifications">
 					<span>Notifications</span>
@@ -85,6 +94,17 @@ templ NotificationCount(n int) {
 		<span id="notification-count" class="count-badge" title={ unreadTitle(n) }>{ strconv.Itoa(n) }</span>
 	} else {
 		<span id="notification-count" class="count-badge"></span>
+	}
+}
+
+// MessageCount is the badge with the number of conversations that have unread
+// messages, on the Messages link of the sidebar. The element is always there,
+// so that a patch finds it; it is empty, and not shown, when the count is 0.
+templ MessageCount(n int) {
+	if n > 0 {
+		<span id="message-count" class="count-badge" title={ unreadConversationsTitle(n) }>{ strconv.Itoa(n) }</span>
+	} else {
+		<span id="message-count" class="count-badge"></span>
 	}
 }
 

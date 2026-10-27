@@ -212,6 +212,16 @@ type ConversationHeader struct {
 	IsGroup bool
 }
 
+// Quote returns the message as a quote, which is what a reply to it shows: its
+// author and the start of its text (or MessageDeletedPreview).
+func (m Message) Quote() MessageQuote {
+	names := make([]string, len(m.Attachments))
+	for i, a := range m.Attachments {
+		names[i] = a.FileName
+	}
+	return MessageQuote{ID: m.ID, Author: m.Author, Preview: previewOf(m.Deleted, m.Body, names), Deleted: m.Deleted}
+}
+
 // Messages is the service of private conversations and messages (SPEC §7.11,
 // D32). Make it with NewMessages. It is safe for concurrent use. Only the
 // members of a conversation use it: anyone else, admins included, and a member
@@ -620,6 +630,58 @@ func (m *Messages) Conversation(ctx context.Context, actor Actor, convID uint64)
 		}
 	}
 	return h, nil
+}
+
+// ResolveUsernames returns the IDs of the users with these usernames, in the
+// order given, for a form where people are named. Names are trimmed and lower
+// cased, empty ones and repeats are dropped, and the actor may be among them.
+// It fails with TagInvalidInput, with the message under FieldUsers, when no
+// name is left, when there are more than 50, or when a name belongs to no user
+// or to a disabled one (the message lists those names). An actor with no ID
+// fails with TagUnauthenticated.
+func (m *Messages) ResolveUsernames(ctx context.Context, actor Actor, usernames []string) ([]uint64, error) {
+	if actor.UserID == 0 {
+		return nil, errors.New(TagUnauthenticated, "messages need a login", "reason", "none")
+	}
+	names := make([]string, 0, len(usernames))
+	for _, n := range usernames {
+		n = strings.ToLower(strings.TrimSpace(n))
+		if n != "" && !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
+	switch {
+	case len(names) == 0:
+		return nil, errors.New(TagInvalidInput, "no one was named",
+			"fields", map[string]string{FieldUsers: "Name at least one person."})
+	case len(names) > groupMaxMembers:
+		return nil, errors.New(TagInvalidInput, "too many people were named",
+			"fields", map[string]string{FieldUsers: "A group has at most 50 members."})
+	}
+	users, err := m.st.UsersByUsernames(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+	ids := make(map[string]uint64, len(users))
+	for _, u := range users {
+		if u.DisabledAt == nil {
+			ids[u.Username] = u.ID
+		}
+	}
+	out := make([]uint64, 0, len(names))
+	var bad []string
+	for _, n := range names {
+		if id, ok := ids[n]; ok {
+			out = append(out, id)
+		} else {
+			bad = append(bad, n)
+		}
+	}
+	if len(bad) > 0 {
+		return nil, errors.New(TagInvalidInput, "a name belongs to no user or to a disabled one",
+			"fields", map[string]string{FieldUsers: "No active user named " + strings.Join(bad, ", ") + "."})
+	}
+	return out, nil
 }
 
 // UnreadCount returns the number of conversations of the actor that have a

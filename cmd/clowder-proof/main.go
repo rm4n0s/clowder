@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -60,6 +61,29 @@ var roomPlaceholder = regexp.MustCompile(`\{(room|board):([^{}]+)\}`)
 // count link of the first one that matches, without its #comments, so the page
 // opens at the top. The proof does not depend on the IDs of the demo posts.
 var postPlaceholder = regexp.MustCompile(`\{post:([^{}]+)\}`)
+
+// conversationPlaceholder in -page stands for the path of the conversation
+// whose members are the given usernames, separated by commas:
+// -page {conversation:alice,bob} opens /messages/<id> of the conversation of
+// alice and bob. It needs -as. The tool finds the conversation in the list of
+// conversations of that user (the entries carry their members' usernames), so
+// the proof does not depend on the IDs of the demo conversations. It only opens
+// the list, which marks nothing read.
+var conversationPlaceholder = regexp.MustCompile(`\{conversation:([^{}]+)\}`)
+
+// pagePrefixes are what a -page or -other-page may start with: a path, or a
+// placeholder that the tool resolves.
+var pagePrefixes = []string{"/", "{room:", "{board:", "{post:", "{conversation:"}
+
+// validPage reports whether a -page value starts like a path or a placeholder.
+func validPage(page string) bool {
+	for _, p := range pagePrefixes {
+		if strings.HasPrefix(page, p) {
+			return true
+		}
+	}
+	return false
+}
 
 // fill is one -fill flag: type value into the first element that matches
 // selector.
@@ -210,7 +234,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	var o options
 	fs := flag.NewFlagSet("clowder-proof", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1; {room:name} is the path of the room of that name in the sidebar of the -as user, {board:name} the path of its board; {post:text} is the path of the first post in those rooms whose text contains text")
+	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1; {room:name} is the path of the room of that name in the sidebar of the -as user, {board:name} the path of its board; {post:text} is the path of the first post in those rooms whose text contains text; {conversation:alice,bob} is the path of the conversation of those members in the list of the -as user")
 	fs.StringVar(&o.out, "o", "", "path of the PNG to write (required)")
 	fs.StringVar(&o.as, "as", "", "demo user to log in as through /login before the page is opened, such as admin or alice")
 	fs.IntVar(&o.width, "width", 1280, "viewport width in pixels")
@@ -231,8 +255,8 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "unexpected arguments", "args", fs.Args())
 	case o.out == "":
 		return options{}, errors.New(tagFlagsInvalid, "-o is required", "flag", "o")
-	case !strings.HasPrefix(o.page, "/") && !strings.HasPrefix(o.page, "{room:") && !strings.HasPrefix(o.page, "{board:") && !strings.HasPrefix(o.page, "{post:"):
-		return options{}, errors.New(tagFlagsInvalid, "-page must start with /, {room:name}, {board:name} or {post:text}", "page", o.page)
+	case !validPage(o.page):
+		return options{}, errors.New(tagFlagsInvalid, "-page must start with /, {room:name}, {board:name}, {post:text} or {conversation:members}", "page", o.page)
 	case o.width <= 0 || o.height <= 0:
 		return options{}, errors.New(tagFlagsInvalid, "-width and -height must be positive",
 			"width", o.width, "height", o.height)
@@ -244,12 +268,15 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	case o.as == "" && postPlaceholder.MatchString(o.page):
 		return options{}, errors.New(tagFlagsInvalid, "{post:text} in -page needs -as: the post is found in the rooms of a user",
 			"page", o.page)
+	case o.as == "" && conversationPlaceholder.MatchString(o.page):
+		return options{}, errors.New(tagFlagsInvalid, "{conversation:members} in -page needs -as: the conversation is found in the list of a user",
+			"page", o.page)
 	case o.other.user == "" && (o.other.page != "" || len(o.other.fills) > 0 || len(o.other.clicks) > 0):
 		return options{}, errors.New(tagFlagsInvalid, "-other-page, -other-fill and -other-click need -other", "flag", "other")
 	case o.other.user != "" && o.as == "":
 		return options{}, errors.New(tagFlagsInvalid, "-other needs -as: the second user acts while the first one watches", "flag", "other")
-	case o.other.user != "" && o.other.page != "" && !strings.HasPrefix(o.other.page, "/") && !strings.HasPrefix(o.other.page, "{room:") && !strings.HasPrefix(o.other.page, "{board:") && !strings.HasPrefix(o.other.page, "{post:"):
-		return options{}, errors.New(tagFlagsInvalid, "-other-page must start with /, {room:name}, {board:name} or {post:text}", "page", o.other.page)
+	case o.other.user != "" && o.other.page != "" && !validPage(o.other.page):
+		return options{}, errors.New(tagFlagsInvalid, "-other-page must start with /, {room:name}, {board:name}, {post:text} or {conversation:members}", "page", o.other.page)
 	case o.invite != strings.Contains(o.page, invitePlaceholder):
 		return options{}, errors.New(tagFlagsInvalid, "-invite and "+invitePlaceholder+" in -page go together",
 			"invite", o.invite, "page", o.page)
@@ -331,6 +358,10 @@ func (sc script) open(ctx context.Context, srv *browsertest.Server, o options) (
 		return "", err
 	}
 	page, err = resolvePosts(ctx, srv.URL, page)
+	if err != nil {
+		return "", err
+	}
+	page, err = resolveConversations(ctx, srv.URL, page)
 	if err != nil {
 		return "", err
 	}
@@ -470,6 +501,58 @@ func postHref(ctx context.Context, baseURL string, rooms []string, text string) 
 	return "", errors.New(tagPostNotFound, "no post in the rooms of the sidebar contains this text", "text", text)
 }
 
+// resolveConversations replaces every {conversation:a,b} in page with the path
+// of the conversation whose members are exactly those usernames, found in the
+// list of conversations of the user the browser is logged in as. It fails with
+// a ConversationNotFound error when there is none. It leaves the browser on the
+// list of conversations, which it only reads.
+func resolveConversations(ctx context.Context, baseURL, page string) (string, error) {
+	matches := conversationPlaceholder.FindAllStringSubmatchIndex(page, -1)
+	if len(matches) == 0 {
+		return page, nil
+	}
+	if err := chromedp.Do(ctx, chromedp.Navigate(baseURL+"/messages"), chromedp.WaitReady("body")); err != nil {
+		return "", errors.NewErr(tagConversationNotFound, err)
+	}
+	var out strings.Builder
+	last := 0
+	for _, m := range matches {
+		href, err := conversationHref(ctx, page[m[2]:m[3]])
+		if err != nil {
+			return "", err
+		}
+		out.WriteString(page[last:m[0]])
+		out.WriteString(href)
+		last = m[1]
+	}
+	out.WriteString(page[last:])
+	return out.String(), nil
+}
+
+// conversationHref returns the path of the conversation in the list the browser
+// shows whose members have exactly the usernames (a comma-separated list, in
+// any order). It fails with a ConversationNotFound error when there is none.
+func conversationHref(ctx context.Context, members string) (string, error) {
+	names := strings.Split(members, ",")
+	for i, n := range names {
+		names[i] = strings.ToLower(strings.TrimSpace(n))
+	}
+	slices.Sort(names)
+	want, err := json.Marshal(strings.Join(names, " "))
+	if err != nil {
+		return "", errors.NewErr(tagConversationNotFound, err).SetMetadata("members", members)
+	}
+	js := `(() => { for (const li of document.querySelectorAll('#conversation-list li.conversation')) { if (li.dataset.members === ` + string(want) + `) { return li.querySelector('a.conversation-link').getAttribute('href'); } } return ""; })()`
+	href, err := chromedp.Run(ctx, chromedp.Evaluate[string](js))
+	if err != nil {
+		return "", errors.NewErr(tagConversationNotFound, err).SetMetadata("members", members)
+	}
+	if href == "" {
+		return "", errors.New(tagConversationNotFound, "the list of conversations has none with these members", "members", members)
+	}
+	return href, nil
+}
+
 // boardSuffix is what {board:name} adds to the path of the room.
 const boardSuffix = "/board"
 
@@ -485,4 +568,6 @@ const (
 	tagScreenshotFailed  = "ScreenshotFailed"
 	tagRoomNotFound      = "RoomNotFound"
 	tagPostNotFound      = "PostNotFound"
+
+	tagConversationNotFound = "ConversationNotFound"
 )

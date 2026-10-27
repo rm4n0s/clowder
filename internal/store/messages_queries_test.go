@@ -150,6 +150,16 @@ func TestConversationQueries(t *testing.T) {
 			t.Errorf("UsersByIDs(nil) = %+v, %v", got, err)
 		}
 	})
+
+	t.Run("UsersByUsernames", func(t *testing.T) {
+		got, err := f.s.UsersByUsernames(f.ctx, []string{alice.Username, carol.Username, "nobody"})
+		if err != nil || len(got) != 2 {
+			t.Errorf("UsersByUsernames = %+v, %v", got, err)
+		}
+		if got, err := f.s.UsersByUsernames(f.ctx, nil); err != nil || got != nil {
+			t.Errorf("UsersByUsernames(nil) = %+v, %v", got, err)
+		}
+	})
 }
 
 func TestAdvanceLastReadAndUnreadCount(t *testing.T) {

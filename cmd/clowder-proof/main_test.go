@@ -56,6 +56,11 @@ func TestParseFlags(t *testing.T) {
 			want: options{page: "{post:Quick question}", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond},
 		},
 		{
+			name: "conversation placeholder",
+			args: []string{"-o", "x.png", "-as", "bob", "-page", "{conversation:alice,bob}"},
+			want: options{page: "{conversation:alice,bob}", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond},
+		},
+		{
 			name: "a second user",
 			args: []string{
 				"-o", "x.png", "-as", "bob", "-page", "{room:general}", "-other", "alice", "-other-page", "{room:general}",
@@ -95,6 +100,7 @@ func TestParseFlags(t *testing.T) {
 		{name: "post placeholder without a user", args: []string{"-o", "x.png", "-page", "{post:Quick question}"}, wantTag: tagFlagsInvalid},
 		{name: "board placeholder without a user", args: []string{"-o", "x.png", "-page", "{board:general}"}, wantTag: tagFlagsInvalid},
 		{name: "room placeholder without a user", args: []string{"-o", "x.png", "-page", "{room:secret}"}, wantTag: tagFlagsInvalid},
+		{name: "conversation placeholder without a user", args: []string{"-o", "x.png", "-page", "{conversation:alice,bob}"}, wantTag: tagFlagsInvalid},
 		{name: "invite without the placeholder", args: []string{"-o", "x.png", "-invite", "-page", "/invite/x"}, wantTag: tagFlagsInvalid},
 		{name: "placeholder without invite", args: []string{"-o", "x.png", "-page", "/invite/{invite}"}, wantTag: tagFlagsInvalid},
 		{name: "fill without a value", args: []string{"-o", "x.png", "-fill", "#username"}, wantTag: tagFlagsInvalid},

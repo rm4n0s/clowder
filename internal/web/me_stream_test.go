@@ -15,6 +15,35 @@ func requireCount(t *testing.T, p patch, n int) {
 	requirePatch(t, p, "", "outer", []string{badge(n)}, nil)
 }
 
+// messageBadge is the badge of the sidebar for n conversations with unread
+// messages.
+func messageBadge(n int) string {
+	if n == 0 {
+		return `<span id="message-count" class="count-badge"></span>`
+	}
+	title := numText(n) + " conversations with unread messages"
+	if n == 1 {
+		title = "1 conversation with unread messages"
+	}
+	return `<span id="message-count" class="count-badge" title="` + title + `">` + numText(n) + `</span>`
+}
+
+// requireMessageCount fails unless the patch is the badge with n conversations
+// with unread messages.
+func requireMessageCount(t *testing.T, p patch, n int) {
+	t.Helper()
+	requirePatch(t, p, "", "outer", []string{messageBadge(n)}, nil)
+}
+
+// requireCounts reads the two patches of the counts of the sidebar, the
+// notifications and then the messages (none unread), and checks the first.
+func requireCounts(t *testing.T, c *streamClient, n int) {
+	t.Helper()
+	got := c.patches(2)
+	requireCount(t, got[0], n)
+	requireMessageCount(t, got[1], 0)
+}
+
 func TestMeStreamSendsTheCountFirst(t *testing.T) {
 	e := newRoomsEnv(t)
 	e.mentionBob("general", "one")
@@ -33,7 +62,7 @@ func TestMeStreamSendsTheCountFirst(t *testing.T) {
 			if c.status != http.StatusOK {
 				t.Fatalf("status = %d, want 200", c.status)
 			}
-			requireCount(t, c.patches(1)[0], tt.want)
+			requireCounts(t, c, tt.want)
 			c.requireQuiet()
 		})
 	}
@@ -42,18 +71,18 @@ func TestMeStreamSendsTheCountFirst(t *testing.T) {
 func TestMeStreamPatchesTheCount(t *testing.T) {
 	e := newRoomsEnv(t)
 	c := e.serveStreams().open("bob", "/me/stream", asDatastar())
-	requireCount(t, c.patches(1)[0], 1) // the addition to "secret"
+	requireCounts(t, c, 1) // the addition to "secret"
 
 	// A notification raises it.
 	e.mentionBob("general", "hello")
-	requireCount(t, c.patches(1)[0], 2)
+	requireCounts(t, c, 2)
 	c.requireQuiet()
 
 	// Reading lowers it. Nothing else is patched: the sidebar is left alone.
 	if err := e.notifs.MarkRead(t.Context(), e.actor(e.bob), e.notifications("bob")[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	requireCount(t, c.patches(1)[0], 0)
+	requireCounts(t, c, 0)
 	c.requireQuiet()
 
 	// Someone else's notification is not for this stream.
@@ -64,7 +93,7 @@ func TestMeStreamPatchesTheCount(t *testing.T) {
 func TestMeStreamPatchesTheRoomList(t *testing.T) {
 	e := newRoomsEnv(t)
 	c := e.serveStreams().open("carol", "/me/stream", asDatastar())
-	requireCount(t, c.patches(1)[0], 0)
+	requireCounts(t, c, 0)
 
 	// Alice adds carol to "secret": her room list gets it, and the count the
 	// notification.
@@ -80,6 +109,8 @@ func TestMeStreamPatchesTheRoomList(t *testing.T) {
 		case strings.Contains(p.html, `id="notification-count"`):
 			requireCount(t, p, 1)
 			count = true
+		case strings.Contains(p.html, `id="message-count"`):
+			requireMessageCount(t, p, 0)
 		default:
 			t.Errorf("unexpected patch: %+v", p)
 		}
@@ -180,12 +211,14 @@ func TestMeStreamKeepsTheNotificationsListLive(t *testing.T) {
 		e := newRoomsEnv(t)
 		seen := e.notifications("bob")[0].ID
 		c := e.serveStreams().open("bob", "/me/stream?notifications="+idText(seen), asDatastar())
-		requireCount(t, c.patches(1)[0], 1)
+		requireCounts(t, c, 1)
 		c.requireQuiet()
 
 		post := e.mentionBob("general", "live")
-		got := c.patches(3)
+		got := c.patches(4)
 		requireCount(t, got[0], 2)
+		requireMessageCount(t, got[1], 0)
+		got = got[1:]
 		fresh := e.notifications("bob")[0]
 		// The removal of a copy of the item, which a reconnection could leave.
 		requirePatch(t, got[1], "#notification-"+idText(fresh.ID), "remove", nil, nil)
@@ -199,13 +232,13 @@ func TestMeStreamKeepsTheNotificationsListLive(t *testing.T) {
 		if err := e.notifs.MarkRead(t.Context(), e.actor(e.bob), fresh.ID); err != nil {
 			t.Fatal(err)
 		}
-		requireCount(t, c.patches(1)[0], 0)
+		requireCounts(t, c, 0)
 		c.requireQuiet()
 	})
 
 	t.Run("a page that was empty loses its note", func(t *testing.T) {
 		c := ss.open("carol", "/me/stream?notifications=0", asDatastar())
-		requireCount(t, c.patches(1)[0], 0)
+		requireCounts(t, c, 0)
 		if err := e.rooms.AddMember(t.Context(), e.actor(e.alice), e.secret.ID, e.carol.ID); err != nil {
 			t.Fatal(err)
 		}
@@ -230,8 +263,10 @@ func TestMeStreamKeepsTheNotificationsListLive(t *testing.T) {
 		e.mentionBob("general", "later one")
 		fresh := e.notifications("bob")
 		c := e.serveStreams().open("bob", "/me/stream?notifications="+idText(c0.ID), asDatastar())
-		got := c.patches(5)
+		got := c.patches(6)
 		requireCount(t, got[0], 3)
+		requireMessageCount(t, got[1], 0)
+		got = got[1:]
 		// Oldest first, so that the newest ends on top.
 		if !listItem(got[2].html+got[4].html, fresh[0]) || !strings.Contains(got[2].html, idText(fresh[1].ID)) || !strings.Contains(got[4].html, idText(fresh[0].ID)) {
 			t.Errorf("items are not oldest first:\n%s\n%s", got[2].html, got[4].html)
@@ -242,9 +277,9 @@ func TestMeStreamKeepsTheNotificationsListLive(t *testing.T) {
 	t.Run("a page of older notifications keeps its list", func(t *testing.T) {
 		e := newRoomsEnv(t)
 		c := e.serveStreams().open("bob", "/me/stream", asDatastar())
-		requireCount(t, c.patches(1)[0], 1)
+		requireCounts(t, c, 1)
 		e.mentionBob("general", "not on this page")
-		requireCount(t, c.patches(1)[0], 2)
+		requireCounts(t, c, 2)
 		c.requireQuiet()
 	})
 }
@@ -298,13 +333,13 @@ func TestPageStreamsKeepTheCountLive(t *testing.T) {
 
 			// A mention elsewhere (a comment would also be an event of the thread).
 			e.writePost("alice", "secret", "Hi @bob")
-			requireCount(t, c.patches(1)[0], 2)
+			requireCounts(t, c, 2)
 			c.requireQuiet()
 
 			if err := e.notifs.MarkRead(t.Context(), e.actor(e.bob), e.notifications("bob")[0].ID); err != nil {
 				t.Fatal(err)
 			}
-			requireCount(t, c.patches(1)[0], 0)
+			requireCounts(t, c, 0)
 			c.requireQuiet()
 
 			// Someone else's notification is not for this stream.

@@ -130,6 +130,20 @@ func (s *Store) UsersByIDs(ctx context.Context, ids []uint64) ([]User, error) {
 	return users, nil
 }
 
+// UsersByUsernames returns the users with these usernames, which the caller
+// has already lower-cased, in no particular order; a username that is no user
+// is left out.
+func (s *Store) UsersByUsernames(ctx context.Context, usernames []string) ([]User, error) {
+	if len(usernames) == 0 {
+		return nil, nil
+	}
+	var users []User
+	if err := s.db(ctx).Where("username IN ?", usernames).Find(&users).Error; err != nil {
+		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "usersByUsernames")
+	}
+	return users, nil
+}
+
 // ConversationByID returns the conversation with the given ID. It fails with
 // TagNotFound when there is none.
 func (s *Store) ConversationByID(ctx context.Context, id uint64) (Conversation, error) {

@@ -62,6 +62,11 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	// stopped: the services publish to it while requests run.
 	hub := live.New()
 	defer hub.Close()
+	postsConfig := app.PostsConfig{
+		MaxAttachmentSize: cfg.MaxAttachmentSize,
+		MaxAttachments:    cfg.MaxAttachmentsPerPost,
+		Logger:            logger,
+	}
 	srv, err := web.New(cfg, logger, web.Services{
 		Accounts:      accounts,
 		Rooms:         app.NewRooms(st, fileStore, logger, hub),
@@ -70,11 +75,8 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Search:        app.NewSearch(st),
 		Hub:           hub,
 		Notifications: app.NewNotifications(st, hub),
-		Posts: app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{
-			MaxAttachmentSize: cfg.MaxAttachmentSize,
-			MaxAttachments:    cfg.MaxAttachmentsPerPost,
-			Logger:            logger,
-		}, hub),
+		Posts:         app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, hub),
+		Messages:      app.NewMessages(st, clock.Real(), fileStore, postsConfig, hub),
 	})
 	if err != nil {
 		return err

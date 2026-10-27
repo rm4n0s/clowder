@@ -99,6 +99,7 @@ type testEnv struct {
 	board    *app.Board
 	search   *app.Search
 	notifs   *app.Notifications
+	msgs     *app.Messages
 	hub      *live.Hub
 	st       *store.Store
 	clk      *clock.Fake
@@ -139,11 +140,16 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	}, hub)
 	search := app.NewSearch(st)
 	notifs := app.NewNotifications(st, hub)
-	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Hub: hub}, static.FS, extra...)
+	msgs := app.NewMessages(st, clk, fileStore, app.MessagesConfig{
+		MaxAttachmentSize: cfg.MaxAttachmentSize,
+		MaxAttachments:    cfg.MaxAttachmentsPerPost,
+		Logger:            logger,
+	}, hub)
+	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Messages: msgs, Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, search: search, notifs: notifs, hub: hub, st: st, clk: clk, filesDir: filesDir}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, search: search, notifs: notifs, msgs: msgs, hub: hub, st: st, clk: clk, filesDir: filesDir}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

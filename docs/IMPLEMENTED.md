@@ -537,3 +537,73 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - A member who is added back keeps their old read position.
   - Deleted messages and one's own messages never count as unread.
   - The `StartDirect` conflict path is tested at store level, because immediate-lock transactions serialize concurrent starts.
+
+## 12.2 Messages pages
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-12.2-messages-pages
+- **Summary:**
+  - **Sidebar:** a "Messages" link with a live badge (`#message-count`) showing the number of unread conversations. Every stream keeps the badge current through `countOps` (D31).
+  - **`/messages`:**
+    - Lists the conversations: name, members, the last message with its author, the time and an unread mark.
+    - A "New conversation" form takes usernames: one person opens the direct conversation, several make a group with an optional name (D33).
+    - With `/me/stream?messages=1` the list stays live.
+  - **`/messages/{id}`, the page:**
+    - The header shows the members; groups get add, rename and leave.
+    - Messages run oldest to newest and the page opens at the bottom. Older pages load when the reader scrolls up (`data-on-intersect`; `messages.js` keeps the scroll position), or through an "Older messages" link.
+    - Each message has its reply quote, plain-text body, attachments (images inline), reactions and picker, and Reply / Edit / Delete. A deleted message stays as a placeholder.
+    - In direct conversations, "Seen" shows under the newest own message the other person has read.
+  - **Composer:** Enter sends, Shift+Enter makes a new line, and there is a Send button.
+    - It takes attachments and a reply-to with a cancel button.
+    - When the other person is disabled, a notice replaces the composer.
+  - **`/messages/{id}/stream`:**
+    - New messages are appended, with duplicates removed, and marked read (D33).
+    - Edits, deletes, reactions, header changes and "Seen" update live.
+    - A member who leaves loses the stream.
+    - A reconnect re-sends the page's current state.
+  - **Rooms:** each member in a room's member list has a "Message" button that opens the direct conversation.
+  - **Downloads:** `GET /messages/files/{id}/{name}` serves files to members only.
+  - **Plain forms:** every write also works without JavaScript, through redirects and `?reply=`.
+  - **Proof tool:** a new `{conversation:a,b}` placeholder for `-page`.
+- **Main files:**
+  - `internal/web/{messages,messages_stream,stream,me_stream,uploads,files,rooms,server}.go`
+  - `internal/web/views/{messages.templ,messages.go,sidebar.templ,rooms.templ}`
+  - `internal/web/static/{messages.js,app.css,static.go}`
+  - `internal/app/{messages,messages_send}.go` (`ResolveUsernames`, `Message`, `Quote`)
+  - `internal/store/messages_queries.go`
+  - `cmd/clowder/serve.go`, `cmd/clowder-proof/main.go`, `CLAUDE.md`
+- **Tests:**
+  - **Handler tests:**
+    - every route in both modes, with 404 for non-members, members who left and admins;
+    - the new-conversation form;
+    - rendering of every message state, "Seen" and escaping;
+    - pagination;
+    - send with files and limits, edit, delete, react;
+    - group actions;
+    - download headers.
+  - **Stream tests:** every event kind, mark-read, "Seen", a member who left, counts on all streams, the live list, pings and reconnects.
+  - **View tests.**
+  - **Browser tests (5):**
+    - bob sees alice's message live and alice sees "Seen" move;
+    - bob's badge rises while he is in `general`;
+    - reply, react, edit and delete appear live for the other person;
+    - the room "Message" button;
+    - with 63 messages: the page opens at the bottom, scrolling up loads older ones and keeps the position, and new messages scroll only when the reader is near the bottom.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ (two full runs) · no process left ✅
+- **Proof:**
+  ![12.2 messages](implemented-proof-images/12.2-messages.png)
+  - The alice–bob conversation as bob.
+  - Bob's reply quotes alice's first message, has a ❤️ reaction and shows "Seen".
+  - Alice's last message shows "edited" and bob's 👍.
+  - The composer is at the bottom.
+
+  ![12.2 messages list](implemented-proof-images/12.2-messages-list.png)
+  - Bob's Messages page before opening anything.
+  - The sidebar shows Messages 1 and Notifications 8.
+  - "Alice" is marked unread; "Launch crew" (a group of 3) is not.
+  - The New conversation form is above the list.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The edit is saved at `POST /messages/m/{id}/edit`, because `POST /messages/m/{id}` conflicts with `/messages/{id}/members` in `ServeMux`.
+  - When one person is given with a group name, the conversation is direct and the name is ignored.
+  - A page of older messages (`?before=`) does not receive new messages live.

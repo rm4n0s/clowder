@@ -1,9 +1,12 @@
 package web
 
 import (
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/rm4n0s/clowder/internal/app"
 )
 
 const (
@@ -40,6 +43,31 @@ func (s *Server) fileDownload(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	s.serveFile(w, r, att, f)
+}
+
+// messageFileDownload answers GET /messages/files/{id}/{name} with the file of
+// an attachment of a message, for a member of its conversation; anyone else,
+// admins included, a missing attachment and one of a deleted message get the
+// 404 page. The headers are those of fileDownload.
+func (s *Server) messageFileDownload(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil || id == 0 {
+		s.notFound(w, r)
+		return
+	}
+	actor, _ := actorFrom(r.Context())
+	att, f, err := s.svc.Messages.Attachment(r.Context(), actor, id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.serveFile(w, r, att, f)
+}
+
+// serveFile sends the file of an attachment with the headers of a download
+// (see fileDownload) and closes it.
+func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, att app.AttachmentView, f io.ReadSeekCloser) {
 	defer func() {
 		if closeErr := f.Close(); closeErr != nil {
 			s.logger.Debug("closing a download failed", "err", closeErr)

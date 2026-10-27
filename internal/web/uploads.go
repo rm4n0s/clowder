@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -49,6 +50,31 @@ func isMultipart(r *http.Request) bool {
 // uploads nil: the files that were saved have been removed. The caller shows
 // the problem in the editor.
 func (s *Server) readEditorForm(w http.ResponseWriter, r *http.Request, keepFiles bool) (uploads []app.Upload, ok bool, problem error) {
+	return s.readUploadForm(w, r, keepFiles, s.postUploader())
+}
+
+// uploader stores the files of a form and removes them again: the service of
+// the posts for the editor, the service of the messages for the composer.
+type uploader struct {
+	// upload saves one file and returns what the service needs to attach it.
+	upload func(ctx context.Context, actor app.Actor, name string, r io.Reader) (app.Upload, error)
+	// discard removes the files of uploads that no post or message took.
+	discard func(ctx context.Context, actor app.Actor, uploads []app.Upload)
+}
+
+// postUploader is the uploader of the editor of posts.
+func (s *Server) postUploader() uploader {
+	return uploader{upload: s.svc.Posts.Upload, discard: s.svc.Posts.DiscardUploads}
+}
+
+// messageUploader is the uploader of the composer of messages.
+func (s *Server) messageUploader() uploader {
+	return uploader{upload: s.svc.Messages.Upload, discard: s.svc.Messages.DiscardUploads}
+}
+
+// readUploadForm is readEditorForm with the service that keeps the files given:
+// the composer of the messages reads its form the same way.
+func (s *Server) readUploadForm(w http.ResponseWriter, r *http.Request, keepFiles bool, up uploader) (uploads []app.Upload, ok bool, problem error) {
 	if !isMultipart(r) {
 		return nil, s.parseBodyForm(w, r), nil
 	}
@@ -63,13 +89,13 @@ func (s *Server) readEditorForm(w http.ResponseWriter, r *http.Request, keepFile
 		s.rejectForm(w, r, errors.NewErr(tagFormInvalid, err))
 		return nil, false, nil
 	}
-	values, saved, problem, fatal := s.readParts(r, actor, mr, keepFiles)
+	values, saved, problem, fatal := s.readParts(r, actor, mr, keepFiles, up)
 	for name, vs := range values {
 		r.PostForm[name] = append(r.PostForm[name], vs...)
 		r.Form[name] = append(r.Form[name], vs...)
 	}
 	if fatal != nil || problem != nil {
-		s.svc.Posts.DiscardUploads(r.Context(), actor, saved)
+		up.discard(r.Context(), actor, saved)
 	}
 	switch {
 	case fatal == nil:
@@ -92,7 +118,7 @@ func (s *Server) readEditorForm(w http.ResponseWriter, r *http.Request, keepFile
 // a form that cannot be read (a field that is too large, a broken body, a
 // failing disk). After a problem with the files it goes on reading the text
 // fields and drops the other files.
-func (s *Server) readParts(r *http.Request, actor app.Actor, mr *multipart.Reader, keepFiles bool) (values url.Values, saved []app.Upload, problem, fatal error) {
+func (s *Server) readParts(r *http.Request, actor app.Actor, mr *multipart.Reader, keepFiles bool, up uploader) (values url.Values, saved []app.Upload, problem, fatal error) {
 	values = url.Values{}
 	budget := int64(maxPostFormBytes)
 	for {
@@ -132,10 +158,10 @@ func (s *Server) readParts(r *http.Request, actor app.Actor, mr *multipart.Reade
 				"fields", map[string]string{app.FieldAttachments: "Attach at most " + strconv.Itoa(s.cfg.MaxAttachmentsPerPost) + " files."})
 			continue
 		}
-		up, err := s.svc.Posts.Upload(r.Context(), actor, part.FileName(), part)
+		saved1, err := up.upload(r.Context(), actor, part.FileName(), part)
 		switch {
 		case err == nil:
-			saved = append(saved, up)
+			saved = append(saved, saved1)
 		case isTag(err, app.TagTooLarge):
 			problem = err
 		case isBodyTooLarge(err):

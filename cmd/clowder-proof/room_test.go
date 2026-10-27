@@ -78,3 +78,41 @@ func TestResolvePosts(t *testing.T) {
 		t.Errorf("err = %+v, want PostNotFound from postHref", err)
 	}
 }
+
+// TestResolveConversations finds the demo conversation of alice and bob, and
+// the group, in bob's list of conversations, in any order of the usernames, and
+// fails for members that no conversation has.
+func TestResolveConversations(t *testing.T) {
+	srv := browsertest.Start(t)
+	browser := browsertest.Browser(t, srv)
+	ctx, cancel := context.WithTimeout(browser, time.Minute)
+	defer cancel()
+	if err := browsertest.LogIn(ctx, srv, "bob"); err != nil {
+		t.Fatalf("LogIn: %+v", err)
+	}
+
+	direct, err := resolveConversations(ctx, srv.URL, "{conversation:alice,bob}?x=1")
+	if err != nil {
+		t.Fatalf("resolveConversations: %+v", err)
+	}
+	if !regexp.MustCompile(`^/messages/\d+\?x=1$`).MatchString(direct) {
+		t.Errorf("page = %q, want /messages/<id>?x=1", direct)
+	}
+	again, err := resolveConversations(ctx, srv.URL, "{conversation: Bob , alice}?x=1")
+	if err != nil || again != direct {
+		t.Errorf("same members in another order = %q, %v; want %q", again, err, direct)
+	}
+	group, err := resolveConversations(ctx, srv.URL, "{conversation:carol,bob,alice}")
+	if err != nil || group == direct || !strings.HasPrefix(group, "/messages/") {
+		t.Errorf("group = %q, %v", group, err)
+	}
+	if got, err := resolveConversations(ctx, srv.URL, "/plain"); err != nil || got != "/plain" {
+		t.Errorf("resolveConversations(/plain) = %q, %v", got, err)
+	}
+
+	_, err = resolveConversations(ctx, srv.URL, "{conversation:bob,carol}")
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != tagConversationNotFound || !appErr.HasRoute("resolveConversations->conversationHref.ConversationNotFound") {
+		t.Errorf("err = %+v, want ConversationNotFound from conversationHref", err)
+	}
+}

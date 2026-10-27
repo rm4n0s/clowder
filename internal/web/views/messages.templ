@@ -1,0 +1,549 @@
+package views
+
+import (
+	"github.com/rm4n0s/clowder/internal/app"
+	"strconv"
+)
+
+// MessagesPage is the page of the conversations of the user, most recent
+// first, with the form that starts one. Its stream keeps the list live.
+templ MessagesPage(d ConversationsData) {
+	@Layout("Messages", Sidebar(d.Sidebar)) {
+		<h1>Messages</h1>
+		@NewConversationForm(d.New)
+		@ConversationList(d.Items, d.ViewerID)
+		@liveStream(MessagesStreamPath)
+	}
+}
+
+// NewConversationForm is the form that starts a conversation: the usernames
+// of the people, separated by spaces or commas (one makes a direct
+// conversation, several a group), and the optional name of a group. The server
+// sends it alone as a Datastar patch to show the problems of a failed submit.
+templ NewConversationForm(d NewConversationData) {
+	<form id="new-conversation-form" class="room-form new-conversation" method="post" action={ templ.SafeURL(MessagesPath) } data-on:submit={ FormPost(MessagesPath) }>
+		<h2>New conversation</h2>
+		@formProblem(d.Errors.Form)
+		<div class="field">
+			<label for="new-conversation-users">People</label>
+			<input
+				id="new-conversation-users"
+				name="users"
+				type="text"
+				value={ d.Users }
+				autocomplete="off"
+				placeholder="bob carol"
+				required
+				if d.Errors.Fields["users"] != "" {
+					aria-invalid="true"
+					aria-describedby="new-conversation-users-error"
+				}
+			/>
+			if d.Errors.Fields["users"] != "" {
+				<p class="field-error" id="new-conversation-users-error" role="alert">{ d.Errors.Fields["users"] }</p>
+			} else {
+				<p class="hint">Usernames separated by spaces or commas. One person starts a conversation of two, several make a group.</p>
+			}
+		</div>
+		<div class="field">
+			<label for="new-conversation-name">Group name (optional)</label>
+			<input
+				id="new-conversation-name"
+				name="name"
+				type="text"
+				value={ d.Name }
+				autocomplete="off"
+				maxlength="80"
+				if d.Errors.Fields["name"] != "" {
+					aria-invalid="true"
+					aria-describedby="new-conversation-name-error"
+				}
+			/>
+			if d.Errors.Fields["name"] != "" {
+				<p class="field-error" id="new-conversation-name-error" role="alert">{ d.Errors.Fields["name"] }</p>
+			}
+		</div>
+		<button type="submit">Start conversation</button>
+	</form>
+}
+
+// ConversationList is the conversations of the user, most recent first: the
+// title, who wrote the last message and the start of it, when, and the unread
+// mark. The server sends it alone as a Datastar patch when a conversation
+// changes.
+templ ConversationList(items []app.ConversationSummary, viewerID uint64) {
+	<div id="conversation-list" class="conversation-list">
+		if len(items) == 0 {
+			<p class="empty" id="conversations-empty">No conversations yet.</p>
+		} else {
+			<ul class="conversation-items">
+				for _, c := range items {
+					<li id={ conversationElementID(c.ID) } class={ "conversation", templ.KV("unread", c.Unread) } data-conversation={ roomIDText(c.ID) } data-members={ memberUsernames(c) }>
+						<a class="conversation-link" href={ templ.SafeURL(ConversationPath(c.ID)) }>
+							<span class="conversation-title">{ c.DisplayName }</span>
+							if conversationKindText(c) != "" {
+								<span class="conversation-kind">{ conversationKindText(c) }</span>
+							}
+							if c.Unread {
+								<span class="conversation-unread">Unread</span>
+							}
+							<span class="conversation-preview">{ lastMessageText(c.LastMessage, viewerID) }</span>
+							<time class="conversation-time" datetime={ postTimeStamp(c.LastActivity) } title={ postTimeStamp(c.LastActivity) }>{ postTimeText(c.LastActivity) }</time>
+						</a>
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}
+
+// ConversationPage is the page of a conversation: its header, the messages
+// oldest first with the newest at the bottom, the composer and, for a group,
+// the members panel.
+templ ConversationPage(d ConversationData) {
+	@Layout(d.Header.DisplayName, Sidebar(d.Sidebar)) {
+		@liveStream(ConversationStreamPath(d.Header.ID, d.NewestID(), d.Before))
+		@ConversationHeader(d)
+		<div class="conversation-body">
+			<section class="conversation-main">
+				if d.Before != 0 {
+					<p class="hint feed-newest"><a href={ templ.SafeURL(ConversationPath(d.Header.ID)) }>Back to the newest messages</a></p>
+				}
+				<div id="message-pane" class="message-pane" data-init="el.scrollTop = el.scrollHeight">
+					@MessagesOlder(d.Header.ID, d.HasOlder, d.NextBefore)
+					<ol id="message-list" class="message-list">
+						for _, m := range d.Messages {
+							if d.Edit != nil && d.Edit.Message.Message.ID == m.Message.ID {
+								@MessageItemEditing(*d.Edit)
+							} else {
+								@MessageItem(m)
+							}
+						}
+					</ol>
+					<p id="messages-empty" class="empty messages-empty">No messages yet.</p>
+				</div>
+				@MessageComposer(d.Composer)
+			</section>
+			if d.Header.IsGroup {
+				@ConversationMembers(d.Members)
+			}
+		</div>
+		<script src="/static/messages.js" defer></script>
+	}
+}
+
+// ConversationHeader is the header of a conversation: its title, who is in it
+// and the message of the last action on the conversation. The server sends it
+// alone as a Datastar patch when the conversation is renamed or its members
+// change.
+templ ConversationHeader(d ConversationData) {
+	<header id="conversation-header" class="conversation-header">
+		<h1>{ d.Header.DisplayName }</h1>
+		<p class="hint conversation-members-line">{ conversationMembersText(d.Header, d.ViewerID) }</p>
+		@formProblem(d.Notice)
+		<p class="hint"><a href={ templ.SafeURL(MessagesPath) }>All conversations</a></p>
+	</header>
+}
+
+// ConversationMembers is the panel of a group: its members, the form that adds
+// people by username, the rename form and the Leave button. The server sends
+// it alone as a Datastar patch after an action on the group and when the group
+// changes.
+templ ConversationMembers(d MembersPanelData) {
+	<section id="conversation-members" class="members-panel conversation-members">
+		<h2>Members</h2>
+		@formProblem(d.Message)
+		<ul class="member-list">
+			for _, m := range d.Header.Members {
+				<li id={ "conversation-member-" + roomIDText(m.User.ID) } data-username={ m.User.Username }>
+					<span class="member-name">{ m.User.DisplayName }</span>
+					<span class="member-username">{ "@" + m.User.Username }</span>
+					if m.Disabled {
+						<span class="hint member-added">disabled</span>
+					}
+				</li>
+			}
+		</ul>
+		<form id="conversation-add-form" class="add-member" method="post" action={ templ.SafeURL(ConversationPath(d.Header.ID) + "/members") } data-on:submit={ FormPost(ConversationPath(d.Header.ID) + "/members") }>
+			@formProblem(d.AddErrors.Form)
+			<label for="conversation-add-users">Add people</label>
+			<input
+				id="conversation-add-users"
+				name="users"
+				type="text"
+				value={ d.AddUsers }
+				autocomplete="off"
+				placeholder="dave erin"
+				required
+				if d.AddErrors.Fields["users"] != "" {
+					aria-invalid="true"
+					aria-describedby="conversation-add-users-error"
+				}
+			/>
+			if d.AddErrors.Fields["users"] != "" {
+				<p class="field-error" id="conversation-add-users-error" role="alert">{ d.AddErrors.Fields["users"] }</p>
+			} else {
+				<p class="hint">Usernames separated by spaces or commas.</p>
+			}
+			<button type="submit">Add</button>
+		</form>
+		<form id="conversation-rename-form" class="add-member" method="post" action={ templ.SafeURL(ConversationPath(d.Header.ID) + "/rename") } data-on:submit={ FormPost(ConversationPath(d.Header.ID) + "/rename") }>
+			@formProblem(d.RenameErrors.Form)
+			<label for="conversation-rename-name">Group name</label>
+			<input
+				id="conversation-rename-name"
+				name="name"
+				type="text"
+				value={ renameValue(d) }
+				autocomplete="off"
+				maxlength="80"
+				if d.RenameErrors.Fields["name"] != "" {
+					aria-invalid="true"
+					aria-describedby="conversation-rename-name-error"
+				}
+			/>
+			if d.RenameErrors.Fields["name"] != "" {
+				<p class="field-error" id="conversation-rename-name-error" role="alert">{ d.RenameErrors.Fields["name"] }</p>
+			}
+			<button type="submit">Rename</button>
+		</form>
+		<form id="conversation-leave-form" class="action" method="post" action={ templ.SafeURL(ConversationPath(d.Header.ID) + "/leave") } data-on:submit={ FormPostConfirm(ConversationPath(d.Header.ID)+"/leave", "Leave this group? You will not see it again unless someone adds you back.") }>
+			<button type="submit" class="secondary">Leave group</button>
+		</form>
+	</section>
+}
+
+// renameValue is the value of the name field of the rename form: what the
+// person typed after a failed submit, else the name of the group.
+func renameValue(d MembersPanelData) string {
+	if d.RenameOpen {
+		return d.RenameTo
+	}
+	return d.Header.Name
+}
+
+// MessagesOlder is the top of the list of messages. When older messages exist
+// it is the sentinel: when it scrolls into view, Datastar loads the next, older
+// page (the server answers with the messages to put on top and a new sentinel);
+// without JavaScript the link "Older messages" opens the older page. With no
+// older messages it is empty.
+templ MessagesOlder(convID uint64, hasOlder bool, before uint64) {
+	if hasOlder {
+		<div id="messages-older" class="messages-older" data-on-intersect__once={ loadOlderAction(convID, before) }>
+			<a href={ templ.SafeURL(ConversationBeforePath(convID, before)) }>Older messages</a>
+		</div>
+	} else {
+		<div id="messages-older" class="messages-older"></div>
+	}
+}
+
+// MessageItems is messages one after the other, as the list shows them.
+templ MessageItems(items []MessageData) {
+	for _, m := range items {
+		@MessageItem(m)
+	}
+}
+
+// MessageItem is a message in the list: its content and, in a direct
+// conversation, the place for "Seen" under an own message.
+templ MessageItem(d MessageData) {
+	<li id={ MessageElementID(d.Message.ID) } class={ messageClasses(d) } data-message={ roomIDText(d.Message.ID) } data-author={ d.Message.Author.Username }>
+		@MessageContent(d)
+		if d.Direct && d.Own && !d.Message.Deleted {
+			@MessageSeen(d.Message.ID, d.Seen)
+		}
+	</li>
+}
+
+// MessageItemEditing is a message of the list replaced by its editor, for the
+// page of a browser without JavaScript.
+templ MessageItemEditing(d MessageEditData) {
+	<li id={ MessageElementID(d.Message.Message.ID) } class={ messageClasses(d.Message) } data-message={ roomIDText(d.Message.Message.ID) } data-author={ d.Message.Message.Author.Username }>
+		@MessageEdit(d)
+	</li>
+}
+
+// MessageSeen is the place under an own message of a direct conversation
+// where "Seen" shows, empty unless the other member read up to the message.
+templ MessageSeen(id uint64, seen bool) {
+	<div id={ messageSeenID(id) } class="message-seen-slot">
+		if seen {
+			<p class="message-seen">Seen</p>
+		}
+	</div>
+}
+
+// MessageContent is a message without its list item: the author and time,
+// "edited", the quote of the message it replies to, the text, the files, the
+// reactions and the Reply, Edit and Delete buttons for the person who may. A
+// deleted message is the placeholder "message deleted". A live update of a
+// message replaces only this part.
+templ MessageContent(d MessageData) {
+	<div id={ MessageContentID(d.Message.ID) } class="message-content">
+		@formProblem(d.Notice)
+		<header class="message-meta">
+			<span class="message-author">{ d.Message.Author.DisplayName }</span>
+			<a class="message-time" href={ templ.SafeURL("#" + MessageElementID(d.Message.ID)) }>
+				<time datetime={ postTimeStamp(d.Message.CreatedAt) } title={ postTimeStamp(d.Message.CreatedAt) }>{ postTimeText(d.Message.CreatedAt) }</time>
+			</a>
+			if d.Message.EditedAt != nil && !d.Message.Deleted {
+				<span class="message-edited" title={ postTimeStamp(*d.Message.EditedAt) }>edited</span>
+			}
+		</header>
+		if d.Message.Deleted {
+			<p class="message-deleted-note">{ app.MessageDeletedPreview }</p>
+		} else {
+			if d.Message.ReplyTo != nil {
+				@MessageQuote(*d.Message.ReplyTo)
+			}
+			if d.HTML != "" {
+				<div class="message-body">
+					@templ.Raw(string(d.HTML))
+				</div>
+			}
+			@MessageAttachments(d.Message.Attachments)
+			<div class="reaction-bar">
+				@MessageReactions(MessageReactionsData{Message: d.Message})
+				@MessageReactionPicker(MessageReactionsData{Message: d.Message})
+			</div>
+			<footer class="message-footer">
+				if d.CanReply {
+					<a class="message-reply-link" href={ templ.SafeURL(ConversationReplyPath(d.Message.ConversationID, d.Message.ID)) } data-on:click__prevent={ getAction(MessageActionPath(d.Message.ID, "reply")) }>Reply</a>
+				}
+				if d.Message.CanEdit {
+					<a class="message-edit-link" href={ templ.SafeURL(MessageActionPath(d.Message.ID, "edit")) } data-on:click__prevent={ getAction(MessageActionPath(d.Message.ID, "edit")) }>Edit</a>
+				}
+				if d.Message.CanDelete {
+					<form class="action message-delete" method="post" action={ templ.SafeURL(MessageActionPath(d.Message.ID, "delete")) } data-on:submit={ FormPostConfirm(MessageActionPath(d.Message.ID, "delete"), deleteMessageConfirm) }>
+						<button type="submit" class="danger">Delete</button>
+					</form>
+				}
+			</footer>
+		}
+	</div>
+}
+
+// MessageQuote is the message that a message replies to, above its text: the
+// author and the start of the text, or "message deleted".
+templ MessageQuote(q app.MessageQuote) {
+	<blockquote class={ "message-quote", templ.KV("message-quote-deleted", q.Deleted) } data-quoted={ roomIDText(q.ID) }>
+		<span class="quote-author">{ q.Author.DisplayName }</span>
+		<span class="quote-preview">{ q.Preview }</span>
+	</blockquote>
+}
+
+// MessageAttachments shows the files of a message under its text: the images
+// inline, scaled to the width of the column, each a link to the full file; then
+// the other files as a list of links with their sizes.
+templ MessageAttachments(atts []app.AttachmentView) {
+	{{ images, others := splitAttachments(atts) }}
+	if len(images) > 0 {
+		<ul class="attachment-images">
+			for _, a := range images {
+				<li>
+					<a href={ templ.SafeURL(MessageFilePath(a)) } target="_blank" rel="noopener">
+						<img
+							src={ MessageFilePath(a) }
+							alt={ a.FileName }
+							loading="lazy"
+							if a.Width > 0 && a.Height > 0 {
+								width={ roomIDText(uint64(a.Width)) }
+								height={ roomIDText(uint64(a.Height)) }
+							}
+						/>
+					</a>
+				</li>
+			}
+		</ul>
+	}
+	if len(others) > 0 {
+		<ul class="attachment-files" aria-label="Files">
+			for _, a := range others {
+				<li>
+					<a href={ templ.SafeURL(MessageFilePath(a)) }>{ a.FileName }</a>
+					<span class="hint">{ SizeText(a.Size) }</span>
+				</li>
+			}
+		</ul>
+	}
+}
+
+// MessageReactions are the chips of a message, as Reactions are those of a
+// post. The server sends it alone as a Datastar patch after a reaction and, to
+// every open page, when the reactions of a message change; the picker next to
+// it is not part of it.
+templ MessageReactions(d MessageReactionsData) {
+	<div id={ messageReactionsID(d.Message.ID) } class="reactions">
+		@formProblem(d.Notice)
+		if len(d.Message.Reactions) > 0 {
+			if d.Message.CanReact {
+				<form class="reaction-chips" method="post" action={ templ.SafeURL(MessageActionPath(d.Message.ID, "react")) } data-on:submit={ FormPost(MessageActionPath(d.Message.ID, "react")) }>
+					for _, r := range d.Message.Reactions {
+						<button type="submit" name="emoji" value={ r.Emoji } class={ reactionClasses(r) } title={ reactionTitle(r) } aria-label={ reactionLabel(r) } aria-pressed={ strconv.FormatBool(r.Mine) }>
+							<span class="reaction-emoji">{ r.Emoji }</span>
+							<span class="reaction-count">{ roomIDText(uint64(r.Count)) }</span>
+						</button>
+					}
+				</form>
+			} else {
+				<ul class="reaction-chips" aria-label="Reactions">
+					for _, r := range d.Message.Reactions {
+						<li class={ reactionClasses(r) } title={ reactionTitle(r) }>
+							<span class="reaction-emoji">{ r.Emoji }</span>
+							<span class="reaction-count">{ roomIDText(uint64(r.Count)) }</span>
+						</li>
+					}
+				</ul>
+			}
+		}
+	</div>
+}
+
+// MessageReactionPicker is the add button of the reaction bar of a message and
+// the picker it opens, as ReactionPicker is that of a post. Live changes of the
+// reactions leave it alone.
+templ MessageReactionPicker(d MessageReactionsData) {
+	<div id={ messageReactionPickerID(d.Message.ID) } class="reaction-picker-box">
+		if d.Message.CanReact {
+			<details class="reaction-add" open?={ d.Problem != "" }>
+				<summary title="Add a reaction" aria-label="Add a reaction">+</summary>
+				<div class="reaction-picker">
+					<form class="reaction-grid" method="post" action={ templ.SafeURL(MessageActionPath(d.Message.ID, "react")) } data-on:submit={ FormPost(MessageActionPath(d.Message.ID, "react")) }>
+						for _, e := range pickerEmoji {
+							<button type="submit" name="emoji" value={ e } class="reaction-option" aria-label={ "React with " + e }>{ e }</button>
+						}
+					</form>
+					<form class="reaction-custom" method="post" action={ templ.SafeURL(MessageActionPath(d.Message.ID, "react")) } data-on:submit={ FormPost(MessageActionPath(d.Message.ID, "react")) }>
+						<label for={ "msg-reaction-text-" + roomIDText(d.Message.ID) }>Any emoji</label>
+						<input
+							id={ "msg-reaction-text-" + roomIDText(d.Message.ID) }
+							name="emoji"
+							type="text"
+							value={ d.Typed }
+							maxlength="32"
+							autocomplete="off"
+							placeholder="🦄"
+							if d.Problem != "" {
+								aria-invalid="true"
+								aria-describedby={ "msg-reaction-text-" + roomIDText(d.Message.ID) + "-error" }
+							}
+						/>
+						<button type="submit" class="reaction-submit">React</button>
+						if d.Problem != "" {
+							<p class="field-error" id={ "msg-reaction-text-" + roomIDText(d.Message.ID) + "-error" } role="alert">{ d.Problem }</p>
+						}
+					</form>
+				</div>
+			</details>
+		}
+	</div>
+}
+
+// MessageEdit is the content of a message replaced by its editor: the text in a
+// field with Save and Cancel. A failed save shows its problem in it.
+templ MessageEdit(d MessageEditData) {
+	<div id={ MessageContentID(d.Message.Message.ID) } class="message-content message-editing">
+		<form class="message-edit-form" method="post" action={ templ.SafeURL(MessageActionPath(d.Message.Message.ID, "edit")) } data-on:submit={ FormPost(MessageActionPath(d.Message.Message.ID, "edit")) }>
+			@formProblem(d.Errors.Form)
+			<label class="visually-hidden" for={ "msg-edit-body-" + roomIDText(d.Message.Message.ID) }>Edit message</label>
+			<textarea
+				id={ "msg-edit-body-" + roomIDText(d.Message.Message.ID) }
+				name="body"
+				rows="3"
+				if d.Errors.Fields["body"] != "" {
+					aria-invalid="true"
+					aria-describedby={ "msg-edit-body-" + roomIDText(d.Message.Message.ID) + "-error" }
+				}
+			>{ d.Body }</textarea>
+			if d.Errors.Fields["body"] != "" {
+				<p class="field-error" id={ "msg-edit-body-" + roomIDText(d.Message.Message.ID) + "-error" } role="alert">{ d.Errors.Fields["body"] }</p>
+			}
+			<div class="post-editor-actions">
+				<button type="submit">Save</button>
+				<a class="button-link" href={ templ.SafeURL(ConversationPath(d.Message.Message.ConversationID) + "#" + MessageElementID(d.Message.Message.ID)) } data-on:click__prevent={ getAction(MessageActionPath(d.Message.Message.ID, "view")) }>Cancel</a>
+			</div>
+		</form>
+	</div>
+}
+
+// MessageComposer is the place where a member writes a message: the form, or
+// for a direct conversation with a disabled user the note that nothing can be
+// sent.
+templ MessageComposer(d ComposerData) {
+	<div id="message-composer" class="message-composer">
+		if d.CanSend {
+			@MessageComposerForm(d)
+		} else {
+			<p id="message-composer-note" class="hint join-note">You can't send messages to a disabled user.</p>
+		}
+	</div>
+}
+
+// MessageComposerForm is the form of the composer: the quote of the message
+// being replied to, the text (Enter sends, Shift+Enter makes a new line), the
+// files and the Send button. The server sends it alone as a Datastar patch to
+// show the problems of a failed submit, and, replacing the old one, a fresh,
+// empty one after a message was sent.
+templ MessageComposerForm(d ComposerData) {
+	<form id="message-composer-form" class="message-composer-form" method="post" enctype="multipart/form-data" action={ templ.SafeURL(ConversationPath(d.ConversationID)) } data-on:submit={ FormPost(ConversationPath(d.ConversationID)) }>
+		@formProblem(d.Errors.Form)
+		@MessageReplySlot(d.Reply, d.ConversationID)
+		if d.Errors.Fields["replyTo"] != "" {
+			<p class="field-error" role="alert">{ d.Errors.Fields["replyTo"] }</p>
+		}
+		<div class="field">
+			<label class="visually-hidden" for="message-body">Message</label>
+			<textarea
+				id="message-body"
+				name="body"
+				rows="2"
+				placeholder="Write a message. Enter sends, Shift+Enter makes a new line."
+				data-on:keydown={ sendOnEnter }
+				if d.Errors.Fields["body"] != "" {
+					aria-invalid="true"
+					aria-describedby="message-body-error"
+				}
+			>{ d.Body }</textarea>
+			if d.Errors.Fields["body"] != "" {
+				<p class="field-error" id="message-body-error" role="alert">{ d.Errors.Fields["body"] }</p>
+			}
+		</div>
+		<div class="field attachments-field">
+			<label for="message-files">Attach files</label>
+			<input
+				id="message-files"
+				name="files"
+				type="file"
+				multiple
+				if d.Errors.Fields["attachments"] != "" {
+					aria-invalid="true"
+					aria-describedby="message-files-error"
+				}
+			/>
+			if d.Errors.Fields["attachments"] != "" {
+				<p class="field-error" id="message-files-error" role="alert">{ d.Errors.Fields["attachments"] }</p>
+			}
+		</div>
+		<div class="post-editor-actions">
+			<button type="submit">Send</button>
+		</div>
+	</form>
+}
+
+// MessageReplySlot is the place in the composer where the message being replied
+// to shows as a quote with a cancel button, and holds the field "reply_to" that
+// sends its ID. It is empty for a message that replies to nothing. The server
+// sends it alone as a Datastar patch when the person asks to reply.
+templ MessageReplySlot(q *app.MessageQuote, convID uint64) {
+	<div id="message-reply" class="message-reply">
+		if q != nil {
+			<input type="hidden" name="reply_to" value={ roomIDText(q.ID) }/>
+			<blockquote class="message-quote composer-quote" data-quoted={ roomIDText(q.ID) }>
+				<span class="quote-label">Replying to</span>
+				<span class="quote-author">{ q.Author.DisplayName }</span>
+				<span class="quote-preview">{ q.Preview }</span>
+				<a class="quote-cancel" href={ templ.SafeURL(ConversationPath(convID)) } title="Cancel the reply" aria-label="Cancel the reply" data-on:click__prevent={ clearReplyAction }>×</a>
+			</blockquote>
+		}
+	</div>
+}

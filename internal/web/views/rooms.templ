@@ -288,8 +288,9 @@ func editValue(e RoomEditData, current, typed string) string {
 	return current
 }
 
-// MembersPanel is the members of a room with the "Add member" form, for a
-// member, and the Remove buttons, for an admin. The server sends it alone as a
+// MembersPanel is the members of a room, each with a "Message" button (except
+// the viewer) that starts a direct conversation, with the "Add member" form, for
+// a member, and the Remove buttons, for an admin. The server sends it alone as a
 // Datastar patch after an action on the members.
 templ MembersPanel(d RoomData) {
 	<section id="members-panel" class="members-panel">
@@ -307,6 +308,13 @@ templ MembersPanel(d RoomData) {
 							joined
 						}
 					</span>
+					if m.UserID != d.Viewer.ID {
+						<form class="action message-form" method="post" action={ templ.SafeURL(MessagesPath) } data-on:submit={ FormPost(MessagesPath) }>
+							<input type="hidden" name="users" value={ m.Username }/>
+							<input type="hidden" name="from" value={ FromRoomPrefix + roomIDText(d.Room.ID) }/>
+							<button type="submit" class="secondary" title={ "Send " + m.DisplayName + " a message" }>Message</button>
+						</form>
+					}
 					if d.Viewer.IsAdmin() {
 						<form class="action" method="post" action={ templ.SafeURL(memberRemovePath(d.Room.ID, m.UserID)) } data-on:submit={ FormPostConfirm(memberRemovePath(d.Room.ID, m.UserID), "Remove this member from the room?") }>
 							<button type="submit" class="secondary">Remove</button>

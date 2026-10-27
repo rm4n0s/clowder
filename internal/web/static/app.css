@@ -991,7 +991,8 @@ main:has(> .board-page) { max-width: none; }
 
 /* Notifications: the count on the sidebar link, and the page's list. An unread
    notification has a mark and an accent bar. */
-aside nav a.sidebar-notifications { display: flex; gap: 0.5rem; align-items: center; justify-content: space-between; }
+aside nav a.sidebar-notifications,
+aside nav a.sidebar-messages { display: flex; gap: 0.5rem; align-items: center; justify-content: space-between; }
 
 .count-badge {
   min-width: 1.25rem;
@@ -1035,3 +1036,192 @@ aside nav a.sidebar-notifications { display: flex; gap: 0.5rem; align-items: cen
   background: var(--accent);
   border-radius: 999px;
 }
+
+/* Private messages: the list of conversations, a conversation with its
+   messages (the newest at the bottom, in a pane that scrolls), the quote of the
+   message a message replies to, and the composer. */
+.new-conversation { max-width: 28rem; margin-bottom: 1.5rem; }
+
+.new-conversation h2 { font-size: 1.125rem; }
+
+.conversation-items { margin: 0 0 1rem; padding: 0; list-style: none; }
+
+.conversation { border-top: 1px solid var(--border); border-left: 3px solid transparent; }
+
+.conversation.unread { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.conversation-link {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.75rem;
+  align-items: baseline;
+  padding: 0.625rem 0.75rem;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.conversation-link:hover { background: var(--bg-sidebar); }
+
+.conversation-title { grid-column: 1; font-weight: 700; overflow-wrap: anywhere; }
+
+.conversation-kind { grid-column: 1; font-size: 0.75rem; color: var(--fg-muted); }
+
+.conversation-time { grid-column: 2; grid-row: 1; font-size: 0.875rem; color: var(--fg-muted); }
+
+.conversation-unread {
+  grid-column: 2;
+  justify-self: end;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.conversation-preview {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  font-size: 0.875rem;
+  color: var(--fg-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation.unread .conversation-preview { color: var(--fg); }
+
+main:has(> .conversation-body) { max-width: 72rem; }
+
+.conversation-header { margin-bottom: 0.5rem; }
+
+.conversation-header h1 { margin-bottom: 0.25rem; overflow-wrap: anywhere; }
+
+.conversation-header .hint { margin: 0 0 0.25rem; }
+
+.conversation-body { display: flex; flex-wrap: wrap; gap: 2rem; }
+
+.conversation-main { flex: 2 1 22rem; min-width: 0; }
+
+.conversation-members { flex: 1 1 14rem; }
+
+.conversation-members form { margin-bottom: 1rem; }
+
+.message-pane {
+  max-height: calc(100vh - 20rem);
+  min-height: 12rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  overflow-y: auto;
+  overflow-anchor: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.messages-older { margin: 0.5rem 0; text-align: center; }
+
+.messages-older:empty { margin: 0; }
+
+.message-list { display: flex; flex-direction: column; gap: 0.625rem; margin: 0; padding: 0; list-style: none; }
+
+.messages-empty { display: none; margin: 1rem 0; }
+
+.message-list:not(:has(.message)) ~ .messages-empty { display: block; }
+
+.message {
+  max-width: 85%;
+  padding: 0.5rem 0.75rem;
+  align-self: flex-start;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.message.own {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.message:has(.message-deleted-note) { background: transparent; border-style: dashed; }
+
+.message-meta { display: flex; flex-wrap: wrap; gap: 0.125rem 0.75rem; align-items: baseline; margin-bottom: 0.25rem; }
+
+.message-author { font-weight: 700; }
+
+.message-time, .message-edited { font-size: 0.875rem; color: var(--fg-muted); text-decoration: none; }
+
+.message-time:hover { text-decoration: underline; }
+
+.message-edited { font-style: italic; }
+
+.message-body { overflow-wrap: anywhere; }
+
+.message-body > :first-child { margin-top: 0; }
+
+.message-body > :last-child { margin-bottom: 0; }
+
+.message-deleted-note { margin: 0; color: var(--fg-muted); font-style: italic; }
+
+.message-quote {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 0.375rem;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.875rem;
+  color: var(--fg-muted);
+  border-left: 3px solid var(--accent);
+}
+
+.message-quote .quote-author { font-weight: 700; color: var(--fg); }
+
+.message-quote .quote-preview { overflow-wrap: anywhere; }
+
+.message-quote-deleted .quote-preview { font-style: italic; }
+
+.message-footer { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin-top: 0.375rem; font-size: 0.875rem; }
+
+.message-footer form.action { margin: 0 0 0 auto; }
+
+.message-footer a { color: var(--fg-muted); }
+
+.message-footer a:hover { color: var(--accent); }
+
+.message-footer button.danger { padding: 0; font-size: 0.875rem; font-weight: 400; color: var(--danger); background: transparent; }
+
+.message .reaction-bar { margin-top: 0.375rem; }
+
+.message-seen-slot:empty { display: none; }
+
+.message-seen { margin: 0.125rem 0 0; font-size: 0.75rem; color: var(--fg-muted); text-align: right; }
+
+.message-edit-form textarea { margin-bottom: 0.5rem; }
+
+.message-composer-form { margin: 0; }
+
+.message-composer-form .field { margin-bottom: 0.25rem; }
+
+.message-composer-form textarea { margin-bottom: 0.5rem; }
+
+.message-reply:empty { display: none; }
+
+.composer-quote { position: relative; margin-bottom: 0.5rem; padding-right: 2rem; }
+
+.composer-quote .quote-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.quote-cancel {
+  position: absolute;
+  top: 0;
+  right: 0.25rem;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+
+.quote-cancel:hover { color: var(--danger); }
+
+.member-list form.message-form { margin: 0 0 0 auto; }
+
+.member-list form.message-form + form.action { margin-left: 0; }
+
+.member-list form.message-form button { padding: 0.125rem 0.625rem; font-size: 0.875rem; }

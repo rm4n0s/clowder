@@ -27,11 +27,14 @@ type meStream struct {
 	list bool
 	// seen is the ID of the newest notification the page shows, 0 for none.
 	seen uint64
+	// conversations is true when the page is the Messages page: the stream
+	// keeps its list of conversations up to date.
+	conversations bool
 }
 
-// meStream answers GET /me/stream, optionally with ?notifications=<id>: a
-// stream of Datastar patches that keeps the sidebar of a page up to date for
-// the person who opened it. It needs a login. It sends the unread count at
+// meStream answers GET /me/stream, optionally with ?notifications=<id> or
+// ?messages=1: a stream of Datastar patches that keeps the sidebar of a page up
+// to date for the person who opened it. It needs a login. It sends the unread count at
 // once, which brings a page up to date after missed events; a reconnection
 // (the header Last-Event-ID) sends the whole sidebar. A notification or the
 // reading of notifications patches the count, and a change of the person's
@@ -39,7 +42,9 @@ type meStream struct {
 // the ID of the newest notification it shows: the stream then also puts the
 // notifications newer than that, as they come, at the top of its list. The
 // stream ends when the request ends, when the session ends, or when the hub
-// closes it.
+// closes it. The Messages page gives messages=1: the stream then also sends the
+// list of conversations at once and again whenever a conversation changes or is
+// read.
 func (s *Server) meStream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	actor, _ := actorFrom(ctx)
@@ -49,6 +54,7 @@ func (s *Server) meStream(w http.ResponseWriter, r *http.Request) {
 	sub := s.svc.Hub.Subscribe(ctx, live.UserTopic(actor.UserID))
 	defer sub.Close()
 	ms := &meStream{liveStream: s.newStream(w, r, actor, user)}
+	ms.conversations = r.URL.Query().Get("messages") == "1"
 	if v, ok := r.URL.Query()["notifications"]; ok && len(v) > 0 {
 		ms.list = true
 		ms.seen, _ = strconv.ParseUint(v[0], 10, 64)
@@ -89,6 +95,13 @@ func (ms *meStream) connect(ctx context.Context) (start, error) {
 		}
 		ops = counts
 	}
+	if ms.conversations {
+		op, err := ms.conversationsOp(ctx)
+		if err != nil {
+			return start{}, err
+		}
+		ops = append(ops, op)
+	}
 	if ms.list {
 		fresh, err := ms.freshOps(ctx)
 		if err != nil {
@@ -97,6 +110,15 @@ func (ms *meStream) connect(ctx context.Context) (start, error) {
 		ops = append(ops, fresh...)
 	}
 	return start{ops: ops}, nil
+}
+
+// conversationsOp is the patch of the list of conversations of the person.
+func (ms *meStream) conversationsOp(ctx context.Context) (patchOp, error) {
+	items, err := ms.s.svc.Messages.Conversations(ctx, ms.actor)
+	if err != nil {
+		return patchOp{}, err
+	}
+	return patchOp{component: views.ConversationList(items, ms.actor.UserID)}, nil
 }
 
 // freshOps reads the notifications newer than the newest the page shows and
@@ -132,13 +154,28 @@ func (ms *meStream) freshOps(ctx context.Context) ([]patchOp, error) {
 // event renders one event of the hub for the user of the stream.
 func (ms *meStream) event(ctx context.Context, ev live.Event) (end bool, err error) {
 	if handled, err := ms.countsEvent(ctx, ev); handled {
-		if err != nil || ev.Kind != live.KindNotificationCreated || !ms.list {
+		if err != nil {
 			return false, err
 		}
-		return false, ms.fresh(ctx)
+		switch {
+		case ms.list && ev.Kind == live.KindNotificationCreated:
+			return false, ms.fresh(ctx)
+		case ms.conversations && (ev.Kind == live.KindConversationChanged || ev.Kind == live.KindConversationRead):
+			return false, ms.conversationList(ctx)
+		}
+		return false, nil
 	}
 	// A membership changed: the room list of the sidebar.
 	return false, ms.sidebar(ctx, 0)
+}
+
+// conversationList puts the list of conversations of the person on the page.
+func (ms *meStream) conversationList(ctx context.Context) error {
+	op, err := ms.conversationsOp(ctx)
+	if err != nil {
+		return err
+	}
+	return ms.patch(op.component, op.options...)
 }
 
 // fresh puts the notifications that came on top of the list.
