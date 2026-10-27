@@ -97,6 +97,8 @@ type testEnv struct {
 	posts    *app.Posts
 	st       *store.Store
 	clk      *clock.Fake
+	// filesDir is the directory of the files of the attachments.
+	filesDir string
 }
 
 // newTestEnv makes a testEnv. mutate changes the configuration before the
@@ -115,7 +117,8 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
 	})
-	fileStore, err := files.New(filepath.Join(t.TempDir(), "files"))
+	filesDir := filepath.Join(t.TempDir(), "files")
+	fileStore, err := files.New(filesDir)
 	if err != nil {
 		t.Fatalf("files.New: %+v", err)
 	}
@@ -130,7 +133,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, st: st, clk: clk}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, st: st, clk: clk, filesDir: filesDir}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

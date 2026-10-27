@@ -52,6 +52,12 @@ type PostEditorData struct {
 	CancelClose bool
 	// From says where the post is shown (FromPost), for an edit in place.
 	From string
+	// Attachments are the files the post has now, listed with a Remove box
+	// each; nil for an editor that writes a new post.
+	Attachments []app.AttachmentView
+	// Removing holds the IDs of the attachments whose Remove box is ticked,
+	// kept from a submit that failed.
+	Removing map[uint64]bool
 }
 
 // NewPostEditorData is the empty editor that writes a post in the room.
@@ -73,6 +79,7 @@ func EditPostEditorData(p app.Post, from string) PostEditorData {
 		Format:      string(p.Format),
 		Body:        p.Body,
 		Tags:        strings.Join(p.Tags, " "),
+		Attachments: p.Attachments,
 		SubmitLabel: "Save",
 		CancelPath:  postActionPath(p.ID, "view", from),
 		CancelHref:  PostPath(p.ID),
@@ -332,6 +339,48 @@ func OlderPostsPath(roomID, before uint64) string {
 	return RoomPath(roomID) + "?before=" + strconv.FormatUint(before, 10)
 }
 
+// FilePath returns the path that downloads an attachment, /files/<id>/<name>.
+// The name only gives the download a good name; the ID decides.
+func FilePath(a app.AttachmentView) string {
+	return "/files/" + strconv.FormatUint(a.ID, 10) + "/" + url.PathEscape(a.FileName)
+}
+
+// SizeText writes a size in bytes for people: "512 B", "12 KB", "3.4 MB". The
+// units are powers of 1024; a value of 10 or more has no decimals, a smaller
+// one has one unless it is whole.
+func SizeText(n int64) string {
+	if n < 1024 {
+		return strconv.FormatInt(max(n, 0), 10) + " B"
+	}
+	value := float64(n)
+	unit := ""
+	for _, u := range []string{"KB", "MB", "GB"} {
+		value /= 1024
+		unit = u
+		if value < 1024 {
+			break
+		}
+	}
+	text := strconv.FormatFloat(value, 'f', 1, 64)
+	if value >= 9.95 || strings.HasSuffix(text, ".0") {
+		text = strconv.FormatFloat(value, 'f', 0, 64)
+	}
+	return text + " " + unit
+}
+
+// splitAttachments divides the attachments into the images that are shown
+// inline and the other files, each in its order.
+func splitAttachments(atts []app.AttachmentView) (images, others []app.AttachmentView) {
+	for _, a := range atts {
+		if a.IsImage {
+			images = append(images, a)
+		} else {
+			others = append(others, a)
+		}
+	}
+	return images, others
+}
+
 // TagSearchPath returns the path of the search for a tag, /search?q=%23tag.
 func TagSearchPath(tag string) string {
 	return "/search?q=" + url.QueryEscape("#"+tag)
@@ -360,7 +409,10 @@ func commentCountText(n int) string {
 
 // previewAction is the Datastar action that sends the form it is in to the
 // preview of the body.
-const previewAction = "@post('/preview', {contentType: 'form'})"
+// The file input is switched off while the request is made, so that the files
+// are not sent with every preview (a disabled input is not part of the form).
+const previewAction = "const f = el.closest('form').elements.files; f.disabled = true; " +
+	"@post('/preview', {contentType: 'form'}); f.disabled = false"
 
 // suggestAction returns the Datastar action that asks for the tags that start
 // like the tag being typed, which is the last piece of the field, for the

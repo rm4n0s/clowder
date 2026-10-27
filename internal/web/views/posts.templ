@@ -1,6 +1,10 @@
 package views
 
-import "html/template"
+import (
+	"html/template"
+
+	"github.com/rm4n0s/clowder/internal/app"
+)
 
 // PostEditor is the editor of a post: the body with the Text / Markdown
 // switch, the tags field with its suggestions, the preview, and the submit
@@ -8,7 +12,7 @@ import "html/template"
 // a failed submit; what the person typed is kept. The comments, attachments
 // and tasks of later steps reuse it.
 templ PostEditor(d PostEditorData) {
-	<form id={ "post-editor-" + d.ID } class="post-editor" method="post" action={ templ.SafeURL(d.Action) } data-on:submit={ FormPost(d.Action) }>
+	<form id={ "post-editor-" + d.ID } class="post-editor" method="post" enctype="multipart/form-data" action={ templ.SafeURL(d.Action) } data-on:submit={ FormPost(d.Action) }>
 		@formProblem(d.Errors.Form)
 		<input type="hidden" name="editor" value={ d.ID }/>
 		if d.From != "" {
@@ -63,6 +67,37 @@ templ PostEditor(d PostEditorData) {
 				<p class="field-error" id={ "post-tags-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["tags"] }</p>
 			} else {
 				<p class="hint">Separate tags with spaces or commas: up to 10 of letters, digits, - and _.</p>
+			}
+		</div>
+		<div class="field attachments-field">
+			<label for={ "post-files-" + d.ID }>Attach files</label>
+			if len(d.Attachments) > 0 {
+				<ul class="attachment-edit" aria-label="Current files">
+					for _, a := range d.Attachments {
+						<li>
+							<input type="hidden" name="keep" value={ roomIDText(a.ID) }/>
+							<span class="attachment-name">{ a.FileName }</span>
+							<span class="hint">{ SizeText(a.Size) }</span>
+							<label class="choice">
+								<input type="checkbox" name="remove" value={ roomIDText(a.ID) } checked?={ d.Removing[a.ID] }/>
+								Remove
+							</label>
+						</li>
+					}
+				</ul>
+			}
+			<input
+				id={ "post-files-" + d.ID }
+				name="files"
+				type="file"
+				multiple
+				if d.Errors.Fields["attachments"] != "" {
+					aria-invalid="true"
+					aria-describedby={ "post-files-" + d.ID + "-error" }
+				}
+			/>
+			if d.Errors.Fields["attachments"] != "" {
+				<p class="field-error" id={ "post-files-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["attachments"] }</p>
 			}
 		</div>
 		@PostPreview(PostPreviewData{EditorID: d.ID, Hidden: true})
@@ -171,6 +206,7 @@ templ PostCard(d PostCardData) {
 			<div class="post-body">
 				@templ.Raw(string(d.Post.HTML))
 			</div>
+			@Attachments(d.Post.Attachments)
 			if len(d.Post.Tags) > 0 {
 				<ul class="tags" aria-label="Tags">
 					for _, tag := range d.Post.Tags {
@@ -202,6 +238,44 @@ templ PostCard(d PostCardData) {
 			@ReplySlot(d.Post.ID, d.Reply)
 		}
 	</article>
+}
+
+// Attachments shows the files of a post or comment under its body: the images
+// inline, scaled to the width of the column (the width and height attributes
+// hold the size of the file, so that the page does not jump when it loads),
+// each a link to the full file; then the other files as a list of links with
+// their sizes.
+templ Attachments(atts []app.AttachmentView) {
+	{{ images, others := splitAttachments(atts) }}
+	if len(images) > 0 {
+		<ul class="attachment-images">
+			for _, a := range images {
+				<li>
+					<a href={ templ.SafeURL(FilePath(a)) } target="_blank" rel="noopener">
+						<img
+							src={ FilePath(a) }
+							alt={ a.FileName }
+							loading="lazy"
+							if a.Width > 0 && a.Height > 0 {
+								width={ roomIDText(uint64(a.Width)) }
+								height={ roomIDText(uint64(a.Height)) }
+							}
+						/>
+					</a>
+				</li>
+			}
+		</ul>
+	}
+	if len(others) > 0 {
+		<ul class="attachment-files" aria-label="Files">
+			for _, a := range others {
+				<li>
+					<a href={ templ.SafeURL(FilePath(a)) }>{ a.FileName }</a>
+					<span class="hint">{ SizeText(a.Size) }</span>
+				</li>
+			}
+		</ul>
+	}
 }
 
 // ReplySlot is the place under a post or comment where the reply editor opens,

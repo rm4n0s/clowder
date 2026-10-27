@@ -272,7 +272,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 
 ### 9.1 Public error tags
 
-The services return tagged errors that the handlers turn into HTTP answers. The tags that decide the answer are exported from `internal/app` (`TagNotFound` → 404, `TagForbidden` → 403, `TagInvalidInput` → 422 with the field errors in the metadata, `TagConflict` → 409, `TagRateLimited` → 429 (a login refused by the limiter of §7.1), `TagUnauthenticated` → redirect to the login). A user who may not see a private room gets `TagNotFound`, not `TagForbidden`. Any other error is a 500, logged with its route; the page shows a short message, never the error. These statuses are what a full page or a plain form post gets. A Datastar request is answered with 200 and an SSE stream that patches the error into the page, because `datastar.js` drops the body of any other status.
+The services return tagged errors that the handlers turn into HTTP answers. The tags that decide the answer are exported from `internal/app` (`TagNotFound` → 404, `TagForbidden` → 403, `TagInvalidInput` → 422 with the field errors in the metadata, `TagConflict` → 409, `TagRateLimited` → 429 (a login refused by the limiter of §7.1), `TagTooLarge` → 413 (a file over the attachment limit, §7.5), `TagUnauthenticated` → redirect to the login). A user who may not see a private room gets `TagNotFound`, not `TagForbidden`. Any other error is a 500, logged with its route; the page shows a short message, never the error. These statuses are what a full page or a plain form post gets. A Datastar request is answered with 200 and an SSE stream that patches the error into the page, because `datastar.js` drops the body of any other status.
 
 ### 9.2 Logging
 

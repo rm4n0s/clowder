@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/clowder/internal/app"
+	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/web/views"
 	"github.com/rm4n0s/errors"
 )
@@ -31,7 +32,13 @@ type roomsEnv struct {
 
 func newRoomsEnv(t *testing.T) *roomsEnv {
 	t.Helper()
-	e := &roomsEnv{testEnv: newTestEnv(t, nil), cookies: map[string]reqOpt{}}
+	return newRoomsEnvWith(t, nil)
+}
+
+// newRoomsEnvWith is newRoomsEnv with a change to the configuration.
+func newRoomsEnvWith(t *testing.T, mutate func(*config.Config)) *roomsEnv {
+	t.Helper()
+	e := &roomsEnv{testEnv: newTestEnv(t, mutate), cookies: map[string]reqOpt{}}
 	e.admin = e.addUser("admin", "Admin", app.RoleAdmin)
 	e.alice = e.addUser("alice", "Alice", app.RoleMember)
 	e.bob = e.addUser("bob", "Bob", app.RoleMember)

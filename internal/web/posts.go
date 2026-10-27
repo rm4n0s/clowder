@@ -86,11 +86,34 @@ func postInputFrom(r *http.Request) app.PostInput {
 	}
 }
 
+// editorInput reads what an editor sent, in the form of a multipart upload or a
+// plain urlencoded form: the post input with its files and the attachments to
+// keep. ok is false when the form could not be read and has been answered.
+// problem is set when the files are wrong (too large, too many); the editor
+// shows it and the text the person typed is in r.
+func (s *Server) editorInput(w http.ResponseWriter, r *http.Request) (in app.PostInput, ok bool, problem error) {
+	uploads, ok, problem := s.readEditorForm(w, r, true)
+	if !ok {
+		return app.PostInput{}, false, nil
+	}
+	in = postInputFrom(r)
+	in.Uploads = uploads
+	in.KeepAttachments = keepOf(r)
+	return in, true, problem
+}
+
 // typedInto puts what the person typed in the form back into the editor.
 func typedInto(d views.PostEditorData, r *http.Request) views.PostEditorData {
 	d.Format = r.PostFormValue("format")
 	d.Body = r.PostFormValue("body")
 	d.Tags = r.PostFormValue("tags")
+	// The files to remove stay ticked.
+	for _, v := range r.PostForm["remove"] {
+		if d.Removing == nil {
+			d.Removing = map[uint64]bool{}
+		}
+		d.Removing[idOfText(v)] = true
+	}
 	return d
 }
 
@@ -156,7 +179,8 @@ func (s *Server) roomFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 // postCreate answers POST /rooms/{id}/posts with the form values "body",
-// "format" and "tags". A Datastar request gets the new post at the top of the
+// "format" and "tags" and the files "files" (a multipart form, or a urlencoded
+// one without files). A Datastar request gets the new post at the top of the
 // feed and a fresh editor; a plain post is sent back to the room. A mistake
 // shows the problems in the editor and keeps what was typed.
 func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
@@ -164,11 +188,15 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.parseBodyForm(w, r) {
+	in, ok, err := s.editorInput(w, r)
+	if !ok {
 		return
 	}
 	actor, _ := actorFrom(r.Context())
-	post, err := s.svc.Posts.Create(r.Context(), actor, id, postInputFrom(r))
+	var post app.Post
+	if err == nil {
+		post, err = s.svc.Posts.Create(r.Context(), actor, id, in)
+	}
 	if err != nil {
 		s.postCreateFailed(w, r, err, id)
 		return
@@ -390,12 +418,16 @@ func (s *Server) postEditSave(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.parseBodyForm(w, r) {
+	in, ok, err := s.editorInput(w, r)
+	if !ok {
 		return
 	}
 	from := fromOf(r)
 	actor, _ := actorFrom(r.Context())
-	post, err := s.svc.Posts.Edit(r.Context(), actor, id, postInputFrom(r))
+	var post app.Post
+	if err == nil {
+		post, err = s.svc.Posts.Edit(r.Context(), actor, id, in)
+	}
 	if err == nil {
 		if !isDatastar(r) {
 			http.Redirect(w, r, afterEditPath(post), http.StatusSeeOther)
@@ -607,11 +639,15 @@ func (s *Server) postReply(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.parseBodyForm(w, r) {
+	in, ok, err := s.editorInput(w, r)
+	if !ok {
 		return
 	}
 	actor, _ := actorFrom(r.Context())
-	comment, err := s.svc.Posts.Reply(r.Context(), actor, id, postInputFrom(r))
+	var comment app.Post
+	if err == nil {
+		comment, err = s.svc.Posts.Reply(r.Context(), actor, id, in)
+	}
 	if err != nil {
 		s.postReplyFailed(w, r, err, id)
 		return
@@ -653,7 +689,7 @@ func (s *Server) postReplyFailed(w http.ResponseWriter, r *http.Request, err err
 // shows it (or the reason it cannot be, such as a body that is too long). Any
 // logged-in person may preview.
 func (s *Server) postPreview(w http.ResponseWriter, r *http.Request) {
-	if !s.parseBodyForm(w, r) {
+	if _, ok, _ := s.readEditorForm(w, r, false); !ok {
 		return
 	}
 	actor, _ := actorFrom(r.Context())

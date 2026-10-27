@@ -796,6 +796,7 @@ func TestPostRoutesNeedASession(t *testing.T) {
 		{http.MethodGet, postPathOf(p, "view")}, {http.MethodPost, postPathOf(p, "delete")},
 		{http.MethodGet, postPathOf(p, "reply")}, {http.MethodPost, postPathOf(p, "replies")},
 		{http.MethodPost, "/preview"}, {http.MethodGet, "/tags/suggest?q=a"},
+		{http.MethodGet, "/files/1/a.txt"},
 	}
 	for _, tt := range paths {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {

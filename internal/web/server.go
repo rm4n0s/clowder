@@ -133,6 +133,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "GET /posts/{id}/reply", handler: http.HandlerFunc(s.postReplyForm)},
 		{pattern: "POST /posts/{id}/replies", handler: http.HandlerFunc(s.postReply)},
 		{pattern: "POST /preview", handler: http.HandlerFunc(s.postPreview)},
+		{pattern: "GET /files/{id}/{name}", handler: http.HandlerFunc(s.fileDownload)},
 		{pattern: "GET /tags/suggest", handler: http.HandlerFunc(s.tagSuggest)},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
 	}

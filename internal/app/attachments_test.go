@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/rm4n0s/clowder/internal/app"
@@ -1058,6 +1059,20 @@ func TestPostsAttachmentMissingAndDeleted(t *testing.T) {
 	})
 }
 
+// withoutTimes returns the views with CreatedAt zeroed, after checking that
+// each has one.
+func withoutTimes(views []app.AttachmentView) []app.AttachmentView {
+	out := make([]app.AttachmentView, len(views))
+	for i, v := range views {
+		if v.CreatedAt.IsZero() {
+			panic("an attachment view without CreatedAt")
+		}
+		v.CreatedAt = time.Time{}
+		out[i] = v
+	}
+	return out
+}
+
 func TestPostsViewsCarryTheAttachments(t *testing.T) {
 	e := newPostsEnv(t)
 	img := e.upload("bob", "pic.png", pngData(t, 8, 6))
@@ -1078,7 +1093,7 @@ func TestPostsViewsCarryTheAttachments(t *testing.T) {
 	if err != nil || len(page.Posts) != 2 {
 		t.Fatalf("Feed = %+v, %v", page, err)
 	}
-	if got := page.Posts[1].Attachments; !reflect.DeepEqual(got, want) {
+	if got := page.Posts[1].Attachments; !reflect.DeepEqual(withoutTimes(got), want) {
 		t.Errorf("Feed attachments = %+v, want %+v", got, want)
 	}
 	if got := page.Posts[0].Attachments; page.Posts[0].ID != plain.ID || got == nil || len(got) != 0 {
@@ -1086,12 +1101,12 @@ func TestPostsViewsCarryTheAttachments(t *testing.T) {
 	}
 
 	got, err := e.posts.Get(t.Context(), e.as("carol"), withFiles.ID)
-	if err != nil || !reflect.DeepEqual(got.Attachments, want) {
+	if err != nil || !reflect.DeepEqual(withoutTimes(got.Attachments), want) {
 		t.Errorf("Get = %+v, %v", got.Attachments, err)
 	}
 
 	th := e.thread("carol", comment.ID)
-	if !reflect.DeepEqual(th.Root.Attachments, want) {
+	if !reflect.DeepEqual(withoutTimes(th.Root.Attachments), want) {
 		t.Errorf("Thread root attachments = %+v", th.Root.Attachments)
 	}
 	if len(th.Comments) != 1 || len(th.Comments[0].Attachments) != 1 || th.Comments[0].Attachments[0].FileName != "reply.txt" {
@@ -1106,5 +1121,39 @@ func TestPostsViewsCarryTheAttachments(t *testing.T) {
 	th = e.thread("carol", withFiles.ID)
 	if len(th.Comments) < 1 || !th.Comments[0].Deleted || th.Comments[0].Attachments == nil || len(th.Comments[0].Attachments) != 0 {
 		t.Errorf("deleted comment = %+v", th.Comments)
+	}
+}
+
+func TestPostsDiscardUploads(t *testing.T) {
+	tests := []struct {
+		name string
+		user string
+		// wantGone is true when the unused upload is removed from the disk.
+		wantGone bool
+	}{
+		{"a member", "bob", true},
+		{"an admin", "admin", true},
+		{"nobody", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newPostsEnv(t)
+			free := e.uploadText("bob", "free.txt")
+			used := e.uploadText("bob", "used.txt")
+			e.writeWith("bob", "lobby", "post", used)
+			actor := app.Actor{}
+			if tt.user != "" {
+				actor = e.as(tt.user)
+			}
+			e.posts.DiscardUploads(t.Context(), actor, []app.Upload{free, used})
+			onDisk := e.onDisk()
+			if got := !slices.Contains(onDisk, free.Key); got != tt.wantGone {
+				t.Errorf("free upload removed = %v, want %v (on disk %v)", got, tt.wantGone, onDisk)
+			}
+			// The file of an attachment is never removed.
+			if !slices.Contains(onDisk, used.Key) {
+				t.Errorf("the file of an attachment was removed")
+			}
+		})
 	}
 }

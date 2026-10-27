@@ -17,6 +17,8 @@ const (
 	messageConflict    = "That clashes with a change made just now. Reload the page and try again"
 	messageInvalid     = "Some of what you sent is not valid"
 	messageRateLimited = "Too many attempts. Try again in a few minutes."
+	// messageTooLarge is the page of an upload over the limit.
+	messageTooLarge = "That upload is too large"
 	// messageTryAgain is shown in a form when its submit fails for a reason
 	// the person cannot fix by editing it.
 	messageTryAgain = "Something went wrong. Try again."
@@ -27,7 +29,7 @@ const (
 
 // statusOf maps an error to the HTTP status of its answer by the tags of the
 // app package (SPEC §9.1): NotFound 404, Forbidden 403, InvalidInput 422,
-// Conflict 409, RateLimited 429, and 500 for anything else. Unauthenticated is
+// Conflict 409, RateLimited 429, TooLarge 413, and 500 for anything else. Unauthenticated is
 // not a status but a redirect to the login page; statusOf says 302 for it, and
 // fail and the form handlers redirect.
 func statusOf(err error) int {
@@ -46,6 +48,8 @@ func statusOf(err error) int {
 		return http.StatusConflict
 	case app.TagRateLimited:
 		return http.StatusTooManyRequests
+	case app.TagTooLarge:
+		return http.StatusRequestEntityTooLarge
 	case app.TagUnauthenticated:
 		return http.StatusFound
 	default:
@@ -66,6 +70,8 @@ func messageOf(status int) string {
 		return messageConflict
 	case http.StatusTooManyRequests:
 		return messageRateLimited
+	case http.StatusRequestEntityTooLarge:
+		return messageTooLarge
 	default:
 		return messageInternalError
 	}
@@ -106,6 +112,7 @@ type formView struct {
 //
 //   - TagInvalidInput shows the messages of the metadata "fields" next to
 //     their inputs, and the one named FieldForm above the form;
+//   - TagTooLarge shows "Each file can be at most N MB." next to the files;
 //   - TagRateLimited shows messageRateLimited above the form;
 //   - TagForbidden and TagConflict show messageForbidden and messageConflict;
 //   - any other error shows messageTryAgain (a 500 is logged with its route);
@@ -121,7 +128,7 @@ func (s *Server) formFailed(w http.ResponseWriter, r *http.Request, err error, b
 	case status == http.StatusFound:
 		s.redirectToLogin(w, r)
 		return
-	case isTag(err, app.TagInvalidInput):
+	case isTag(err, app.TagInvalidInput), isTag(err, app.TagTooLarge):
 		problems = formErrorsOf(err)
 	case isTag(err, app.TagRateLimited):
 		problems.Form = messageRateLimited
@@ -144,11 +151,19 @@ func (s *Server) formFailed(w http.ResponseWriter, r *http.Request, err error, b
 }
 
 // formErrorsOf reads the metadata "fields" of a TagInvalidInput error: the
-// message of FieldForm goes to Form, the others stay with their field.
+// message of FieldForm goes to Form, the others stay with their field. A
+// TagTooLarge error becomes the message of the field "attachments" with the
+// limit of its metadata.
 func formErrorsOf(err error) views.FormErrors {
 	appErr, ok := errors.FromError(err)
 	if !ok {
 		return views.FormErrors{}
+	}
+	if appErr.Tag == app.TagTooLarge {
+		limit, _ := appErr.Metadata["limit"].(int64)
+		return views.FormErrors{Fields: map[string]string{
+			app.FieldAttachments: "Each file can be at most " + views.SizeText(limit) + ".",
+		}}
 	}
 	fields, _ := appErr.Metadata["fields"].(map[string]string)
 	problems := views.FormErrors{Form: fields[app.FieldForm], Fields: map[string]string{}}

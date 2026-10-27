@@ -23,7 +23,7 @@ func TestPostEditor(t *testing.T) {
 			name: "the editor of a new post",
 			data: views.NewPostEditorData(7),
 			want: []string{
-				`<form id="post-editor-new" class="post-editor" method="post" action="/rooms/7/posts"`,
+				`<form id="post-editor-new" class="post-editor" method="post" enctype="multipart/form-data" action="/rooms/7/posts"`,
 				"@post(&#39;/rooms/7/posts&#39;, {contentType: &#39;form&#39;})",
 				`<input type="hidden" name="editor" value="new">`,
 				`<label for="post-body-new">Message</label>`, `<textarea id="post-body-new" name="body" rows="5"></textarea>`,
@@ -33,9 +33,13 @@ func TestPostEditor(t *testing.T) {
 				"data-on:input__debounce.200ms=", "/tags/suggest?editor=new&amp;q=", "encodeURIComponent",
 				`<ul id="post-tag-suggest-new" class="tag-suggest"`,
 				`id="post-preview-new" class="post-preview" hidden`,
-				`>Post</button>`, `data-on:click="@post(&#39;/preview&#39;, {contentType: &#39;form&#39;})">Preview</button>`,
+				`>Post</button>`, `@post(&#39;/preview&#39;, {contentType: &#39;form&#39;}); f.disabled = false">Preview</button>`,
+				// The preview leaves the files out: the input is switched off.
+				"elements.files; f.disabled = true;",
+				// The file input: several files, no list of current ones.
+				`<label for="post-files-new">Attach files</label>`, `<input id="post-files-new" name="files" type="file" multiple>`,
 			},
-			notWant: []string{"Cancel", `name="from"`, "field-error", "form-error", "aria-invalid", "required"},
+			notWant: []string{"Cancel", `name="from"`, "field-error", "form-error", "aria-invalid", "required", `name="keep"`, `name="remove"`},
 		},
 		{
 			name: "the editor of an edit in place keeps the post and offers Cancel",
@@ -53,7 +57,7 @@ func TestPostEditor(t *testing.T) {
 			name: "the editor of a reply closes its slot and posts to the replies",
 			data: views.ReplyEditorData(12),
 			want: []string{
-				`<form id="post-editor-reply-12" class="post-editor" method="post" action="/posts/12/replies"`, "@post(&#39;/posts/12/replies&#39;, {contentType: &#39;form&#39;})",
+				`<form id="post-editor-reply-12" class="post-editor" method="post" enctype="multipart/form-data" action="/posts/12/replies"`, "@post(&#39;/posts/12/replies&#39;, {contentType: &#39;form&#39;})",
 				`name="editor" value="reply-12"`, `name="format" value="markdown" checked`, `>Reply</button>`,
 				`<a class="button-link" href="/posts/12" data-on:click__prevent="el.closest(&#39;.reply-slot&#39;).replaceChildren()">Cancel</a>`,
 				`id="post-tag-suggest-reply-12"`, `id="post-preview-reply-12"`,
@@ -86,6 +90,40 @@ func TestPostEditor(t *testing.T) {
 				`>kept body</textarea>`, `name="format" value="text" checked`, `value="kept-tag"`,
 			},
 			notWant: []string{"Separate tags with spaces"},
+		},
+		{
+			name: "the edit lists the current files with a Remove box each",
+			data: views.EditPostEditorData(app.Post{
+				ID: 12, Format: app.FormatText, Body: "b",
+				Attachments: []app.AttachmentView{
+					{ID: 5, FileName: "a <b>.png", ContentType: "image/png", Size: 12 * 1024, IsImage: true, Width: 8, Height: 6},
+					{ID: 9, FileName: "notes.txt", ContentType: "text/plain", Size: 3_565_158},
+				},
+			}, ""),
+			want: []string{
+				`<ul class="attachment-edit" aria-label="Current files">`,
+				`<input type="hidden" name="keep" value="5">`, `<span class="attachment-name">a &lt;b&gt;.png</span>`, `<span class="hint">12 KB</span>`,
+				`<input type="checkbox" name="remove" value="5">`,
+				`<input type="hidden" name="keep" value="9">`, `<span class="hint">3.4 MB</span>`, `<input type="checkbox" name="remove" value="9">`,
+			},
+			notWant: []string{"<b>.png", "checked name", `value="5" checked`, `value="9" checked`},
+		},
+		{
+			name: "a failed edit keeps the Remove boxes that were ticked and shows the file problem",
+			data: func() views.PostEditorData {
+				d := views.EditPostEditorData(app.Post{
+					ID: 12, Format: app.FormatText, Body: "b",
+					Attachments: []app.AttachmentView{{ID: 5, FileName: "a.txt", Size: 1}, {ID: 9, FileName: "b.txt", Size: 1}},
+				}, "")
+				d.Removing = map[uint64]bool{9: true}
+				d.Errors = views.FormErrors{Fields: map[string]string{"attachments": "Each file can be at most 25 MB."}}
+				return d
+			}(),
+			want: []string{
+				`<input type="checkbox" name="remove" value="9" checked>`, `<input type="checkbox" name="remove" value="5">`,
+				`aria-invalid="true" aria-describedby="post-files-edit-12-error"`,
+				`<p class="field-error" id="post-files-edit-12-error" role="alert">Each file can be at most 25 MB.</p>`,
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -652,6 +690,125 @@ func TestThreadPaths(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.got != tt.want {
 				t.Errorf("got %q, want %q", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAttachmentsOfAPost(t *testing.T) {
+	image := app.AttachmentView{ID: 5, FileName: "mock up.png", ContentType: "image/png", Size: 2048, IsImage: true, Width: 320, Height: 200}
+	noSize := app.AttachmentView{ID: 6, FileName: "odd.gif", ContentType: "image/gif", Size: 10, IsImage: true}
+	text := app.AttachmentView{ID: 7, FileName: "notes <1>.txt", ContentType: "text/plain", Size: 12 * 1024}
+	pdf := app.AttachmentView{ID: 8, FileName: "ünï.pdf", ContentType: "application/pdf", Size: 3_565_158}
+	tests := []struct {
+		name    string
+		atts    []app.AttachmentView
+		want    []string
+		notWant []string
+	}{
+		{
+			name: "an image is inline with its size, lazy, and links to the file",
+			atts: []app.AttachmentView{image},
+			want: []string{
+				`<ul class="attachment-images">`, `<a href="/files/5/mock%20up.png" target="_blank" rel="noopener">`,
+				`<img src="/files/5/mock%20up.png" alt="mock up.png" loading="lazy" width="320" height="200">`,
+			},
+			notWant: []string{"attachment-files"},
+		},
+		{
+			name:    "an image without a size has no width and height",
+			atts:    []app.AttachmentView{noSize},
+			want:    []string{`<img src="/files/6/odd.gif" alt="odd.gif" loading="lazy">`},
+			notWant: []string{"width=", "height="},
+		},
+		{
+			name: "other files are links with a human size",
+			atts: []app.AttachmentView{text, pdf},
+			want: []string{
+				`<ul class="attachment-files" aria-label="Files">`,
+				`<a href="/files/7/notes%20%3C1%3E.txt">notes &lt;1&gt;.txt</a>`, `<span class="hint">12 KB</span>`,
+				`<a href="/files/8/%C3%BCn%C3%AF.pdf">ünï.pdf</a>`, `<span class="hint">3.4 MB</span>`,
+			},
+			notWant: []string{"<img", "attachment-images", "notes <1>"},
+		},
+		{
+			name: "images come first, then the list of files, each in order",
+			atts: []app.AttachmentView{text, image, pdf},
+			want: []string{`<img src="/files/5/`, `<ul class="attachment-files"`},
+		},
+		{
+			name:    "no files, no markup",
+			atts:    nil,
+			notWant: []string{"<ul", "<li"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := render(t, views.Attachments(tt.atts))
+			requireContains(t, got, tt.want, tt.notWant)
+			if tt.name == "images come first, then the list of files, each in order" {
+				if strings.Index(got, "<img") > strings.Index(got, "attachment-files") || strings.Index(got, "notes") > strings.Index(got, "ünï") {
+					t.Errorf("wrong order: %s", got)
+				}
+			}
+		})
+	}
+}
+
+func TestPostCardShowsItsAttachments(t *testing.T) {
+	post := app.Post{
+		ID: 3, Author: app.UserRef{Username: "alice", DisplayName: "Alice"}, Format: app.FormatText, Body: "hi", HTML: "<p>hi</p>",
+		Attachments: []app.AttachmentView{
+			{ID: 5, FileName: "a.png", ContentType: "image/png", Size: 100, IsImage: true, Width: 3, Height: 2},
+			{ID: 6, FileName: "b.txt", ContentType: "text/plain", Size: 5},
+		},
+	}
+	got := render(t, views.PostCard(views.PostCardData{Post: post}))
+	requireContains(t, got, []string{`<img src="/files/5/a.png"`, `<a href="/files/6/b.txt">b.txt</a>`, "5 B"}, nil)
+	if strings.Index(got, "<p>hi</p>") > strings.Index(got, "<img") {
+		t.Errorf("the files come before the body: %s", got)
+	}
+	// A comment shows its files too.
+	post.IsComment = true
+	requireContains(t, render(t, views.PostCard(views.PostCardData{Post: post, Depth: 1})), []string{`<img src="/files/5/a.png"`}, nil)
+	// A deleted post shows none.
+	post.Deleted = true
+	requireContains(t, render(t, views.PostCard(views.PostCardData{Post: post})), nil, []string{"/files/"})
+}
+
+func TestSizeText(t *testing.T) {
+	tests := []struct {
+		n    int64
+		want string
+	}{
+		{-5, "0 B"}, {0, "0 B"}, {1, "1 B"}, {1023, "1023 B"},
+		{1024, "1 KB"}, {1536, "1.5 KB"}, {12 * 1024, "12 KB"}, {10*1024 - 1, "10 KB"}, {10 * 1024, "10 KB"}, {10240 + 600, "11 KB"},
+		{1024*1024 - 1, "1024 KB"}, {1024 * 1024, "1 MB"}, {3_565_158, "3.4 MB"}, {25 << 20, "25 MB"},
+		{1 << 30, "1 GB"}, {5 << 30, "5 GB"}, {2048 << 30, "2048 GB"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := views.SizeText(tt.n); got != tt.want {
+				t.Errorf("SizeText(%d) = %q, want %q", tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFilePath(t *testing.T) {
+	tests := []struct {
+		name string
+		a    app.AttachmentView
+		want string
+	}{
+		{"plain", app.AttachmentView{ID: 3, FileName: "a.txt"}, "/files/3/a.txt"},
+		{"spaces and slashes", app.AttachmentView{ID: 3, FileName: "a b/c?d#e.txt"}, "/files/3/a%20b%2Fc%3Fd%23e.txt"},
+		{"non-ASCII", app.AttachmentView{ID: 12, FileName: "é.txt"}, "/files/12/%C3%A9.txt"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := views.FilePath(tt.a); got != tt.want {
+				t.Errorf("FilePath = %q, want %q", got, tt.want)
 			}
 		})
 	}

@@ -1172,6 +1172,7 @@ func TestStatusOf(t *testing.T) {
 		{"invalid input", errors.New(app.TagInvalidInput, "x"), http.StatusUnprocessableEntity},
 		{"conflict", errors.New(app.TagConflict, "x"), http.StatusConflict},
 		{"rate limited", errors.New(app.TagRateLimited, "x"), http.StatusTooManyRequests},
+		{"too large", errors.New(app.TagTooLarge, "x"), http.StatusRequestEntityTooLarge},
 		{"unauthenticated is a redirect", errors.New(app.TagUnauthenticated, "x"), http.StatusFound},
 		{"query failed", errors.New(store.TagQueryFailed, "x"), http.StatusInternalServerError},
 		{"unknown tag", errors.New("Whatever", "x"), http.StatusInternalServerError},
@@ -1201,6 +1202,7 @@ func TestFail(t *testing.T) {
 		{"invalid input", errors.New(app.TagInvalidInput, "secret detail"), http.StatusUnprocessableEntity, messageInvalid, "", false},
 		{"conflict", errors.New(app.TagConflict, "secret detail"), http.StatusConflict, messageConflict, "", false},
 		{"rate limited", errors.New(app.TagRateLimited, "secret detail"), http.StatusTooManyRequests, messageRateLimited, "", false},
+		{"too large", errors.New(app.TagTooLarge, "secret detail"), http.StatusRequestEntityTooLarge, messageTooLarge, "", false},
 		{"unauthenticated", errors.New(app.TagUnauthenticated, "secret detail"), http.StatusFound, "", "/login?next=%2Ffail", false},
 		{"other error", errors.New("Boom", "secret detail", "key", "value"), http.StatusInternalServerError, "Something went wrong", "", true},
 	}

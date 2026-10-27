@@ -517,6 +517,28 @@ button.tag-option {
 
 .post-body img { max-width: 100%; height: auto; }
 
+.attachment-images, .attachment-files, .attachment-edit { margin: 0.75rem 0 0; padding: 0; list-style: none; }
+
+.attachment-images { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+.attachment-images li { max-width: 100%; }
+
+.attachment-images img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.attachment-files li, .attachment-edit li { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: baseline; margin-bottom: 0.25rem; }
+
+.attachment-files .hint, .attachment-edit .hint { margin: 0; }
+
+.attachment-name { overflow-wrap: anywhere; }
+
+.attachment-edit { margin: 0 0 0.5rem; }
+
 .tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin: 0.5rem 0 0; padding: 0; list-style: none; }
 
 a.tag {

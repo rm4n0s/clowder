@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -69,6 +70,9 @@ type AttachmentView struct {
 	// Width and Height are the size in pixels of an image; 0 for any other
 	// file.
 	Width, Height int
+	// CreatedAt is when the file was attached. The download answers it as the
+	// time the file was last modified.
+	CreatedAt time.Time
 }
 
 // PostsConfig holds the settings of the posts service.
@@ -166,6 +170,18 @@ func (p *Posts) Upload(ctx context.Context, actor Actor, name string, r io.Reade
 	}, nil
 }
 
+// DiscardUploads removes the files of uploads that no post took, for a caller
+// that made them with Upload and then failed before it could pass them to
+// Create, Reply or Edit (which remove the files of their own failures). A file
+// that an attachment already uses is left alone. An actor with no ID does
+// nothing. Failures are logged, never returned.
+func (p *Posts) DiscardUploads(ctx context.Context, actor Actor, uploads []Upload) {
+	if actor.UserID == 0 {
+		return
+	}
+	p.cleaner.discard(ctx, p.st, uploads)
+}
+
 // Attachment returns an attachment and its file for download. The room of its
 // post must be readable by the actor: a missing attachment, one of a deleted
 // post, and a post in a room that the actor may not read fail with
@@ -201,6 +217,7 @@ func attachmentView(a store.Attachment) AttachmentView {
 		ContentType: a.ContentType,
 		Size:        a.Size,
 		IsImage:     isInlineImage(a.ContentType),
+		CreatedAt:   a.CreatedAt,
 	}
 	if a.Width != nil {
 		v.Width = *a.Width
