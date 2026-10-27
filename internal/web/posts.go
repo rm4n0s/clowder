@@ -99,6 +99,16 @@ func (s *Server) editorInput(w http.ResponseWriter, r *http.Request) (in app.Pos
 	in = postInputFrom(r)
 	in.Uploads = uploads
 	in.KeepAttachments = keepOf(r)
+	tasks, taskProblem := taskInputsFrom(r)
+	in.Tasks = tasks
+	if problem == nil && taskProblem != nil {
+		// The files are not used: the editor shows the problem, and the person
+		// attaches them again.
+		actor, _ := actorFrom(r.Context())
+		s.svc.Posts.DiscardUploads(r.Context(), actor, uploads)
+		in.Uploads = nil
+		problem = taskProblem
+	}
 	return in, true, problem
 }
 
@@ -107,6 +117,7 @@ func typedInto(d views.PostEditorData, r *http.Request) views.PostEditorData {
 	d.Format = r.PostFormValue("format")
 	d.Body = r.PostFormValue("body")
 	d.Tags = r.PostFormValue("tags")
+	d.Tasks = typedTasks(r)
 	// The files to remove stay ticked.
 	for _, v := range r.PostForm["remove"] {
 		if d.Removing == nil {
@@ -218,7 +229,7 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 		// Replaced, not morphed: a morph leaves the text the person typed in
 		// the fields, and the editor must be empty again.
 		patchOp{
-			component: views.PostEditor(views.NewPostEditorData(id)),
+			component: views.PostEditor(s.editorFor(r.Context(), actor, id, views.NewPostEditorData(id))),
 			options:   []datastar.PatchElementOption{datastar.WithSelector("#post-editor-new"), datastar.WithModeReplace()},
 		},
 	)
@@ -239,8 +250,10 @@ func (s *Server) postCreateFailed(w http.ResponseWriter, r *http.Request, err er
 			return
 		}
 	}
+	actor, _ := actorFrom(r.Context())
+	editorBase := s.editorFor(r.Context(), actor, id, views.NewPostEditorData(id))
 	s.formFailed(w, r, err, func(problems views.FormErrors) formView {
-		editor := typedInto(views.NewPostEditorData(id), r)
+		editor := typedInto(editorBase, r)
 		editor.Errors = problems
 		d := base
 		d.Editor = editor
@@ -386,7 +399,7 @@ func (s *Server) postEditForm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	editor := views.EditPostEditorData(post, card.From)
+	editor := s.editorFor(r.Context(), actor, post.RoomID, views.EditPostEditorData(post, card.From))
 	if isDatastar(r) {
 		s.patch(w, r, views.PostEdit(views.PostEditData{Post: post, Editor: editor, Depth: card.Depth}))
 		return
@@ -474,12 +487,21 @@ func (s *Server) postEditSave(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			shown, from, depth = current, card.From, card.Depth
-		} else if page, ok = s.postPageData(w, r, id); !ok {
-			return
+		} else {
+			if page, ok = s.postPageData(w, r, id); !ok {
+				return
+			}
+			current, getErr := s.svc.Posts.Get(r.Context(), actor, id)
+			if getErr != nil {
+				s.postFail(w, r, getErr, id)
+				return
+			}
+			shown = current
 		}
 	}
+	editorBase := s.editorFor(r.Context(), actor, shown.RoomID, views.EditPostEditorData(shown, from))
 	s.formFailed(w, r, err, func(problems views.FormErrors) formView {
-		editor := typedInto(views.EditPostEditorData(shown, from), r)
+		editor := typedInto(editorBase, r)
 		editor.Errors = problems
 		d := page
 		d.ActiveID, d.Editing, d.Editor = id, true, editor
@@ -629,7 +651,7 @@ func (s *Server) postReplyForm(w http.ResponseWriter, r *http.Request) {
 		s.postActionFailed(w, r, err, id)
 		return
 	}
-	editor := views.ReplyEditorData(id)
+	editor := s.editorFor(r.Context(), actor, parent.RoomID, views.ReplyEditorData(id))
 	if isDatastar(r) {
 		s.patch(w, r, views.ReplySlot(id, &editor))
 		return
@@ -688,8 +710,16 @@ func (s *Server) postReplyFailed(w http.ResponseWriter, r *http.Request, err err
 			return
 		}
 	}
+	editorBase := views.ReplyEditorData(id)
+	actor, _ := actorFrom(r.Context())
+	if parent, getErr := s.svc.Posts.Get(r.Context(), actor, id); getErr == nil {
+		editorBase = s.editorFor(r.Context(), actor, parent.RoomID, editorBase)
+	} else {
+		// The problem to report is the one that came first.
+		s.logger.Debug("the post is not read for the reply editor", "post_id", id, "err", getErr)
+	}
 	s.formFailed(w, r, err, func(problems views.FormErrors) formView {
-		editor := typedInto(views.ReplyEditorData(id), r)
+		editor := typedInto(editorBase, r)
 		editor.Errors = problems
 		d := page
 		d.ActiveID, d.Replying, d.Editor = id, true, editor

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -286,7 +287,7 @@ func (s *Server) roomStream(w http.ResponseWriter, r *http.Request) {
 	}
 	// Subscribe before anything is read again, so that no change falls between
 	// the render and the subscription.
-	sub := s.svc.Hub.Subscribe(ctx, live.RoomTopic(id), live.UserTopic(actor.UserID))
+	sub := s.svc.Hub.Subscribe(ctx, live.RoomTopic(id), live.BoardTopic(id), live.UserTopic(actor.UserID))
 	defer sub.Close()
 	ls := s.newStream(w, r, actor, user)
 	rs := &roomStream{liveStream: ls, id: id, before: beforeOf(r), seen: uintQuery(r, "seen")}
@@ -396,6 +397,8 @@ func (rs *roomStream) event(ctx context.Context, ev live.Event) (end bool, err e
 		return rs.postEvent(ctx, ev)
 	case live.KindReactionChanged:
 		return rs.reactionEvent(ctx, ev)
+	case live.KindBoardChanged:
+		return rs.boardEvent(ctx, ev)
 	case live.KindMemberJoined, live.KindMemberLeft:
 		return rs.memberEvent(ctx, ev)
 	case live.KindRoomUpdated:
@@ -487,6 +490,52 @@ func (rs *roomStream) reactionEvent(ctx context.Context, ev live.Event) (end boo
 	return false, rs.patch(views.Reactions(views.ReactionsData{Post: post}))
 }
 
+// boardEvent handles a change to the board of the room: the tasks a post
+// shows (their column names, and whether they are overdue) may be stale. The
+// content of the post that the event names is patched; an event about no post
+// (a column was renamed, moved or deleted) patches the content of every
+// top-level post of the room that has tasks, which the board service lists.
+// The stream does not know which posts the page has loaded (the person scrolls
+// older pages in on their own), so a post that is not on the page is patched
+// too, and the client finds nothing to replace.
+func (rs *roomStream) boardEvent(ctx context.Context, ev live.Event) (end bool, err error) {
+	ids := []uint64{ev.PostID}
+	if ev.PostID == 0 {
+		board, err := rs.s.svc.Board.Board(ctx, rs.actor, rs.id)
+		if err != nil {
+			return rs.gone(err, "/")
+		}
+		ids = ids[:0]
+		for _, c := range board.Columns {
+			for _, t := range c.Tasks {
+				if t.PostID == t.RootID && !slices.Contains(ids, t.PostID) {
+					ids = append(ids, t.PostID)
+				}
+			}
+		}
+	}
+	for _, id := range ids {
+		post, err := rs.s.svc.Posts.Get(ctx, rs.actor, id)
+		if err != nil {
+			if isTag(err, app.TagNotFound) {
+				continue
+			}
+			return false, err
+		}
+		if post.IsComment || post.Deleted || post.RoomID != rs.id {
+			continue
+		}
+		card, err := rs.s.cardData(ctx, rs.actor, post, "", "")
+		if err != nil {
+			return false, err
+		}
+		if err := rs.patch(views.PostContent(card)); err != nil {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
 // memberEvent handles someone joining or leaving the room: the members and
 // their count change, and when the person is the user of the stream, so does
 // everything their role decides.
@@ -563,7 +612,7 @@ func (s *Server) postStream(w http.ResponseWriter, r *http.Request) {
 	// the render and the subscription. The room is listened to only for the
 	// room being deleted and the user being removed from it.
 	sub := s.svc.Hub.Subscribe(ctx,
-		live.PostTopic(first.Post.ID), live.RoomTopic(first.Post.RoomID), live.UserTopic(actor.UserID))
+		live.PostTopic(first.Post.ID), live.RoomTopic(first.Post.RoomID), live.BoardTopic(first.Post.RoomID), live.UserTopic(actor.UserID))
 	defer sub.Close()
 	ls := s.newStream(w, r, actor, user)
 	ts := &threadStream{
@@ -668,6 +717,8 @@ func (ts *threadStream) event(ctx context.Context, ev live.Event) (end bool, err
 		return ts.userEvent(ctx, ev)
 	case live.RoomTopic(ts.roomID):
 		return ts.roomEvent(ctx, ev)
+	case live.BoardTopic(ts.roomID):
+		return ts.boardEvent(ctx, ev)
 	}
 	return ts.postEvent(ctx, ev)
 }
@@ -702,6 +753,33 @@ func (ts *threadStream) roomEvent(ctx context.Context, ev live.Event) (end bool,
 			return ts.lost(ctx, err)
 		}
 		return false, ts.thread(d)
+	}
+	return false, nil
+}
+
+// boardEvent handles a change to the board of the room: the tasks of the posts
+// of the thread may be stale. The content of the post or comment that the event
+// names is patched; an event about no post (a column was renamed, moved or
+// deleted) patches the content of every item of the thread that has tasks.
+func (ts *threadStream) boardEvent(ctx context.Context, ev live.Event) (end bool, err error) {
+	d, err := ts.reread(ctx)
+	if err != nil {
+		return ts.lost(ctx, err)
+	}
+	cards := []views.PostCardData{d.RootCard()}
+	for _, c := range d.Comments {
+		cards = append(cards, d.CommentCard(c))
+	}
+	for _, card := range cards {
+		if card.Post.Deleted {
+			continue
+		}
+		if ev.PostID != 0 && card.Post.ID != ev.PostID || ev.PostID == 0 && len(card.Post.Tasks) == 0 {
+			continue
+		}
+		if err := ts.patch(views.PostContent(card)); err != nil {
+			return false, err
+		}
 	}
 	return false, nil
 }

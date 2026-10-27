@@ -96,6 +96,7 @@ type testEnv struct {
 	rooms    *app.Rooms
 	audit    *app.Audit
 	posts    *app.Posts
+	board    *app.Board
 	hub      *live.Hub
 	st       *store.Store
 	clk      *clock.Fake
@@ -128,16 +129,17 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	t.Cleanup(hub.Close)
 	rooms := app.NewRooms(st, fileStore, logger, hub)
 	audit := app.NewAudit(st)
+	board := app.NewBoard(st, clk, hub)
 	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
 	}, hub)
-	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Hub: hub}, static.FS, extra...)
+	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, hub: hub, st: st, clk: clk, filesDir: filesDir}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, hub: hub, st: st, clk: clk, filesDir: filesDir}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

@@ -349,3 +349,17 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none
 - **Manual checks:** none
 - **Deviations and follow-ups:** An edit that changes only tasks counts as a post edit (`EditedAt`, `post.edited` with the tasks added, edited and removed). `DeleteColumn` refuses the last column before checking its cards. No-op moves and patches write and publish nothing. Moving or deleting columns publishes only `board.changed`, so pages showing tasks refresh on it. `TODO(step 11.1)`: notify new assignees. The `internal/app` tests now take about 110 s under `-race`.
+
+## 9.2 Tasks in the editor and in posts
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-9.2-tasks-in-editor
+- **Summary:** The editor has a Tasks section: rows with title, assignees (the room's members; a former member already assigned stays selectable, labelled as having left), due date and a hidden ID; "Add task" fetches a new row from `GET /editor/task-row` (Datastar), "remove" drops a row in the page; fields are `tasks[N][id|title|assignees|due]` in both encodings; blank new rows are ignored; errors read "Task N: …" with the rows kept. Editing pre-fills the rows. Posts and comments list their tasks under the body with the column as a badge (done in the last column), assignees, the due date (red when overdue) and a link to the card. Room and thread streams refresh the content of posts with tasks on `board.changed`.
+- **Main files:** `internal/web/{tasks,posts,rooms,stream,server}.go`, `internal/web/views/{posts.templ,posts.go}`, `internal/app/board.go` (`TaskCard.Done`), `cmd/clowder/serve.go`.
+- **Tests:** create with tasks in both encodings and modes, tasks-only posts, five kinds of task mistakes with routes, row parsing, edit pre-fill and keep/update/remove/add, former members, the task-row route's permissions, display with badges, overdue and done; stream tests for column renames and card moves in rooms and threads; view tests; browser test: alice posts two tasks (one for bob with a due date), then removes one and renames the other.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · no process left ✅
+- **Proof:**
+  ![9.2 post tasks](implemented-proof-images/9.2-post-tasks.png)
+  Carol's "Release checklist" post: "Run the tests" (In progress, Bob, 2026-10-28), "Tag the release" (To do, Carol, 2026-11-01) and "Write the release notes" (To do, Alice and Carol, 2026-10-25 in red), each with "On the board".
+- **Manual checks:** none
+- **Deviations and follow-ups:** New rows need JavaScript (existing rows submit without it). A row with a task ID is never ignored, so clearing its title is an error rather than a deletion. Board links point to `/rooms/{id}/board#task-N`, the page of step 9.3.

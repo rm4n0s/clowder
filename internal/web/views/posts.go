@@ -2,6 +2,7 @@ package views
 
 import (
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -58,12 +59,190 @@ type PostEditorData struct {
 	// Removing holds the IDs of the attachments whose Remove box is ticked,
 	// kept from a submit that failed.
 	Removing map[uint64]bool
+	// RoomID is the ID of the room the post is written in; the Add task button
+	// asks the server for a row with the members of that room.
+	RoomID uint64
+	// Tasks are the task rows of the editor: the tasks of the post when it is
+	// edited, or the rows typed in a submit that failed. The errors of the
+	// rows are the message of the field "tasks".
+	Tasks []TaskRowData
+	// Assignable are the people the assignee pickers offer: the members of the
+	// room and, when a post is edited, the former members who are assigned to
+	// one of its tasks (see WithMembers).
+	Assignable []AssigneeOption
+	// assigned are the people assigned to the tasks the post has now, with
+	// their names, so that WithMembers can keep those who left the room.
+	assigned []app.UserRef
+}
+
+// TaskRowData is one task row of the editor.
+type TaskRowData struct {
+	// ID is the ID of the task for a row that edits one; 0 for a new task.
+	ID uint64
+	// Title is the text in the title field.
+	Title string
+	// Assignees are the IDs of the people selected in the picker.
+	Assignees []uint64
+	// Due is the due date as the date field holds it ("2006-01-02"), or empty.
+	Due string
+}
+
+// AssigneeOption is a person the assignee picker of a task row offers.
+type AssigneeOption struct {
+	// ID is the ID of the user, the value of the option.
+	ID uint64
+	// Label is the text of the option.
+	Label string
+}
+
+// dueLayout is how a due date is written in a date field and in a task list.
+const dueLayout = "2006-01-02"
+
+// AssigneeOptions makes the options of the assignee picker from the members of
+// a room, in their order.
+func AssigneeOptions(members []app.Member) []AssigneeOption {
+	out := make([]AssigneeOption, len(members))
+	for i, m := range members {
+		out[i] = AssigneeOption{ID: m.UserID, Label: m.DisplayName + " (@" + m.Username + ")"}
+	}
+	return out
+}
+
+// WithMembers returns the editor for the room, with the members of the room
+// offered in the assignee pickers. People assigned to the tasks of the post
+// who are no longer members stay in the pickers, marked as having left, so
+// that an edit can keep them (SPEC §7.6).
+func (d PostEditorData) WithMembers(roomID uint64, members []app.Member) PostEditorData {
+	d.RoomID = roomID
+	d.Assignable = AssigneeOptions(members)
+	for _, u := range d.assigned {
+		if !slices.ContainsFunc(d.Assignable, func(o AssigneeOption) bool { return o.ID == u.ID }) {
+			d.Assignable = append(d.Assignable, AssigneeOption{ID: u.ID, Label: u.DisplayName + " (@" + u.Username + ", left the room)"})
+		}
+	}
+	return d
+}
+
+// taskRowsOf makes the rows of the editor from the tasks a post has.
+func taskRowsOf(tasks []app.TaskCard) (rows []TaskRowData, assigned []app.UserRef) {
+	for _, t := range tasks {
+		row := TaskRowData{ID: t.ID, Title: t.Title}
+		for _, a := range t.Assignees {
+			row.Assignees = append(row.Assignees, a.ID)
+			if !slices.ContainsFunc(assigned, func(u app.UserRef) bool { return u.ID == a.ID }) {
+				assigned = append(assigned, a)
+			}
+		}
+		if t.DueDate != nil {
+			row.Due = t.DueDate.UTC().Format(dueLayout)
+		}
+		rows = append(rows, row)
+	}
+	return rows, assigned
+}
+
+// taskRowsID is the id of the list of task rows of an editor, which the Add
+// task button appends to.
+func taskRowsID(editorID string) string {
+	return "post-task-rows-" + editorID
+}
+
+// TaskRowsSelector is the selector of the list of task rows of the editor.
+func TaskRowsSelector(editorID string) string {
+	return "#" + taskRowsID(editorID)
+}
+
+// taskFieldName is the name of a field of the task row at the index:
+// tasks[<index>][<field>].
+func taskFieldName(index int, field string) string {
+	return "tasks[" + strconv.Itoa(index) + "][" + field + "]"
+}
+
+// taskInputID is the id of a field of the task row at the index of an editor.
+func taskInputID(editorID string, index int, field string) string {
+	return "post-task-" + editorID + "-" + strconv.Itoa(index) + "-" + field
+}
+
+// hasAssignee reports whether the row has the user selected.
+func (r TaskRowData) hasAssignee(id uint64) bool {
+	return slices.Contains(r.Assignees, id)
+}
+
+// addTaskAction is the Datastar expression of the Add task button: it takes
+// the next index of the rows from the list (so that a removed row never makes
+// two rows share one) and asks the server for an empty row with that index,
+// which is appended to the list.
+func addTaskAction(d PostEditorData) string {
+	return "const c = document.getElementById('" + taskRowsID(d.ID) + "'); const i = c.dataset.next; c.dataset.next = Number(i) + 1; " +
+		"@get('/editor/task-row?editor=" + escapeQuote(d.ID) + "&room=" + strconv.FormatUint(d.RoomID, 10) + "&index=' + i)"
+}
+
+// removeTaskAction is the Datastar expression of the Remove button of a task
+// row: the row leaves the form, so that a saved edit deletes its task.
+const removeTaskAction = "el.closest('.task-row').remove()"
+
+// TaskBoardPath returns the path of a task on the board of its room, which
+// the board page opens at its card: /rooms/<room>/board#task-<id>.
+func TaskBoardPath(roomID, taskID uint64) string {
+	return RoomPath(roomID) + "/board#task-" + strconv.FormatUint(taskID, 10)
+}
+
+// taskAssigneesText writes the names of the assignees of a task, separated by
+// commas.
+func taskAssigneesText(assignees []app.UserRef) string {
+	names := make([]string, len(assignees))
+	for i, a := range assignees {
+		names[i] = a.DisplayName
+	}
+	return strings.Join(names, ", ")
+}
+
+// taskDueText is the due date of a task as shown.
+func taskDueText(t app.TaskCard) string {
+	if t.DueDate == nil {
+		return ""
+	}
+	return t.DueDate.UTC().Format(dueLayout)
+}
+
+// taskClasses are the classes of an item of the task list of a post.
+func taskClasses(t app.TaskCard) string {
+	if t.Done {
+		return "post-task post-task-done"
+	}
+	return "post-task"
+}
+
+// taskColumnClasses are the classes of the badge with the column of a task:
+// the last column is styled as done.
+func taskColumnClasses(t app.TaskCard) string {
+	if t.Done {
+		return "task-column task-column-done"
+	}
+	return "task-column"
+}
+
+// taskDueTitle is the hover text of the due date of a task.
+func taskDueTitle(t app.TaskCard) string {
+	if t.Overdue {
+		return "Overdue"
+	}
+	return "Due date"
+}
+
+// taskDueClasses are the classes of the due date of a task: red when overdue.
+func taskDueClasses(t app.TaskCard) string {
+	if t.Overdue {
+		return "task-due overdue"
+	}
+	return "task-due"
 }
 
 // NewPostEditorData is the empty editor that writes a post in the room.
 func NewPostEditorData(roomID uint64) PostEditorData {
 	return PostEditorData{
 		ID:          "new",
+		RoomID:      roomID,
 		Action:      RoomPath(roomID) + "/posts",
 		Format:      string(app.FormatMarkdown),
 		SubmitLabel: "Post",
@@ -84,7 +263,9 @@ func EditPostEditorData(p app.Post, from string) PostEditorData {
 		CancelPath:  postActionPath(p.ID, "view", from),
 		CancelHref:  PostPath(p.ID),
 		From:        from,
+		RoomID:      p.RoomID,
 	}
+	d.Tasks, d.assigned = taskRowsOf(p.Tasks)
 	return d
 }
 

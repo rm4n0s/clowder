@@ -66,6 +66,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Accounts: accounts,
 		Rooms:    app.NewRooms(st, fileStore, logger, hub),
 		Audit:    app.NewAudit(st),
+		Board:    app.NewBoard(st, clock.Real(), hub),
 		Hub:      hub,
 		Posts: app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{
 			MaxAttachmentSize: cfg.MaxAttachmentSize,

@@ -10,6 +10,7 @@
   --accent: #2563eb;
   --accent-fg: #ffffff;
   --danger: #b42318;
+  --success: #067647;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -24,6 +25,7 @@
     --accent: #5b8def;
     --accent-fg: #0b1220;
     --danger: #f97066;
+    --success: #47cd89;
   }
 }
 
@@ -447,6 +449,47 @@ button.tag-option {
   border-radius: 999px;
 }
 
+/* The task rows of the editor. */
+.tasks-field {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 0;
+}
+
+.tasks-field legend { padding: 0; font-weight: 600; }
+
+.tasks-field > .field-error { margin: 0.25rem 0 0.5rem; }
+
+.task-rows { margin: 0.25rem 0 0.5rem; padding: 0; list-style: none; }
+
+.task-rows:empty { display: none; }
+
+.task-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: flex-end;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.task-row > div { display: flex; flex-direction: column; gap: 0.125rem; }
+
+.task-row-title { flex: 1 1 14rem; }
+
+.task-row-assignees { flex: 1 1 12rem; }
+
+.task-label { font-size: 0.8125rem; font-weight: 600; color: var(--fg-muted); }
+
+.task-row input, .task-row select { margin-bottom: 0; }
+
+.task-row select { min-height: 4.5rem; }
+
+.task-row .task-label { margin-bottom: 0; }
+
 .post-preview {
   margin-bottom: 0.75rem;
   padding: 0.5rem 0.75rem;
@@ -552,6 +595,41 @@ a.tag {
 }
 
 a.tag:hover { border-color: var(--accent); }
+
+/* The tasks of a post or comment, under its body. */
+.post-tasks { margin: 0.75rem 0 0; padding: 0; list-style: none; }
+
+.post-task {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  padding: 0.375rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.post-task:first-child { border-top: 0; }
+
+.task-title { font-weight: 600; overflow-wrap: anywhere; }
+
+.post-task-done .task-title { font-weight: 400; color: var(--fg-muted); text-decoration: line-through; }
+
+.task-column {
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.task-column-done { color: var(--success); border-color: var(--success); }
+
+.task-assignees, .task-due, .task-link { font-size: 0.875rem; color: var(--fg-muted); }
+
+.task-due.overdue { font-weight: 600; color: var(--danger); }
+
+.task-link { margin-left: auto; }
 
 /* The reaction bar under a post or comment: a chip for each emoji with its
    count, and the button that opens the picker. */

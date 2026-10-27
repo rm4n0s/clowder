@@ -116,7 +116,7 @@ func (s *Server) roomView(ctx context.Context, actor app.Actor, id uint64) (view
 	if err != nil {
 		return views.RoomData{}, err
 	}
-	d := views.RoomData{Room: room, Members: members, Editor: views.NewPostEditorData(id)}
+	d := views.RoomData{Room: room, Members: members, Editor: views.NewPostEditorData(id).WithMembers(id, members)}
 	if room.IsMember {
 		if d.Candidates, err = s.svc.Rooms.Candidates(ctx, actor, id); err != nil {
 			return views.RoomData{}, err

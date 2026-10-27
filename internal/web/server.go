@@ -45,6 +45,9 @@ type Services struct {
 	Audit *app.Audit
 	// Posts is the service of posts, their tags and their feeds.
 	Posts *app.Posts
+	// Board is the service of the Kanban boards. The streams read it to find
+	// the posts whose tasks a change of the columns concerns.
+	Board *app.Board
 	// Hub delivers the live events of the services to the streams of the
 	// pages (SPEC §8). The services must publish to the same hub. Nil makes a
 	// hub that nothing publishes to.
@@ -149,6 +152,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /preview", handler: http.HandlerFunc(s.postPreview)},
 		{pattern: "GET /files/{id}/{name}", handler: http.HandlerFunc(s.fileDownload)},
 		{pattern: "GET /tags/suggest", handler: http.HandlerFunc(s.tagSuggest)},
+		{pattern: "GET /editor/task-row", handler: http.HandlerFunc(s.taskRowForm)},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
 	}
 	mux := http.NewServeMux()

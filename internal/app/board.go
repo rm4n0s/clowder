@@ -41,6 +41,9 @@ type TaskCard struct {
 	ColumnID uint64
 	// ColumnName is the name of that column.
 	ColumnName string
+	// Done is true when the task is in the last column of the board, which
+	// counts as done (SPEC §7.6).
+	Done bool
 	// Assignees are the people the task is assigned to, in the order they were
 	// assigned.
 	Assignees []UserRef
@@ -674,7 +677,7 @@ func taskCards(rows []store.TaskRow, today time.Time) []TaskCard {
 	for i, r := range rows {
 		c := TaskCard{
 			ID: r.ID, Title: r.Title, PostID: r.PostID, RootID: r.RootID,
-			ColumnID: r.ColumnID, ColumnName: r.ColumnName,
+			ColumnID: r.ColumnID, ColumnName: r.ColumnName, Done: r.ColumnLast,
 			Assignees: make([]UserRef, len(r.Assignees)), Position: r.Position,
 		}
 		for j, a := range r.Assignees {

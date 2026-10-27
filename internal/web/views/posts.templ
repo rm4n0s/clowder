@@ -101,6 +101,18 @@ templ PostEditor(d PostEditorData) {
 				<p class="field-error" id={ "post-files-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["attachments"] }</p>
 			}
 		</div>
+		<fieldset class="tasks-field">
+			<legend>Tasks</legend>
+			if d.Errors.Fields["tasks"] != "" {
+				<p class="field-error" id={ "post-tasks-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["tasks"] }</p>
+			}
+			<ul id={ taskRowsID(d.ID) } class="task-rows" data-next={ strconv.Itoa(len(d.Tasks)) }>
+				for i, row := range d.Tasks {
+					@TaskRow(d.ID, i, row, d.Assignable)
+				}
+			</ul>
+			<button type="button" class="secondary" data-on:click={ addTaskAction(d) }>Add task</button>
+		</fieldset>
 		@PostPreview(PostPreviewData{EditorID: d.ID, Hidden: true})
 		<div class="post-editor-actions">
 			<button type="submit">{ d.SubmitLabel }</button>
@@ -110,6 +122,71 @@ templ PostEditor(d PostEditorData) {
 			}
 		</div>
 	</form>
+}
+
+// TaskRow is one task row of the editor: the title, the people it is assigned
+// to (a multiple choice of the options), the due date, the hidden ID of the
+// task (0 for a new one) and the Remove button. The fields are named
+// tasks[<index>][id], [title], [assignees] and [due]. The server sends a row
+// alone as a Datastar patch when the Add task button asks for one.
+templ TaskRow(editorID string, index int, row TaskRowData, options []AssigneeOption) {
+	<li class="task-row">
+		<input type="hidden" name={ taskFieldName(index, "id") } value={ strconv.FormatUint(row.ID, 10) }/>
+		<div class="task-row-title">
+			<label class="task-label" for={ taskInputID(editorID, index, "title") }>Task</label>
+			<input
+				id={ taskInputID(editorID, index, "title") }
+				name={ taskFieldName(index, "title") }
+				type="text"
+				value={ row.Title }
+				maxlength="200"
+				autocomplete="off"
+				placeholder="What needs doing?"
+			/>
+		</div>
+		<div class="task-row-assignees">
+			<label class="task-label" for={ taskInputID(editorID, index, "assignees") }>Assigned to</label>
+			<select
+				id={ taskInputID(editorID, index, "assignees") }
+				name={ taskFieldName(index, "assignees") }
+				multiple
+				size="3"
+			>
+				for _, o := range options {
+					<option value={ strconv.FormatUint(o.ID, 10) } selected?={ row.hasAssignee(o.ID) }>{ o.Label }</option>
+				}
+			</select>
+		</div>
+		<div class="task-row-due">
+			<label class="task-label" for={ taskInputID(editorID, index, "due") }>Due</label>
+			<input id={ taskInputID(editorID, index, "due") } name={ taskFieldName(index, "due") } type="date" value={ row.Due }/>
+		</div>
+		<button type="button" class="secondary task-remove" data-on:click={ removeTaskAction }>Remove task</button>
+	</li>
+}
+
+// PostTasks is the list of the tasks of a post or comment under its body: the
+// title, the column as a badge (the last column styled as done), the names of
+// the assignees, the due date (red when overdue) and a link to the card on the
+// board of the room.
+templ PostTasks(roomID uint64, tasks []app.TaskCard) {
+	if len(tasks) > 0 {
+		<ul class="post-tasks" aria-label="Tasks">
+			for _, t := range tasks {
+				<li class={ taskClasses(t) }>
+					<span class="task-title">{ t.Title }</span>
+					<span class={ taskColumnClasses(t) }>{ t.ColumnName }</span>
+					if len(t.Assignees) > 0 {
+						<span class="task-assignees" title="Assigned to">{ taskAssigneesText(t.Assignees) }</span>
+					}
+					if t.DueDate != nil {
+						<time class={ taskDueClasses(t) } datetime={ taskDueText(t) } title={ taskDueTitle(t) }>{ taskDueText(t) }</time>
+					}
+					<a class="task-link" href={ templ.SafeURL(TaskBoardPath(roomID, t.ID)) }>On the board</a>
+				</li>
+			}
+		</ul>
+	}
 }
 
 // PostPreviewData is what the preview box of an editor shows.
@@ -222,6 +299,7 @@ templ PostContent(d PostCardData) {
 				@templ.Raw(string(d.Post.HTML))
 			</div>
 			@Attachments(d.Post.Attachments)
+			@PostTasks(d.Post.RoomID, d.Post.Tasks)
 			if len(d.Post.Tags) > 0 {
 				<ul class="tags" aria-label="Tags">
 					for _, tag := range d.Post.Tags {
