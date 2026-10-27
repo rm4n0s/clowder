@@ -84,13 +84,13 @@ func (s *Store) DeletePost(ctx context.Context, id uint64) error {
 	return nil
 }
 
-// DeletePostExtras deletes the tag links, reactions, mentions and attachments
-// of the post id and leaves the post itself. It is for a post that stays as a
+// DeletePostExtras deletes the tag links, reactions, mentions, attachments and
+// notifications of the post id and leaves the post itself. It is for a post that stays as a
 // deleted placeholder (D21). It does not touch the tasks of the post: the
 // service deletes them one by one, to audit them and to close the gaps they
 // leave in the columns.
 func (s *Store) DeletePostExtras(ctx context.Context, id uint64) error {
-	for _, model := range []any{&PostTag{}, &Reaction{}, &Mention{}, &Attachment{}} {
+	for _, model := range []any{&PostTag{}, &Reaction{}, &Mention{}, &Attachment{}, &Notification{}} {
 		if err := s.db(ctx).Where("post_id = ?", id).Delete(model).Error; err != nil {
 			return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "deletePostExtras", "postID", id)
 		}

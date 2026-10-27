@@ -648,8 +648,13 @@ func TestBoardUpdateTask(t *testing.T) {
 			w := *tt.want
 			w.actor, w.action, w.room, w.entityType, w.entityID = "admin", app.ActionTaskEdited, e.lobby.ID, app.EntityTask, task.ID
 			e.requireNewEvents(before, w)
-			if got := e.rec.Events(); !reflect.DeepEqual(got, boardEvts(e.lobby, p)) {
-				t.Errorf("published %+v, want %+v", got, boardEvts(e.lobby, p))
+			wantLive := boardEvts(e.lobby, p)
+			if tt.name == "all three" {
+				// bob is newly assigned; the actor is admin.
+				wantLive = append(wantLive, notifEvt(e.uid("bob"), e.lobby.ID, p.ID))
+			}
+			if got := e.rec.Events(); !reflect.DeepEqual(got, wantLive) {
+				t.Errorf("published %+v, want %+v", got, wantLive)
 			}
 			if c := cardByID(t, e.view("admin", e.lobby.ID), task.ID); !tt.check(c) {
 				t.Errorf("card = %+v", c)

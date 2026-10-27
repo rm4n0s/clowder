@@ -9,6 +9,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
@@ -45,6 +46,9 @@ type Renderer struct {
 func New() *Renderer {
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(
+			parser.WithASTTransformers(util.Prioritized(mentionTransformer{}, 500)),
+		),
 		goldmark.WithRendererOptions(
 			// Priority 100 wins over goldmark's own renderers (1000).
 			renderer.WithNodeRenderers(util.Prioritized(&safeNodeRenderer{}, 100)),
@@ -53,22 +57,54 @@ func New() *Renderer {
 	return &Renderer{md: md}
 }
 
-// Render returns the HTML of body in the given format. The result is safe to
-// insert in a page as it is (see the package documentation). An unknown format
-// is the error TagFormatUnknown.
+// Render returns the HTML of body in the given format, with no mention made a
+// link. The result is safe to insert in a page as it is (see the package
+// documentation). An unknown format is the error TagFormatUnknown.
 func (r *Renderer) Render(format Format, body string) (template.HTML, error) {
 	switch format {
 	case FormatMarkdown:
-		var buf bytes.Buffer
-		if err := r.md.Convert([]byte(body), &buf); err != nil {
-			return "", errors.NewErr(tagMarkdownRenderFailed, err)
-		}
-		return template.HTML(buf.String()), nil //nolint:gosec // goldmark in safe mode, see the package documentation
+		return r.convert(body, nil)
 	case FormatText:
-		return renderText(body), nil
+		return renderText(body, nil), nil
 	default:
 		return "", errors.New(TagFormatUnknown, "unknown body format", "format", string(format))
 	}
+}
+
+// RenderMentions is Render with the mentions of mentioned made links: each
+// @username of body (outside code, links and URLs) whose lower-cased username
+// is in mentioned becomes
+// <a href="/search?q=from%3Ausername" class="mention">@username</a>. Any other
+// @word stays text. mentioned is what the caller saved as the mentions of the
+// post (see [Renderer.Mentions]); it is not checked here.
+func (r *Renderer) RenderMentions(format Format, body string, mentioned []string) (template.HTML, error) {
+	set := make(map[string]bool, len(mentioned))
+	for _, name := range mentioned {
+		set[strings.ToLower(name)] = true
+	}
+	switch format {
+	case FormatMarkdown:
+		return r.convert(body, set)
+	case FormatText:
+		return renderText(body, set), nil
+	default:
+		return "", errors.New(TagFormatUnknown, "unknown body format", "format", string(format))
+	}
+}
+
+// convert renders a markdown body; the usernames in set become mention links.
+func (r *Renderer) convert(body string, set map[string]bool) (template.HTML, error) {
+	var buf bytes.Buffer
+	var opts []parser.ParseOption
+	if len(set) > 0 {
+		pc := parser.NewContext()
+		pc.Set(mentionsKey, set)
+		opts = append(opts, parser.WithContext(pc))
+	}
+	if err := r.md.Convert([]byte(body), &buf, opts...); err != nil {
+		return "", errors.NewErr(tagMarkdownRenderFailed, err)
+	}
+	return template.HTML(buf.String()), nil //nolint:gosec // goldmark in safe mode, see the package documentation
 }
 
 // Mentions returns the usernames mentioned in body as @username, lower-cased,
@@ -145,6 +181,17 @@ func (s *safeNodeRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer
 	reg.Register(ast.KindAutoLink, s.renderAutoLink)
 	reg.Register(ast.KindImage, s.renderImage)
 	reg.Register(ast.KindHeading, s.renderHeading)
+	reg.Register(kindMention, s.renderMention)
+}
+
+func (s *safeNodeRenderer) renderMention(
+	w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkContinue, nil
+	}
+	n := node.(*mentionNode)
+	_, _ = w.WriteString(mentionHTML(n.name, n.label))
+	return ast.WalkSkipChildren, nil
 }
 
 func (s *safeNodeRenderer) renderHeading(

@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -19,8 +20,10 @@ var urlPattern = regexp.MustCompile(`(?i)\bhttps?://[^\s<>"` + "`" + `]+`)
 var paragraphBreak = regexp.MustCompile(`\n[ \t]*\n(?:[ \t]*\n)*`)
 
 // renderText escapes a text body: blank lines make paragraphs, single line
-// breaks become <br>, and http and https URLs become links.
-func renderText(body string) template.HTML {
+// breaks become <br>, and http and https URLs become links. The usernames in
+// mentioned (lower case) become links to their search when written as
+// @username outside a URL.
+func renderText(body string, mentioned map[string]bool) template.HTML {
 	body = strings.ReplaceAll(body, "\r\n", "\n")
 	body = strings.ReplaceAll(body, "\r", "\n")
 	var sb strings.Builder
@@ -34,28 +37,70 @@ func renderText(body string) template.HTML {
 			if i > 0 {
 				sb.WriteString("<br>\n")
 			}
-			writeLine(&sb, line)
+			writeLine(&sb, line, mentioned)
 		}
 		sb.WriteString("</p>\n")
 	}
 	return template.HTML(sb.String()) //nolint:gosec // everything is escaped, see the package documentation
 }
 
-// writeLine writes one line of a text body, escaped, with its URLs linked.
-func writeLine(sb *strings.Builder, line string) {
-	last := 0
+// region is a part of a line that is written as HTML of its own: a URL or a
+// mention.
+type region struct {
+	start, end int
+	html       string
+}
+
+// writeLine writes one line of a text body, escaped, with its URLs and its
+// mentions of mentioned linked.
+func writeLine(sb *strings.Builder, line string, mentioned map[string]bool) {
+	var regions []region
 	for _, loc := range urlPattern.FindAllStringIndex(line, -1) {
 		raw := trimURL(line[loc[0]:loc[1]])
 		if !validURL(raw) {
 			continue
 		}
-		end := loc[0] + len(raw)
-		sb.WriteString(html.EscapeString(line[last:loc[0]]))
 		esc := html.EscapeString(raw)
-		sb.WriteString(`<a href="` + esc + `" rel="` + linkRel + `" target="_blank">` + esc + `</a>`)
-		last = end
+		regions = append(regions, region{
+			start: loc[0], end: loc[0] + len(raw),
+			html: `<a href="` + esc + `" rel="` + linkRel + `" target="_blank">` + esc + `</a>`,
+		})
+	}
+	if len(mentioned) > 0 {
+		urls := len(regions)
+		for _, m := range findMentions(line, false) {
+			if !mentioned[m.name] || overlaps(regions[:urls], m.start, m.end) {
+				continue
+			}
+			regions = append(regions, region{start: m.start, end: m.end, html: mentionHTML(m.name, line[m.start:m.end])})
+		}
+		sort.Slice(regions, func(i, j int) bool { return regions[i].start < regions[j].start })
+	}
+	last := 0
+	for _, r := range regions {
+		sb.WriteString(html.EscapeString(line[last:r.start]))
+		sb.WriteString(r.html)
+		last = r.end
 	}
 	sb.WriteString(html.EscapeString(line[last:]))
+}
+
+// overlaps reports whether [start, end) meets one of the regions.
+func overlaps(regions []region, start, end int) bool {
+	for _, r := range regions {
+		if start < r.end && r.start < end {
+			return true
+		}
+	}
+	return false
+}
+
+// mentionHTML is the link of a saved mention: there are no profile pages, so
+// it goes to the search for the user's posts (SPEC D30). name is a username,
+// which has only a-z, 0-9, "_" and "-"; label is the mention as written
+// ("@Bob").
+func mentionHTML(name, label string) string {
+	return `<a href="/search?q=from%3A` + url.QueryEscape(name) + `" class="mention">` + html.EscapeString(label) + `</a>`
 }
 
 // trimURL removes the punctuation at the end of a matched URL that belongs to
@@ -109,13 +154,17 @@ type mentionSet struct {
 	list []string
 }
 
-// scanMentions finds the @username mentions in s and returns the list, with
-// the ones of set (if any) first. With skipEscaped a backslash before the @
-// (markdown's escape) cancels the mention.
-func scanMentions(s string, skipEscaped bool, set *mentionSet) []string {
-	if set == nil {
-		set = &mentionSet{seen: map[string]bool{}}
-	}
+// mentionSpan is a mention found in a string: s[start:end] is "@" and the
+// username, name is the username in lower case.
+type mentionSpan struct {
+	start, end int
+	name       string
+}
+
+// findMentions finds the @username mentions in s, in order. With skipEscaped a
+// backslash before the @ (markdown's escape) cancels the mention.
+func findMentions(s string, skipEscaped bool) []mentionSpan {
+	var spans []mentionSpan
 	for i := 0; i < len(s); i++ {
 		if s[i] != '@' {
 			continue
@@ -131,13 +180,25 @@ func scanMentions(s string, skipEscaped bool, set *mentionSet) []string {
 			j++
 		}
 		if n := j - (i + 1); n >= usernameMin && n <= usernameMax {
-			name := strings.ToLower(s[i+1 : j])
-			if !set.seen[name] {
-				set.seen[name] = true
-				set.list = append(set.list, name)
-			}
+			spans = append(spans, mentionSpan{start: i, end: j, name: strings.ToLower(s[i+1 : j])})
 		}
 		i = j - 1
+	}
+	return spans
+}
+
+// scanMentions finds the @username mentions in s and returns the list, with
+// the ones of set (if any) first. With skipEscaped a backslash before the @
+// (markdown's escape) cancels the mention.
+func scanMentions(s string, skipEscaped bool, set *mentionSet) []string {
+	if set == nil {
+		set = &mentionSet{seen: map[string]bool{}}
+	}
+	for _, m := range findMentions(s, skipEscaped) {
+		if !set.seen[m.name] {
+			set.seen[m.name] = true
+			set.list = append(set.list, m.name)
+		}
 	}
 	return set.list
 }

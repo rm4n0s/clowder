@@ -113,11 +113,13 @@ func TestLiveRoomsPublish(t *testing.T) {
 		}},
 		{"add a member", func(e *liveEnv) liveResult {
 			err := e.rooms.AddMember(e.t.Context(), e.as("bob"), e.lobby.ID, e.uid("dave"))
-			return liveResult{err: err, want: memberEvts(live.KindMemberJoined, e.lobby.ID, e.uid("dave"))}
+			want := append(memberEvts(live.KindMemberJoined, e.lobby.ID, e.uid("dave")), notifEvt(e.uid("dave"), e.lobby.ID, 0))
+			return liveResult{err: err, want: want}
 		}},
 		{"add a member of a private room", func(e *liveEnv) liveResult {
 			err := e.rooms.AddMember(e.t.Context(), e.as("alice"), e.den.ID, e.uid("carol"))
-			return liveResult{err: err, want: memberEvts(live.KindMemberJoined, e.den.ID, e.uid("carol"))}
+			want := append(memberEvts(live.KindMemberJoined, e.den.ID, e.uid("carol")), notifEvt(e.uid("carol"), e.den.ID, 0))
+			return liveResult{err: err, want: want}
 		}},
 		{"add a user who is a member already", func(e *liveEnv) liveResult {
 			return liveResult{err: e.rooms.AddMember(e.t.Context(), e.as("admin"), e.lobby.ID, e.uid("bob"))}
@@ -228,6 +230,12 @@ func commentEvts(kind string, room, root, comment uint64) []live.Event {
 	}
 }
 
+// notifEvt is the event that tells a user of a new notification about the
+// post (0 for none) in the room.
+func notifEvt(user, room, post uint64) live.Event {
+	return live.Event{Topic: live.UserTopic(user), Kind: live.KindNotificationCreated, RoomID: room, PostID: post, UserID: user}
+}
+
 func textInput(body string) app.PostInput {
 	return app.PostInput{Format: app.FormatText, Body: body}
 }
@@ -258,7 +266,9 @@ func TestLivePostsPublish(t *testing.T) {
 			p := e.write("bob", "lobby", "post")
 			e.rec.Reset()
 			c, err := e.posts.Reply(e.t.Context(), e.as("admin"), p.ID, textInput("comment"))
-			return liveResult{err: err, want: commentEvts(live.KindCommentCreated, e.lobby.ID, p.ID, c.ID)}
+			// bob wrote the post: the reply notifies him, after the post events.
+			want := append(commentEvts(live.KindCommentCreated, e.lobby.ID, p.ID, c.ID), notifEvt(e.uid("bob"), e.lobby.ID, c.ID))
+			return liveResult{err: err, want: want}
 		}},
 		{"reply to a comment goes to the root thread", func(e *liveEnv) liveResult {
 			p := e.write("bob", "lobby", "post")
@@ -266,7 +276,8 @@ func TestLivePostsPublish(t *testing.T) {
 			c2 := e.say("bob", c1.ID, "two")
 			e.rec.Reset()
 			c3, err := e.posts.Reply(e.t.Context(), e.as("admin"), c2.ID, textInput("three"))
-			return liveResult{err: err, want: commentEvts(live.KindCommentCreated, e.lobby.ID, p.ID, c3.ID)}
+			want := append(commentEvts(live.KindCommentCreated, e.lobby.ID, p.ID, c3.ID), notifEvt(e.uid("bob"), e.lobby.ID, c3.ID))
+			return liveResult{err: err, want: want}
 		}},
 		{"reply with a mistake", func(e *liveEnv) liveResult {
 			p := e.write("bob", "lobby", "post")

@@ -303,8 +303,11 @@ func (p taskPlan) planDetails() map[string]any {
 // tasks go first and the gaps they leave in the columns are closed, then the
 // changed ones are updated, then the new ones are appended to the end of the
 // first column of the board, in the order given.
-func applyTasks(ctx context.Context, tx *store.Store, actor Actor, who string, room store.Room, post store.Post, plan taskPlan, names map[uint64]string) ([]auditEntry, error) {
-	audits, err := changeTasks(ctx, tx, actor, who, room, post, plan, names)
+//
+// assigned, when not nil, receives the users newly assigned to a task by the
+// plan (an assignee who stays on a task is not new), for the caller to notify.
+func applyTasks(ctx context.Context, tx *store.Store, actor Actor, who string, room store.Room, post store.Post, plan taskPlan, names map[uint64]string, assigned *[]assignment) ([]auditEntry, error) {
+	audits, err := changeTasks(ctx, tx, actor, who, room, post, plan, names, assigned)
 	if err != nil {
 		return nil, err
 	}
@@ -320,8 +323,18 @@ func applyTasks(ctx context.Context, tx *store.Store, actor Actor, who string, r
 
 // changeTasks is the part of applyTasks that writes the tasks and their audit
 // events.
-func changeTasks(ctx context.Context, tx *store.Store, actor Actor, who string, room store.Room, post store.Post, plan taskPlan, names map[uint64]string) ([]auditEntry, error) {
+func changeTasks(ctx context.Context, tx *store.Store, actor Actor, who string, room store.Room, post store.Post, plan taskPlan, names map[uint64]string, assigned *[]assignment) ([]auditEntry, error) {
 	var audits []auditEntry
+	assign := func(taskID uint64, userIDs []uint64, already []store.TaskAssigneeRow) {
+		if assigned == nil {
+			return
+		}
+		for _, id := range userIDs {
+			if !slices.ContainsFunc(already, func(a store.TaskAssigneeRow) bool { return a.UserID == id }) {
+				*assigned = append(*assigned, assignment{userID: id, taskID: taskID})
+			}
+		}
+	}
 	entry := func(action AuditAction, taskID uint64, summary string, details map[string]any) auditEntry {
 		return auditEntry{
 			ActorID: actor.UserID, Action: action, RoomID: room.ID,
@@ -356,7 +369,7 @@ func changeTasks(ctx context.Context, tx *store.Store, actor Actor, who string, 
 			if err := tx.ReplaceTaskAssignees(ctx, e.row.ID, e.want.assignees); err != nil {
 				return nil, err
 			}
-			// TODO(step 11.1): notify new assignees.
+			assign(e.row.ID, e.want.assignees, e.row.Assignees)
 		}
 		audits = append(audits, entry(ActionTaskEdited, e.row.ID,
 			who+" edited the task \""+e.want.title+"\" in #"+room.Name, e.details))
@@ -384,7 +397,7 @@ func changeTasks(ctx context.Context, tx *store.Store, actor Actor, who string, 
 		if err := tx.ReplaceTaskAssignees(ctx, t.ID, w.assignees); err != nil {
 			return nil, err
 		}
-		// TODO(step 11.1): notify new assignees.
+		assign(t.ID, w.assignees, nil)
 		audits = append(audits, entry(ActionTaskCreated, t.ID,
 			who+" added the task \""+w.title+"\" in #"+room.Name, taskCreatedDetails(post.ID, first.Name, w, names)))
 	}
@@ -461,12 +474,13 @@ func tasksByID(rows []store.TaskRow) map[uint64]store.TaskRow {
 
 // addNewTasks appends the tasks of a new post or comment to the first column
 // of the board, writes their audit events after the event of the post, and
-// adds the live event of the board to events. It does nothing for no tasks.
-func addNewTasks(ctx context.Context, tx *store.Store, actor Actor, who string, room store.Room, post store.Post, tasks []cleanTask, names map[uint64]string, events *[]live.Event) error {
+// adds the live event of the board to events and the users assigned to
+// assigned. It does nothing for no tasks.
+func addNewTasks(ctx context.Context, tx *store.Store, actor Actor, who string, room store.Room, post store.Post, tasks []cleanTask, names map[uint64]string, events *[]live.Event, assigned *[]assignment) error {
 	if len(tasks) == 0 {
 		return nil
 	}
-	audits, err := applyTasks(ctx, tx, actor, who, room, post, taskPlan{add: tasks}, names)
+	audits, err := applyTasks(ctx, tx, actor, who, room, post, taskPlan{add: tasks}, names, assigned)
 	if err != nil {
 		return err
 	}

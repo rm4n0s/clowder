@@ -37,6 +37,13 @@ const (
 	// KindMemberLeft says a user stopped being a member of a room, by leaving
 	// or by being removed.
 	KindMemberLeft = "member.left"
+	// KindNotificationCreated says a notification was made for a user. It is
+	// published on UserTopic of that user; UserID is the user, RoomID the room
+	// of the notification and PostID its post or comment when it has one.
+	KindNotificationCreated = "notification.created"
+	// KindNotificationRead says a user marked notifications as read. It is
+	// published on UserTopic of that user; UserID is the user.
+	KindNotificationRead = "notification.read"
 )
 
 // Event says that something changed. It is a small value and holds no

@@ -23,6 +23,11 @@
 //   - Headings are shifted down by two levels and capped at h6, so a body never
 //     emits h1 or h2 (the page has its own), and they have no id attribute.
 //   - Attribute values (href, src, alt, title) are always HTML-escaped.
+//   - A mention is a link only when the caller passes its username to
+//     [Renderer.RenderMentions] (the mentions it saved). The link is built
+//     here from the username, which has only a-z, 0-9, "_" and "-": it points
+//     to "/search?q=from%3A<username>" and has the class "mention". It is never
+//     made inside code, in the text of a link or in a URL.
 //
 // Text bodies are HTML-escaped as a whole; only the markup that this package
 // writes itself (paragraphs, line breaks and links to http and https URLs) is

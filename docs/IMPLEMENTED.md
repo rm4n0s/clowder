@@ -407,3 +407,46 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   The search page as alice for `design #release`: the `#release ×` chip and one result in `general` with "Design" highlighted, its tags and its link.
 - **Manual checks:** none
 - **Deviations and follow-ups:** Results update on submit, not while typing. A tag-suggestion answer that arrives after a post is made can still show a stale list in the fresh editor until the next keystroke (harmless).
+
+## 11.1 Mentions and notifications service
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-11.1-notifications-service
+- **Summary:**
+  - **Mentions.** Creating or editing a post or comment rebuilds its mentions. They come from the `@username`s outside code that belong to enabled users who can read the room. An edit rebuilds them only when the body or format changed, and only new mentions notify.
+  - **Notifications.** They are written in the action's transaction for four kinds:
+    - mention;
+    - reply (a comment directly under the user's post or comment);
+    - assigned (new assignees only, through post create, comment create, post edit and the board's card editor);
+    - added to a room by someone else.
+  - **Rules.** Nobody is notified of their own action or while disabled. One action gives a user at most one notification, ranked assigned > reply > mention. Deleting a post, a placeholder, a task or a room deletes its notifications.
+  - **`Notifications` service.**
+    - `List` returns 30 a page, newest first. Each item has the actor, the room, the post with its thread root, and the task title.
+    - `UnreadCount` counts the unread ones.
+    - `MarkRead(upToID)` marks read everything up to that ID.
+    - All three hide the notifications of rooms the user can no longer read.
+  - **Live events.** `notification.created` and `notification.read` go to `user:<id>` after the commit.
+  - **Mention links.** A saved mention renders as `<a class="mention" href="/search?q=from%3A<user>">` in text and markdown, never inside code. Search snippets stay plain.
+  - **Demo.** The demo now makes 17 notifications.
+- **Main files:** `internal/app/{notifications,posts,tasks,board,rooms}.go`, `internal/store/{notifications_queries,posts_queries}.go`, `internal/markdown/{mention,markdown,text}.go`, `internal/live/event.go`, `cmd/clowder/demo.go`.
+- **Tests:**
+  - Each kind, including a reply at depth.
+  - The self rule for every kind.
+  - The edit rule.
+  - Mentions of users who cannot read the room (admins included) and of disabled users.
+  - One notification per action.
+  - Assigned through every path.
+  - Clean-up on every kind of delete.
+  - Paging, own-only lists, hiding after lost access, and `MarkRead` limits.
+  - Event order after the commit, and no events on refusal.
+  - About 27 rendering cases (code, links, raw HTML, escaping).
+  - Web feed, thread and search checks.
+  - Demo counts.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · no process left ✅
+- **Proof:** none (service step)
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - SPEC §7.9 now says "added to a room" (any room, not only private ones).
+  - D30 records the full ranking and that a self-mention is linked but not notified.
+  - Events carry `UserID`, `RoomID` and `PostID`, not a notification ID.
+  - The preview shows mentions as plain text.

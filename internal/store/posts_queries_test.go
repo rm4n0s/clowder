@@ -61,7 +61,7 @@ func TestPostQueries(t *testing.T) {
 		if err := f.s.DeletePostExtras(f.ctx, p.ID); err != nil {
 			t.Fatalf("DeletePostExtras: %+v", err)
 		}
-		for _, table := range []string{"post_tags", "reactions", "mentions", "attachments"} {
+		for _, table := range []string{"post_tags", "reactions", "mentions", "attachments", "notifications"} {
 			var n int64
 			if err := f.s.db(f.ctx).Raw("SELECT count(*) FROM "+table+" WHERE post_id = ?", p.ID).Scan(&n).Error; err != nil || n != 0 {
 				t.Errorf("%s has %d rows of the post (%v)", table, n, err)

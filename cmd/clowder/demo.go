@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/app"
@@ -45,10 +46,14 @@ var demoUsers = []struct {
 // the rooms through the rooms service, their posts and the comments under
 // some of them through the posts service, and prints the directory, the users with their password, the rooms,
 // the number of posts, the number of attachments, the number of comments, the
-// number of reactions and the number of tasks to stdout. The tasks are
+// number of reactions, the number of tasks and the number of notifications to
+// stdout. The tasks are
 // written with the posts and comments and some are moved on the board after
 // that. Their due dates are relative to the clock of the demo.
-// Later steps add their own demo data here.
+// The notifications are not written by any step of its own: they come from the
+// mentions, replies, assignments and room additions of the data above, made
+// through the services, so that the rules of SPEC §7.9 and D30 apply. Later
+// steps add their own demo data here.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	var dataDir string
 	flags := flag.NewFlagSet("demo", flag.ContinueOnError)
@@ -129,7 +134,10 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	if err := makeDemoReactions(ctx, posts, written, comments, actors, stdout); err != nil {
 		return err
 	}
-	return makeDemoBoard(ctx, app.NewBoard(st, clk, nil), made, actors, stdout)
+	if err := makeDemoBoard(ctx, app.NewBoard(st, clk, nil), made, actors, stdout); err != nil {
+		return err
+	}
+	return reportDemoNotifications(ctx, app.NewNotifications(st, nil), actors, stdout)
 }
 
 // makeDemoRooms makes the rooms of the demo through the rooms service, as the
@@ -184,7 +192,7 @@ var demoPosts = []struct {
 	// attach names the files that the post carries: demoFile makes their content.
 	attach []string
 }{
-	{"general", "alice", app.FormatMarkdown, "# Welcome to Clowder\n\nThis is **general**, where the whole team talks. A few things to know:\n\n- Posts can be *text* or *markdown*\n- Tags go in their own field\n- Everything is kept on your own server\n\nThe project lives at [the Clowder repository](https://github.com/rm4n0s/clowder).", "welcome, help", nil},
+	{"general", "alice", app.FormatMarkdown, "# Welcome to Clowder\n\nThis is **general**, where the whole team talks. A few things to know:\n\n- Posts can be *text* or *markdown*\n- Tags go in their own field\n- Everything is kept on your own server\n\nThe project lives at [the Clowder repository](https://github.com/rm4n0s/clowder). Say hi to @bob and @carol, who keep the board.", "welcome, help", nil},
 	{"general", "bob", app.FormatText, "Quick question: where do we keep the design notes?\nI looked in the wiki and found nothing.", "help design", nil},
 	{"general", "carol", app.FormatMarkdown, "## Release checklist\n\n1. Run the tests\n2. Tag the release\n3. Write the notes\n\nThe check that most people forget:\n\n```go\nfunc main() {\n\tfmt.Println(\"ship it\")\n}\n```", "release", nil},
 	{"general", "alice", app.FormatMarkdown, "### Design review on Friday\n\n- [x] Mockups are ready\n- [ ] Colors are chosen\n\nSee the [style guide](https://example.com/style) and bring `questions`.", "design, release", []string{"mockup.png", "notes.txt"}},
@@ -293,7 +301,7 @@ var demoComments = []struct {
 	// deleted comment of carol's that has a reply.
 	{"a1", 1, "", "alice", app.FormatText, "Try the shared folder first, then the wiki.", "", ""},
 	{"a2", 1, "a1", "bob", app.FormatText, "Found it in the shared folder, thanks!", "", ""},
-	{"a3", 1, "a2", "carol", app.FormatMarkdown, "Great. I added a link to the **design notes** in the wiki too.", "", ""},
+	{"a3", 1, "a2", "carol", app.FormatMarkdown, "Great. I added a link to the **design notes** in the wiki too, @alice.", "", ""},
 	{"a4", 1, "", "carol", app.FormatText, "Someone moved them last week, I think.", "", "carol"},
 	{"a5", 1, "a4", "alice", app.FormatText, "Do you remember where to?", "", ""},
 	// The thread under the release checklist, with tags on its first comment.
@@ -491,6 +499,25 @@ func makeDemoBoard(ctx context.Context, board *app.Board, rooms map[string]app.R
 		n += len(tasks)
 	}
 	_, _ = fmt.Fprintf(stdout, "demo tasks: %d\n", n)
+	return nil
+}
+
+// reportDemoNotifications prints the number of notifications the demo users
+// have, in total and per user (the notifications themselves were made by the
+// services while the posts, comments, tasks and rooms were written). actors
+// holds the demo users by username.
+func reportDemoNotifications(ctx context.Context, notes *app.Notifications, actors map[string]app.Actor, stdout io.Writer) error {
+	total := 0
+	var perUser []string
+	for _, d := range demoUsers {
+		page, err := notes.List(ctx, actors[d.username], 0, 50)
+		if err != nil {
+			return err
+		}
+		total += len(page.Notifications)
+		perUser = append(perUser, fmt.Sprintf("%s %d", d.username, len(page.Notifications)))
+	}
+	_, _ = fmt.Fprintf(stdout, "demo notifications: %d (%s)\n", total, strings.Join(perUser, ", "))
 	return nil
 }
 

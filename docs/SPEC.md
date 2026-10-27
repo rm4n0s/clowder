@@ -85,6 +85,7 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 | D27 | Rooms are audited too: `room.created`, `room.renamed` (and description changes), `room.deleted` | The owner's answer, 2026-10-26. §7.10 |
 | D28 | **Private messages** are conversations between users, separate from rooms: a stream of messages, not posts (no comments, tasks, tags or board). A conversation with one other user is unique for the pair; a group conversation has up to 50 members | The owner's request, 2026-10-26. §7.11 |
 | D29 | Admins see every room, private ones included, in the admin rooms list (`/admin/rooms`: name, visibility, members, creation date), where they rename and delete rooms and remove members. Reading a private room's posts, board and members page still needs membership, admins included | Decided by the manager, 2026-10-27, from §7.2 (admins manage any room; an empty private room is kept for admins to delete); the owner may revise. §7.2 |
+| D30 | Notifications, decided by the manager: a mention links to `/search?q=from:<username>` (there are no profile pages); one action gives a user at most one notification (assigned wins over reply, reply over mention; several tasks give one); a self-mention is linked but not notified; disabled users are not notified; a mention of someone who cannot read the room is no mention; notifications of a deleted post or comment are deleted with it, and those of a room the user can no longer read are hidden from the list and the count; the notifications page shows 30 at a time and marks read what it shows | Decided by the manager, 2026-10-27. §7.9 |
 
 ## 5. Size estimate
 
@@ -248,7 +249,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 ### 7.9 Mentions and notifications
 
 - `@username` in a body (outside code) of a user who can read the room is a mention and is rendered as a link to that user.
-- Notifications: mention, reply (a comment under your post or comment), assigned (a task assigned to you), added to a private room. Nobody is notified of their own action.
+- Notifications: mention, reply (a comment under your post or comment), assigned (a task assigned to you), added to a room by someone else. Nobody is notified of their own action.
 - A bell shows the unread count, updated live; its page lists the notifications, newest first, and marks them read.
 
 ### 7.11 Private messages

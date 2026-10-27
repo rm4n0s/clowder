@@ -226,7 +226,10 @@ func ParseTags(s string) []string {
 // joined with TagForbidden. It fails with TagInvalidInput, with all the
 // problems in the metadata "fields", for input that breaks a rule. in.Uploads
 // become the attachments of the post; when Create fails for any reason, their
-// files are removed from disk.
+// files are removed from disk. It saves the post's mentions (the users named
+// as @username who are enabled and can read the room, D26) and, in the same
+// transaction, notifies them and the users assigned to its tasks, never the
+// actor; a user gets at most one notification (SPEC D30).
 func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostInput) (Post, error) {
 	var created store.Post
 	var room store.Room
@@ -275,7 +278,10 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 			return err
 		}
 		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
-		// TODO(step 11.1): mentions and notifications.
+		mentioned, err := p.syncMentions(ctx, tx, room, created.ID, clean.Format, clean.Body)
+		if err != nil {
+			return err
+		}
 		details := map[string]any{
 			"format":      string(clean.Format),
 			"length":      utf8.RuneCountInString(clean.Body),
@@ -296,7 +302,14 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 		}); err != nil {
 			return err
 		}
-		return addNewTasks(ctx, tx, actor, who, room, created, tasks, names, &events)
+		var assigned []assignment
+		if err := addNewTasks(ctx, tx, actor, who, room, created, tasks, names, &events, &assigned); err != nil {
+			return err
+		}
+		notified, err := notify(ctx, tx, actor, room, created.ID,
+			append(assignedNotices(assigned), mentionNotices(mentioned)...))
+		events = append(events, notified...)
+		return err
 	})
 	if err != nil {
 		p.cleaner.discard(ctx, p.st, in.Uploads)
@@ -314,7 +327,10 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 // not joined with TagForbidden. It fails with TagInvalidInput, with all the
 // problems in the metadata "fields", for input that breaks a rule. in.Uploads
 // become the attachments of the comment; when Reply fails for any reason,
-// their files are removed from disk.
+// their files are removed from disk. It saves the mentions and notifies as
+// Create does, and also the author of the parent (a reply); of one user the
+// notification of the highest rank is made: assigned, then reply, then
+// mention (SPEC D30).
 func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in PostInput) (Post, error) {
 	var created store.Post
 	var room store.Room
@@ -376,7 +392,10 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 			return err
 		}
 		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
-		// TODO(step 11.1): notify the parent's author (reply) and mentions.
+		mentioned, err := p.syncMentions(ctx, tx, room, created.ID, clean.Format, clean.Body)
+		if err != nil {
+			return err
+		}
 		details := map[string]any{
 			"format":      string(clean.Format),
 			"length":      utf8.RuneCountInString(clean.Body),
@@ -399,7 +418,14 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 		}); err != nil {
 			return err
 		}
-		return addNewTasks(ctx, tx, actor, who, room, created, tasks, names, &events)
+		var assigned []assignment
+		if err := addNewTasks(ctx, tx, actor, who, room, created, tasks, names, &events, &assigned); err != nil {
+			return err
+		}
+		notices := append(assignedNotices(assigned), notice{userID: parent.AuthorID, kind: NotificationReply})
+		notified, err := notify(ctx, tx, actor, room, created.ID, append(notices, mentionNotices(mentioned)...))
+		events = append(events, notified...)
+		return err
 	})
 	if err != nil {
 		p.cleaner.discard(ctx, p.st, in.Uploads)
@@ -419,7 +445,10 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 // and writes no event, when nothing changed. Only the author may: another reader gets TagForbidden. A room that
 // the actor may not read, a missing post and a deleted post fail with
 // TagNotFound. It fails with TagInvalidInput, with all the problems in the
-// metadata "fields", for input that breaks a rule.
+// metadata "fields", for input that breaks a rule. When the body or the format
+// changed it rebuilds the mentions and notifies only the users newly
+// mentioned, and it notifies the users newly assigned to a task of the post
+// (not those who stay on it).
 func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInput) (Post, error) {
 	var room store.Room
 	var removedKeys []string
@@ -530,7 +559,12 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		}
 		removedKeys = storageKeys(removed)
 		events = postEvents(refOf(row), live.KindPostUpdated, live.KindCommentUpdated)
-		// TODO(step 11.1): rebuild the mentions and notify the new ones.
+		var mentioned []uint64
+		if bodyChanged || formatChanged {
+			if mentioned, err = p.syncMentions(ctx, tx, room, row.ID, clean.Format, clean.Body); err != nil {
+				return err
+			}
+		}
 		if err := recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostEdited,
@@ -542,15 +576,21 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		}); err != nil {
 			return err
 		}
-		if plan.empty() {
-			return nil
+		var assigned []assignment
+		if !plan.empty() {
+			audits, err := applyTasks(ctx, tx, actor, who, room, row, plan, names, &assigned)
+			if err != nil {
+				return err
+			}
+			events = append(events, boardEvent(room.ID, row.ID))
+			if err := recordAudits(ctx, tx, audits); err != nil {
+				return err
+			}
 		}
-		audits, err := applyTasks(ctx, tx, actor, who, room, row, plan, names)
-		if err != nil {
-			return err
-		}
-		events = append(events, boardEvent(room.ID, row.ID))
-		return recordAudits(ctx, tx, audits)
+		notified, err := notify(ctx, tx, actor, room, row.ID,
+			append(assignedNotices(assigned), mentionNotices(mentioned)...))
+		events = append(events, notified...)
+		return err
 	})
 	if err != nil {
 		p.cleaner.discard(ctx, p.st, in.Uploads)
@@ -571,7 +611,8 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 // disappears and its parent is a deleted placeholder with no other replies, the
 // parent disappears too, and so on up the thread, up to the top-level post;
 // those cleanups write no events. The files of the attachments that go are
-// removed from disk after the change is committed.
+// removed from disk after the change is committed. The notifications of the
+// post and of its tasks are deleted with it, a kept placeholder included.
 func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 	var keys []string
 	var events []live.Event
@@ -614,7 +655,7 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 		if err != nil {
 			return err
 		}
-		taskAudits, err := applyTasks(ctx, tx, actor, who, room, row, taskPlan{remove: taskRows[row.ID]}, nil)
+		taskAudits, err := applyTasks(ctx, tx, actor, who, room, row, taskPlan{remove: taskRows[row.ID]}, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -778,6 +819,10 @@ func (p *Posts) Thread(ctx context.Context, actor Actor, postID uint64) (Thread,
 	if err != nil {
 		return Thread{}, err
 	}
+	mentions, err := p.st.MentionedUsernamesOfPosts(ctx, ids)
+	if err != nil {
+		return Thread{}, err
+	}
 	member, err := isMember(ctx, p.st, actor.UserID, room.ID)
 	if err != nil {
 		return Thread{}, err
@@ -788,7 +833,7 @@ func (p *Posts) Thread(ctx context.Context, actor Actor, postID uint64) (Thread,
 			count++
 		}
 	}
-	extras := postExtras{tags: tags, atts: atts, reacts: reacts, tasks: tasks, member: member}
+	extras := postExtras{tags: tags, atts: atts, reacts: reacts, tasks: tasks, mentions: mentions, member: member}
 	rootExtras := extras
 	rootExtras.counts = map[uint64]int{root.ID: count}
 	rootView, err := p.buildViews(actor, room, []store.Post{root}, rootExtras)
@@ -828,7 +873,8 @@ func (p *Posts) SuggestTags(ctx context.Context, actor Actor, prefix string) ([]
 // TagUnauthenticated. It fails with TagInvalidInput, with the problems in the
 // metadata "fields", for a format that is neither text nor markdown, a body
 // that is not valid text and a body longer than 20,000 characters. An empty
-// body previews as an empty result.
+// body previews as an empty result. A mention is shown as written, not as a
+// link: only the mentions a post has saved become links.
 func (p *Posts) Preview(_ context.Context, actor Actor, format Format, body string) (template.HTML, error) {
 	if actor.UserID == 0 {
 		return "", errors.New(TagUnauthenticated, "a preview needs a login", "reason", "none")
@@ -853,6 +899,44 @@ func (p *Posts) Preview(_ context.Context, actor Actor, format Format, body stri
 	return p.md.Render(markdown.Format(format), body)
 }
 
+// syncMentions rebuilds the mentions of the post postID of the room from its
+// body: the usernames of the body that belong to enabled users who can read
+// the room (every user for a visible room, the members of a private one, D26).
+// A mention of anybody else is not saved. It returns the IDs of the users who
+// were not mentioned before, in the order of the body, for the caller to
+// notify. The author may mention themselves; the caller does not notify them.
+func (p *Posts) syncMentions(ctx context.Context, tx *store.Store, room store.Room, postID uint64, format Format, body string) ([]uint64, error) {
+	names := p.md.Mentions(markdown.Format(format), body)
+	users, err := tx.EnabledUsersByUsername(ctx, room.ID, room.Visibility == VisibilityPrivate, names)
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]uint64, len(users))
+	for _, u := range users {
+		byName[u.Username] = u.ID
+	}
+	ids := make([]uint64, 0, len(users))
+	for _, name := range names {
+		if id, ok := byName[name]; ok {
+			ids = append(ids, id)
+		}
+	}
+	before, err := tx.MentionedUserIDs(ctx, postID)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.ReplacePostMentions(ctx, postID, ids); err != nil {
+		return nil, err
+	}
+	var added []uint64
+	for _, id := range ids {
+		if !slices.Contains(before, id) {
+			added = append(added, id)
+		}
+	}
+	return added, nil
+}
+
 // viewOne reads the post postID, which is in room, and makes its view.
 func (p *Posts) viewOne(ctx context.Context, actor Actor, room store.Room, postID uint64) (Post, error) {
 	row, err := p.st.PostByID(ctx, postID)
@@ -867,8 +951,8 @@ func (p *Posts) viewOne(ctx context.Context, actor Actor, room store.Room, postI
 }
 
 // postViews makes the views of posts of one room for the actor, in the order
-// of rows, with seven queries: the tags, the attachments, the comment counts,
-// the reactions, the tasks (two) and the membership of the actor. The rows have Author loaded.
+// of rows, with eight queries: the tags, the attachments, the comment counts,
+// the reactions, the tasks (two), the mentions and the membership of the actor. The rows have Author loaded.
 func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, room store.Room, rows []store.Post) ([]Post, error) {
 	ids := make([]uint64, len(rows))
 	for i, row := range rows {
@@ -894,11 +978,15 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 	if err != nil {
 		return nil, err
 	}
+	mentions, err := st.MentionedUsernamesOfPosts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	member, err := isMember(ctx, st, actor.UserID, room.ID)
 	if err != nil {
 		return nil, err
 	}
-	return p.buildViews(actor, room, rows, postExtras{tags: tags, atts: atts, counts: counts, reacts: reacts, tasks: tasks, member: member})
+	return p.buildViews(actor, room, rows, postExtras{tags: tags, atts: atts, counts: counts, reacts: reacts, tasks: tasks, mentions: mentions, member: member})
 }
 
 // postExtras is what hangs on a set of posts of one room, read by the caller
@@ -910,6 +998,9 @@ type postExtras struct {
 	atts   map[uint64][]store.Attachment
 	reacts map[uint64][]store.ReactionRow
 	tasks  map[uint64][]store.TaskRow
+	// mentions are the usernames each post mentions, by post ID: the saved
+	// mentions, which the body shows as links.
+	mentions map[uint64][]string
 	// counts are the comment counts of the posts.
 	counts map[uint64]int
 	// member is true when the actor is a member of the room.
@@ -954,7 +1045,7 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, x po
 				v.Author = UserRef{ID: row.Author.ID, Username: row.Author.Username, DisplayName: row.Author.DisplayName}
 			}
 			var err error
-			v.HTML, err = p.md.Render(markdown.Format(row.Format), row.Body)
+			v.HTML, err = p.md.RenderMentions(markdown.Format(row.Format), row.Body, x.mentions[row.ID])
 			if err != nil {
 				return nil, err
 			}

@@ -252,7 +252,8 @@ func (b *Board) MoveTask(ctx context.Context, actor Actor, taskID, columnID uint
 // room that the actor may not read and a missing task fail with TagNotFound,
 // a visible room that the actor has not joined with TagForbidden. It fails
 // with TagInvalidInput, with the problems in the metadata "fields", for a
-// title, assignees or due date that break a rule.
+// title, assignees or due date that break a rule. The users newly assigned are
+// notified (assigned), not the actor and not those who stay on the task.
 func (b *Board) UpdateTask(ctx context.Context, actor Actor, taskID uint64, patch TaskPatch) error {
 	var events []live.Event
 	err := b.st.Tx(ctx, func(tx *store.Store) error {
@@ -330,14 +331,20 @@ func (b *Board) UpdateTask(ctx context.Context, actor Actor, taskID uint64, patc
 		if err != nil {
 			return err
 		}
-		audits, err := applyTasks(ctx, tx, actor, who, room, store.Post{ID: task.PostID}, plan, names)
+		var assigned []assignment
+		audits, err := applyTasks(ctx, tx, actor, who, room, store.Post{ID: task.PostID}, plan, names, &assigned)
 		if err != nil {
 			return err
 		}
 		if events, err = taskChangeEvents(ctx, tx, task); err != nil {
 			return err
 		}
-		return recordAudits(ctx, tx, audits)
+		if err := recordAudits(ctx, tx, audits); err != nil {
+			return err
+		}
+		notified, err := notify(ctx, tx, actor, room, task.PostID, assignedNotices(assigned))
+		events = append(events, notified...)
+		return err
 	})
 	if err != nil {
 		return err

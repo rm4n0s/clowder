@@ -546,3 +546,27 @@ func TestFeedLinksToTheThread(t *testing.T) {
 	// The feed shows posts only, with the count of the comments, which links to the thread.
 	requireBody(t, rec, []string{`<a class="post-comments" href="/posts/` + idText(d.root.ID) + `#comments">4 comments</a>`}, "first comment", "depth-1", "post-reply")
 }
+
+func TestMentionsAreLinksOnThePages(t *testing.T) {
+	e := newRoomsEnv(t)
+	link := `<a href="/search?q=from%3Abob" class="mention">@bob</a>`
+	root := e.writePost("alice", "general", "hello @bob and @nobody")
+	md := e.writeMarkdown("alice", "general", "hello **@bob**, `@bob`")
+	c := e.commentOn(root, "admin", "ping @bob")
+
+	feed := e.getAs("bob", "/rooms/"+idText(e.general.ID), false)
+	requireBody(t, feed, []string{link, "<strong>" + link + "</strong>", "<code>@bob</code>", "@nobody"}, "from%3Anobody")
+
+	page := e.getAs("bob", postPathOf(root, ""), false)
+	requireBody(t, page, []string{link}, "from%3Anobody")
+	if card := article(t, page.Body.String(), c); !strings.Contains(card, link) {
+		t.Errorf("the comment does not link the mention:\n%s", card)
+	}
+	if card := article(t, feed.Body.String(), md); !strings.Contains(card, "<strong>"+link+"</strong>") {
+		t.Errorf("the markdown post does not link the mention:\n%s", card)
+	}
+
+	// A search result shows the text, not a link.
+	search := e.getAs("bob", "/search?q=hello", false)
+	requireBody(t, search, []string{"@bob"}, "from%3Abob")
+}

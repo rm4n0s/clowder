@@ -359,6 +359,7 @@ func (r *Rooms) Leave(ctx context.Context, actor Actor, roomID uint64) error {
 // the actor is not a member of fails with TagNotFound, a visible room that
 // the actor has not joined with TagForbidden. It does nothing when the user is a member already. It fails with
 // TagInvalidInput (field "user") when the user does not exist or is disabled.
+// The added user is notified (added_to_room) unless they are the actor.
 func (r *Rooms) AddMember(ctx context.Context, actor Actor, roomID, userID uint64) error {
 	var events []live.Event
 	err := r.st.Tx(ctx, func(tx *store.Store) error {
@@ -401,7 +402,11 @@ func (r *Rooms) AddMember(ctx context.Context, actor Actor, roomID, userID uint6
 			return err
 		}
 		events = memberEvents(room.ID, user.ID, live.KindMemberJoined)
-		// TODO(step 11.1): notify the added user.
+		notified, err := notify(ctx, tx, actor, room, 0, []notice{{userID: user.ID, kind: NotificationAddedToRoom}})
+		if err != nil {
+			return err
+		}
+		events = append(events, notified...)
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionMemberAdded,

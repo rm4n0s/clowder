@@ -375,6 +375,8 @@ func TestTasksEdit(t *testing.T) {
 		{Topic: live.RoomTopic(e.lobby.ID), Kind: live.KindPostUpdated, RoomID: e.lobby.ID, PostID: p.ID},
 		{Topic: live.PostTopic(p.ID), Kind: live.KindPostUpdated, RoomID: e.lobby.ID, PostID: p.ID},
 		{Topic: live.BoardTopic(e.lobby.ID), Kind: live.KindBoardChanged, RoomID: e.lobby.ID, PostID: p.ID},
+		// admin is newly assigned to "changed": bob, the actor, is not told.
+		notifEvt(e.users["admin"].ID, e.lobby.ID, p.ID),
 	}
 	if got := e.rec.Events(); !reflect.DeepEqual(got, wantLive) {
 		t.Errorf("published %+v, want %+v", got, wantLive)

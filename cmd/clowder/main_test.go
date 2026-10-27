@@ -1231,3 +1231,67 @@ func TestRunDemoMakesTheDemoTasks(t *testing.T) {
 		t.Errorf("makeDemoBoard = %v", err)
 	}
 }
+
+func TestRunDemoMakesTheDemoNotifications(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	if !strings.Contains(stdout.String(), "demo notifications: ") {
+		t.Errorf("stdout lacks the number of notifications:\n%s", stdout.String())
+	}
+
+	_, st := openAccounts(t, dir)
+	notes := app.NewNotifications(st, nil)
+	kindsOf := func(username string) (kinds map[app.NotificationKind]int, unread int) {
+		t.Helper()
+		row, err := st.UserByUsername(t.Context(), username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := app.Actor{UserID: row.ID, Username: row.Username, Role: row.Role}
+		page, err := notes.List(t.Context(), a, 0, 50)
+		if err != nil {
+			t.Fatalf("List %s: %+v", username, err)
+		}
+		kinds = map[app.NotificationKind]int{}
+		for _, n := range page.Notifications {
+			kinds[n.Kind]++
+			if n.Actor.ID == a.UserID {
+				t.Errorf("%s is notified of their own action: %+v", username, n)
+			}
+		}
+		unread, err = notes.UnreadCount(t.Context(), a)
+		if err != nil {
+			t.Fatalf("UnreadCount %s: %+v", username, err)
+		}
+		return kinds, unread
+	}
+	for _, tt := range []struct {
+		user string
+		// want are the kinds the user must have at least once.
+		want []app.NotificationKind
+	}{
+		{"admin", []app.NotificationKind{app.NotificationAssigned}},
+		{"alice", []app.NotificationKind{app.NotificationReply, app.NotificationMention, app.NotificationAssigned}},
+		{"bob", []app.NotificationKind{app.NotificationMention, app.NotificationReply, app.NotificationAssigned, app.NotificationAddedToRoom}},
+		{"carol", []app.NotificationKind{app.NotificationMention, app.NotificationReply}},
+	} {
+		t.Run(tt.user, func(t *testing.T) {
+			kinds, unread := kindsOf(tt.user)
+			for _, k := range tt.want {
+				if kinds[k] == 0 {
+					t.Errorf("%s has no %s notification: %v", tt.user, k, kinds)
+				}
+			}
+			total := 0
+			for _, n := range kinds {
+				total += n
+			}
+			if unread != total || total == 0 {
+				t.Errorf("%s has %d notifications, %d unread", tt.user, total, unread)
+			}
+		})
+	}
+}
