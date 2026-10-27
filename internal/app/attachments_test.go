@@ -230,7 +230,7 @@ func TestPostsUploadLimit(t *testing.T) {
 
 func TestPostsUploadDefaults(t *testing.T) {
 	e := newPostsEnv(t)
-	posts := app.NewPosts(e.st, e.clk, markdown.New(), e.files, app.PostsConfig{})
+	posts := app.NewPosts(e.st, e.clk, markdown.New(), e.files, app.PostsConfig{}, nil)
 	// The default limit is 25 MB: 2 KB is far under it, and the count default
 	// is 10.
 	var ups []app.Upload
@@ -930,7 +930,7 @@ func TestPostsFilesThatCannotBeRemovedAreLogged(t *testing.T) {
 	e := newPostsEnv(t)
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
-	posts := app.NewPosts(e.st, e.clk, markdown.New(), e.files, app.PostsConfig{Logger: logger})
+	posts := app.NewPosts(e.st, e.clk, markdown.New(), e.files, app.PostsConfig{Logger: logger}, nil)
 	u, err := posts.Upload(t.Context(), e.as("bob"), "a", strings.NewReader("x"))
 	if err != nil {
 		t.Fatal(err)

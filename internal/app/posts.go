@@ -11,6 +11,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/files"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
@@ -183,14 +184,16 @@ type Posts struct {
 	files   *files.Store
 	cfg     PostsConfig
 	cleaner fileCleaner
+	pub     Publisher
 }
 
 // NewPosts makes the service. The clock times the edits and deletions; the
 // renderer makes the HTML of the bodies; fs holds the files of the
-// attachments; cfg has the limits of the attachments.
-func NewPosts(st *store.Store, clk clock.Clock, md *markdown.Renderer, fs *files.Store, cfg PostsConfig) *Posts {
+// attachments; cfg has the limits of the attachments. pub receives the live
+// events of the changes, after they are committed; nil publishes nothing.
+func NewPosts(st *store.Store, clk clock.Clock, md *markdown.Renderer, fs *files.Store, cfg PostsConfig, pub Publisher) *Posts {
 	cfg = cfg.withDefaults()
-	return &Posts{st: st, clk: clk, md: md, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger)}
+	return &Posts{st: st, clk: clk, md: md, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger), pub: orNop(pub)}
 }
 
 // ParseTags splits the tags field of the editor on spaces and commas. It
@@ -212,7 +215,9 @@ func ParseTags(s string) []string {
 func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostInput) (Post, error) {
 	var created store.Post
 	var room store.Room
+	var events []live.Event
 	err := p.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		var err error
 		room, err = loadReadableRoom(ctx, tx, actor, roomID)
 		if err != nil {
@@ -247,8 +252,8 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 		if err := tx.CreateAttachments(ctx, attachmentRows(created.ID, actor.UserID, in.Uploads)); err != nil {
 			return err
 		}
+		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
 		// TODO(step 11.1): mentions and notifications.
-		// TODO(step 7.1): publish live events.
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostCreated,
@@ -268,6 +273,7 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 		p.cleaner.discard(ctx, p.st, in.Uploads)
 		return Post{}, err
 	}
+	publishAll(p.pub, events)
 	return p.viewOne(ctx, actor, room, created.ID)
 }
 
@@ -283,7 +289,9 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in PostInput) (Post, error) {
 	var created store.Post
 	var room store.Room
+	var events []live.Event
 	err := p.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		parent, err := tx.PostByID(ctx, parentID)
 		if err != nil {
 			return err
@@ -331,8 +339,8 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 		if err := tx.CreateAttachments(ctx, attachmentRows(created.ID, actor.UserID, in.Uploads)); err != nil {
 			return err
 		}
+		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
 		// TODO(step 11.1): notify the parent's author (reply) and mentions.
-		// TODO(step 7.1): publish live events.
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostCreated,
@@ -354,6 +362,7 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 		p.cleaner.discard(ctx, p.st, in.Uploads)
 		return Post{}, err
 	}
+	publishAll(p.pub, events)
 	return p.viewOne(ctx, actor, room, created.ID)
 }
 
@@ -371,8 +380,10 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInput) (Post, error) {
 	var room store.Room
 	var removedKeys []string
+	var events []live.Event
 	err := p.st.Tx(ctx, func(tx *store.Store) error {
 		removedKeys = nil
+		events = nil
 		row, err := tx.PostByID(ctx, postID)
 		if err != nil {
 			return err
@@ -460,8 +471,8 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 			return err
 		}
 		removedKeys = storageKeys(removed)
+		events = postEvents(refOf(row), live.KindPostUpdated, live.KindCommentUpdated)
 		// TODO(step 11.1): rebuild the mentions and notify the new ones.
-		// TODO(step 7.1): publish live events.
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostEdited,
@@ -476,6 +487,7 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		p.cleaner.discard(ctx, p.st, in.Uploads)
 		return Post{}, err
 	}
+	publishAll(p.pub, events)
 	p.cleaner.remove(ctx, removedKeys)
 	return p.viewOne(ctx, actor, room, postID)
 }
@@ -493,8 +505,11 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 // removed from disk after the change is committed.
 func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 	var keys []string
+	var events []live.Event
 	err := p.st.Tx(ctx, func(tx *store.Store) error {
 		keys = nil
+		events = nil
+		rootGone := uint64(0)
 		row, err := tx.PostByID(ctx, postID)
 		if err != nil {
 			return err
@@ -536,13 +551,21 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			if err := tx.DeletePost(ctx, row.ID); err != nil {
 				return err
 			}
-			chainKeys, err := removeEmptyPlaceholders(ctx, tx, row.ParentID)
+			chainKeys, goneRoot, err := removeEmptyPlaceholders(ctx, tx, row.ParentID)
 			if err != nil {
 				return err
 			}
 			keys = append(keys, chainKeys...)
+			rootGone = goneRoot
 		}
-		// TODO(step 7.1): publish live events.
+		events = postEvents(refOf(row), live.KindPostDeleted, live.KindCommentDeleted)
+		if rootGone != 0 {
+			// The comment took its thread with it: the top-level post is gone
+			// too, so the room hears post.deleted instead of post.updated.
+			events = append(events[:1],
+				live.Event{Topic: live.RoomTopic(room.ID), Kind: live.KindPostDeleted, RoomID: room.ID, PostID: rootGone},
+				live.Event{Topic: live.PostTopic(rootGone), Kind: live.KindPostDeleted, RoomID: room.ID, PostID: rootGone})
+		}
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostDeleted,
@@ -556,6 +579,7 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 	if err != nil {
 		return err
 	}
+	publishAll(p.pub, events)
 	p.cleaner.remove(ctx, keys)
 	return nil
 }
@@ -857,35 +881,40 @@ func entityOf(row store.Post) (EntityType, string) {
 // has replies. A nil parentID does nothing. It returns the storage keys of the
 // attachments of the posts it removed (a placeholder has none left, but the
 // rows are the authority), for the caller to remove from disk after the
-// commit.
-func removeEmptyPlaceholders(ctx context.Context, tx *store.Store, parentID *uint64) ([]string, error) {
+// commit, and the ID of the top-level post when that was removed too (0
+// otherwise).
+func removeEmptyPlaceholders(ctx context.Context, tx *store.Store, parentID *uint64) ([]string, uint64, error) {
 	var keys []string
+	var goneRoot uint64
 	for parentID != nil {
 		parent, err := tx.PostByID(ctx, *parentID)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if parent.DeletedAt == nil {
-			return keys, nil
+			return keys, goneRoot, nil
 		}
 		hasReplies, err := tx.PostHasReplies(ctx, parent.ID)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if hasReplies {
-			return keys, nil
+			return keys, goneRoot, nil
 		}
 		atts, err := tx.AttachmentsOfPosts(ctx, []uint64{parent.ID})
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		keys = append(keys, storageKeys(atts[parent.ID])...)
 		if err := tx.DeletePost(ctx, parent.ID); err != nil {
-			return nil, err
+			return nil, 0, err
+		}
+		if parent.ParentID == nil {
+			goneRoot = parent.ID
 		}
 		parentID = parent.ParentID
 	}
-	return keys, nil
+	return keys, goneRoot, nil
 }
 
 // splitAttachments divides the attachments of a post into those that stay

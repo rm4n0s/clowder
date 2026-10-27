@@ -78,7 +78,7 @@ func seedAttachment(t *testing.T, srv *browsertest.Server, username, room, name 
 	if err != nil {
 		t.Fatalf("open the files of the server: %+v", err)
 	}
-	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{})
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{}, nil)
 	actor := app.Actor{UserID: user.ID, Username: user.Username, Role: user.Role}
 	up, err := posts.Upload(ctx, actor, name, strings.NewReader("only for the room"))
 	if err != nil {

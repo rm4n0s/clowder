@@ -122,13 +122,13 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	if err != nil {
 		t.Fatalf("files.New: %+v", err)
 	}
-	rooms := app.NewRooms(st, fileStore, logger)
+	rooms := app.NewRooms(st, fileStore, logger, nil)
 	audit := app.NewAudit(st)
 	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
-	})
+	}, nil)
 	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)

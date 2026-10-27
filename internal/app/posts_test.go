@@ -27,7 +27,7 @@ func newPostsEnv(t *testing.T) *postsEnv {
 	e.posts = app.NewPosts(e.st, e.clk, markdown.New(), e.files, app.PostsConfig{
 		MaxAttachmentSize: testMaxUpload,
 		MaxAttachments:    testMaxAttachments,
-	})
+	}, nil)
 	return e
 }
 

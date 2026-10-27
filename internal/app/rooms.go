@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/rm4n0s/clowder/internal/files"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -104,13 +105,15 @@ type Member struct {
 type Rooms struct {
 	st      *store.Store
 	cleaner fileCleaner
+	pub     Publisher
 }
 
 // NewRooms makes the service. fs holds the files of the attachments, which
 // Delete removes with the room; the logger receives the files that could not
-// be removed, and may be nil.
-func NewRooms(st *store.Store, fs *files.Store, logger *slog.Logger) *Rooms {
-	return &Rooms{st: st, cleaner: newFileCleaner(fs, logger)}
+// be removed, and may be nil. pub receives the live events of the changes,
+// after they are committed; nil publishes nothing.
+func NewRooms(st *store.Store, fs *files.Store, logger *slog.Logger, pub Publisher) *Rooms {
+	return &Rooms{st: st, cleaner: newFileCleaner(fs, logger), pub: orNop(pub)}
 }
 
 // Create makes a room and makes the actor its first member, with the columns
@@ -273,7 +276,9 @@ func memberViews(ctx context.Context, st *store.Store, roomID uint64) ([]Member,
 // actor is not a member of fails with TagNotFound, like a room that does not
 // exist.
 func (r *Rooms) Join(ctx context.Context, actor Actor, roomID uint64) error {
-	return r.st.Tx(ctx, func(tx *store.Store) error {
+	var events []live.Event
+	err := r.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		room, err := loadReadableRoom(ctx, tx, actor, roomID)
 		if err != nil {
 			return err
@@ -290,6 +295,7 @@ func (r *Rooms) Join(ctx context.Context, actor Actor, roomID uint64) error {
 		if err := tx.CreateRoomMember(ctx, &m); err != nil {
 			return err
 		}
+		events = memberEvents(room.ID, actor.UserID, live.KindMemberJoined)
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionMemberJoined,
@@ -300,6 +306,11 @@ func (r *Rooms) Join(ctx context.Context, actor Actor, roomID uint64) error {
 			Details:    memberDetails(actor.UserID, actor.Username),
 		})
 	})
+	if err != nil {
+		return err
+	}
+	publishAll(r.pub, events)
+	return nil
 }
 
 // Leave removes the actor from a room and writes member.left. It does nothing
@@ -307,7 +318,9 @@ func (r *Rooms) Join(ctx context.Context, actor Actor, roomID uint64) error {
 // member of fails with TagNotFound. A private room may end with no members;
 // admins keep it until they delete it.
 func (r *Rooms) Leave(ctx context.Context, actor Actor, roomID uint64) error {
-	return r.st.Tx(ctx, func(tx *store.Store) error {
+	var events []live.Event
+	err := r.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		room, err := loadReadableRoom(ctx, tx, actor, roomID)
 		if err != nil {
 			return err
@@ -323,6 +336,7 @@ func (r *Rooms) Leave(ctx context.Context, actor Actor, roomID uint64) error {
 		if err := tx.DeleteRoomMember(ctx, m.ID); err != nil {
 			return err
 		}
+		events = memberEvents(room.ID, actor.UserID, live.KindMemberLeft)
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionMemberLeft,
@@ -333,6 +347,11 @@ func (r *Rooms) Leave(ctx context.Context, actor Actor, roomID uint64) error {
 			Details:    memberDetails(actor.UserID, actor.Username),
 		})
 	})
+	if err != nil {
+		return err
+	}
+	publishAll(r.pub, events)
+	return nil
 }
 
 // AddMember adds a user to a room and writes member.added. The actor must be
@@ -341,7 +360,9 @@ func (r *Rooms) Leave(ctx context.Context, actor Actor, roomID uint64) error {
 // the actor has not joined with TagForbidden. It does nothing when the user is a member already. It fails with
 // TagInvalidInput (field "user") when the user does not exist or is disabled.
 func (r *Rooms) AddMember(ctx context.Context, actor Actor, roomID, userID uint64) error {
-	return r.st.Tx(ctx, func(tx *store.Store) error {
+	var events []live.Event
+	err := r.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		room, err := loadReadableRoom(ctx, tx, actor, roomID)
 		if err != nil {
 			return err
@@ -379,6 +400,7 @@ func (r *Rooms) AddMember(ctx context.Context, actor Actor, roomID, userID uint6
 		if err := tx.CreateRoomMember(ctx, &m); err != nil {
 			return err
 		}
+		events = memberEvents(room.ID, user.ID, live.KindMemberJoined)
 		// TODO(step 11.1): notify the added user.
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
@@ -390,6 +412,11 @@ func (r *Rooms) AddMember(ctx context.Context, actor Actor, roomID, userID uint6
 			Details:    memberDetails(user.ID, user.Username),
 		})
 	})
+	if err != nil {
+		return err
+	}
+	publishAll(r.pub, events)
+	return nil
 }
 
 // Candidates returns the active users who are not members of the room, ordered
@@ -435,7 +462,9 @@ func (r *Rooms) Candidates(ctx context.Context, actor Actor, roomID uint64) ([]U
 // TagForbidden, or TagNotFound for a private room they are not a member of.
 // It does nothing when the user is not a member.
 func (r *Rooms) RemoveMember(ctx context.Context, actor Actor, roomID, userID uint64) error {
-	return r.st.Tx(ctx, func(tx *store.Store) error {
+	var events []live.Event
+	err := r.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		var room store.Room
 		var err error
 		if actor.IsAdmin() {
@@ -465,6 +494,7 @@ func (r *Rooms) RemoveMember(ctx context.Context, actor Actor, roomID, userID ui
 		if err := tx.DeleteRoomMember(ctx, m.ID); err != nil {
 			return err
 		}
+		events = memberEvents(room.ID, user.ID, live.KindMemberLeft)
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionMemberRemoved,
@@ -475,6 +505,11 @@ func (r *Rooms) RemoveMember(ctx context.Context, actor Actor, roomID, userID ui
 			Details:    memberDetails(user.ID, user.Username),
 		})
 	})
+	if err != nil {
+		return err
+	}
+	publishAll(r.pub, events)
+	return nil
 }
 
 // Update changes the name and the description of a room and writes
@@ -485,7 +520,9 @@ func (r *Rooms) RemoveMember(ctx context.Context, actor Actor, roomID, userID ui
 // private room they are not a member of. It fails with TagInvalidInput, with
 // all the problems in the metadata "fields", for input that breaks a rule.
 func (r *Rooms) Update(ctx context.Context, actor Actor, roomID uint64, in RoomInput) error {
-	return r.st.Tx(ctx, func(tx *store.Store) error {
+	var events []live.Event
+	err := r.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		room, err := loadManageableRoom(ctx, tx, actor, roomID)
 		if err != nil {
 			return err
@@ -525,6 +562,7 @@ func (r *Rooms) Update(ctx context.Context, actor Actor, roomID uint64, in RoomI
 		if err := tx.UpdateRoomText(ctx, room.ID, in.Name, in.Description); err != nil {
 			return err
 		}
+		events = []live.Event{{Topic: live.RoomTopic(room.ID), Kind: live.KindRoomUpdated, RoomID: room.ID}}
 		summary := who + " changed the description of #" + room.Name
 		if renamed {
 			summary = who + " renamed #" + room.Name + " to #" + in.Name
@@ -542,6 +580,11 @@ func (r *Rooms) Update(ctx context.Context, actor Actor, roomID uint64, in RoomI
 			Details:    details,
 		})
 	})
+	if err != nil {
+		return err
+	}
+	publishAll(r.pub, events)
+	return nil
 }
 
 // Delete deletes a room with everything in it and writes room.deleted, which
@@ -551,7 +594,9 @@ func (r *Rooms) Update(ctx context.Context, actor Actor, roomID uint64, in RoomI
 // attachment in the room are removed from disk after the change is committed.
 func (r *Rooms) Delete(ctx context.Context, actor Actor, roomID uint64) error {
 	var keys []string
+	var events []live.Event
 	err := r.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		room, err := loadManageableRoom(ctx, tx, actor, roomID)
 		if err != nil {
 			return err
@@ -559,6 +604,16 @@ func (r *Rooms) Delete(ctx context.Context, actor Actor, roomID uint64) error {
 		keys, err = tx.AttachmentKeysOfRoom(ctx, room.ID)
 		if err != nil {
 			return err
+		}
+		// The members are read before the room goes: each of them hears of it.
+		members, err := tx.ListRoomMembers(ctx, room.ID)
+		if err != nil {
+			return err
+		}
+		events = make([]live.Event, 0, len(members)+1)
+		events = append(events, live.Event{Topic: live.RoomTopic(room.ID), Kind: live.KindRoomDeleted, RoomID: room.ID})
+		for _, m := range members {
+			events = append(events, live.Event{Topic: live.UserTopic(m.UserID), Kind: live.KindRoomDeleted, RoomID: room.ID, UserID: m.UserID})
 		}
 		who, err := displayNameOf(ctx, tx, actor.UserID)
 		if err != nil {
@@ -587,6 +642,7 @@ func (r *Rooms) Delete(ctx context.Context, actor Actor, roomID uint64) error {
 	if err != nil {
 		return err
 	}
+	publishAll(r.pub, events)
 	r.cleaner.remove(ctx, keys)
 	return nil
 }

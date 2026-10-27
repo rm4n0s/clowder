@@ -563,7 +563,7 @@ func TestRunDemoMakesTheDemoRooms(t *testing.T) {
 	}
 
 	_, st := openAccounts(t, dir)
-	rooms := app.NewRooms(st, openFiles(t, dir), nil)
+	rooms := app.NewRooms(st, openFiles(t, dir), nil, nil)
 	actors := map[string]app.Actor{}
 	for _, d := range demoUsers {
 		row, err := st.UserByUsername(t.Context(), d.username)
@@ -763,7 +763,7 @@ func TestRunDemoMakesTheDemoAttachments(t *testing.T) {
 
 	_, st := openAccounts(t, dir)
 	fileStore := openFiles(t, dir)
-	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{})
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{}, nil)
 	reader := app.Actor{UserID: 1, Username: "admin", Role: store.RoleAdmin}
 	rooms, err := st.ListRooms(t.Context())
 	if err != nil {
@@ -856,8 +856,8 @@ func TestRunDemoMakesTheDemoPosts(t *testing.T) {
 
 	_, st := openAccounts(t, dir)
 	fileStore := openFiles(t, dir)
-	rooms := app.NewRooms(st, fileStore, nil)
-	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{})
+	rooms := app.NewRooms(st, fileStore, nil, nil)
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{}, nil)
 	actors := map[string]app.Actor{}
 	for _, d := range demoUsers {
 		row, err := st.UserByUsername(t.Context(), d.username)
@@ -941,8 +941,8 @@ func TestRunDemoMakesTheDemoThreads(t *testing.T) {
 
 	_, st := openAccounts(t, dir)
 	fileStore := openFiles(t, dir)
-	rooms := app.NewRooms(st, fileStore, nil)
-	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{})
+	rooms := app.NewRooms(st, fileStore, nil, nil)
+	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{}, nil)
 	row, err := st.UserByUsername(t.Context(), "carol")
 	if err != nil {
 		t.Fatal(err)

@@ -104,7 +104,7 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	if err != nil {
 		return err
 	}
-	made, err := makeDemoRooms(ctx, app.NewRooms(st, fileStore, logger), actors, stdout)
+	made, err := makeDemoRooms(ctx, app.NewRooms(st, fileStore, logger, nil), actors, stdout)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 		MaxAttachmentSize: config.DefaultMaxAttachmentSize,
 		MaxAttachments:    config.DefaultMaxAttachmentsPerPost,
 		Logger:            logger,
-	})
+	}, nil)
 	written, err := makeDemoPosts(ctx, posts, made, actors, stdout)
 	if err != nil {
 		return err

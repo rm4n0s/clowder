@@ -15,6 +15,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/files"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/web"
@@ -57,15 +58,19 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
 	})
+	// The hub is closed when serve returns, which is after the HTTP server
+	// stopped: the services publish to it while requests run.
+	hub := live.New()
+	defer hub.Close()
 	srv, err := web.New(cfg, logger, web.Services{
 		Accounts: accounts,
-		Rooms:    app.NewRooms(st, fileStore, logger),
+		Rooms:    app.NewRooms(st, fileStore, logger, hub),
 		Audit:    app.NewAudit(st),
 		Posts: app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{
 			MaxAttachmentSize: cfg.MaxAttachmentSize,
 			MaxAttachments:    cfg.MaxAttachmentsPerPost,
 			Logger:            logger,
-		}),
+		}, hub),
 	})
 	if err != nil {
 		return err

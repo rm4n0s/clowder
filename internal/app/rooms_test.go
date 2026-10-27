@@ -44,7 +44,7 @@ func newRoomsEnv(t *testing.T) *roomsEnv {
 	if e.files, err = files.New(e.filesDir); err != nil {
 		t.Fatalf("files.New: %+v", err)
 	}
-	e.rooms = app.NewRooms(e.st, e.files, nil)
+	e.rooms = app.NewRooms(e.st, e.files, nil, nil)
 	for _, u := range []struct {
 		name string
 		role store.Role
@@ -872,7 +872,7 @@ func TestRoomsPrivateRoomMayEndEmpty(t *testing.T) {
 }
 
 func TestRoomsAddMember(t *testing.T) {
-	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.AddMember.1.Forbidden"}
+	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.AddMember.func1.Forbidden"}
 	cases := []permCase{
 		// Visible: only members add.
 		{"admin", "lobby", ""}, {"bob", "lobby", ""},
@@ -983,8 +983,8 @@ func TestRoomsAddMemberTargets(t *testing.T) {
 		target func(e *roomsEnv) uint64
 		route  string
 	}{
-		{name: "a user that does not exist", target: func(*roomsEnv) uint64 { return 9999 }, route: "Rooms.AddMember.1.InvalidInput"},
-		{name: "no user", target: func(*roomsEnv) uint64 { return 0 }, route: "Rooms.AddMember.1.InvalidInput"},
+		{name: "a user that does not exist", target: func(*roomsEnv) uint64 { return 9999 }, route: "Rooms.AddMember.func1.InvalidInput"},
+		{name: "no user", target: func(*roomsEnv) uint64 { return 0 }, route: "Rooms.AddMember.func1.InvalidInput"},
 		{
 			name: "a disabled user",
 			target: func(e *roomsEnv) uint64 {
@@ -993,7 +993,7 @@ func TestRoomsAddMemberTargets(t *testing.T) {
 				}
 				return e.users["dave"].ID
 			},
-			route: "Rooms.AddMember.1.InvalidInput",
+			route: "Rooms.AddMember.func1.InvalidInput",
 		},
 	}
 	for _, tt := range tests {
@@ -1023,7 +1023,7 @@ func TestRoomsAddMemberChecksTheActorBeforeTheUser(t *testing.T) {
 }
 
 func TestRoomsRemoveMember(t *testing.T) {
-	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.RemoveMember.1.Forbidden"}
+	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.RemoveMember.func1.Forbidden"}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""},
 		{"alice", "lobby", app.TagForbidden}, {"bob", "lobby", app.TagForbidden}, {"carol", "lobby", app.TagForbidden},
@@ -1074,7 +1074,7 @@ func TestRoomsRemoveMemberAudit(t *testing.T) {
 }
 
 func TestRoomsUpdate(t *testing.T) {
-	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.Update.1->loadManageableRoom.Forbidden"}
+	routes := map[string]string{app.TagNotFound: notFoundPrivate, app.TagForbidden: "Rooms.Update.func1->loadManageableRoom.Forbidden"}
 	cases := []permCase{
 		{"admin", "lobby", ""}, {"root", "lobby", ""},
 		{"alice", "lobby", app.TagForbidden}, {"bob", "lobby", app.TagForbidden}, {"carol", "lobby", app.TagForbidden},
