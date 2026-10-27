@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | 1.0 released as `v1.0.0` (2026-10-27); 1.1 (PostgreSQL, several processes, the API for desktop clients) released as `v1.1.0` (2026-10-27) |
-| Date | 2026-10-27 |
+| Status | 1.0 released as `v1.0.0` (2026-10-27); 1.1 (PostgreSQL, several processes, the API for desktop clients) released as `v1.1.0` (2026-10-27); 1.2 (settings, SSH sign-in codes, code highlighting, a new look, phones, operations) in progress |
+| Date | 2026-10-28 |
 | Owner | Manos Ragiadakos |
 | Module | `github.com/rm4n0s/clowder` |
 | License | BSD-3-Clause |
@@ -11,6 +11,8 @@
 Clowder is a self-hosted web application where a team talks in rooms. A room is not a stream of chat lines: it is a feed of posts, and the conversation about a post happens in the comments under it, which can be answered in turn. A post (and a comment) can be plain text or markdown, carry attachments, and hold tasks; the tasks of a room are the cards of the room's Kanban board. Posts have tags, given in their own field, and everything a user can read can be searched. Besides the rooms, users write private messages to each other, one to one or in small groups. People join only by invitation. Clowder is one Go binary with an SQLite database and a directory of attachments. The pages are rendered on the server with templ and kept live with Datastar over server-sent events, so what one person posts, comments, reacts or moves on a board appears at once for everyone looking at it.
 
 From 1.1 the database can also be PostgreSQL, run with Docker containers, and several Clowder processes can serve one PostgreSQL database, with Redis carrying the live events between them (§8.1). A REST API with a WebSocket for live events (§7.12, §7.13) lets desktop clients, written separately, do everything the pages do; it is described by an OpenAPI document.
+
+1.2 gives each user a settings page (profile, password, theme, notification preferences with mutes and sound) and a second factor in the manner of badgermole: Clowder runs an SSH server that hands a one-time code to the owner of a registered public key (§7.14–§7.16). Code in markdown is highlighted, rooms show what is unread, private messages can be searched, and the pages get a new look for cat lovers, made for phones too (§3b).
 
 ---
 
@@ -46,6 +48,15 @@ From 1.1 the database can also be PostgreSQL, run with Docker containers, and se
 - Browsers calling the API from other sites (CORS), API keys that are not a user's login, bots, webhooks.
 - Attachments in object storage (S3 and the like): they stay files in the data directory, which several processes share as one volume.
 
+### Non-goals for 1.2
+
+- Email of any kind still (a password reset is a link that an admin hands over, D51).
+- TOTP and passkeys: the SSH sign-in code is the second factor (the owner's answer, 2026-10-28).
+- Anything else over SSH: no shell, no commands besides the code, no port forwarding.
+- Logging in with the SSH code alone, without the password (badgermole's way). It is a small change on top of D53 if the owner wants it later.
+- Push notifications while no Clowder page is open (Web Push needs a push service). Notifications reach an open page, in any tab.
+- Offline use of the installed app: it needs the server.
+
 ## 3. Scope of 1.0
 
 1. **Invitations and accounts.** An admin makes one-time invitation links; the first admin's link is made by `clowder invite -admin`. Opening a link lets a person choose a username, a display name and a password. Users log in and out; an admin can disable an account.
@@ -71,6 +82,20 @@ The owner's request, 2026-10-27: "make it possible to work with postgres sql usi
 4. **REST API.** Under `/api/v1`, JSON over HTTP, every feature of §7 that a user or an admin has in the pages, for desktop clients (§7.12, D42, D43).
 5. **WebSocket.** `/api/v1/ws` pushes the live events of §8 to a client, with the changed resource in the same JSON as the REST API (§7.13, D44).
 6. **OpenAPI.** `internal/api/openapi.json` (OpenAPI 3.1) describes every route, and a test keeps it equal to the routes; `docs/API.md` is the guide for client writers (D45).
+
+## 3b. Scope of 1.2
+
+The owner's request, 2026-10-28: "UI is ugly. no modern at all and doesn't represents the aesthetics of "clowder"", "the markdown doesn't support programming languages" and "the user doesn't have settings to update password, notifications (like disabling from a group or having sound by default and disabling it)". To the manager's list of further improvements: "all are good". On a second factor: "rather using TOTP I want you to create something similar to github.com/rm4n0s/badgermole". On the look: "design mockups, make it for cat lovers". Everything of 1.1 keeps working; the API only grows (`/api/v1`).
+
+1. **Settings.** A settings page for each user: display name, avatar, password, theme, notification preferences, SSH keys and the sign-in code, sessions (§7.14, D49).
+2. **Notification preferences.** Mute a room or a conversation; a sound, on by default, that the user turns off; browser notifications (§7.15, D50).
+3. **Password reset.** An admin makes a one-time reset link for a user; `clowder reset-password` does it on the command line (§7.1, D51).
+4. **SSH sign-in codes**, in the manner of badgermole: Clowder runs an SSH server; a user who registered a public key runs `ssh` and gets a one-time code, which a login asks for after the password (§7.16, D52, D53).
+5. **Code in markdown** is highlighted by language (§7.3, D54).
+6. **Unread state** per room, a "new since your last visit" line in the feed, and the count in the tab's title (§7.17, D55).
+7. **Search in private messages**, inside the Messages page and only in the user's own conversations (§7.11, D56).
+8. **A new look** for cat lovers, chosen by the owner from mockups, with light and dark themes (D57), and pages made for phones, installable as an app (D58).
+9. **Operations and limits.** `clowder backup` and `clowder restore` (D59), metrics for Prometheus (D60), `govulncheck` among the checks (D61), and the per-user limits recommended by the 1.1 review (D62).
 
 ## 4. Decisions log
 
@@ -124,6 +149,20 @@ The owner's request, 2026-10-27: "make it possible to work with postgres sql usi
 | D46 | 1.1 is released as `v1.1.0`. A 1.0 SQLite installation upgrades by running the new binary: the migrations add the new columns | Decided by the manager, 2026-10-27 |
 | D47 | The security review of 1.1 (step 17.1, `docs/SECURITY.md`): an ID has 63 bits at most wherever it is read from a path, a query, a form or a JSON body (the databases keep it in a signed column), so a larger number is "not found" (`404`) or "not valid" (`422` with the field) and never a 500; the flags `-database-url` and `-redis-url` have an empty default and take the variable `CLOWDER_DATABASE_URL` or `CLOWDER_REDIS_URL` only when the flag is not given (an empty flag turns the variable off), so that the usage text never prints a password; the cross-origin protection of the pages also covers the unsafe methods of the API (D43 said the API needed none; it is harmless to a client that sends no `Origin`, and a client made of a web view must call the API from its native side). Recorded as accepted, not changed: no limit on sign-up tries (an invitation token is 256 random bits), none on the number of sockets or streams of a user and none on what a user has staged; a cap per user is a recommendation for a later release | Decided by the manager, 2026-10-27; the owner may revise. `docs/SECURITY.md`, `docs/API.md` |
 | D48 | PostgreSQL performance (step 17.1, `docs/PERFORMANCE.md`): after the bulk load of `clowder demo -size large` the demo runs `ANALYZE` on PostgreSQL (`Store.Analyze`), because a table that was just loaded has no statistics until autovacuum reaches it, and the planner then reads the feed of a room with a bitmap scan and a sort of all its posts (6 ms instead of 0.1 ms); a database that grows through the services needs nothing. Found in the same step: the Go runtime keeps the 64 MiB of an Argon2id hash in the process after the hash (a server that did one login stayed at 95 MiB instead of 30, and a process with 100 open streams at 155 MiB, over the 150 MB target), so the password-hashing gate (D37) calls `debug.FreeOSMemory` when the last hash in flight ends (only for hashers of 16 MiB or more; `Hasher.MemoryBytes`). The benchmarks take `CLOWDER_BENCH_DATABASE_URL` (a PostgreSQL URL of a large demo) besides `CLOWDER_BENCH_DB`, `scripts/perf.sh` takes `DATABASE_URL`, `REDIS_URL` and `PROCESSES=2` (the fan-out across two processes through Redis, 100 streams on each), `clowder-perf` takes `-base2`, `-pid2`, and `scripts/perf-postgres.sh` runs the whole measurement on throw-away containers | Decided by the manager, 2026-10-27; the owner may revise. §10 |
+| D49 | **Settings** (§7.14). One page, `/me/settings`, with the sections Profile, Password, Appearance, Notifications, Sign-in and Sessions; `/me/sessions` becomes its Sessions section (the old address redirects). Everything on it is also in the API under `/api/v1/me`. Preferences are stored per user in the database (a `user_settings` row), so they follow the user to every browser and client. The avatar is decoded and re-encoded by Clowder with the standard library only (a box filter written in the code, no image dependency) | The owner's request, 2026-10-28. Decided by the manager, 2026-10-28 |
+| D50 | **Notification preferences** (§7.15). A muted room or conversation counts no unread posts or messages and makes no sound and no browser notification; what is addressed to the user personally (a mention, a reply, an assignment, being added) still reaches the bell, with sound. The sound is on by default and is made with the Web Audio API in the page (no audio file). Browser notifications are off by default and name the author and the place, never the text | The owner's request, 2026-10-28 ("disabling from a group or having sound by default and disabling it"). The details decided by the manager, 2026-10-28 |
+| D51 | **Password reset by an admin** (§7.1). There is no email, so an admin makes a one-time reset link, the way invitations work: 32 random bytes, stored as SHA-256, 24 hours, used once, a new link replacing the old one. Using it sets a new password and ends every session of the user. `clowder reset-password -user <name>` prints a link, so that the last admin can get back in. The reset does not change SSH keys or the sign-in code; an admin turns off a user's sign-in code separately (for a lost key). Each step writes an audit event of the account (§7.10) | Decided by the manager, 2026-10-28 |
+| D52 | **The SSH server** (§7.16), like `github.com/rm4n0s/badgermole`. It is written with `golang.org/x/crypto/ssh` (already allowed, D6), in the package `internal/sshcode`, which talks to `internal/app` only. It is off unless `-ssh-addr` is set. Its host key is an Ed25519 key in the data directory, made on the first start, which several processes share through the data volume. A connection authenticates with a public key of the username it gives; the server answers with a one-time code and closes. It offers nothing else | The owner's request, 2026-10-28. The details decided by the manager, 2026-10-28 |
+| D53 | **The sign-in code at login** (§7.16). The SSH code is a second factor after the password, which a user turns on in the settings once one of their keys has fetched a code. Pages: after the right password, a second form asks for the code. The pending login lives in the database for 5 minutes, behind a cookie of its own. API: `POST /auth/login` takes `ssh_code`; without it, a user who needs one gets `401` with the new code `ssh_code_required`. A wrong code counts as a failed login in the limiter. The code alone never logs anyone in | The owner's answer, 2026-10-28 ("rather using TOTP …"). Decided by the manager, 2026-10-28; the owner may revise (a login with the code alone is a non-goal of 1.2) |
+| D54 | **Highlighting** with `github.com/alecthomas/chroma/v2` (the owner's approval, 2026-10-28), inside `internal/markdown` as the renderer of fenced code blocks. Its output uses CSS classes, not inline styles, so the theme's light and dark palettes style it. HTML is rendered when it is read, so old posts are highlighted too | The owner's request and approval, 2026-10-28. Decided by the manager, 2026-10-28 |
+| D55 | **Unread posts per room** (§7.17). A `room_reads` row per member and room keeps the last post the member has seen. Opening the feed moves it to the newest post. A member who joins starts with nothing unread, and the migration starts existing members with nothing unread | Decided by the manager, 2026-10-28 |
+| D56 | **Search in private messages** (§7.11), which resolves the open decision of §16 the way its recommendation said: only inside the Messages page and the API, only in the user's own conversations, words only. It uses an FTS5 table on SQLite and a generated `tsvector` with a GIN index on PostgreSQL, like posts (D38). Admins get nothing more | The owner's answer, 2026-10-28 ("all are good"). Decided by the manager, 2026-10-28 |
+| D57 | **The new look.** The owner picks one of the three directions of the design canvas ("Sunbeam", "Night Prowl", "Calico"). Whatever is picked:<br>- the theme is CSS custom properties in `app.css`, with light and dark palettes (the system's choice, unless the user's setting overrides it with `data-theme` on `<html>`);<br>- the fonts are self-hosted in `internal/web/static/fonts` (woff2, SIL OFL, with their licenses; no request goes to another site);<br>- there is an SVG logo and favicon, and the icons are inline SVG (no icon font; emoji only where users chose them, in reactions);<br>- a test checks that every pair of text and ground colours in the tokens has a contrast of at least 4.5:1, and focus rings are visible;<br>- motion respects `prefers-reduced-motion`.<br>Every page is redone, and the Datastar behaviour stays as it is. Until the owner picks, the manager's recommendation is "Sunbeam", with a dark palette made in its spirit | The owner's request, 2026-10-28 ("make it for cat lovers"). The direction is the owner's choice; the rest decided by the manager, 2026-10-28 |
+| D58 | **Phones and the installed app.**<br>- Every page works from 360 px wide with no horizontal scroll: the rooms become a menu, the board scrolls inside its own box, and touch targets are at least 44 px.<br>- `manifest.webmanifest` has the name, PNG icons of 192 and 512 px (and maskable ones), the theme colours and `display: standalone`.<br>- A small service worker caches only `/static/`: never pages, API answers or files, which are private | Decided by the manager, 2026-10-28 |
+| D59 | **Backups.** `clowder backup -o <file.tar.gz>`, which works while the server runs:<br>- on SQLite it writes a consistent copy of the database (`VACUUM INTO`) and the `files/` directory (avatars included) into one archive, with a `manifest.json` (Clowder version, time, dialect, counts);<br>- on PostgreSQL it writes the files only and prints the `pg_dump` command for the database.<br>`clowder restore -i <file> -data <dir>` unpacks only into an empty directory and refuses archive entries that are absolute, contain `..` or are links | Decided by the manager, 2026-10-28 |
+| D60 | **Metrics.** `-metrics-addr` (`CLOWDER_METRICS_ADDR`) is empty, and so off, by default. When set, it serves `GET /metrics` in the Prometheus text format on a listener of its own, never on the public one. The metrics are written by hand, with no client library:<br>- requests by route pattern, method and status class, and a histogram of their durations;<br>- open SSE streams and WebSockets, and hub drops by reason;<br>- logins by result and SSH codes issued;<br>- the database pool, Redis reconnects, and the Go runtime.<br>No label carries a user, an ID or a path with an ID | Decided by the manager, 2026-10-28 |
+| D61 | **`govulncheck`** (`golang.org/x/vuln`) is a `tool` of `go.mod` (`go tool govulncheck ./...`) and a check of the Definition of done from step 22.3. It needs the network for its database; when that is missing, the step records it | The owner's answer, 2026-10-28 ("all are good"). Decided by the manager, 2026-10-28 |
+| D62 | **Per-user limits** (the recommendations of D47):<br>- at most 30 live connections per user per process, SSE streams and WebSockets together. Beyond that, a stream answers `429` and a WebSocket handshake answers `429`;<br>- staged uploads (§7.12) of at most 10 times the attachment limit per user (`413 too_large`);<br>- a sign-up with an unknown invitation token counts as a failed login of the address in the limiter | Decided by the manager, 2026-10-28 |
 
 ## 5. Size estimate
 
@@ -182,6 +221,8 @@ SQLite file or PostgreSQL + attachment files in the data directory
 | `internal/web/static` | `datastar.js`, CSS, icons, the drag-and-drop script; embedded with `embed` |
 | `internal/api` | the REST API and the WebSocket for desktop clients (§7.12, §7.13), their JSON types, the embedded `openapi.json` (D42–D45) |
 | `internal/cluster` | what several processes share through Redis (D41): the bridge that carries the hub's events between processes and the counters of the login limiter; the only package that imports go-redis |
+| `internal/sshcode` *(1.2)* | the SSH server of the sign-in codes (D52): the host key, the public-key check and the code, through the services of `internal/app`; the only package that runs an SSH server, and it never imports `internal/store` |
+| `internal/metrics` *(1.2)* | the counters and histograms of D60 and their Prometheus text, written by hand; the middleware and the services report to it through a small interface |
 | `cmd/clowder-apicheck` | a small API client that exercises the REST API and the WebSocket against a running server and prints what it did: the proof of the API steps and an example for client writers |
 | `internal/clock` | the clock interface and its fake for tests |
 | `docs/` | this spec, the plan, the log of finished steps, proofs |
@@ -225,6 +266,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 - Login is username and password. A failed login does not say whether the username exists. After 5 failed attempts for one username or one IP address in 15 minutes, further attempts wait (a limiter in memory, or in Redis when several processes share a database, §8.1).
 - A session lasts 30 days from its last use (configurable). Logout deletes it. Disabling a user deletes their sessions.
 - Admins see the users, disable and enable them, and change their role. The last admin cannot lose the role.
+- *(1.2)* An admin makes a one-time **password reset link** for a user (Admin › Users › Reset password, D51): `<base URL>/reset/<token>`, valid for 24 hours, used once, a newer link replacing an older one, refused for a disabled user. Opening it shows a form for the new password, twice; saving ends every session of the user and logs them in. `clowder reset-password -user <name>` prints a link on the command line (it reads `-data`, `-database-url`, `-base-url`). Writes `user.reset_link_created` and `user.password_reset`.
 
 ### 7.2 Rooms
 
@@ -237,6 +279,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 
 - The editor has: the body with a **Text / Markdown** switch, attachments, tasks (§7.6) and tags (§7.7), the last two in their own fields below the body.
 - Text is shown as written (escaped, line breaks kept, links made clickable). Markdown is rendered by goldmark in safe mode with GitHub-flavored extensions (tables, strikethrough, autolinks, task-list items shown as read-only checkboxes) (D9).
+- *(1.2)* A fenced code block names its language after the fence (` ```go `, ` ```python `, any name or alias chroma knows) and is highlighted (D54); with no name or an unknown one it is plain. A block over 32 KiB or 1,000 lines is not highlighted. The block shows its language and a Copy button. Highlighting adds only `<span class="…">` around escaped text; the safe-mode rules of D9 are unchanged.
 - A post body is at most 20,000 characters; a post or comment needs a body, an attachment or a task.
 - The author edits the body, format, attachments, tasks and tags; the post then shows "edited" with the time. Editing rebuilds its mentions, notifying newly mentioned users only.
 - Comments are written under a post or a comment, to any depth; the page indents them to a maximum visual depth (6) and keeps the rest at that depth with a "replying to" line.
@@ -273,6 +316,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
   | column | `column.created`, `column.renamed`, `column.moved`, `column.deleted` |
   | member | `member.joined`, `member.added` (by another member), `member.left`, `member.removed` |
   | room | `room.created`, `room.renamed` (name or description), `room.deleted` (D27) |
+  | user *(1.2)* | `user.password_changed`, `user.reset_link_created`, `user.password_reset`, `user.ssh_key_added`, `user.ssh_key_removed`, `user.ssh_code_enabled`, `user.ssh_code_disabled`, `user.ssh_code_removed` (by an admin); they belong to no room, and the admin's filter of the log gets "Accounts" |
 
 - An event records the actor, the time, the room, the entity and a `Summary` readable on its own after the entity is gone (the room's and the users' names at that time, the task's title, the column's names from and to). `Details` holds the changed fields with their old and new values, except the bodies of posts and comments: an edit records that the body changed and its length, not the text (§2, "Edit history").
 - A task deleted together with its post writes its own `task.deleted`; a post deleted with its room writes nothing more than the room's deletion (D27).
@@ -304,7 +348,8 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 - **Reactions.** Members react with emoji as in §7.4.
 - **Reading.** The Messages page lists the user's conversations, the most recent first, with the last message and an unread mark. A conversation shows its messages oldest first, newest at the bottom, 50 at a time with older ones loaded on scrolling up. Opening a conversation marks it read; a direct conversation shows "Seen" under the last message the other user has read.
 - **Unread count.** The sidebar shows the number of conversations with unread messages, updated live. Messages are not notifications (§7.9) and do not ring the bell.
-- **Privacy.** Only the members read a conversation; a non-member gets 404, admins included. A member who left no longer reads it. Messages are not searched by §7.8 and not written to the audit log (see §16).
+- **Search** *(1.2, D56)*. The Messages page has a search box for the messages of the user's own conversations, the ones they can read now: words and phrases as in §7.8, no tags, newest first, 30 at a time, each result linking to the message in its conversation. `GET /api/v1/messages/search?q=`.
+- **Privacy.** Only the members read a conversation; a non-member gets 404, admins included. A member who left no longer reads it. Messages are not searched by §7.8 (only by the search of the Messages page) and not written to the audit log.
 
 ### 7.12 REST API (1.1)
 
@@ -340,6 +385,94 @@ The API is for desktop clients that act as one logged-in user (D42, D43). It is 
   - Memberships of rooms and room deletions are also sent on `user:<id>` (`member.joined`, `member.left`, `room.deleted`), as the pages' sidebar hears them.
   - **Access.** Every event is checked for the user as the pages' streams do (the service call that builds `data`, or the call that subscribe used when there is none). An event the user may no longer see is not sent. When the user has lost a room or a conversation they subscribed to (they left or were removed from a private room, the room or the conversation was deleted, they left the conversation), one `error` of `not_found` without an `id` and with the `topic` is sent for each topic of that room or for that conversation, and the topics are dropped. `room.deleted` is sent on the room's topic first, then the topics of the room are dropped the same way. A visible room that the user leaves stays readable, so its topics stay.
 - **Lifecycle.** The server pings (WebSocket ping frames) every 30 s and closes a connection that does not answer in 15 s; each answered ping also reads the session again. Logging out that session, disabling the user, an expired session (4001 "session ended"), or changing their role (4002 "session changed"; a client reconnects after 4002) closes the connection with that code; the server learns of the first three at once from `user.changed` (D37) and the rest at the next ping. A text that is not one JSON value (also an empty text and two values) or a binary message closes it with 1003, a message over 16 KiB with 1009. A write to a client has 10 s; a client that does not read is closed, with `resync`, when its queue of 64 events overflows. The server's shutdown (§8) closes every connection with 1001 "going away": it closes the hub and waits for the connections to end before the process does.
+
+### 7.14 Settings (1.2)
+
+- **The page.** `/me/settings` is reached from the user's avatar in the header. It has six sections; each one saves on its own and says "Saved".
+- **Profile.**
+  - The display name follows the rules of sign-up.
+  - The avatar is a PNG, JPEG or GIF (its first frame) of up to 2 MiB and 4,096×4,096 px. Clowder checks the size from the image's header before decoding it.
+  - Clowder cuts the centre square, scales it to 256×256 and stores it as a PNG in `files/avatars/`. Removing it brings back the initials on a colour picked from the user's ID.
+  - Any logged-in user sees avatars at `GET /avatars/{userID}`, as `image/png`, cached for a day. A new avatar gets a new address.
+- **Password.**
+  - The form asks for the current password and the new one twice. The new one has at least 12 characters and differs from the current one.
+  - Saving it ends every other session of the user, browsers and clients, and keeps the current one.
+  - It writes `user.password_changed`. A wrong current password counts in the login limiter.
+- **Appearance.** The theme is System (the default), Light or Dark (D57).
+- **Notifications** (§7.15): the sound and browser notifications on or off, and the list of muted rooms and conversations, each with Unmute.
+- **Sign-in** (§7.16):
+  - the SSH keys, each with its name, type, SHA-256 fingerprint, when it was added and when it was last used, and Remove;
+  - Add a key;
+  - the switch "Ask for an SSH code when I log in";
+  - the server's host-key fingerprint and the `ssh` command to run.
+- **Sessions.** The list of 1.1 (D43), with End.
+- **API.** `GET`/`PATCH /me/settings` (theme, sound, browser notifications); `PATCH /me` (display name); `PUT`/`DELETE /me/avatar` (multipart); `POST /me/password`; `GET`/`POST /me/ssh-keys` and `DELETE /me/ssh-keys/{id}`; `PUT`/`DELETE /me/ssh-code` (the switch); `GET /me/mutes`, `PUT`/`DELETE /rooms/{id}/mute` and `PUT`/`DELETE /conversations/{id}/mute`. A password is needed to add a key and to change the switch: `current_password` in the body.
+
+### 7.15 Notification preferences (1.2)
+
+- **Mute.** The menu of a room and of a conversation has Mute and Unmute, and so does the API.
+  - A muted room shows no unread count (D55) and is dimmed in the sidebar with a muted icon. Its posts make no sound and no browser notification.
+  - A notification of §7.9 from a muted room (mention, reply, assignment, being added) still reaches the bell, with sound: it is addressed to the user.
+  - A muted conversation does not count in the unread count of conversations (§7.11) and makes no sound and no browser notification. It still shows its unread mark in the Messages page.
+  - Leaving a room or a conversation removes its mute.
+- **Sound.** It is on by default and plays a short chime made with the Web Audio API. It plays:
+  - when a notification reaches the bell;
+  - when a message arrives in a conversation that is not muted and is not open in a page that has the focus.
+
+  At most one chime plays every 2 seconds. A browser that has not been interacted with yet plays nothing (the browser forbids it); nothing is queued.
+- **Browser notifications.** They are off by default. Turning them on asks the browser's permission, which belongs to each browser.
+  - They fire for the same triggers as the sound, and only when no Clowder page of the user has the focus.
+  - The text is "Bob in #general" or "Bob in Feeder team", never the body. Clicking it opens the place.
+  - Each tab shows at most one of them per event. The page that shows it is chosen through the `BroadcastChannel` of the browser.
+- **How it reaches the page.** The stream of the user, which every page already has, carries the events. The page decides with the user's settings, which come with the page. The WebSocket carries the same events and `settings.changed`, so a desktop client can do the same.
+
+### 7.16 SSH sign-in codes (1.2)
+
+- **The server** (D52):
+  - It runs when `-ssh-addr` (`CLOWDER_SSH_ADDR`) is set, for example `:2222`. The compose files publish `CLOWDER_SSH_PORT`.
+  - The host key is `-ssh-host-key` (`CLOWDER_SSH_HOST_KEY`), by default `ssh_host_ed25519_key` in the data directory. It is made on the first start with mode 0600, created exclusively, so that two processes starting together end up with the same key.
+  - The log of the start and the Sign-in section show its SHA-256 fingerprint.
+  - `-ssh-public-host` (`CLOWDER_SSH_PUBLIC_HOST`, by default the host of the base URL) is the host shown in the `ssh` command.
+- **Keys.**
+  - A user adds a public key with a name (1–40 characters) and the line of a `.pub` file. Clowder accepts these types:
+    - `ssh-ed25519`;
+    - `ecdsa-sha2-nistp256`, `-nistp384` and `-nistp521`;
+    - `sk-ssh-ed25519@openssh.com` and `sk-ecdsa-sha2-nistp256@openssh.com`;
+    - `ssh-rsa` of at least 3,072 bits.
+  - A key belongs to one user only, and a user has at most 10 keys. Adding and removing a key need the current password and write `user.ssh_key_added` and `user.ssh_key_removed`.
+- **Fetching a code.**
+  - The user runs `ssh -p 2222 alice@chat.example.org`. The server accepts only public-key authentication, with a key of the username given, whose user is not disabled. It writes:
+
+    ```
+    Your Clowder sign-in code: K7QF-9MZP (valid for 60 seconds)
+    ```
+
+    and closes the connection. The command `json` writes `{"code":"K7QF9MZP","expires_at":"…"}` instead.
+  - The server refuses everything else: shells, PTYs, other commands, subsystems, forwarding and environment requests.
+  - A code is 8 characters of Crockford base32 (40 bits; the dash is for reading and is ignored on entry, and so is case). It is stored as its SHA-256 with the user and the key, lasts 60 seconds and is used once. A new code replaces the user's unused ones.
+  - The key's "last used" time is updated. The log records the user, the key's fingerprint and the address, never the code.
+- **Limits.**
+  - A connection has 10 seconds for its handshake and at most 3 authentication attempts.
+  - A failed public-key authentication counts as a failed login of the address in the limiter.
+  - A user gets at most 10 codes in 15 minutes.
+  - Each process accepts at most 64 SSH connections at a time. Shutdown closes them.
+- **At login** (D53):
+  - A user turns on "Ask for an SSH code when I log in" once one of their keys has fetched a code (that proves the setup works). This needs the current password and writes `user.ssh_code_enabled`. Turning it off needs the password too and writes `user.ssh_code_disabled`.
+  - Pages: when the password is right and the user has the code turned on, the login page shows the second form, "Run `ssh -p 2222 alice@chat.example.org` and type the code". The pending login is a row with a random token (stored as SHA-256), kept in the cookie `clowder_pending` (HttpOnly, SameSite=Strict, 5 minutes). A right code makes the session and deletes the row.
+  - A wrong code counts as a failed login. After 5 wrong codes the pending login is deleted.
+  - API: `POST /auth/login` takes `ssh_code`. When it is missing, the answer is `401` `ssh_code_required` (the password was right); when it is wrong, `401` `unauthenticated`.
+  - Sign-up and a reset link do not ask for a code.
+  - An admin turns off the code of a user who lost their keys (Admin › Users › Turn off SSH code), which writes `user.ssh_code_removed`.
+  - When the server has no SSH address, the switch cannot be turned on. Users who have it on are not asked for a code while the server is off, and the admin's users page warns that the server is off.
+
+### 7.17 Unread state (1.2)
+
+- **Rooms.**
+  - The sidebar shows, for each room the user is a member of, the number of top-level posts by others newer than the last one they saw (D55). The count reads "99+" above 99, and a muted room shows none.
+  - Opening the room's feed marks the newest post as seen, and the count updates live on every page.
+  - The feed shows the line "New since your last visit" above the oldest unseen post, worked out before the mark moves.
+- **The tab.** The title starts with "(n) ", where n is the user's unread notifications plus their unread conversations (not muted), and the favicon gets a dot when n > 0. Both update live.
+- **API.** Each room of `GET /rooms` gets `unread_posts`, and `POST /rooms/{id}/read` (with `post_id`) marks what a client has shown. The WebSocket sends `room.unread` to the user.
 
 ## 8. Live updates and lifecycle
 
@@ -462,6 +595,12 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M15 | Several processes: the Redis bridge of the live events, the login limiter in Redis, `compose.cluster.yaml` (D41, §8.1) | a post written on one process appears live in a page served by another |
 | M16 | REST API and WebSocket: login with bearer tokens and the sessions page, every route of §7.12, the WebSocket of §7.13, `openapi.json` kept equal to the routes (D42–D45) | `clowder-apicheck` logs in, posts, comments, moves a card and sends a message through the API, and sees each one come back over the WebSocket |
 | M17 | 1.1: the security review of the new surface, `docs/API.md`, the README, the numbers of §10 on PostgreSQL, `v1.1.0` | every check passes, the targets of §10 are met or recorded on both databases, `v1.1.0` is on `origin` |
+| M18 | Settings: the settings page (profile, avatar, password, theme, sessions), password reset links and `clowder reset-password`, notification preferences (mutes, sound, browser notifications) (§7.14, §7.15, D49–D51) | a user changes their password and mutes a room, and an admin's reset link lets a locked-out user in |
+| M19 | SSH sign-in codes: the SSH server, the keys, the code at login in the pages and the API (§7.16, D52, D53) | `ssh` hands alice a code, and her login asks for it and accepts it once |
+| M20 | Reading: code highlighting, unread posts per room, search in private messages (§7.3, §7.17, §7.11, D54–D56) | a Go block is highlighted, a room shows its unread count live, and a message is found by a word |
+| M21 | The new look: the theme, fonts, logo and icons, every page redone in light and dark, phones and the installed app (D57, D58) | every page has its proof in light, dark and at phone width, and the browser tests pass |
+| M22 | Operations and limits: backup and restore, metrics, the per-user limits, `govulncheck` (D59–D62) | a backup restores into a server that serves the same data, and `/metrics` answers on its own address |
+| M23 | 1.2: the security review of the new surface (the SSH server first), the docs, `v1.2.0` | every check passes and `v1.2.0` is on `origin` |
 
 ## 14. Demo data
 
@@ -478,7 +617,6 @@ New ones are added here with a recommendation and moved to §4 once decided.
 | Decision | Recommendation |
 |---|---|
 | Can admins read private messages, and are messages in the audit log? | No to both (§7.11 as written): they are private between their members |
-| Can private messages be searched? | Yes, but only inside the Messages page and only in the user's own conversations; not in 1.0 unless asked |
 
 ## 17. Risks
 

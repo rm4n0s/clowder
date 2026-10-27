@@ -142,6 +142,12 @@ SPEC D22.
 | M15 Several processes | 15.1–15.2 |
 | M16 REST API and WebSocket | 16.1–16.5 |
 | M17 1.1 | 17.1–17.2 |
+| M18 Settings | 18.1–18.3 |
+| M19 SSH sign-in codes | 19.1–19.2 |
+| M20 Reading | 20.1–20.3 |
+| M21 The new look | 21.1–21.5 |
+| M22 Operations and limits | 22.1–22.3 |
+| M23 1.2 | 23.1–23.2 |
 
 ---
 
@@ -694,3 +700,339 @@ The owner's request, 2026-10-27 (SPEC §3a). M14–M17 make version 1.1.
 1. Run every check, `scripts/test-docker.sh`, every browser test and `scripts/compose-smoke.sh` (both modes); update the SPEC's status to 1.1.
 2. Publish the step, then make and push the annotated tag `v1.1.0` on it (CLAUDE.md "Git and GitHub").
 **Done when:** `v1.1.0` is on `origin`.
+
+---
+
+# Version 1.2
+
+Planned 2026-10-28 from the owner's request (SPEC §3b). The rules above apply unchanged. Every new or changed API route goes into `internal/api/openapi.json` in the step that adds it (D45). From step 22.3 on, `go tool govulncheck ./...` is part of rule 8 (D61).
+
+## M18: Settings
+
+### 18.1 The settings page, profile, avatar and password
+**Goal:** a user changes their display name, avatar, password and theme on `/me/settings`.
+**Read:** SPEC §3b, §7.1, §7.14, §7.10, D43, D49.
+**Tasks:**
+1. Store: a `user_settings` row per user (theme, sound, browser notifications; the defaults System, on, off), the avatar's file key on the user, and audit events without a room (entity type `user`; check the `AuditEvent` model and migrate on both dialects).
+2. `internal/app`: `Accounts.UpdateProfile`, `SetAvatar`/`RemoveAvatar`, `ChangePassword` and `Settings`/`UpdateSettings`, each checking permissions and writing its audit event where §7.10 says.
+   - `ChangePassword` checks the current password through the hashing gate, counts a wrong one in the limiter, and ends the other sessions (including API ones) in the same transaction.
+   - Publish `settings.changed` and `user.updated` after the commit.
+3. The avatar:
+   - check the format and size with `image.DecodeConfig` before decoding;
+   - cut the centre square and scale to 256×256 with a box filter written in the code;
+   - write the PNG with `internal/files` (atomic, in `files/avatars/`);
+   - serve it at `GET /avatars/{userID}` with `image/png`, `Cache-Control: private, max-age=86400` and a versioned address (`?v=<key>`).
+
+   The pages show the avatar wherever they show a user now (initials on a colour picked from the user's ID when there is none).
+4. `/me/settings` with the sections Profile, Password, Appearance and Sessions (`/me/sessions` redirects). The Notifications and Sign-in sections come in 18.3 and 19.1, so leave a TODO for each. The theme sets `data-theme` on `<html>` (the dark palette itself comes in M21).
+5. API: `PATCH /me`, `GET`/`PATCH /me/settings`, `PUT`/`DELETE /me/avatar`, `POST /me/password`; `user` objects get `avatar_url`. Put them in the OpenAPI document and add a `clowder-apicheck` scenario.
+
+**Tests:**
+- The permission table for each method.
+- The image cases: each format, too large in bytes, too large in pixels, broken, animated GIF, non-square.
+- Changing the password ends the other sessions (browser and API) and keeps the current one.
+- The limiter counts a wrong current password.
+- The audit events, and no event on a failure.
+- The handler and API tests, and a route test for every tag.
+
+**Proof:**
+- `18.1-settings.png`: the page as alice, with an avatar.
+- `18.1-feed-avatars.png`: the feed with avatars.
+- `18.1-password.txt`: an apicheck run showing the old token getting 401 after the password change.
+
+### 18.2 Password reset links
+**Goal:** an admin's one-time link lets a user who forgot their password set a new one.
+**Read:** SPEC §7.1, §7.10, D51.
+**Tasks:**
+1. Store: `password_resets` (user, token hash, expiry, created by) on both dialects.
+2. `internal/app`: `Accounts.CreateResetLink` (admin only, not for a disabled user, replacing an older link) and `ResetPassword` (token, new password; ends every session and logs the user in), with the audit events.
+3. Pages:
+   - Admin › Users gets "Reset password", which shows the link once with a copy button.
+   - `/reset/{token}` (GET form, POST) answers an unknown, used or expired link as the invitation page does.
+4. `clowder reset-password -user <name>` (`-data`, `-database-url`, `-base-url`) prints the link and its expiry.
+5. API: `POST /admin/users/{id}/reset-link`, in the OpenAPI document.
+
+**Tests:**
+- The permission table.
+- The link's life: it is used once, expires, is replaced, is refused for a disabled user, and is not found when unknown.
+- All sessions end.
+- The CLI, with a test of its output.
+- The audit events, and a route test for each tag.
+
+**Proof:** `18.2-reset.png` (the reset page) and `18.2-reset-cli.txt` (`clowder reset-password` output, then a login with the new password through apicheck).
+
+### 18.3 Notification preferences: mutes, sound and browser notifications
+**Goal:** a user mutes a group conversation or a room, and hears a chime for what is not muted.
+**Read:** SPEC §7.9, §7.11, §7.15, §8, D50.
+**Tasks:**
+1. Store: `mutes` (user, room or conversation; unique). Leaving a room or conversation deletes the mute. The unread count of conversations leaves muted ones out.
+2. `internal/app`: `Mutes.MuteRoom`/`UnmuteRoom`/`MuteConversation`/`UnmuteConversation`/`List`, with permission checks (a private room or conversation the user cannot read is "not found"). Publish `mute.changed` to the user.
+3. The user's stream (`me_stream`) and the WebSocket carry what the page needs to ring:
+   - `notification.created`;
+   - `message.created` for conversations that are not muted, with the place's name and the author.
+
+   The page script (`internal/web/static/notify.js`, small, no framework):
+   - plays a Web Audio chime (rate limited to one every 2 s);
+   - shows a browser notification when no tab has the focus, picking one tab through `BroadcastChannel`;
+   - does neither for the conversation open in the focused tab.
+4. Settings: the Notifications section (sound switch, browser-notification switch that asks the permission, the list of mutes). The room and conversation pages get Mute/Unmute in their menu, and the sidebar shows muted rooms dimmed.
+5. API: `GET /me/mutes`, `PUT`/`DELETE /rooms/{id}/mute`, `PUT`/`DELETE /conversations/{id}/mute`, and `settings.changed` and `mute.changed` on the WebSocket. Put them in the OpenAPI document and add an apicheck scenario.
+
+**Tests:**
+- The permission tables.
+- A muted conversation leaves the unread count, and a mute ends when the user leaves.
+- A notification from a muted room still reaches the bell.
+- The stream carries the events with the right names and no body.
+- A browser test with two tabs: one chime is played (counted through a test hook in the page) and none when muted.
+
+**Proof:**
+- `18.3-notifications.png`: the settings section, with one muted group.
+- `18.3-muted-sidebar.png`: the sidebar with a muted room.
+- `18.3-chime.txt`: the browser test's log of the chime and notification events.
+
+## M19: SSH sign-in codes
+
+### 19.1 SSH keys and the SSH server
+**Goal:** `ssh -p 2222 alice@host` with alice's registered key prints a one-time code.
+**Read:** SPEC §7.16, D52, §8 (shutdown), §9.3, §17.
+**Tasks:**
+1. Store: `ssh_keys` (user, name, type, fingerprint unique, the key, created, last used) and `ssh_codes` (user, key, code hash, expiry, used).
+2. `internal/app`: `SSHKeys.Add`/`Remove`/`List`, which need the current password, check the accepted types and the 10-key limit, and write the audit events. Also:
+   - `SignIn.KeyAllowed(ctx, username, publicKey)`;
+   - `SignIn.IssueCode(ctx, username, fingerprint, addr)`, with the per-user limit and the replacing of older codes.
+3. `internal/sshcode` (new; it imports `golang.org/x/crypto/ssh` and never `internal/store`):
+   - The server, owned by `serve`'s context, waiting for its goroutines on shutdown.
+   - The host key: loaded, or made exclusively.
+   - Public-key callback only, with the handshake deadline, 3 attempts, failed attempts counted in the limiter, and a cap of 64 connections.
+   - Exec `json` or no command prints the code; everything else is refused.
+   - Logging without the code.
+4. Config: `-ssh-addr`, `-ssh-host-key`, `-ssh-public-host` and their variables, validated, with route tests. Compose publishes `CLOWDER_SSH_PORT` (2222), on the first process in the cluster file (the codes are in the database, so any process takes them). The Sign-in section of the settings lists the keys and adds them, and shows the host fingerprint and the command.
+5. API: `GET`/`POST /me/ssh-keys` and `DELETE /me/ssh-keys/{id}`, in the OpenAPI document.
+
+**Tests:**
+- Keys: each accepted and refused type, RSA under 3,072 bits, a duplicate fingerprint, the limit, a wrong password, and the audit events.
+- The server, with a real `x/crypto/ssh` client in the test:
+  - the right key gets a code;
+  - another user's key, an unknown user and a disabled user get none;
+  - a password authentication is refused, and so are a shell, a PTY and forwarding;
+  - `json` prints JSON, the handshake deadline holds, and shutdown leaves no goroutine;
+  - two processes starting on the same data directory share one host key.
+- The code format and its single use, and a route test for every tag.
+
+**Proof:** `19.1-ssh.txt` (the real OpenSSH `ssh` client run against `clowder serve`, plain and `json`, plus a refused key) and `19.1-keys.png` (the Sign-in section with a key).
+
+### 19.2 The code at login
+**Goal:** a user with the code turned on logs in with the password and then the code, in the pages and the API.
+**Read:** SPEC §7.1, §7.16, D43, D53, §7.12.
+**Tasks:**
+1. Store: `pending_logins` (token hash, user, expiry, wrong tries). The `user_settings` row gets `ssh_code_required`.
+2. `internal/app`:
+   - `Accounts.Login` returns "code needed" for such a user after the right password.
+   - `Accounts.CompleteLogin(pendingToken, code)`, and the same check for the API in one call.
+   - `EnableSSHCode`/`DisableSSHCode` (need the password and a key that fetched a code) and the admin's `RemoveSSHCode`, with the audit events.
+   - The behaviour when the server has no SSH address, as §7.16 says.
+3. Pages: the second form of the login, the `clowder_pending` cookie, the switch in the Sign-in section, and Admin › Users › Turn off SSH code (with the warning when the server is off).
+4. API:
+   - `POST /auth/login` takes `ssh_code`, and the error code `ssh_code_required` is added to the error table and to `docs/API.md`;
+   - `PUT`/`DELETE /me/ssh-code`, and `DELETE /admin/users/{id}/ssh-code`;
+   - all in the OpenAPI document.
+
+   apicheck gets `-ssh-key <path>`: it fetches the code over SSH and logs in with it.
+
+**Tests:**
+- The login table: without the code, with the right code, a wrong code, an expired code, a used code, a code of another user, 5 wrong tries, and a pending login that expired.
+- The limiter counts wrong codes, and the cookie has its flags.
+- The permission tables of the switch and the admin action, and the audit events.
+- A browser test of the two-form login.
+- A route test for every tag.
+
+**Proof:** `19.2-login-code.png` (the second form) and `19.2-api-login.txt` (apicheck with `-ssh-key`: `ssh_code_required`, then a login with the code).
+
+## M20: Reading
+
+### 20.1 Code highlighting
+**Goal:** a fenced block with a language is highlighted in the pages and in the API's `html`.
+**Read:** SPEC §7.3, D9, D54.
+**Tasks:**
+1. Add `github.com/alecthomas/chroma/v2` (allowed by D54 and in CLAUDE.md). `CGO_ENABLED=0` still builds.
+2. `internal/markdown`: a renderer of fenced code blocks.
+   - Pick the lexer by name or alias, never by guessing.
+   - Use the HTML formatter with classes (`WithClasses`) and no wrapping `<pre>` styles.
+   - Leave a block plain over 32 KiB or 1,000 lines, and when the language is unknown.
+   - Add the language as `data-lang`.
+   - Make the CSS of the classes for the current light and dark palettes (generated once by a `go generate` command into `internal/web/static/code.css`, committed).
+3. Pages: a Copy button and the language label on each block (a small script); `code.css` is linked.
+4. Document the class names in `docs/API.md`, and serve `code.css` without login at `/static/code.css` for clients.
+
+**Tests:**
+- The renderer table: Go, Python, an alias, an unknown language, no language, too large, inline code untouched.
+- The safety table of D9 still passes with code blocks: script tags and `javascript:` in code are escaped.
+- A benchmark of a 32 KiB block.
+
+**Proof:** `20.1-code.png` (a post with Go, Python and shell blocks, and a Copy button).
+
+### 20.2 Unread posts per room
+**Goal:** the sidebar counts each room's unseen posts live, and the feed marks where the new ones start.
+**Read:** SPEC §7.17, §8, D55.
+**Tasks:**
+1. Store: `room_reads` (user, room, last seen post ID) on both dialects. The migration starts existing members with the newest post.
+2. `internal/app`: `Rooms.MarkRead` and the unread counts in the list of rooms, with one query for all of a user's rooms (check `EXPLAIN` on the large demo on both databases). A new post publishes `room.unread` to the members.
+3. Pages: the counts in the sidebar, the "New since your last visit" line, and the tab title "(n)" with the favicon dot (made in the page from the SVG favicon).
+4. API: `unread_posts` in `GET /rooms`, `POST /rooms/{id}/read`, and `room.unread` on the WebSocket, in the OpenAPI document.
+
+**Tests:**
+- The counts table: own posts, comments, deleted posts, a muted room, a room left and joined again, a private room.
+- The line's position, and the live update in a handler test.
+- The time to count for 100 rooms on the large demo.
+
+**Proof:** `20.2-unread.png` (sidebar counts and the line) and a two-user proof (`-other`) showing a count going up live.
+
+### 20.3 Search in private messages
+**Goal:** the Messages page finds a message by a word in the user's own conversations.
+**Read:** SPEC §7.8, §7.11, D38, D56.
+**Tasks:**
+1. Store: the messages index (FTS5 on SQLite, a generated `tsvector` with a GIN index on PostgreSQL), kept current through edits and deletions, with the bulk rebuild of the demo.
+2. `internal/app`: `Messages.Search`, only in the conversations the user is a member of now, words and phrases as in §7.8 with no tags, newest first, 30 a page.
+3. Pages: a search box on the Messages page, results with the highlighted snippet, each linking to the message in its conversation. API: `GET /messages/search`, in the OpenAPI document.
+
+**Tests:**
+- The permission table: another user's conversation, a conversation the user left, an admin.
+- The query cases of §7.8, and edits and deletions updating the index.
+- Both databases.
+
+**Proof:** `20.3-message-search.png`.
+
+## M21: The new look
+
+The owner picks the direction on the design canvas (D57). The manager writes it into the SPEC before step 21.1 starts; without an answer by then, the recommendation of D57 is used and recorded. Each step keeps every browser test passing and adds proofs in light, dark and at 390 px for the pages it changes.
+
+### 21.1 The foundations
+**Goal:** the theme, fonts, logo and page shell of the chosen direction, in light and dark.
+**Read:** SPEC D57, D58, D22 (or wherever the static files are described), and the chosen artboard on the design canvas.
+**Tasks:**
+1. The theme:
+   - the tokens as custom properties in `app.css`: colours, type scale, spacing, radii and shadows;
+   - light and dark palettes, chosen by `prefers-color-scheme` unless `data-theme` is set;
+   - the syntax palette of `code.css` in the same tokens.
+2. The fonts in `internal/web/static/fonts`: woff2 files of the chosen families with their OFL licenses, `@font-face` with `font-display: swap`, and a line in SPEC §15.
+3. The logo as SVG, the favicon (SVG, with a PNG fallback), and the inline SVG icon set as templ components.
+4. The shell: the header, the sidebar of rooms and conversations, the user menu (avatar → settings, theme, logout), and the pages that have no sidebar (login, sign-up, reset, the error pages).
+5. A test that reads the tokens from `app.css` and checks each declared pair of text and ground for a contrast of at least 4.5:1 in both palettes.
+
+**Tests:** the contrast test; the static files served with their types; the browser tests passing.
+
+**Proof:** `21.1-login-{light,dark}.png` and `21.1-shell-{light,dark}.png`.
+
+### 21.2 Rooms, feed and threads
+**Goal:** the room list, the feed, the post page, comments, the composer, attachments and reactions in the new look.
+**Tasks:**
+- Redo the templ views and CSS of these pages after the chosen artboard.
+- Reactions keep their emoji. The "new since" line, the unread counts and the code blocks use the tokens.
+- The composer keeps its behaviour, and nothing changes in the handlers except the markup the tests check.
+
+**Proof:** feed, post and thread, each in light, dark and at 390 px.
+
+### 21.3 Board, messages, search and notifications
+**Goal:** the board, the Messages pages, search and the notifications in the new look.
+**Tasks:** the same as 21.2, for these pages. On the board, drag and drop keep working and the columns scroll inside their box.
+
+**Proof:** board, a conversation, search results and notifications, each in light, dark and at 390 px.
+
+### 21.4 Settings, sessions and admin
+**Goal:** the settings page, the sessions and the admin pages (users, rooms, members, audit) in the new look.
+**Tasks:** the same as 21.2, for these pages. The admin tables scroll inside their box on a phone.
+
+**Proof:** settings, admin users and the audit log, each in light, dark and at 390 px.
+
+### 21.5 Phones and the installed app
+**Goal:** every page works from 360 px, and Clowder installs as an app.
+**Read:** SPEC D58.
+**Tasks:**
+1. A pass over every page at 360 and 390 px: no horizontal scroll, the room menu as a drawer, touch targets of at least 44 px, safe-area insets.
+2. `manifest.webmanifest`, the 192 and 512 px PNG icons and their maskable variants (rendered once from the SVG with `clowder-proof` and committed, with the command in `scripts/README.md`), and `theme-color` for both palettes.
+3. `sw.js`, which caches `/static/` only, with a test that it never answers a page, `/api/`, `/files/` or `/avatars/`.
+
+**Tests:**
+- A browser test at 390×844 that walks the main pages and fails when `scrollWidth > clientWidth`.
+- The manifest is valid JSON with its icons served.
+- The service worker's rule list.
+
+**Proof:** `21.5-phone-*.png` for the main pages, and `21.5-manifest.txt`.
+
+## M22: Operations and limits
+
+### 22.1 Backup and restore
+**Goal:** `clowder backup` makes an archive that `clowder restore` turns back into a working installation.
+**Read:** SPEC D59, README "Backups".
+**Tasks:**
+1. `clowder backup -o <file>` (`-data`, `-database-url`): on SQLite, `VACUUM INTO` a temp file in the data directory and tar.gz it with `files/` and `manifest.json`; on PostgreSQL, the files and the manifest, with the `pg_dump` command printed. It works while `serve` runs.
+2. `clowder restore -i <file> -data <dir>`: an empty directory only. It checks the manifest and every entry (no absolute paths, no `..`, no links, regular files and directories only, sizes as declared), and sets the file modes.
+3. Update the README's Backups section.
+
+**Tests:**
+- Backup while writing: the copy opens and has every committed row.
+- Round trip: backup, restore, serve, and the data is there.
+- The hostile archives: traversal, absolute path, symlink, a non-empty target.
+- A route test for every tag.
+
+**Proof:** `22.1-backup.txt` (backup of the demo while serving, restore into an empty directory, apicheck against the restored server).
+
+### 22.2 Metrics
+**Goal:** `/metrics` on `-metrics-addr` answers the counters of D60.
+**Read:** SPEC D60, §8, §9.
+**Tasks:**
+1. `internal/metrics`: counters, gauges and histograms with fixed label sets, and the text format written by hand.
+2. Report from:
+   - the request middleware (the route pattern from `http.ServeMux`, never the raw path);
+   - the streams and WebSockets, and the hub (drops by reason);
+   - logins, SSH codes, the store's pool stats, the Redis bridge, and the runtime.
+3. `-metrics-addr` and `CLOWDER_METRICS_ADDR`, validated: its own `http.Server`, shut down with the rest. Document it in the README, with a Prometheus scrape example.
+
+**Tests:**
+- The text format against golden output.
+- The labels never carry an ID or a username: a test that makes requests with IDs and scans the output.
+- The listener is off by default.
+- A route test for every tag.
+
+**Proof:** `22.2-metrics.txt` (the output after a short apicheck run).
+
+### 22.3 Per-user limits and govulncheck
+**Goal:** the limits of D62 hold, and `govulncheck` is a standard check.
+**Read:** SPEC D47, D61, D62.
+**Tasks:**
+1. A per-user, per-process count of live connections (SSE and WebSocket), with `429` past 30. Staged-upload bytes per user (`413` past 10 × the attachment limit). A sign-up with an unknown token counts in the limiter.
+2. Add `golang.org/x/vuln/cmd/govulncheck` as a `tool` in `go.mod`, and add `go tool govulncheck ./...` to rule 8 of this file, CLAUDE.md's Definition of done and `scripts/README.md`. Run it, and fix or record what it finds.
+3. Update `docs/SECURITY.md`: the accepted risks of D47 are now handled.
+
+**Tests:** each limit at its boundary, on SSE, on WebSocket and on uploads, and the limiter on sign-up.
+
+**Proof:** `22.3-govulncheck.txt`.
+
+## M23: 1.2
+
+### 23.1 Security review and documentation
+**Goal:** the 1.2 surface is reviewed, documented and measured.
+**Read:** SPEC §3b, §7.14–§7.17, D49–D62, `docs/SECURITY.md`, `docs/PERFORMANCE.md`.
+**Tasks:**
+1. Review, as 17.1 did, and record it in a "Clowder 1.2" part of `docs/SECURITY.md`:
+   - the SSH server: authentication, refused requests, resource limits, the host key's file mode, the log contents, a fuzz test of the key parsing;
+   - the codes: entropy, single use, timing-safe comparison, the limiter;
+   - the pending login cookie, the reset links and the avatars (decompression bombs, polyglots, the served content type);
+   - the settings routes, the mutes, and the search of messages;
+   - the service worker's scope, the metrics listener, and restoring hostile archives.
+
+   Fix what is found, with tests.
+2. Update the docs:
+   - the README: settings, the SSH codes (with the compose port and firewall advice), the reset, backups, metrics, the PWA;
+   - `docs/API.md`: the new routes, the login with `ssh_code`, mutes and settings events, unread counts, message search, the code CSS classes.
+3. A short check of SPEC §10 on SQLite and PostgreSQL with the unread counts and the new look, in `docs/PERFORMANCE.md`.
+
+**Done when:** the standard checks (with govulncheck) and the browser tests pass, and the review is recorded.
+
+### 23.2 Release 1.2
+**Goal:** version 1.2.0 is published.
+**Tasks:**
+1. Run every check, `scripts/test-docker.sh`, every browser test and `scripts/compose-smoke.sh` (both modes). Update the SPEC's status to 1.2.
+2. Publish the step, then make and push the annotated tag `v1.2.0` on it (CLAUDE.md "Git and GitHub").
+
+**Done when:** `v1.2.0` is on `origin`.
