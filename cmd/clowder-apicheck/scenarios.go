@@ -58,6 +58,7 @@ func scenarios() []scenario {
 		{name: "rooms", summary: "list the rooms, leave and join one, make a room with a member, post, comment, react, edit, read the thread, delete", run: roomsScenario},
 		{name: "board", summary: "upload files, post them with a task, work the board, download, search, and read the notifications as the assignee", run: boardScenario},
 		{name: "messages", summary: "start a conversation, send a file, reply as the other user, react, edit, delete, read, make a group, rename it and leave", run: messagesScenario},
+		{name: settingsScenarioName, summary: "change the display name and the theme, upload an avatar and fetch it, change the password and see the other login end, put everything back", run: settingsScenario},
 		{name: "admin", summary: "as an admin: list the users, make an invitation, list the rooms and read the audit log; as a member: refused", run: adminScenario},
 		{name: watchScenarioName, summary: "open the WebSocket, subscribe to a room, its board and a conversation, and see the events of the other user's writes", run: watchScenario},
 	}

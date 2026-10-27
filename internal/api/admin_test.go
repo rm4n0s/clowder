@@ -468,7 +468,7 @@ func TestAdminAuditMistakes(t *testing.T) {
 		{"?page=0", "page"}, {"?page=-1", "page"}, {"?page=abc", "page"}, {"?page=", "page"},
 		{"?room_id=0", "room_id"}, {"?room_id=abc", "room_id"}, {"?room_id=", "room_id"}, {"?room_id=-3", "room_id"},
 		{"?actor_id=0", "actor_id"}, {"?actor_id=x", "actor_id"},
-		{"?entity_type=user", "entity_type"}, {"?entity_type=", "entity_type"}, {"?entity_type=Post", "entity_type"},
+		{"?entity_type=poke", "entity_type"}, {"?entity_type=", "entity_type"}, {"?entity_type=Post", "entity_type"},
 		{"?action=post.exploded", "action"}, {"?action=", "action"},
 		{"?from=yesterday", "from"}, {"?from=2026-13-01", "from"}, {"?from=2026-10-26T10:00:00Z", "from"}, {"?from=", "from"},
 		{"?to=26/10/2026", "to"}, {"?to=2026-1-5", "to"},

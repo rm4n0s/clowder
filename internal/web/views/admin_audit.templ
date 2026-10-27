@@ -88,7 +88,7 @@ templ AuditFilters(d AuditData) {
 				<select id="audit-entity" name="entity">
 					<option value="" selected?={ d.Filter.Entity == "" }>Any type</option>
 					for _, e := range d.Entities {
-						<option value={ e } selected?={ d.Filter.Entity == e }>{ e }</option>
+						<option value={ e } selected?={ d.Filter.Entity == e }>{ AuditEntityLabel(e) }</option>
 					}
 				</select>
 			</div>
@@ -170,7 +170,9 @@ templ auditRow(row AuditRow) {
 		<td class="audit-time"><time datetime={ row.Event.CreatedAt.UTC().Format("2006-01-02T15:04:05Z") }>{ row.Event.CreatedAt.UTC().Format("2006-01-02 15:04") }</time></td>
 		<td class="audit-actor">{ row.Event.ActorDisplayName } <span class="member-username">{ "@" + row.Event.ActorUsername }</span></td>
 		<td class="audit-room">
-			if row.RoomExists {
+			if row.Event.RoomID == 0 {
+				<span class="hint">None</span>
+			} else if row.RoomExists {
 				<a href={ templ.SafeURL(adminRoomLink(row.Event.RoomID)) }>{ auditRoomLabel(row.RoomName) }</a>
 			} else if row.RoomName != "" {
 				<span class="deleted-room">{ auditRoomLabel(row.RoomName) } <span class="hint">(deleted)</span></span>

@@ -30,6 +30,8 @@ const (
 	databaseFile = "clowder.db"
 	// filesDir is the directory of the attachments inside the data directory.
 	filesDir = "files"
+	// avatarsDir is the directory of the avatars inside the files directory.
+	avatarsDir = "avatars"
 )
 
 // runServe runs the server until ctx is done.
@@ -60,6 +62,10 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	if err != nil {
 		return err
 	}
+	avatarStore, err := files.New(filepath.Join(cfg.DataDir, filesDir, avatarsDir))
+	if err != nil {
+		return err
+	}
 	hub := live.New()
 	defer hub.Close()
 	pub, closeBridge, err := newPublisher(ctx, cfg.RedisURL, hub, logger, openBridge)
@@ -77,6 +83,8 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		SessionLifetime:    cfg.SessionLifetime,
 		Limiter:            limiter,
 		Publisher:          pub,
+		Avatars:            avatarStore,
+		Logger:             logger,
 	})
 	postsConfig := app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,

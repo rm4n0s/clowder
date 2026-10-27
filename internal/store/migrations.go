@@ -18,6 +18,7 @@ func migrationList() []dialectMigration {
 	return []dialectMigration{
 		{ID: "0001_posts_fts", SQLite: migrationPostsFTS, Postgres: migrationPostsSearchPostgres},
 		{ID: "0002_posts_feed_roots", SQLite: migrationPostsFeedRootsSQLite, Postgres: migrationPostsFeedRootsPostgres},
+		{ID: "0003_audit_entity_user", SQLite: migrationAuditEntityUserSQLite, Postgres: migrationAuditEntityUserPostgres},
 	}
 }
 
@@ -124,3 +125,48 @@ CREATE INDEX idx_posts_feed_roots ON posts (room_id, id DESC) WHERE parent_id IS
 const migrationPostsFeedRootsSQLite = `
 SELECT 1;
 `
+
+// migrationAuditEntityUserPostgres lets the audit log hold events about
+// accounts (SPEC §7.10, 1.2): the entity type "user" joins the others in the
+// check constraint. The constraint is dropped and added again; the rows are
+// not touched. Where the table was made by this version the constraint is
+// there already, and the two statements change nothing.
+const migrationAuditEntityUserPostgres = `
+ALTER TABLE audit_events DROP CONSTRAINT IF EXISTS chk_audit_events_entity_type;
+ALTER TABLE audit_events ADD CONSTRAINT chk_audit_events_entity_type
+  CHECK (entity_type IN ('room','post','comment','task','column','member','user'));
+`
+
+// migrationAuditEntityUserSQLite is migrationAuditEntityUserPostgres for
+// SQLite, which cannot change a check constraint: the table is made again
+// under another name with the new constraint, every row is copied with its ID
+// and its time, the old table is dropped, the new one takes its name and the
+// indexes are made again. It all runs in the transaction of the migration, so
+// a failure leaves the old table. The text of the new table is what GORM makes
+// for the model, so that AutoMigrate finds nothing to change at the next
+// start. No other table has a foreign key to audit_events. A table made by
+// this version is rebuilt too, which costs nothing while it is empty. This is
+// the one place where audit events are copied; the log stays append-only for
+// everything else.
+const migrationAuditEntityUserSQLite = "" +
+	"CREATE TABLE audit_events_new (" +
+	"`id` integer PRIMARY KEY AUTOINCREMENT," +
+	"`created_at` datetime," +
+	"`actor_id` integer NOT NULL," +
+	"`action` text NOT NULL," +
+	"`room_id` integer NOT NULL," +
+	"`entity_type` text NOT NULL," +
+	"`entity_id` integer NOT NULL," +
+	"`summary` text NOT NULL," +
+	"`details` text NOT NULL," +
+	"CONSTRAINT `fk_audit_events_actor` FOREIGN KEY (`actor_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT," +
+	"CONSTRAINT `chk_audit_events_entity_type` CHECK (entity_type IN ('room','post','comment','task','column','member','user'))," +
+	"CONSTRAINT `chk_audit_events_details_json` CHECK (json_valid(details)));\n" +
+	"INSERT INTO audit_events_new (id, created_at, actor_id, action, room_id, entity_type, entity_id, summary, details) " +
+	"SELECT id, created_at, actor_id, action, room_id, entity_type, entity_id, summary, details FROM audit_events ORDER BY id;\n" +
+	"DROP TABLE audit_events;\n" +
+	"ALTER TABLE audit_events_new RENAME TO audit_events;\n" +
+	"CREATE INDEX `idx_audit_events_created_at` ON `audit_events`(`created_at`);\n" +
+	"CREATE INDEX `idx_audit_events_action` ON `audit_events`(`action`,`id`);\n" +
+	"CREATE INDEX `idx_audit_events_actor` ON `audit_events`(`actor_id`,`id`);\n" +
+	"CREATE INDEX `idx_audit_events_room` ON `audit_events`(`room_id`,`id`);\n"

@@ -183,11 +183,32 @@ func (ws *wsSession) sendEvent(ctx context.Context, ev live.Event, data any) err
 
 // onUserEvent handles an event of the user's own topic: the counts, the
 // notifications, the conversations of the user, their memberships of rooms,
-// and their account (SPEC D37).
+// their account (SPEC D37), and their profile and settings (user.updated and
+// settings.changed).
 func (ws *wsSession) onUserEvent(ctx context.Context, ev live.Event) error {
 	switch ev.Kind {
 	case live.KindUserChanged:
 		return ws.checkSession(ctx)
+	case live.KindUserUpdated:
+		sess, err := ws.s.svc.Accounts.APISessionActor(ctx, ws.token)
+		if err != nil {
+			if isTag(err, app.TagUnauthenticated) {
+				// The session ended; the user.changed that ended it closes the
+				// connection.
+				return nil
+			}
+			return err
+		}
+		return ws.sendEvent(ctx, ev, userOf(sess.User))
+	case live.KindSettingsChanged:
+		settings, err := ws.s.svc.Accounts.Settings(ctx, ws.actor)
+		if err != nil {
+			if isTag(err, app.TagUnauthenticated) {
+				return nil
+			}
+			return err
+		}
+		return ws.sendEvent(ctx, ev, settingsOf(settings))
 	case live.KindNotificationCreated:
 		return ws.notificationCreated(ctx, ev)
 	case live.KindNotificationRead, live.KindConversationRead:

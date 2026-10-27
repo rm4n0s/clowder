@@ -179,6 +179,7 @@ func (s *Server) defineRoutes() []Route {
 	var routes []Route
 	routes = append(routes, s.authRoutes()...)
 	routes = append(routes, s.meRoutes()...)
+	routes = append(routes, s.settingsRoutes()...)
 	routes = append(routes, s.userRoutes()...)
 	routes = append(routes, s.roomRoutes()...)
 	routes = append(routes, s.postRoutes()...)

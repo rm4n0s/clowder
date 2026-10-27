@@ -122,10 +122,15 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	}
 	hub := live.New()
 	t.Cleanup(hub.Close)
+	avatarStore, err := files.New(filepath.Join(t.TempDir(), "avatars"))
+	if err != nil {
+		t.Fatalf("files.New: %+v", err)
+	}
 	accounts := app.NewAccounts(st, clk, auth.FastHasher(), app.AccountsConfig{
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
 		Publisher:          hub,
+		Avatars:            avatarStore,
 	})
 	filesDir := filepath.Join(t.TempDir(), "files")
 	fileStore, err := files.New(filesDir)

@@ -299,6 +299,7 @@ templ MembersPanel(d RoomData) {
 		<ul class="member-list">
 			for _, m := range d.Members {
 				<li id={ "member-" + roomIDText(m.UserID) } data-username={ m.Username }>
+					@Avatar(m.UserID, m.DisplayName, m.AvatarURL())
 					<span class="member-name">{ m.DisplayName }</span>
 					<span class="member-username">{ "@" + m.Username }</span>
 					<span class="hint member-added">

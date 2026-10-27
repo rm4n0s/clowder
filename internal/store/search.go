@@ -164,6 +164,8 @@ type SearchHit struct {
 	AuthorUsername string
 	// AuthorDisplayName is the display name of the author.
 	AuthorDisplayName string
+	// AuthorAvatarKey is the avatar key of the author; empty for none.
+	AuthorAvatarKey string
 	// CreatedAt is when the post was written.
 	CreatedAt time.Time
 	// Snippet is the matching text, not escaped: with words, a piece of the
@@ -201,7 +203,8 @@ func (s *Store) SearchPosts(ctx context.Context, q SearchQuery) ([]SearchHit, er
 
 	sb.WriteString(`SELECT p.id AS post_id, COALESCE(p.root_id, 0) AS root_id, (p.parent_id IS NOT NULL) AS is_comment,
   p.room_id AS room_id, r.name AS room_name, p.author_id AS author_id,
-  u.username AS author_username, u.display_name AS author_display_name, p.created_at AS created_at, `)
+  u.username AS author_username, u.display_name AS author_display_name, u.avatar_key AS author_avatar_key,
+  p.created_at AS created_at, `)
 	if words {
 		sb.WriteString("snippet(posts_fts, 0, ?, ?, '…', ?) AS snippet FROM posts_fts JOIN posts p ON p.id = posts_fts.rowid ")
 		args = append(args, SearchMarkStart, SearchMarkEnd, snippetTokens)

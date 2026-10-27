@@ -70,7 +70,8 @@ func (s *Store) searchPostsPostgres(ctx context.Context, q SearchQuery) ([]Searc
 	words := len(q.Terms) > 0
 	columns := `p.id AS post_id, COALESCE(p.root_id, 0) AS root_id, (p.parent_id IS NOT NULL) AS is_comment,
   p.room_id AS room_id, r.name AS room_name, p.author_id AS author_id,
-  u.username AS author_username, u.display_name AS author_display_name, p.created_at AS created_at`
+  u.username AS author_username, u.display_name AS author_display_name, u.avatar_key AS author_avatar_key,
+  p.created_at AS created_at`
 	if words {
 		expr, ok := tsQueryExpression(q.Terms)
 		if !ok {
@@ -102,7 +103,7 @@ WHERE p.deleted_at IS NULL
 		// snippet is made again from the original text (see snippetOf).
 		sb.WriteString(`
 SELECT h.post_id, h.root_id, h.is_comment, h.room_id, h.room_name, h.author_id, h.author_username,
-  h.author_display_name, h.created_at, x.headline AS headline,
+  h.author_display_name, h.author_avatar_key, h.created_at, x.headline AS headline,
   strpos(z.norm, y.plain) AS fragment_pos, char_length(y.plain) AS fragment_len,
   substr(h.body_text, strpos(z.norm, y.plain), char_length(y.plain)) AS fragment,
   char_length(h.body_text) AS text_len

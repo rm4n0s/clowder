@@ -649,3 +649,28 @@ func TestAdminAuditIgnoresUnknownParameters(t *testing.T) {
 		t.Errorf("%d events, want alice's 3: %v", len(got), got)
 	}
 }
+
+// TestAdminAuditAccountEvents: the events about accounts belong to no room;
+// the filter has an "Accounts" choice and the row says there is no room.
+func TestAdminAuditAccountEvents(t *testing.T) {
+	t.Parallel()
+	e := newAuditEnv(t)
+	e.insertEvent(t, store.AuditEvent{
+		ActorID: e.alice.ID, Action: store.ActionUserPasswordChanged, RoomID: store.NoRoom, EntityType: store.EntityUser,
+		EntityID: e.alice.ID, Summary: "Alice changed their password", Details: "{}",
+	})
+	if got := e.auditPage(t, "?entity=user"); !reflect.DeepEqual(got, []string{"Alice changed their password"}) {
+		t.Errorf("entity=user: %v", got)
+	}
+	if got := e.auditPage(t, "?action=user.password_changed"); !reflect.DeepEqual(got, []string{"Alice changed their password"}) {
+		t.Errorf("action=user.password_changed: %v", got)
+	}
+	if got := e.auditPage(t, "?entity=room"); len(got) == 0 || got[0] == "Alice changed their password" {
+		t.Errorf("entity=room includes the account event: %v", got)
+	}
+	rec := e.send(get("/admin/audit?entity=user", e.cookies["admin"]))
+	requireBody(t, rec, []string{
+		`<option value="user" selected>Accounts</option>`, `<option value="user.password_changed">user.password_changed</option>`,
+		`<td class="audit-room"><span class="hint">None</span></td>`, `<code>user.password_changed</code>`,
+	}, "Room 0", "(deleted)", "The entity type filter is not valid.")
+}

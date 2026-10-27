@@ -26,7 +26,7 @@
     },
     {
       "name": "me",
-      "description": "The logged-in user and their sessions."
+      "description": "The logged-in user, their profile, avatar, password, settings and sessions."
     },
     {
       "name": "users",
@@ -264,6 +264,314 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Change my profile",
+        "operationId": "updateMe",
+        "description": "Sets the display name (trimmed, 1 to 64 characters; 422 on display_name otherwise, and when it is missing) and returns the user. The user's connections get a user.updated event.",
+        "requestBody": {
+          "required": true,
+          "description": "The new display name.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The user as changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me/settings": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Get my settings",
+        "operationId": "getSettings",
+        "description": "Returns the theme, the sound and the browser notifications of the user; the defaults (system, on, off) while none are saved.",
+        "responses": {
+          "200": {
+            "description": "The settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Change my settings",
+        "operationId": "updateSettings",
+        "description": "Changes the settings that are in the body and keeps the others (a missing or null setting stays), and returns the settings. A body with no setting is 422, and so is a theme that is not system, light or dark. The user's connections get a settings.changed event.",
+        "requestBody": {
+          "required": true,
+          "description": "The settings to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The settings as changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me/avatar": {
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Set my avatar",
+        "operationId": "setAvatar",
+        "description": "Makes the picture the avatar of the user and returns the user. The body is multipart/form-data with exactly one file in the field file and nothing else (422 on file otherwise; 415 for another Content-Type). The picture is a PNG, JPEG or GIF (its first frame) of at most 2 MiB (422 on file when larger; 413 when the whole request is much larger) and 4096 by 4096 pixels, checked from its header before it is decoded. Clowder cuts the centre square, scales it to 256 by 256 pixels and stores it as a PNG; the old avatar is removed. The user's connections get a user.updated event.",
+        "requestBody": {
+          "required": true,
+          "description": "A form with the picture.",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The picture."
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The user, with the new avatar_url.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Remove my avatar",
+        "operationId": "deleteAvatar",
+        "description": "Removes the avatar of the user, which brings back the initials on a colour. A user without an avatar is not an error. The user's connections get a user.updated event.",
+        "responses": {
+          "204": {
+            "description": "The avatar is gone."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me/password": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Change my password",
+        "operationId": "changePassword",
+        "description": "Checks the current password and sets the new one. Every other session of the user, browsers and apps (API tokens), ends in the same step, and the session of this request stays; the audit log records user.password_changed. A wrong current_password is 422 on current_password and counts as a failed login of the username in the limiter, which answers 429 once it blocks. A new_password shorter than 12 characters, longer than 1024 bytes or equal to the current one is 422 on new_password.",
+        "requestBody": {
+          "required": true,
+          "description": "The current password and the new one.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The password is changed."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/avatars/{id}": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Download an avatar",
+        "operationId": "downloadAvatar",
+        "description": "Sends the avatar of a user, a PNG of 256 by 256 pixels, to any logged-in user: it is the address in avatar_url. The address carries the key of the avatar, so the picture is cached for a day. 404 for a user without an avatar and for an unknown user.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the user.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The picture.",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "private, max-age=86400.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "The key of the avatar, quoted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "description": "Always nosniff.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The picture has not changed since If-None-Match."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -3328,7 +3636,8 @@
                 "comment",
                 "task",
                 "column",
-                "member"
+                "member",
+                "user"
               ]
             }
           },
@@ -3357,7 +3666,8 @@
                 "member.removed",
                 "room.created",
                 "room.renamed",
-                "room.deleted"
+                "room.deleted",
+                "user.password_changed"
               ]
             }
           },
@@ -3543,6 +3853,13 @@
             "type": "string",
             "description": "The name shown to other people."
           },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where to fetch the avatar of the user, GET with the bearer token (relative to the host: /api/v1/avatars/{id}?v=<key>); null when the user has none. The address changes when the avatar does, so a client may cache the picture by it."
+          },
           "role": {
             "type": "string",
             "enum": [
@@ -3561,6 +3878,7 @@
           "id",
           "username",
           "display_name",
+          "avatar_url",
           "role",
           "created_at"
         ],
@@ -3807,12 +4125,20 @@
           "display_name": {
             "type": "string",
             "description": "The name shown to other people."
+          },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where to fetch the avatar of the user, GET with the bearer token (relative to the host: /api/v1/avatars/{id}?v=<key>); null when the user has none. The address changes when the avatar does, so a client may cache the picture by it."
           }
         },
         "required": [
           "id",
           "username",
-          "display_name"
+          "display_name",
+          "avatar_url"
         ],
         "additionalProperties": false
       },
@@ -5383,6 +5709,13 @@
             "type": "string",
             "description": "The name shown to other people."
           },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where to fetch the avatar of the user, GET with the bearer token (relative to the host: /api/v1/avatars/{id}?v=<key>); null when the user has none. The address changes when the avatar does, so a client may cache the picture by it."
+          },
           "role": {
             "type": "string",
             "enum": [
@@ -5405,6 +5738,7 @@
           "id",
           "username",
           "display_name",
+          "avatar_url",
           "role",
           "disabled",
           "created_at"
@@ -5535,14 +5869,15 @@
               "member.removed",
               "room.created",
               "room.renamed",
-              "room.deleted"
+              "room.deleted",
+              "user.password_changed"
             ],
             "description": "What happened."
           },
           "room_id": {
             "type": "integer",
             "minimum": 0,
-            "description": "The room of the change. The room may be gone."
+            "description": "The room of the change. The room may be gone. 0 for an event about an account, which belongs to no room."
           },
           "entity_type": {
             "type": "string",
@@ -5552,7 +5887,8 @@
               "comment",
               "task",
               "column",
-              "member"
+              "member",
+              "user"
             ],
             "description": "The kind of the entity that changed."
           },
@@ -5826,7 +6162,7 @@
       },
       "WsEvent": {
         "type": "object",
-        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each.",
+        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections.",
         "properties": {
           "type": {
             "const": "event"
@@ -5858,7 +6194,9 @@
               "message.reaction",
               "conversation.updated",
               "conversation.changed",
-              "conversation.read"
+              "conversation.read",
+              "user.updated",
+              "settings.changed"
             ],
             "description": "What happened."
           },
@@ -5924,6 +6262,12 @@
               },
               {
                 "$ref": "#/components/schemas/WsConversationRead"
+              },
+              {
+                "$ref": "#/components/schemas/User"
+              },
+              {
+                "$ref": "#/components/schemas/Settings"
               }
             ]
           }
@@ -5975,6 +6319,105 @@
             "$ref": "#/components/schemas/WsResync"
           }
         ]
+      },
+      "Settings": {
+        "type": "object",
+        "description": "The preferences of the user (SPEC 7.14): they follow the user to every browser and client.",
+        "properties": {
+          "theme": {
+            "type": "string",
+            "enum": [
+              "system",
+              "light",
+              "dark"
+            ],
+            "description": "The look: system follows the setting of the device (the default), light and dark override it."
+          },
+          "sound": {
+            "type": "boolean",
+            "description": "True when the user wants a sound for what is new (the default)."
+          },
+          "browser_notifications": {
+            "type": "boolean",
+            "description": "True when the user wants notifications of the browser (off by default)."
+          }
+        },
+        "required": [
+          "theme",
+          "sound",
+          "browser_notifications"
+        ],
+        "additionalProperties": false
+      },
+      "SettingsPatch": {
+        "type": "object",
+        "description": "The settings to change. A setting that is not there, or is null, stays as it is; at least one must be there (422 otherwise).",
+        "properties": {
+          "theme": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "system",
+              "light",
+              "dark",
+              null
+            ],
+            "description": "The new theme."
+          },
+          "sound": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The new value of the sound."
+          },
+          "browser_notifications": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The new value of the browser notifications."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProfilePatch": {
+        "type": "object",
+        "description": "The new profile of the user.",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The new display name, trimmed: 1 to 64 characters."
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "additionalProperties": false
+      },
+      "PasswordRequest": {
+        "type": "object",
+        "description": "The current password and the new one.",
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "description": "The password the user has now."
+          },
+          "new_password": {
+            "type": "string",
+            "minLength": 12,
+            "description": "The new password: at least 12 characters, at most 1024 bytes, and not the current one."
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "additionalProperties": false
       }
     },
     "responses": {
@@ -6065,7 +6508,7 @@
         }
       },
       "UnsupportedMediaType": {
-        "description": "The Content-Type of the body is not the one the route reads: application/json, or multipart/form-data for POST /uploads.",
+        "description": "The Content-Type of the body is not the one the route reads: application/json, or multipart/form-data for POST /uploads and PUT /me/avatar.",
         "content": {
           "application/json": {
             "schema": {

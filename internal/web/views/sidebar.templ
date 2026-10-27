@@ -26,13 +26,18 @@ type SidebarData struct {
 }
 
 // Sidebar is the sidebar of the pages of a logged-in user: the display name of
-// the user, the search box, the navigation (Home, Messages and Notifications with
+// the user with their avatar (a link to the settings), the search box, the navigation (Home, Messages and Notifications with
 // their unread counts, and Admin for admins), the
 // rooms of the user with the links to browse and to make rooms, and the logout
 // button.
 templ Sidebar(d SidebarData) {
-	<p class="sidebar-user" id="sidebar-user">{ d.User.DisplayName }</p>
-	<p class="sidebar-account"><a href={ templ.SafeURL(SessionsPath) }>Sessions</a></p>
+	<div class="sidebar-profile" id="sidebar-profile">
+		<a class="sidebar-avatar" href={ templ.SafeURL(SettingsPath) } title="Settings" aria-label="Settings">
+			@AvatarSized(d.User.ID, d.User.DisplayName, d.User.AvatarURL(), "md")
+		</a>
+		<p class="sidebar-user" id="sidebar-user">{ d.User.DisplayName }</p>
+	</div>
+	<p class="sidebar-account"><a href={ templ.SafeURL(SettingsPath) }>Settings</a></p>
 	if !d.HideSearch {
 		@SearchBar()
 	}

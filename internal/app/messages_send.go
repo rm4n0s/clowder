@@ -420,7 +420,7 @@ func (m *Messages) messageViews(ctx context.Context, actor Actor, rows []store.M
 		v := Message{
 			ID:             r.ID,
 			ConversationID: r.ConversationID,
-			Author:         UserRef{ID: r.AuthorID, Username: r.AuthorUsername, DisplayName: r.AuthorDisplayName},
+			Author:         UserRef{ID: r.AuthorID, Username: r.AuthorUsername, DisplayName: r.AuthorDisplayName, AvatarKey: r.AuthorAvatarKey},
 			Body:           r.Body,
 			CreatedAt:      r.CreatedAt,
 			EditedAt:       r.EditedAt,
@@ -439,7 +439,7 @@ func (m *Messages) messageViews(ctx context.Context, actor Actor, rows []store.M
 			if q, ok := quoted[*r.ReplyToID]; ok {
 				v.ReplyTo = &MessageQuote{
 					ID:      q.ID,
-					Author:  UserRef{ID: q.AuthorID, Username: q.AuthorUsername, DisplayName: q.AuthorDisplayName},
+					Author:  UserRef{ID: q.AuthorID, Username: q.AuthorUsername, DisplayName: q.AuthorDisplayName, AvatarKey: q.AuthorAvatarKey},
 					Preview: previewOf(q.DeletedAt != nil, q.Body, attachmentNames(attachments[q.ID])),
 					Deleted: q.DeletedAt != nil,
 				}

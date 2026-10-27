@@ -1,0 +1,77 @@
+package views
+
+import (
+	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+// avatarColours is the number of colours of the palette that gives a user
+// without an avatar a colour for their initials (SPEC §7.14). The colours
+// are the classes avatar-c0 to avatar-c7 of the stylesheet.
+const avatarColours = 8
+
+// AvatarColourIndex is the number of the colour, 0 to 7, of the initials of
+// the user with the ID: the same user always gets the same colour.
+func AvatarColourIndex(id uint64) int {
+	return int(id % avatarColours)
+}
+
+// Initials returns the letters shown for a user without an avatar: the first
+// letter of the first word of the display name and of the last one, in upper
+// case; the first letter alone for a name of one word; "?" for a name with
+// no letters.
+func Initials(displayName string) string {
+	words := strings.FieldsFunc(displayName, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	switch len(words) {
+	case 0:
+		return "?"
+	case 1:
+		return firstUpper(words[0])
+	default:
+		return firstUpper(words[0]) + firstUpper(words[len(words)-1])
+	}
+}
+
+// firstUpper returns the first character of s in upper case.
+func firstUpper(s string) string {
+	r, _ := utf8.DecodeRuneInString(s)
+	return string(unicode.ToUpper(r))
+}
+
+// avatarClass is the class of the avatar of the user with the ID and the size
+// ("sm", "md" or "lg").
+func avatarClass(id uint64, size string) string {
+	return "avatar avatar-" + size + " avatar-c" + strconv.Itoa(AvatarColourIndex(id))
+}
+
+// avatarPixels is the width and the height attribute of the picture of an
+// avatar of the size, so that the page does not move when it loads.
+func avatarPixels(size string) string {
+	switch size {
+	case "lg":
+		return "96"
+	case "md":
+		return "36"
+	default:
+		return "24"
+	}
+}
+
+// Avatar draws the small avatar of a user next to their name: their picture
+// when url is not empty, else their initials on a colour picked from their ID.
+// The name is next to it in the page, so the picture has no text of its own.
+templ Avatar(id uint64, displayName, url string) {
+	@AvatarSized(id, displayName, url, "sm")
+}
+
+// AvatarSized is Avatar in one of the sizes "sm" (24 px), "md" (36 px) and
+// "lg" (96 px).
+templ AvatarSized(id uint64, displayName, url, size string) {
+	if url != "" {
+		<img class={ "avatar avatar-" + size } src={ url } alt="" width={ avatarPixels(size) } height={ avatarPixels(size) } loading="lazy" decoding="async"/>
+	} else {
+		<span class={ avatarClass(id, size) } aria-hidden="true">{ Initials(displayName) }</span>
+	}
+}

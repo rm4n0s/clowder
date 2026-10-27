@@ -144,6 +144,45 @@ func (s *Store) SetUserDisabled(ctx context.Context, id uint64, disabled bool) e
 	return nil
 }
 
+// SetUserDisplayName sets the display name of the user id. It fails with
+// TagNotFound when there is no such user.
+func (s *Store) SetUserDisplayName(ctx context.Context, id uint64, displayName string) error {
+	res := s.db(ctx).Model(&User{}).Where("id = ?", id).Update("display_name", displayName)
+	if res.Error != nil {
+		return errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "setUserDisplayName")
+	}
+	if res.RowsAffected == 0 {
+		return errors.New(TagNotFound, "no user with this ID", "op", "setUserDisplayName", "userID", id)
+	}
+	return nil
+}
+
+// SetUserAvatarKey sets the avatar key of the user id; an empty key removes
+// the avatar. It fails with TagNotFound when there is no such user.
+func (s *Store) SetUserAvatarKey(ctx context.Context, id uint64, key string) error {
+	res := s.db(ctx).Model(&User{}).Where("id = ?", id).Update("avatar_key", key)
+	if res.Error != nil {
+		return errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "setUserAvatarKey")
+	}
+	if res.RowsAffected == 0 {
+		return errors.New(TagNotFound, "no user with this ID", "op", "setUserAvatarKey", "userID", id)
+	}
+	return nil
+}
+
+// SetUserPasswordHash replaces the password hash of the user id. It fails
+// with TagNotFound when there is no such user.
+func (s *Store) SetUserPasswordHash(ctx context.Context, id uint64, hash string) error {
+	res := s.db(ctx).Model(&User{}).Where("id = ?", id).Update("password_hash", hash)
+	if res.Error != nil {
+		return errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "setUserPasswordHash")
+	}
+	if res.RowsAffected == 0 {
+		return errors.New(TagNotFound, "no user with this ID", "op", "setUserPasswordHash", "userID", id)
+	}
+	return nil
+}
+
 // adminLockKey is the key of the PostgreSQL advisory lock that LockAdmins
 // takes.
 const adminLockKey int64 = 0x61646d696e73
@@ -210,6 +249,17 @@ func (s *Store) DeleteSessionsOfUser(ctx context.Context, userID uint64) error {
 	err := s.db(ctx).Where("user_id = ?", userID).Delete(&Session{}).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "deleteSessionsOfUser")
+	}
+	return nil
+}
+
+// DeleteSessionsOfUserExcept deletes every session of the user but the one
+// with the ID keep, which logs the user out everywhere else. It is not an
+// error when there are none.
+func (s *Store) DeleteSessionsOfUserExcept(ctx context.Context, userID, keep uint64) error {
+	err := s.db(ctx).Where("user_id = ? AND id <> ?", userID, keep).Delete(&Session{}).Error
+	if err != nil {
+		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "deleteSessionsOfUserExcept")
 	}
 	return nil
 }

@@ -63,7 +63,7 @@ func TestModelsRoundTrip(t *testing.T) {
 		{"User", "users", func(f *fix) any {
 			return &User{
 				Username: "alice", DisplayName: "Alice A", PasswordHash: "$argon2id$x", Role: RoleAdmin,
-				DisabledAt: ptr(day(time.Hour)),
+				DisabledAt: ptr(day(time.Hour)), AvatarKey: "0123abcd",
 			}
 		}},
 		{"Invitation", "invitations", func(f *fix) any {
@@ -172,6 +172,9 @@ func TestModelsRoundTrip(t *testing.T) {
 			u := f.user()
 			return &MessageReaction{MessageID: f.message(f.group(u), u).ID, UserID: u.ID, Emoji: "ok"}
 		}},
+		{"UserSettings", "user_settings", func(f *fix) any {
+			return &UserSettings{UserID: f.user().ID, Theme: ThemeDark, Sound: false, BrowserNotifications: true}
+		}},
 		{"AuditEvent", "audit_events", func(f *fix) any {
 			return &AuditEvent{
 				ActorID: f.user().ID, Action: ActionRoomRenamed, RoomID: 77, EntityType: EntityRoom, EntityID: 77,
@@ -222,8 +225,8 @@ func TestEveryModelIsMigrated(t *testing.T) {
 			t.Errorf("no table for %T", m)
 		}
 	}
-	if got := len(allModels()); got != 21 {
-		t.Errorf("%d models, want the 21 of SPEC §6.3", got)
+	if got := len(allModels()); got != 22 {
+		t.Errorf("%d models, want the 22 of SPEC §6.3", got)
 	}
 }
 
@@ -419,7 +422,10 @@ func TestCheckConstraints(t *testing.T) {
 			return &MessageAttachment{MessageID: f.message(f.group(u), u).ID, UploaderID: u.ID, Size: -1, StorageKey: "k"}
 		}},
 		{"audit entity type", "chk_audit_events_entity_type", func(f *fix) any {
-			return &AuditEvent{ActorID: f.user().ID, Action: ActionRoomCreated, EntityType: "user", Details: "{}"}
+			return &AuditEvent{ActorID: f.user().ID, Action: ActionRoomCreated, EntityType: "poke", Details: "{}"}
+		}},
+		{"user settings theme", "chk_user_settings_theme", func(f *fix) any {
+			return &UserSettings{UserID: f.user().ID, Theme: "neon", Sound: true}
 		}},
 		{"audit details not JSON", "chk_audit_events_details_json", func(f *fix) any {
 			return &AuditEvent{ActorID: f.user().ID, Action: ActionRoomCreated, EntityType: EntityRoom, Details: "{"}
@@ -539,6 +545,7 @@ func TestForeignKeyActions(t *testing.T) {
 		{"message_reactions", "user_id", "users", restrict},
 		// The audit event outlives its room and entity: only the actor.
 		{"audit_events", "actor_id", "users", restrict},
+		{"user_settings", "user_id", "users", restrict},
 	}
 
 	f := newFix(t)
@@ -620,6 +627,7 @@ func TestIndexes(t *testing.T) {
 		"idx_audit_events_room":                     {"audit_events", false, "room_id,id"},
 		"idx_audit_events_actor":                    {"audit_events", false, "actor_id,id"},
 		"idx_audit_events_action":                   {"audit_events", false, "action,id"},
+		"uq_user_settings_user_id":                  {"user_settings", true, "user_id"},
 	}
 
 	if onPostgres() {

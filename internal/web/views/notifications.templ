@@ -54,6 +54,7 @@ templ NotificationItem(n app.Notification) {
 		}
 	>
 		<p class="notification-text">
+			@Avatar(n.Actor.ID, n.Actor.DisplayName, n.Actor.AvatarURL())
 			<span class="notification-actor">{ n.Actor.DisplayName }</span> <span class="notification-username">{ "@" + n.Actor.Username }</span> { NotificationSentence(n) } <a class="notification-room" href={ templ.SafeURL(RoomPath(n.RoomID)) }>{ n.RoomName }</a>
 		</p>
 		<p class="notification-meta">

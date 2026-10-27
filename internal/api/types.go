@@ -1,6 +1,10 @@
 package api
 
-import "github.com/rm4n0s/clowder/internal/app"
+import (
+	"strconv"
+
+	"github.com/rm4n0s/clowder/internal/app"
+)
 
 // userJSON is a user in the answers of the API.
 type userJSON struct {
@@ -8,7 +12,10 @@ type userJSON struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	Role        string `json:"role"`
-	CreatedAt   string `json:"created_at"`
+	// AvatarURL is the address of the avatar for GET with the token, or null
+	// when the user has none.
+	AvatarURL *string `json:"avatar_url"`
+	CreatedAt string  `json:"created_at"`
 }
 
 // userOf makes the JSON of a user.
@@ -18,8 +25,33 @@ func userOf(u app.User) userJSON {
 		Username:    u.Username,
 		DisplayName: u.DisplayName,
 		Role:        string(u.Role),
+		AvatarURL:   avatarURL(u.ID, u.AvatarKey),
 		CreatedAt:   rfc3339(u.CreatedAt),
 	}
+}
+
+// avatarURL is the address of the avatar of the user for a client of the API,
+// /api/v1/avatars/{id}?v=<key>, or nil when the key is empty. The pages' own
+// address, /avatars/{id}, reads the session cookie, which a client of the API
+// does not have; the key changes with the picture, so the address does too.
+func avatarURL(userID uint64, key string) *string {
+	if key == "" {
+		return nil
+	}
+	u := Prefix + "/avatars/" + strconv.FormatUint(userID, 10) + "?v=" + key
+	return &u
+}
+
+// settingsJSON are the settings of the user in the answers of the API.
+type settingsJSON struct {
+	Theme                string `json:"theme"`
+	Sound                bool   `json:"sound"`
+	BrowserNotifications bool   `json:"browser_notifications"`
+}
+
+// settingsOf makes the JSON of the settings.
+func settingsOf(s app.Settings) settingsJSON {
+	return settingsJSON{Theme: string(s.Theme), Sound: s.Sound, BrowserNotifications: s.BrowserNotifications}
 }
 
 // sessionJSON is a session of the user in the answers of the API: never its

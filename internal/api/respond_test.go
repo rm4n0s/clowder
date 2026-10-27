@@ -217,7 +217,7 @@ func TestUnknownPathsAndMethods(t *testing.T) {
 		{"an unknown version", http.MethodGet, "/api/v2/me", 404, "not_found", ""},
 		{"the root of the API", http.MethodGet, "/api/", 404, "not_found", ""},
 		{"a post to an unknown path", http.MethodPost, "/api/v1/nope", 404, "not_found", ""},
-		{"a wrong method on a get route", http.MethodPost, "/api/v1/me", 405, "method_not_allowed", "GET, HEAD"},
+		{"a wrong method on a get route", http.MethodPost, "/api/v1/me", 405, "method_not_allowed", "GET, HEAD, PATCH"},
 		{"a wrong method on a post route", http.MethodGet, "/api/v1/auth/login", 405, "method_not_allowed", "POST"},
 		{"a wrong method on a path with a parameter", http.MethodGet, "/api/v1/me/sessions/3", 405, "method_not_allowed", "DELETE"},
 		{"put on a path with two methods", http.MethodPut, "/api/v1/me/sessions", 405, "method_not_allowed", "GET, HEAD"},

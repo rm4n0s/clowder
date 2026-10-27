@@ -368,7 +368,7 @@ func (s *Search) Query(ctx context.Context, actor Actor, q string, page int) (Se
 			IsComment: h.IsComment,
 			RoomID:    h.RoomID,
 			RoomName:  h.RoomName,
-			Author:    UserRef{ID: h.AuthorID, Username: h.AuthorUsername, DisplayName: h.AuthorDisplayName},
+			Author:    UserRef{ID: h.AuthorID, Username: h.AuthorUsername, DisplayName: h.AuthorDisplayName, AvatarKey: h.AuthorAvatarKey},
 			CreatedAt: h.CreatedAt,
 			Snippet:   snippetHTML(h.Snippet),
 			Segments:  snippetSegments(h.Snippet),

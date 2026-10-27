@@ -94,6 +94,9 @@ type Member struct {
 	Username string
 	// DisplayName is the name shown to other people.
 	DisplayName string
+	// AvatarKey is the key of the user's avatar, for AvatarPath; empty when
+	// the user has none.
+	AvatarKey string
 	// AddedBy is the ID of the member who added the user; nil when the user
 	// joined by themselves or made the room.
 	AddedBy *uint64
@@ -270,6 +273,7 @@ func memberViews(ctx context.Context, st *store.Store, roomID uint64) ([]Member,
 		if row.User != nil {
 			m.Username = row.User.Username
 			m.DisplayName = row.User.DisplayName
+			m.AvatarKey = row.User.AvatarKey
 		}
 		if row.Adder != nil {
 			m.AddedByDisplayName = row.Adder.DisplayName
@@ -838,7 +842,7 @@ func roomViews(ctx context.Context, st *store.Store, actor Actor, rows []store.R
 	}
 	byID := make(map[uint64]UserRef, len(creators))
 	for _, u := range creators {
-		byID[u.ID] = UserRef{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+		byID[u.ID] = UserRef{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, AvatarKey: u.AvatarKey}
 	}
 	views := make([]Room, len(rows))
 	for i, row := range rows {

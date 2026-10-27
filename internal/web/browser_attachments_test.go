@@ -165,16 +165,16 @@ func TestAliceAttachesFiles(t *testing.T) {
 		t.Fatalf("submit the post: %v", err)
 	}
 	first := `#feed-posts article.post:first-child`
-	if err := waitFor(ctx, `document.querySelector('`+first+` img') !== null`); err != nil {
+	if err := waitFor(ctx, `document.querySelector('`+first+` img:not(.avatar)') !== null`); err != nil {
 		t.Fatalf("the image is not in the new post: %v", err)
 	}
 	// The image has loaded (its natural width is the width of the file) and the
 	// page has its size: width and height attributes.
-	if err := waitFor(ctx, `(() => { const i = document.querySelector('`+first+` img'); return i.complete && i.naturalWidth === 40 && i.naturalHeight === 30; })()`); err != nil {
+	if err := waitFor(ctx, `(() => { const i = document.querySelector('`+first+` img:not(.avatar)'); return i.complete && i.naturalWidth === 40 && i.naturalHeight === 30; })()`); err != nil {
 		t.Fatalf("the image did not load: %v", err)
 	}
 	size, err := chromedp.Run(ctx, chromedp.Evaluate[string](
-		`(() => { const i = document.querySelector('`+first+` img'); return i.getAttribute('width') + 'x' + i.getAttribute('height') + ' ' + i.getAttribute('loading') + ' ' + i.closest('a').getAttribute('href'); })()`))
+		`(() => { const i = document.querySelector('`+first+` img:not(.avatar)'); return i.getAttribute('width') + 'x' + i.getAttribute('height') + ' ' + i.getAttribute('loading') + ' ' + i.closest('a').getAttribute('href'); })()`))
 	if err != nil {
 		t.Fatalf("read the image: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestAliceAttachesFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("remove the text file: %v", err)
 	}
-	if err := waitFor(ctx, `document.querySelector('`+first+` textarea') === null && document.querySelector('`+first+` .attachment-files') === null && document.querySelector('`+first+` img') !== null`); err != nil {
+	if err := waitFor(ctx, `document.querySelector('`+first+` textarea') === null && document.querySelector('`+first+` .attachment-files') === null && document.querySelector('`+first+` img:not(.avatar)') !== null`); err != nil {
 		t.Fatalf("the text file was not removed: %v", err)
 	}
 

@@ -93,6 +93,9 @@ type UserRef struct {
 	Username string
 	// DisplayName is the name shown to other people.
 	DisplayName string
+	// AvatarKey is the key of the user's avatar, for AvatarPath; empty when
+	// the user has none.
+	AvatarKey string
 }
 
 // Post is a post as the services show it to one actor.
@@ -1042,7 +1045,7 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, x po
 			v.Reactions = reactionCounts(x.reacts[row.ID], actor.UserID)
 			v.CanReact = x.member
 			if row.Author != nil {
-				v.Author = UserRef{ID: row.Author.ID, Username: row.Author.Username, DisplayName: row.Author.DisplayName}
+				v.Author = UserRef{ID: row.Author.ID, Username: row.Author.Username, DisplayName: row.Author.DisplayName, AvatarKey: row.Author.AvatarKey}
 			}
 			var err error
 			v.HTML, err = p.md.RenderMentions(markdown.Format(row.Format), row.Body, x.mentions[row.ID])

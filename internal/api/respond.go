@@ -97,7 +97,8 @@ type problem struct {
 //     attachment_ids on a new post, the people of a conversation named in
 //     both lists, in neither or as no one but the caller, a name for a direct
 //     conversation, a filter of the audit log that is not valid, a change
-//     of a user that changes nothing, and a message of the WebSocket that is
+//     of a user, of the profile or of the settings that changes nothing, and
+//     a message of the WebSocket that is
 //     not valid or names a topic that is not 422 invalid_input, a Content-Type that is not JSON
 //     415 unsupported_media_type, an unknown path 404 not_found, a wrong
 //     method 405 method_not_allowed with Allow;
@@ -121,7 +122,7 @@ func problemOf(err error) (problem, bool) {
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, apiFieldName)}}, false
 	case tagBodyInvalid, tagBeforeInvalid, tagLimitInvalid, tagDueDateInvalid, tagKeepOnCreate,
 		tagUploadInvalid, tagFieldMissing, tagPageInvalid, tagTaskDueInvalid, tagListsInvalid, tagNoOthers, tagDirectName,
-		tagFilterInvalid, tagAdminUserInvalid, tagTopicInvalid, tagTopicsTooMany, tagSocketMessageInvalid:
+		tagFilterInvalid, tagAdminUserInvalid, tagProfileEmpty, tagSettingsEmpty, tagTopicInvalid, tagTopicsTooMany, tagSocketMessageInvalid:
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, snakeCase)}}, false

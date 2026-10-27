@@ -51,8 +51,12 @@ func redactJSON(v any) any {
 			switch k {
 			case "token", "invitation_token":
 				out[k] = "<token>"
-			case "password":
+			case "password", "current_password", "new_password":
 				out[k] = "<password>"
+			case "fields":
+				// The fields of an error name a field and say what is wrong
+				// with it: no secret, even where the field is a password.
+				out[k] = child
 			case "url":
 				// The link of an invitation holds its token.
 				if link, ok := child.(string); ok {
@@ -225,6 +229,12 @@ func (c *client) do(ctx context.Context, method, path string, body any, wants ..
 // "file") and prints the request without the content of the file, only its
 // name and size. The answer is read like that of do.
 func (c *client) upload(ctx context.Context, path, fileName string, content []byte, want int) (answer, error) {
+	return c.sendFile(ctx, http.MethodPost, path, fileName, content, want)
+}
+
+// sendFile is upload with the method of the request: PUT /me/avatar takes the
+// same form as POST /uploads.
+func (c *client) sendFile(ctx context.Context, method, path, fileName string, content []byte, want int) (answer, error) {
 	var form bytes.Buffer
 	w := multipart.NewWriter(&form)
 	part, err := w.CreateFormFile("file", fileName)
@@ -237,15 +247,15 @@ func (c *client) upload(ctx context.Context, path, fileName string, content []by
 	if err := w.Close(); err != nil {
 		return answer{}, errors.NewErr(tagRequestEncodeFailed, err).SetMetadata("path", path)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, &form)
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, &form)
 	if err != nil {
-		return answer{}, errors.NewErr(tagRequestFailed, err).SetMetadata("method", http.MethodPost, "path", path)
+		return answer{}, errors.NewErr(tagRequestFailed, err).SetMetadata("method", method, "path", path)
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	c.printRequest(http.MethodPost, path, req)
+	c.printRequest(method, path, req)
 	_, _ = fmt.Fprintln(c.out, "> Content-Type: multipart/form-data; boundary=<boundary>")
 	_, _ = fmt.Fprintf(c.out, "> (the field file: %s, %d bytes)\n", fileName, len(content))
-	return c.finish(req, http.MethodPost, path, want, false)
+	return c.finish(req, method, path, want, false)
 }
 
 // download fetches a file and prints the status, the headers that matter for
@@ -273,7 +283,7 @@ func (c *client) printRequest(method, path string, req *http.Request) {
 
 // downloadHeaders are the headers of a download that are printed.
 var downloadHeaders = []string{
-	"Content-Type", "Content-Disposition", "X-Content-Type-Options", "Content-Security-Policy", "Cache-Control",
+	"Content-Type", "Content-Disposition", "X-Content-Type-Options", "Content-Security-Policy", "Cache-Control", "ETag",
 }
 
 // finish sends the request, prints the answer and checks the status. A file

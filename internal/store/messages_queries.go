@@ -38,6 +38,8 @@ type ConversationMemberRow struct {
 	Username string
 	// DisplayName is the display name of the member.
 	DisplayName string
+	// AvatarKey is the avatar key of the member; empty for none.
+	AvatarKey string
 	// DisabledAt is when the user was disabled; nil for an active user.
 	DisabledAt *time.Time
 }
@@ -64,6 +66,8 @@ type MessageRow struct {
 	AuthorUsername string
 	// AuthorDisplayName is the display name of the author.
 	AuthorDisplayName string
+	// AuthorAvatarKey is the avatar key of the author; empty for none.
+	AuthorAvatarKey string
 }
 
 // MessageReactionRow is one reaction on a message with the display name of the
@@ -107,11 +111,11 @@ const (
 	messageRowColumns = `messages.id AS id, messages.created_at AS created_at, messages.conversation_id AS conversation_id,
 messages.author_id AS author_id, messages.body AS body, messages.reply_to_id AS reply_to_id,
 messages.edited_at AS edited_at, messages.deleted_at AS deleted_at,
-authors.username AS author_username, authors.display_name AS author_display_name`
+authors.username AS author_username, authors.display_name AS author_display_name, authors.avatar_key AS author_avatar_key`
 	memberRowColumns = `conversation_members.id AS id, conversation_members.conversation_id AS conversation_id,
 conversation_members.user_id AS user_id, conversation_members.added_by AS added_by,
 conversation_members.last_read_message_id AS last_read_message_id, conversation_members.left_at AS left_at,
-users.username AS username, users.display_name AS display_name, users.disabled_at AS disabled_at`
+users.username AS username, users.display_name AS display_name, users.avatar_key AS avatar_key, users.disabled_at AS disabled_at`
 	// unreadMessageExists is true for a membership (conversation_members) of
 	// a conversation that has a message of someone else, not deleted, after
 	// the last message the member read.

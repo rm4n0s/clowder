@@ -18,7 +18,15 @@ const (
 	EntityColumn EntityType = "column"
 	// EntityMember is a room membership.
 	EntityMember EntityType = "member"
+	// EntityUser is a user's account (SPEC §7.10, 1.2). Its events belong to
+	// no room: their RoomID is NoRoom.
+	EntityUser EntityType = "user"
 )
+
+// NoRoom is the RoomID of an audit event that belongs to no room, such as the
+// events about an account. No room has the ID 0, and nothing has a foreign key
+// on the column.
+const NoRoom uint64 = 0
 
 // AuditAction is what an audit event records (SPEC §7.10).
 type AuditAction string
@@ -43,9 +51,13 @@ const (
 	ActionRoomCreated   AuditAction = "room.created"
 	ActionRoomRenamed   AuditAction = "room.renamed"
 	ActionRoomDeleted   AuditAction = "room.deleted"
+	// ActionUserPasswordChanged is a user who changed their own password
+	// (SPEC §7.14).
+	ActionUserPasswordChanged AuditAction = "user.password_changed"
 )
 
-// AuditEvent records a change to a post, task, column, membership or room. It
+// AuditEvent records a change to a post, task, column, membership, room or
+// account. It
 // has no foreign key to the room or the entity: the event outlives them.
 // Nothing edits or deletes an event.
 type AuditEvent struct {
@@ -55,9 +67,10 @@ type AuditEvent struct {
 	// ActorID is the user who made the change.
 	ActorID uint64      `gorm:"not null;index:idx_audit_events_actor,priority:1"`
 	Action  AuditAction `gorm:"not null;index:idx_audit_events_action,priority:1"`
-	// RoomID is the room of the change. The room may be gone.
+	// RoomID is the room of the change. The room may be gone. It is NoRoom for
+	// an event about an account.
 	RoomID     uint64     `gorm:"not null;index:idx_audit_events_room,priority:1"`
-	EntityType EntityType `gorm:"not null;check:chk_audit_events_entity_type,entity_type IN ('room','post','comment','task','column','member')"`
+	EntityType EntityType `gorm:"not null;check:chk_audit_events_entity_type,entity_type IN ('room','post','comment','task','column','member','user')"`
 	// EntityID is the ID of the entity. The entity may be gone.
 	EntityID uint64 `gorm:"not null"`
 	// Summary reads on its own after the entity is gone.

@@ -161,7 +161,14 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /logout", handler: http.HandlerFunc(s.logout)},
 		{pattern: "GET /invite/{token}", handler: http.HandlerFunc(s.signUpPage), access: optionalSession},
 		{pattern: "POST /invite/{token}", handler: http.HandlerFunc(s.signUpSubmit), access: optionalSession},
-		{pattern: "GET " + views.SessionsPath, handler: http.HandlerFunc(s.sessionsPage)},
+		{pattern: "GET " + views.SessionsPath, handler: http.HandlerFunc(s.sessionsRedirect)},
+		{pattern: "GET " + views.SettingsPath, handler: http.HandlerFunc(s.settingsPage)},
+		{pattern: "POST " + views.SettingsProfilePath, handler: http.HandlerFunc(s.settingsProfile)},
+		{pattern: "POST " + views.SettingsAvatarPath, handler: http.HandlerFunc(s.settingsAvatar)},
+		{pattern: "POST " + views.SettingsAvatarRemovePath, handler: http.HandlerFunc(s.settingsAvatarRemove)},
+		{pattern: "POST " + views.SettingsPasswordPath, handler: http.HandlerFunc(s.settingsPassword)},
+		{pattern: "POST " + views.SettingsAppearancePath, handler: http.HandlerFunc(s.settingsAppearance)},
+		{pattern: "GET /avatars/{userID}", handler: http.HandlerFunc(s.avatarFile)},
 		{pattern: "POST /me/sessions/{id}/end", handler: http.HandlerFunc(s.sessionEnd)},
 		{pattern: "GET /admin/users", handler: http.HandlerFunc(s.adminUsers)},
 		{pattern: "POST /admin/users/{id}/role", handler: http.HandlerFunc(s.setRole)},
@@ -383,7 +390,7 @@ func matchesAnyMethod(mux *http.ServeMux, r *http.Request) bool {
 // half-written answer.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
 	var buf bytes.Buffer
-	if err := c.Render(r.Context(), &buf); err != nil {
+	if err := c.Render(s.pageContext(r), &buf); err != nil {
 		appErr := errors.NewErr(tagPageRenderFailed, err).SetMetadata("status", status)
 		s.logger.Error("page render failed", "err", appErr)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -396,6 +403,24 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, c te
 		appErr := errors.NewErr(tagResponseWriteFailed, err).SetMetadata("status", status)
 		s.logger.Debug("response write failed", "err", appErr)
 	}
+}
+
+// pageContext returns the context to render a page in: the one of the request
+// with the theme of the person who gets it, which Layout writes as data-theme.
+// A request without a login, and a read of the settings that fails, get the
+// page without a theme, which the browser's own setting decides.
+func (s *Server) pageContext(r *http.Request) context.Context {
+	ctx := r.Context()
+	actor, ok := actorFrom(ctx)
+	if !ok {
+		return ctx
+	}
+	settings, err := s.svc.Accounts.Settings(ctx, actor)
+	if err != nil {
+		s.logger.Debug("reading the theme failed", "pattern", r.Pattern, "err", err)
+		return ctx
+	}
+	return views.WithTheme(ctx, string(settings.Theme))
 }
 
 const (

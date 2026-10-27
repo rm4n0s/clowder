@@ -70,6 +70,15 @@ const (
 	// UserTopic of that user; UserID is the user. The streams read the session
 	// again and end when it is gone or its role differs.
 	KindUserChanged = "user.changed"
+	// KindUserUpdated says the profile of a user changed: the display name or
+	// the avatar. It is published on UserTopic of that user only (SPEC §7.14);
+	// UserID is the user. The pages of the user show the new profile in the
+	// sidebar; a client of the WebSocket gets the user object.
+	KindUserUpdated = "user.updated"
+	// KindSettingsChanged says the settings of a user changed (the theme, the
+	// sound, the browser notifications). It is published on UserTopic of that
+	// user; UserID is the user. A client of the WebSocket gets the settings.
+	KindSettingsChanged = "settings.changed"
 	// KindConversationRead says a member read a conversation up to a message.
 	// It is published on ConversationTopic, which drives "Seen" (UserID is the
 	// member, MessageID the message), and on UserTopic of the member, which

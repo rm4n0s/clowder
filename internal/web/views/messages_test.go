@@ -362,7 +362,7 @@ func TestConversationMembers(t *testing.T) {
 	html := renderHTML(t, views.ConversationMembers(views.MembersPanelData{Header: h, ViewerID: alice.ID}))
 	requireHTML(t, html, []string{
 		`<section id="conversation-members" class="members-panel conversation-members">`,
-		`<li id="conversation-member-2" data-username="alice"><span class="member-name">Alice</span>`, `<span class="member-username">@bob</span>`,
+		`<li id="conversation-member-2" data-username="alice"><span class="avatar avatar-sm avatar-c2" aria-hidden="true">A</span><span class="member-name">Alice</span>`, `<span class="member-username">@bob</span>`,
 		`<span class="hint member-added">disabled</span>`,
 		`<form id="conversation-add-form" class="add-member" method="post" action="/messages/4/members"`, `name="users"`,
 		`<form id="conversation-rename-form" class="add-member" method="post" action="/messages/4/rename"`, `name="name" type="text" value="crew"`,

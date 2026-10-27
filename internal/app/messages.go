@@ -582,7 +582,7 @@ func (m *Messages) Conversations(ctx context.Context, actor Actor) ([]Conversati
 			CanSend:      true,
 		}
 		for j, mem := range it.Members {
-			s.Members[j] = UserRef{ID: mem.UserID, Username: mem.Username, DisplayName: mem.DisplayName}
+			s.Members[j] = UserRef{ID: mem.UserID, Username: mem.Username, DisplayName: mem.DisplayName, AvatarKey: mem.AvatarKey}
 			if conv.Kind == ConversationDirect && mem.UserID != actor.UserID {
 				s.SeenUpToID = derefID(mem.LastReadMessageID)
 				if mem.DisabledAt != nil {
@@ -593,7 +593,7 @@ func (m *Messages) Conversations(ctx context.Context, actor Actor) ([]Conversati
 		if last := it.LastMessage; last != nil {
 			s.LastMessage = &LastMessage{
 				ID:        last.ID,
-				Author:    UserRef{ID: last.AuthorID, Username: last.AuthorUsername, DisplayName: last.AuthorDisplayName},
+				Author:    UserRef{ID: last.AuthorID, Username: last.AuthorUsername, DisplayName: last.AuthorDisplayName, AvatarKey: last.AuthorAvatarKey},
 				Preview:   previewOf(last.DeletedAt != nil, last.Body, it.LastAttachmentNames),
 				Deleted:   last.DeletedAt != nil,
 				CreatedAt: last.CreatedAt,
@@ -647,7 +647,7 @@ func (m *Messages) Conversation(ctx context.Context, actor Actor, convID uint64)
 	}
 	for i, r := range rows[convID] {
 		h.Members[i] = ConversationMemberView{
-			User:              UserRef{ID: r.UserID, Username: r.Username, DisplayName: r.DisplayName},
+			User:              UserRef{ID: r.UserID, Username: r.Username, DisplayName: r.DisplayName, AvatarKey: r.AvatarKey},
 			LastReadMessageID: derefID(r.LastReadMessageID),
 			Disabled:          r.DisabledAt != nil,
 		}

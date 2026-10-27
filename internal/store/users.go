@@ -26,6 +26,10 @@ type User struct {
 	Role         Role   `gorm:"not null;check:chk_users_role,role IN ('admin','member')"`
 	// DisabledAt is when an admin disabled the user; nil for an active user.
 	DisabledAt *time.Time
+	// AvatarKey is the key of the user's avatar in the avatar store (a PNG of
+	// 256x256 pixels); empty when the user has none (SPEC §7.14). A new avatar
+	// gets a new key, which is what makes its address new.
+	AvatarKey string `gorm:"not null;default:''"`
 }
 
 // Invitation is a one-use link that lets a person sign up (SPEC §7.1).

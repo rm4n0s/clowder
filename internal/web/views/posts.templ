@@ -279,6 +279,7 @@ templ PostContent(d PostCardData) {
 			<p class="post-deleted-note">{ deletedNote(d.Post) }</p>
 		} else {
 			<header class="post-meta">
+				@Avatar(d.Post.Author.ID, d.Post.Author.DisplayName, d.Post.Author.AvatarURL())
 				<span class="post-author">{ d.Post.Author.DisplayName }</span>
 				<span class="post-username">{ "@" + d.Post.Author.Username }</span>
 				<a class="post-time" href={ templ.SafeURL(timePath(d.Post)) }>

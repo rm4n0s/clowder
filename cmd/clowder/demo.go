@@ -117,7 +117,14 @@ func fillDemo(ctx context.Context, dataDir, databaseURL string, scale *demoScale
 			logger.Error("closing the store failed", "err", closeErr)
 		}
 	}()
-	accounts := app.NewAccounts(st, clock.Real(), hasher, app.AccountsConfig{InvitationLifetime: config.DefaultInvitationLifetime, SessionLifetime: config.DefaultSessionLifetime})
+	avatarStore, err := files.New(filepath.Join(dataDir, filesDir, avatarsDir))
+	if err != nil {
+		return err
+	}
+	accounts := app.NewAccounts(st, clock.Real(), hasher, app.AccountsConfig{
+		InvitationLifetime: config.DefaultInvitationLifetime, SessionLifetime: config.DefaultSessionLifetime,
+		Avatars: avatarStore, Logger: logger,
+	})
 	_, _ = fmt.Fprintf(stdout, "demo users (password %s):\n", demoPassword)
 	actors := map[string]app.Actor{}
 	for _, d := range demoUsers {
@@ -131,6 +138,9 @@ func fillDemo(ctx context.Context, dataDir, databaseURL string, scale *demoScale
 		}
 		actors[u.Username] = app.Actor{UserID: u.ID, Username: u.Username, Role: u.Role}
 		_, _ = fmt.Fprintf(stdout, "  %-6s %-6s %s\n", u.Username, u.Role, u.DisplayName)
+	}
+	if err := makeDemoAvatars(ctx, accounts, actors, stdout); err != nil {
+		return err
 	}
 	fileStore, err := files.New(filepath.Join(dataDir, filesDir))
 	if err != nil {

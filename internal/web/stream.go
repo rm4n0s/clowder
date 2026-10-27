@@ -140,6 +140,7 @@ func (ls *liveStream) ping() error {
 // sidebarOp is the patch of the sidebar of the user, as it is on the page of
 // the room current (0 for no room).
 func (ls *liveStream) sidebarOp(ctx context.Context, current uint64) (patchOp, error) {
+	ls.refreshUser(ctx)
 	sb, err := ls.s.sidebarData(ctx, ls.actor, ls.user, current)
 	if err != nil {
 		return patchOp{}, err
@@ -148,6 +149,23 @@ func (ls *liveStream) sidebarOp(ctx context.Context, current uint64) (patchOp, e
 		component: views.Sidebar(sb),
 		options:   []datastar.PatchElementOption{datastar.WithSelector(sidebarSelector), datastar.WithModeInner()},
 	}, nil
+}
+
+// refreshUser reads the user of the session again, so that the sidebar shows
+// the display name and the avatar as they are now (the user changed them in
+// the settings, SPEC §7.14). When the session cannot be read the old user stays:
+// the keep-alive of the stream ends it if it is gone.
+func (ls *liveStream) refreshUser(ctx context.Context) {
+	cookie, err := ls.r.Cookie(sessionCookieName)
+	if err != nil {
+		return
+	}
+	sess, err := ls.s.svc.Accounts.SessionActor(ctx, cookie.Value)
+	if err != nil {
+		ls.s.logger.Debug("reading the user for the sidebar failed", "pattern", ls.r.Pattern, "err", err)
+		return
+	}
+	ls.user = sess.User
 }
 
 // sidebar sends the sidebar of the user.

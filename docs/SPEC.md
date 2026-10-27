@@ -12,7 +12,7 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 
 From 1.1 the database can also be PostgreSQL, run with Docker containers, and several Clowder processes can serve one PostgreSQL database, with Redis carrying the live events between them (§8.1). A REST API with a WebSocket for live events (§7.12, §7.13) lets desktop clients, written separately, do everything the pages do; it is described by an OpenAPI document.
 
-1.2 gives each user a settings page (profile, password, theme, notification preferences with mutes and sound) and a second factor in the manner of badgermole: Clowder runs an SSH server that hands a one-time code to the owner of a registered public key (§7.14–§7.16). Code in markdown is highlighted, rooms show what is unread, private messages can be searched, and the pages get a new look for cat lovers, made for phones too (§3b).
+1.2 gives each user a settings page (profile, password, theme, notification preferences like Mattermost's) and a second factor in the manner of badgermole: Clowder runs an SSH server that hands a one-time code to the owner of a registered public key (§7.14–§7.16). The two users of a direct conversation can video-call each other through a WebRTC server made with pion. Code in markdown is highlighted, rooms show what is unread, private messages can be searched, and the pages get a new look for cat lovers, made for phones too (§3b).
 
 ---
 
@@ -34,7 +34,7 @@ From 1.1 the database can also be PostgreSQL, run with Docker containers, and se
 - Single sign-on (OIDC, SAML), passkeys and two-factor authentication.
 - Several separate communities in one installation. One installation is one community.
 - PostgreSQL. The storage is written so it can be added later (D6). *(Added in 1.1, D38.)*
-- Voice, video, screen sharing.
+- Voice, video, screen sharing. *(1.2 adds calls in private messages, §7.18.)*
 - Native mobile or desktop apps. The web pages work on a phone's browser. *(1.1 adds the API that desktop clients use, §7.12; the clients themselves are separate projects and not part of this repository.)*
 - End-to-end encryption.
 - A public API for other programs, bots and webhooks. *(1.1 adds an API for clients that act as a logged-in user, §7.12. Bots, webhooks and keys that are not a user's login are still not in scope.)*
@@ -56,6 +56,7 @@ From 1.1 the database can also be PostgreSQL, run with Docker containers, and se
 - Logging in with the SSH code alone, without the password (badgermole's way). It is a small change on top of D53 if the owner wants it later.
 - Push notifications while no Clowder page is open (Web Push needs a push service). Notifications reach an open page, in any tab.
 - Offline use of the installed app: it needs the server.
+- Calls in group conversations and rooms (calls are one-to-one, the owner's answer, 2026-10-28), recording a call, dialling in by phone, end-to-end encryption of calls (the server forwards the media, D63), simulcast, and a TURN server.
 
 ## 3. Scope of 1.0
 
@@ -88,14 +89,15 @@ The owner's request, 2026-10-27: "make it possible to work with postgres sql usi
 The owner's request, 2026-10-28: "UI is ugly. no modern at all and doesn't represents the aesthetics of "clowder"", "the markdown doesn't support programming languages" and "the user doesn't have settings to update password, notifications (like disabling from a group or having sound by default and disabling it)". To the manager's list of further improvements: "all are good". On a second factor: "rather using TOTP I want you to create something similar to github.com/rm4n0s/badgermole". On the look: "design mockups, make it for cat lovers". Everything of 1.1 keeps working; the API only grows (`/api/v1`).
 
 1. **Settings.** A settings page for each user: display name, avatar, password, theme, notification preferences, SSH keys and the sign-in code, sessions (§7.14, D49).
-2. **Notification preferences.** Mute a room or a conversation; a sound, on by default, that the user turns off; browser notifications (§7.15, D50).
+2. **Notification preferences, like Mattermost's.** Global defaults and per-room and per-group overrides (all, mentions, nothing; sound; mute; mark unread), `@room` and `@here` mentions with presence, keywords, and following posts. The sound is on by default and can be turned off, and browser notifications are available (§7.15, D50).
 3. **Password reset.** An admin makes a one-time reset link for a user; `clowder reset-password` does it on the command line (§7.1, D51).
 4. **SSH sign-in codes**, in the manner of badgermole: Clowder runs an SSH server; a user who registered a public key runs `ssh` and gets a one-time code, which a login asks for after the password (§7.16, D52, D53).
 5. **Code in markdown** is highlighted by language (§7.3, D54).
 6. **Unread state** per room, a "new since your last visit" line in the feed, and the count in the tab's title (§7.17, D55).
 7. **Search in private messages**, inside the Messages page and only in the user's own conversations (§7.11, D56).
 8. **A new look** for cat lovers, chosen by the owner from mockups, with light and dark themes (D57), and pages made for phones, installable as an app (D58).
-9. **Operations and limits.** `clowder backup` and `clowder restore` (D59), metrics for Prometheus (D60), `govulncheck` among the checks (D61), and the per-user limits recommended by the 1.1 review (D62).
+9. **One-to-one video and audio calls in direct conversations**, through a WebRTC server made with pion (§7.18, D63–D65).
+10. **Operations and limits.** `clowder backup` and `clowder restore` (D59), metrics for Prometheus (D60), `govulncheck` among the checks (D61), and the per-user limits recommended by the 1.1 review (D62).
 
 ## 4. Decisions log
 
@@ -150,19 +152,22 @@ The owner's request, 2026-10-28: "UI is ugly. no modern at all and doesn't repre
 | D47 | The security review of 1.1 (step 17.1, `docs/SECURITY.md`): an ID has 63 bits at most wherever it is read from a path, a query, a form or a JSON body (the databases keep it in a signed column), so a larger number is "not found" (`404`) or "not valid" (`422` with the field) and never a 500; the flags `-database-url` and `-redis-url` have an empty default and take the variable `CLOWDER_DATABASE_URL` or `CLOWDER_REDIS_URL` only when the flag is not given (an empty flag turns the variable off), so that the usage text never prints a password; the cross-origin protection of the pages also covers the unsafe methods of the API (D43 said the API needed none; it is harmless to a client that sends no `Origin`, and a client made of a web view must call the API from its native side). Recorded as accepted, not changed: no limit on sign-up tries (an invitation token is 256 random bits), none on the number of sockets or streams of a user and none on what a user has staged; a cap per user is a recommendation for a later release | Decided by the manager, 2026-10-27; the owner may revise. `docs/SECURITY.md`, `docs/API.md` |
 | D48 | PostgreSQL performance (step 17.1, `docs/PERFORMANCE.md`): after the bulk load of `clowder demo -size large` the demo runs `ANALYZE` on PostgreSQL (`Store.Analyze`), because a table that was just loaded has no statistics until autovacuum reaches it, and the planner then reads the feed of a room with a bitmap scan and a sort of all its posts (6 ms instead of 0.1 ms); a database that grows through the services needs nothing. Found in the same step: the Go runtime keeps the 64 MiB of an Argon2id hash in the process after the hash (a server that did one login stayed at 95 MiB instead of 30, and a process with 100 open streams at 155 MiB, over the 150 MB target), so the password-hashing gate (D37) calls `debug.FreeOSMemory` when the last hash in flight ends (only for hashers of 16 MiB or more; `Hasher.MemoryBytes`). The benchmarks take `CLOWDER_BENCH_DATABASE_URL` (a PostgreSQL URL of a large demo) besides `CLOWDER_BENCH_DB`, `scripts/perf.sh` takes `DATABASE_URL`, `REDIS_URL` and `PROCESSES=2` (the fan-out across two processes through Redis, 100 streams on each), `clowder-perf` takes `-base2`, `-pid2`, and `scripts/perf-postgres.sh` runs the whole measurement on throw-away containers | Decided by the manager, 2026-10-27; the owner may revise. §10 |
 | D49 | **Settings** (§7.14). One page, `/me/settings`, with the sections Profile, Password, Appearance, Notifications, Sign-in and Sessions; `/me/sessions` becomes its Sessions section (the old address redirects). Everything on it is also in the API under `/api/v1/me`. Preferences are stored per user in the database (a `user_settings` row), so they follow the user to every browser and client. The avatar is decoded and re-encoded by Clowder with the standard library only (a box filter written in the code, no image dependency) | The owner's request, 2026-10-28. Decided by the manager, 2026-10-28 |
-| D50 | **Notification preferences** (§7.15). A muted room or conversation counts no unread posts or messages and makes no sound and no browser notification; what is addressed to the user personally (a mention, a reply, an assignment, being added) still reaches the bell, with sound. The sound is on by default and is made with the Web Audio API in the page (no audio file). Browser notifications are off by default and name the author and the place, never the text | The owner's request, 2026-10-28 ("disabling from a group or having sound by default and disabling it"). The details decided by the manager, 2026-10-28 |
+| D50 | **Notification preferences like Mattermost's** (§7.15):<br>- global defaults and per-place overrides for rooms and group conversations (notify about all, mentions or nothing; sound; ignore group mentions; mark unread; mute);<br>- the group mentions `@room`/`@all` and `@here`, with presence shared through Redis when several processes run, and mention keywords;<br>- following posts, so that every reply in a thread notifies its followers.<br>The sound is on by default, chosen from four sounds made with the Web Audio API (no audio files). Browser notifications are off by default and say who did what where, never the text. A mute silences everything, and a mention still reaches the bell, as in Mattermost | The owner's requests, 2026-10-28 ("disabling from a group or having sound by default and disabling it", "bob in general did what?", "group notifications should be like mattermost"). The details decided by the manager, 2026-10-28; the owner approved the notification texts |
 | D51 | **Password reset by an admin** (§7.1). There is no email, so an admin makes a one-time reset link, the way invitations work: 32 random bytes, stored as SHA-256, 24 hours, used once, a new link replacing the old one. Using it sets a new password and ends every session of the user. `clowder reset-password -user <name>` prints a link, so that the last admin can get back in. The reset does not change SSH keys or the sign-in code; an admin turns off a user's sign-in code separately (for a lost key). Each step writes an audit event of the account (§7.10) | Decided by the manager, 2026-10-28 |
 | D52 | **The SSH server** (§7.16), like `github.com/rm4n0s/badgermole`. It is written with `golang.org/x/crypto/ssh` (already allowed, D6), in the package `internal/sshcode`, which talks to `internal/app` only. It is off unless `-ssh-addr` is set. Its host key is an Ed25519 key in the data directory, made on the first start, which several processes share through the data volume. A connection authenticates with a public key of the username it gives; the server answers with a one-time code and closes. It offers nothing else | The owner's request, 2026-10-28. The details decided by the manager, 2026-10-28 |
 | D53 | **The sign-in code at login** (§7.16). The SSH code is a second factor after the password, which a user turns on in the settings once one of their keys has fetched a code. Pages: after the right password, a second form asks for the code. The pending login lives in the database for 5 minutes, behind a cookie of its own. API: `POST /auth/login` takes `ssh_code`; without it, a user who needs one gets `401` with the new code `ssh_code_required`. A wrong code counts as a failed login in the limiter. The code alone never logs anyone in | The owner's answer, 2026-10-28 ("rather using TOTP …"). Decided by the manager, 2026-10-28; the owner may revise (a login with the code alone is a non-goal of 1.2) |
 | D54 | **Highlighting** with `github.com/alecthomas/chroma/v2` (the owner's approval, 2026-10-28), inside `internal/markdown` as the renderer of fenced code blocks. Its output uses CSS classes, not inline styles, so the theme's light and dark palettes style it. HTML is rendered when it is read, so old posts are highlighted too | The owner's request and approval, 2026-10-28. Decided by the manager, 2026-10-28 |
 | D55 | **Unread posts per room** (§7.17). A `room_reads` row per member and room keeps the last post the member has seen. Opening the feed moves it to the newest post. A member who joins starts with nothing unread, and the migration starts existing members with nothing unread | Decided by the manager, 2026-10-28 |
 | D56 | **Search in private messages** (§7.11), which resolves the open decision of §16 the way its recommendation said: only inside the Messages page and the API, only in the user's own conversations, words only. It uses an FTS5 table on SQLite and a generated `tsvector` with a GIN index on PostgreSQL, like posts (D38). Admins get nothing more | The owner's answer, 2026-10-28 ("all are good"). Decided by the manager, 2026-10-28 |
-| D57 | **The new look.** The owner picks one of the three directions of the design canvas ("Sunbeam", "Night Prowl", "Calico"). Whatever is picked:<br>- the theme is CSS custom properties in `app.css`, with light and dark palettes (the system's choice, unless the user's setting overrides it with `data-theme` on `<html>`);<br>- the fonts are self-hosted in `internal/web/static/fonts` (woff2, SIL OFL, with their licenses; no request goes to another site);<br>- there is an SVG logo and favicon, and the icons are inline SVG (no icon font; emoji only where users chose them, in reactions);<br>- a test checks that every pair of text and ground colours in the tokens has a contrast of at least 4.5:1, and focus rings are visible;<br>- motion respects `prefers-reduced-motion`.<br>Every page is redone, and the Datastar behaviour stays as it is. Until the owner picks, the manager's recommendation is "Sunbeam", with a dark palette made in its spirit | The owner's request, 2026-10-28 ("make it for cat lovers"). The direction is the owner's choice; the rest decided by the manager, 2026-10-28 |
+| D57 | **The new look.** The owner picked **"Sunbeam"** (2026-10-28: "I like Sunbeam design, but I want it also to work on dark mode") from the three directions of the design canvas (https://claude.ai/artifact/5Eu6uWNtFdhxn7NsPbMDZS, artboards "A · Sunbeam" and "A · Sunbeam, dark"): warm cream ground, ginger accent `#C2410C`, sage second accent, rounded cards, Bricolage Grotesque for headings, Nunito for text, JetBrains Mono for code, a cat-head logo and paw-print marks. The dark theme is a full palette of its own (warm charcoal ground, the same ginger made lighter for contrast), as complete as the light one, not an inversion. For both:<br>- the theme is CSS custom properties in `app.css`, with light and dark palettes (the system's choice, unless the user's setting overrides it with `data-theme` on `<html>`);<br>- the fonts are self-hosted in `internal/web/static/fonts` (woff2, SIL OFL, with their licenses; no request goes to another site);<br>- there is an SVG logo and favicon, and the icons are inline SVG (no icon font; emoji only where users chose them, in reactions);<br>- a test checks that every pair of text and ground colours in the tokens has a contrast of at least 4.5:1, and focus rings are visible;<br>- motion respects `prefers-reduced-motion`.<br>Every page is redone, and the Datastar behaviour stays as it is. | The owner's request, 2026-10-28 ("make it for cat lovers"). The direction is the owner's choice; the rest decided by the manager, 2026-10-28 |
 | D58 | **Phones and the installed app.**<br>- Every page works from 360 px wide with no horizontal scroll: the rooms become a menu, the board scrolls inside its own box, and touch targets are at least 44 px.<br>- `manifest.webmanifest` has the name, PNG icons of 192 and 512 px (and maskable ones), the theme colours and `display: standalone`.<br>- A small service worker caches only `/static/`: never pages, API answers or files, which are private | Decided by the manager, 2026-10-28 |
 | D59 | **Backups.** `clowder backup -o <file.tar.gz>`, which works while the server runs:<br>- on SQLite it writes a consistent copy of the database (`VACUUM INTO`) and the `files/` directory (avatars included) into one archive, with a `manifest.json` (Clowder version, time, dialect, counts);<br>- on PostgreSQL it writes the files only and prints the `pg_dump` command for the database.<br>`clowder restore -i <file> -data <dir>` unpacks only into an empty directory and refuses archive entries that are absolute, contain `..` or are links | Decided by the manager, 2026-10-28 |
 | D60 | **Metrics.** `-metrics-addr` (`CLOWDER_METRICS_ADDR`) is empty, and so off, by default. When set, it serves `GET /metrics` in the Prometheus text format on a listener of its own, never on the public one. The metrics are written by hand, with no client library:<br>- requests by route pattern, method and status class, and a histogram of their durations;<br>- open SSE streams and WebSockets, and hub drops by reason;<br>- logins by result and SSH codes issued;<br>- the database pool, Redis reconnects, and the Go runtime.<br>No label carries a user, an ID or a path with an ID | Decided by the manager, 2026-10-28 |
-| D61 | **`govulncheck`** (`golang.org/x/vuln`) is a `tool` of `go.mod` (`go tool govulncheck ./...`) and a check of the Definition of done from step 22.3. It needs the network for its database; when that is missing, the step records it | The owner's answer, 2026-10-28 ("all are good"). Decided by the manager, 2026-10-28 |
+| D61 | **`govulncheck`** (`golang.org/x/vuln`) is a `tool` of `go.mod` (`go tool govulncheck ./...`) and a check of the Definition of done from step 23.3. It needs the network for its database; when that is missing, the step records it | The owner's answer, 2026-10-28 ("all are good"). Decided by the manager, 2026-10-28 |
 | D62 | **Per-user limits** (the recommendations of D47):<br>- at most 30 live connections per user per process, SSE streams and WebSockets together. Beyond that, a stream answers `429` and a WebSocket handshake answers `429`;<br>- staged uploads (§7.12) of at most 10 times the attachment limit per user (`413 too_large`);<br>- a sign-up with an unknown invitation token counts as a failed login of the address in the limiter | Decided by the manager, 2026-10-28 |
+| D63 | **Calls with pion** (§7.18). The calls use `github.com/pion/webrtc/v4` and the pion modules it requires (pure Go, cgo-free), with the owner's request of 2026-10-28 as the approval of the dependency. It is imported only in `internal/calls`, which talks to `internal/app` for every permission and never imports `internal/store`. The server forwards the media of a one-to-one call:<br>- one `PeerConnection` per side, VP8 or H.264 for video and Opus for audio, with pion's default interceptors (NACK, RTCP reports, TWCC);<br>- a forwarded track for each track a side sends, and renegotiation started by the server;<br>- no simulcast, transcoding or recording | The owner's request, 2026-10-28. Decided by the manager, 2026-10-28 |
+| D64 | **The media ports.**<br>- Calls are on when `-media-addr` (`CLOWDER_MEDIA_ADDR`, for example `:7882`) is set, and off otherwise: the call buttons are then hidden and the API answers `409`.<br>- All ICE goes through that one port: UDP (a pion UDP mux) and TCP (ICE-TCP on the same number, for networks that block UDP).<br>- `-media-public-ip` (`CLOWDER_MEDIA_PUBLIC_IP`) is announced as the host candidate when the server is behind NAT (pion's `NAT1To1IPs`).<br>- No STUN or TURN server is needed, because the server is the peer.<br>- The compose files publish the port in both protocols.<br>- Limits: 2 participants per call, `-max-calls` (default 20) calls per process, 2.5 Mbit/s of video per sender (signalled with REMB and the SDP bandwidth line), a 10-second deadline for ICE to connect, and closing a participant whose transport fails for 15 seconds | Decided by the manager, 2026-10-28 |
+| D65 | **Calls across processes.** A call's media lives in the process that started it (the call's *home*), recorded with the call in the database. Each process announces its own media address:<br>- in the cluster composition, `clowder` and `clowder2` publish different ports;<br>- the call's state and the signalling of a participant whose WebSocket reached another process are relayed through Redis (`clowder:calls:<process>`) to the home process;<br>- the ICE candidates the home announces point at its own port, so the media goes straight to the home.<br>When the home process stops, its calls end ("call ended: server restarting") and the members can start a new one | Decided by the manager, 2026-10-28 |
 
 ## 5. Size estimate
 
@@ -235,7 +240,8 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 
 | Model | Fields (besides ID, CreatedAt) | Notes |
 |---|---|---|
-| `User` | `Username` (unique, lower case), `DisplayName`, `PasswordHash`, `Role` (admin, member), `DisabledAt` | |
+| `User` | `Username` (unique, lower case), `DisplayName`, `PasswordHash`, `Role` (admin, member), `DisabledAt`, `AvatarKey` (1.2) | `AvatarKey` is the key of the avatar's file in `files/avatars/`, empty for none (§7.14) |
+| `UserSettings` | `UserID` (unique), `Theme` (system, light, dark), `Sound`, `BrowserNotifications` | 1.2; a user has no row until they save a setting, and the defaults are system, on, off (§7.14, D49) |
 | `Invitation` | `TokenHash` (unique), `Role`, `CreatedBy`, `ExpiresAt`, `UsedBy`, `UsedAt` | one use only |
 | `Session` | `TokenHash` (unique), `UserID`, `ExpiresAt`, `LastSeenAt`, `Kind` (browser, api; 1.1), `ClientName` (1.1) | D43 |
 | `Room` | `Name` (unique), `Description`, `Visibility` (visible, private), `CreatedBy` | |
@@ -255,7 +261,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 | `Message` | `ConversationID`, `AuthorID`, `Body`, `ReplyToID`, `EditedAt`, `DeletedAt` | |
 | `MessageAttachment` | as `Attachment`, with `MessageID` instead of `PostID` | |
 | `MessageReaction` | `MessageID`, `UserID`, `Emoji` | unique (message, user, emoji) |
-| `AuditEvent` | `ActorID`, `Action` (§7.10), `RoomID`, `EntityType` (room, post, comment, task, column, member), `EntityID`, `Summary`, `Details` (JSON) | no foreign keys to the entity: the event outlives it. Indexed by time, room, actor and action |
+| `AuditEvent` | `ActorID`, `Action` (§7.10), `RoomID` (0 for an event that belongs to no room), `EntityType` (room, post, comment, task, column, member, user), `EntityID`, `Summary`, `Details` (JSON) | no foreign keys to the entity: the event outlives it. Indexed by time, room, actor and action |
 
 ## 7. Behavior
 
@@ -339,6 +345,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 - `@username` in a body (outside code) of a user who can read the room is a mention and is rendered as a link to that user.
 - Notifications: mention, reply (a comment under your post or comment), assigned (a task assigned to you), added to a room by someone else. Nobody is notified of their own action.
 - A bell shows the unread count, updated live; its page lists the notifications, newest first, and marks them read.
+- *(1.2)* Group mentions (`@room`, `@all`, `@here`), mention keywords, and replies in followed posts notify too; §7.15 has the rules.
 
 ### 7.11 Private messages
 
@@ -349,6 +356,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 - **Reading.** The Messages page lists the user's conversations, the most recent first, with the last message and an unread mark. A conversation shows its messages oldest first, newest at the bottom, 50 at a time with older ones loaded on scrolling up. Opening a conversation marks it read; a direct conversation shows "Seen" under the last message the other user has read.
 - **Unread count.** The sidebar shows the number of conversations with unread messages, updated live. Messages are not notifications (§7.9) and do not ring the bell.
 - **Search** *(1.2, D56)*. The Messages page has a search box for the messages of the user's own conversations, the ones they can read now: words and phrases as in §7.8, no tags, newest first, 30 at a time, each result linking to the message in its conversation. `GET /api/v1/messages/search?q=`.
+- **Calls** *(1.2)*. The two users of a direct conversation call each other, with video or audio only (§7.18). Group conversations have no calls.
 - **Privacy.** Only the members read a conversation; a non-member gets 404, admins included. A member who left no longer reads it. Messages are not searched by §7.8 (only by the search of the Messages page) and not written to the audit log.
 
 ### 7.12 REST API (1.1)
@@ -399,32 +407,80 @@ The API is for desktop clients that act as one logged-in user (D42, D43). It is 
   - Saving it ends every other session of the user, browsers and clients, and keeps the current one.
   - It writes `user.password_changed`. A wrong current password counts in the login limiter.
 - **Appearance.** The theme is System (the default), Light or Dark (D57).
-- **Notifications** (§7.15): the sound and browser notifications on or off, and the list of muted rooms and conversations, each with Unmute.
+- **Notifications** (§7.15): the global preferences (notify about, sound and its choice, browser notifications, replies, mention keywords), and the list of rooms and conversations that have their own preferences, each with a link to its dialog.
 - **Sign-in** (§7.16):
   - the SSH keys, each with its name, type, SHA-256 fingerprint, when it was added and when it was last used, and Remove;
   - Add a key;
   - the switch "Ask for an SSH code when I log in";
   - the server's host-key fingerprint and the `ssh` command to run.
 - **Sessions.** The list of 1.1 (D43), with End.
-- **API.** `GET`/`PATCH /me/settings` (theme, sound, browser notifications); `PATCH /me` (display name); `PUT`/`DELETE /me/avatar` (multipart); `POST /me/password`; `GET`/`POST /me/ssh-keys` and `DELETE /me/ssh-keys/{id}`; `PUT`/`DELETE /me/ssh-code` (the switch); `GET /me/mutes`, `PUT`/`DELETE /rooms/{id}/mute` and `PUT`/`DELETE /conversations/{id}/mute`. A password is needed to add a key and to change the switch: `current_password` in the body.
+- **API.** `GET`/`PATCH /me/settings` (theme, sound, browser notifications); `PATCH /me` (display name); `PUT`/`DELETE /me/avatar` (multipart); `POST /me/password`; `GET`/`POST /me/ssh-keys` and `DELETE /me/ssh-keys/{id}`; `PUT`/`DELETE /me/ssh-code` (the switch); the notification preferences of §7.15. A password is needed to add a key and to change the switch: `current_password` in the body. The `avatar_url` of every user object is `/api/v1/avatars/{id}?v=<key>`, or null: the address of the pages (`/avatars/{id}`) reads the cookie, which a client does not have, so the API serves the same PNG to a bearer token (decided by the worker of step 18.1, 2026-10-28). The events `user.updated` (the user object) and `settings.changed` (the settings) go to the user's own topic only, so the pages of other people show a new name or avatar the next time they are opened.
 
 ### 7.15 Notification preferences (1.2)
 
-- **Mute.** The menu of a room and of a conversation has Mute and Unmute, and so does the API.
-  - A muted room shows no unread count (D55) and is dimmed in the sidebar with a muted icon. Its posts make no sound and no browser notification.
-  - A notification of §7.9 from a muted room (mention, reply, assignment, being added) still reaches the bell, with sound: it is addressed to the user.
-  - A muted conversation does not count in the unread count of conversations (§7.11) and makes no sound and no browser notification. It still shows its unread mark in the Messages page.
-  - Leaving a room or a conversation removes its mute.
-- **Sound.** It is on by default and plays a short chime made with the Web Audio API. It plays:
-  - when a notification reaches the bell;
-  - when a message arrives in a conversation that is not muted and is not open in a page that has the focus.
+These work the way Mattermost's do (the owner's request, 2026-10-28: "group notifications should be like mattermost"). There are global defaults in the settings, and each room and each group conversation can override them in its own "Notification preferences" menu. A "group" here is a room or a group conversation; a direct conversation has the same menu without the group-mention option.
 
-  At most one chime plays every 2 seconds. A browser that has not been interacted with yet plays nothing (the browser forbids it); nothing is queued.
-- **Browser notifications.** They are off by default. Turning them on asks the browser's permission, which belongs to each browser.
-  - They fire for the same triggers as the sound, and only when no Clowder page of the user has the focus.
-  - The text is "Bob in #general" or "Bob in Feeder team", never the body. Clicking it opens the place.
-  - Each tab shows at most one of them per event. The page that shows it is chosen through the `BroadcastChannel` of the browser.
-- **How it reaches the page.** The stream of the user, which every page already has, carries the events. The page decides with the user's settings, which come with the page. The WebSocket carries the same events and `settings.changed`, so a desktop client can do the same.
+- **What counts as a mention of the user:**
+  - `@username`, always.
+  - **Group mentions.** `@room` (alias `@all`) mentions every member of the room or group. `@here` mentions the members who are online now: they have a Clowder page or a client connected, through any process; presence is shared through Redis when several processes run.
+    - Group mentions in a room work only in posts and comments, and in a group conversation only in messages.
+    - Before sending one to more than 5 people, the editor asks "This will notify 14 people. Send anyway?".
+    - Each user can ignore them in a place (below).
+  - **Keywords** of the user's own: up to 10 words or phrases, case-insensitive, matched as whole words outside code (for example their first name, "deploy", "feeder"). A keyword match is a mention.
+  - `@username` in a group conversation mentions that member, as in a room.
+- **Global settings** (Settings › Notifications), each with its default:
+  - **"Notify me about"**:
+    - *All new activity*: every new post in my rooms and every message in my conversations;
+    - *Mentions, direct messages and group messages* (default): mentions, replies in threads I follow, assignments, being added, and every message in my direct and group conversations;
+    - *Nothing*.
+
+    It decides what rings the sound and shows a browser notification. The bell (§7.9) is not affected: it always gets the notifications of §7.9 and mentions.
+  - **Sound**: on (default) or off, and which one: *Purr* (default), *Chirp*, *Bell* or *Meow*. These are short sounds made with the Web Audio API (no audio files), each with a Play button to hear it.
+  - **Browser notifications**: off by default; turning them on asks the browser's permission.
+  - **Replies**:
+    - *Threads I follow* (default): a new comment anywhere under a post I follow notifies me;
+    - *Only direct replies*: as in 1.0, a comment under my post or comment.
+  - **Mention keywords**: the list above; `@room`, `@all` and `@here` are on by default.
+- **Following a post** (a thread, as in Mattermost):
+  - A user follows a post automatically when they write it, comment under it, or are mentioned in it.
+  - The post page and the post's menu have Follow and Unfollow.
+  - With *Threads I follow*, each new comment by someone else under a followed post creates a `reply` notification in the bell. A burst of comments within 1 minute counts as one notification, "Bob and 2 others replied in …".
+- **Per place** (the menu of a room or a conversation › Notification preferences):
+  - **Notify me about**: *Default (what the global setting says)*, *All new activity*, *Mentions* or *Nothing*. A group conversation's default is *All*, like Mattermost's group messages; a room's default is the global setting.
+  - **Sound** in this place: Default, On or Off.
+  - **Ignore `@room`, `@all` and `@here`** in this place: off by default.
+  - **Mark as unread** (the sidebar count, §7.17):
+    - *All new posts*: the count of D55; the default for rooms;
+    - *Only mentions*: the room shows only the number of its unread mentions, and is otherwise not bold.
+
+    A conversation always counts all its messages.
+  - **Mute**:
+    - The place is dimmed and moves to the end of its list.
+    - It has no unread count, only a mention badge.
+    - Nothing rings and nothing pops up, not even mentions.
+    - A mention still reaches the bell and shows its badge, as in Mattermost.
+    - Unmute brings back the place's other choices as they were.
+  - Leaving a room or a conversation removes its preferences.
+- **When a notification rings.** The sound plays, and the browser notification shows when no Clowder page of the user has the focus, if the place's "Notify me about" covers the event, the place is not muted, and the event is not in the conversation or room open in the focused tab.
+  - At most one sound plays every 2 seconds.
+  - A browser that has not been interacted with yet plays nothing (the browser forbids it), and nothing is queued.
+  - Each event is shown by one tab only, chosen through `BroadcastChannel`.
+- **The text of a browser notification** says who did what and where, never the body:
+  - "Bob mentioned you in #general" (for `@room` and `@here` too);
+  - "Bob replied in «Feeder schedule» in #general" (the start of the post's first line, up to 40 characters, as the thread's name);
+  - "Bob assigned you «Review the retry» in #general";
+  - "Bob added you to #design";
+  - "Bob posted in #general" (with *All new activity*);
+  - "Bob sent you a message";
+  - "Bob wrote in Feeder team".
+
+  Clicking it opens the place. *(The owner's answer, 2026-10-28: "bob in general did what?")*
+- **How it reaches the page.** The user's stream, which every page already has, carries the events. The page decides with the user's preferences, which come with the page and change live (`settings.changed`, `place_prefs.changed`). The WebSocket carries the same events, so a desktop client can do the same.
+- **API:**
+  - `GET`/`PATCH /me/settings` gains `notify`, `sound`, `sound_name`, `browser_notifications`, `replies`, `keywords` and `group_mentions`;
+  - `GET`/`PUT /rooms/{id}/notification-prefs` and `GET`/`PUT /conversations/{id}/notification-prefs` (`notify`, `sound`, `ignore_group_mentions`, `mark_unread`, `muted`);
+  - `PUT`/`DELETE /posts/{id}/follow`;
+  - `GET /me/presence?user_ids=` (who is online, for the members' list).
 
 ### 7.16 SSH sign-in codes (1.2)
 
@@ -468,11 +524,42 @@ The API is for desktop clients that act as one logged-in user (D42, D43). It is 
 ### 7.17 Unread state (1.2)
 
 - **Rooms.**
-  - The sidebar shows, for each room the user is a member of, the number of top-level posts by others newer than the last one they saw (D55). The count reads "99+" above 99, and a muted room shows none.
+  - The sidebar shows, for each room the user is a member of, the number of top-level posts by others newer than the last one they saw (D55). The count reads "99+" above 99, a room set to *Only mentions* shows its unread mentions instead, and a muted room shows only a mention badge (§7.15).
   - Opening the room's feed marks the newest post as seen, and the count updates live on every page.
   - The feed shows the line "New since your last visit" above the oldest unseen post, worked out before the mark moves.
 - **The tab.** The title starts with "(n) ", where n is the user's unread notifications plus their unread conversations (not muted), and the favicon gets a dot when n > 0. Both update live.
 - **API.** Each room of `GET /rooms` gets `unread_posts`, and `POST /rooms/{id}/read` (with `post_id`) marks what a client has shown. The WebSocket sends `room.unread` to the user.
+
+### 7.18 One-to-one calls in private messages (1.2)
+
+The owner's request, 2026-10-28: "I want in private messages to be able do video calls with webrtc using pion", and then: "video calls in private messages that are one-to-one". A call is between the two users of a **direct conversation**; group conversations and rooms have no calls. The browser talks WebRTC with the Clowder server, which runs a small forwarding server made with pion (D63): each side sends its audio and video to the server, which forwards it to the other. Media never goes from one user to the other directly, so a call works through any NAT the server can be reached from, with no STUN or TURN server.
+
+- **Starting.**
+  - In a direct conversation, either user presses **Video call** or **Audio call** in its header.
+  - The other user gets a ringing invitation: a dialog in every Clowder page they have open, with **Answer with video**, **Answer with audio** and **Decline**, and their client gets `call.ringing` on the WebSocket.
+  - The ringtone is a call sound of its own, *Purr ring*, repeated for up to 45 seconds and played even when the user's notification sound is off. When the conversation is muted, or its preferences say *Nothing*, the invitation shows without the ringtone (§7.15).
+  - A browser notification ("Bob is calling you") shows when no Clowder page has the focus and browser notifications are on.
+  - The caller sees "Calling Bob…" with Cancel.
+  - A user is in at most one call at a time. Calling someone who is in another call tells the caller "Bob is in another call" (the callee still gets a missed call).
+- **In the call.**
+  - Each side sees the other large and themselves small.
+  - Each can mute and unmute the microphone, turn the camera off and on, share a screen or a window (shown instead of the camera), choose the devices, and hang up.
+  - The page shows the call's duration and a mark when the other side's microphone is muted or their camera is off. The conversation stays usable beside the call on a wide screen.
+  - Leaving the page leaves the call, after a confirmation.
+- **Who.**
+  - Only the two members of the direct conversation can start, see or answer its call; anyone else gets 404, admins included.
+  - Disabling a user, or a session ending, ends the call at once.
+  - A call is refused when the other user is disabled.
+- **The end.**
+  - A call ends when either side hangs up, when the caller cancels, when the callee declines, or when nobody answers within 45 seconds.
+  - The conversation then gets a call entry in its history: "Video call · 12 min", "Declined video call", or, for the callee, "Missed video call". A missed call raises the conversation's unread count like a message.
+  - Nothing of the media is recorded or stored.
+- **API** (D45) for desktop clients:
+  - `GET /conversations/{id}/call` (the call in progress), `POST /conversations/{id}/call` (start, `{"video": true}`; `409 conflict` for a group conversation or a busy user), `POST /conversations/{id}/call/answer` and `POST /conversations/{id}/call/decline`;
+  - the signalling WebSocket `GET /api/v1/conversations/{id}/call/ws` (bearer header), whose messages are in the OpenAPI document;
+  - the user's WebSocket carries `call.ringing`, `call.started`, `call.updated` and `call.ended`;
+  - `docs/API.md` explains how a desktop client takes part with any WebRTC stack.
+- **Signalling** is a WebSocket of its own per participant: `GET /calls/{conversationID}/ws` for pages (the session cookie and the cross-origin check), and the API route above. It carries the SDP offers and answers, the ICE candidates, the microphone and camera state, and the renegotiations when a screen share replaces the camera. The pages need no other script library: the browser's own `RTCPeerConnection`, and a small `call.js`.
 
 ## 8. Live updates and lifecycle
 
@@ -595,12 +682,13 @@ Each milestone is broken into steps in `docs/IMPLEMENTATION.md` (written after t
 | M15 | Several processes: the Redis bridge of the live events, the login limiter in Redis, `compose.cluster.yaml` (D41, §8.1) | a post written on one process appears live in a page served by another |
 | M16 | REST API and WebSocket: login with bearer tokens and the sessions page, every route of §7.12, the WebSocket of §7.13, `openapi.json` kept equal to the routes (D42–D45) | `clowder-apicheck` logs in, posts, comments, moves a card and sends a message through the API, and sees each one come back over the WebSocket |
 | M17 | 1.1: the security review of the new surface, `docs/API.md`, the README, the numbers of §10 on PostgreSQL, `v1.1.0` | every check passes, the targets of §10 are met or recorded on both databases, `v1.1.0` is on `origin` |
-| M18 | Settings: the settings page (profile, avatar, password, theme, sessions), password reset links and `clowder reset-password`, notification preferences (mutes, sound, browser notifications) (§7.14, §7.15, D49–D51) | a user changes their password and mutes a room, and an admin's reset link lets a locked-out user in |
+| M18 | Settings: the settings page (profile, avatar, password, theme, sessions), password reset links and `clowder reset-password`, notification preferences like Mattermost's (per place, sound, browser notifications, `@room`/`@here`, keywords, following posts) (§7.14, §7.15, D49–D51) | a user changes their password, sets a group to *Mentions*, and is notified by an `@here`, and an admin's reset link lets a locked-out user in |
 | M19 | SSH sign-in codes: the SSH server, the keys, the code at login in the pages and the API (§7.16, D52, D53) | `ssh` hands alice a code, and her login asks for it and accepts it once |
 | M20 | Reading: code highlighting, unread posts per room, search in private messages (§7.3, §7.17, §7.11, D54–D56) | a Go block is highlighted, a room shows its unread count live, and a message is found by a word |
 | M21 | The new look: the theme, fonts, logo and icons, every page redone in light and dark, phones and the installed app (D57, D58) | every page has its proof in light, dark and at phone width, and the browser tests pass |
-| M22 | Operations and limits: backup and restore, metrics, the per-user limits, `govulncheck` (D59–D62) | a backup restores into a server that serves the same data, and `/metrics` answers on its own address |
-| M23 | 1.2: the security review of the new surface (the SSH server first), the docs, `v1.2.0` | every check passes and `v1.2.0` is on `origin` |
+| M22 | One-to-one calls: the pion media server and its signalling, calls in the pages, calls across processes (§7.18, D63–D65) | alice video-calls bob from their direct conversation, each sees the other, also when their pages are on different processes |
+| M23 | Operations and limits: backup and restore, metrics, the per-user limits, `govulncheck` (D59–D62) | a backup restores into a server that serves the same data, and `/metrics` answers on its own address |
+| M24 | 1.2: the security review of the new surface (the SSH server and the calls first), the docs, `v1.2.0` | every check passes and `v1.2.0` is on `origin` |
 
 ## 14. Demo data
 

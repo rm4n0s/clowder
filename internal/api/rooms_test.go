@@ -57,7 +57,7 @@ func TestRoomShape(t *testing.T) {
 	want := map[string]any{
 		"id": float64(f.den.ID), "name": "den", "description": "", "visibility": "private",
 		"created_at": "2026-10-26T09:30:00Z", "member_count": float64(2), "is_member": true, "can_manage": false,
-		"created_by": map[string]any{"id": float64(f.userID("alice")), "username": "alice", "display_name": "Alice"},
+		"created_by": map[string]any{"id": float64(f.userID("alice")), "username": "alice", "display_name": "Alice", "avatar_url": nil},
 	}
 	if !reflect.DeepEqual(body, want) {
 		t.Errorf("room = %v\nwant %v", body, want)
@@ -359,8 +359,8 @@ func TestRoomMembers(t *testing.T) {
 		f := newForum(t)
 		members := list(t, f.ok("carol", http.MethodGet, path("/rooms/%d/members", f.lobby.ID), nil, http.StatusOK)["members"])
 		want := []any{
-			map[string]any{"user": map[string]any{"id": float64(f.userID("admin")), "username": "admin", "display_name": "Admin"}, "added_by": nil, "joined_at": "2026-10-26T09:30:00Z"},
-			map[string]any{"user": map[string]any{"id": float64(f.userID("bob")), "username": "bob", "display_name": "Bob"}, "added_by": nil, "joined_at": "2026-10-26T09:30:00Z"},
+			map[string]any{"user": map[string]any{"id": float64(f.userID("admin")), "username": "admin", "display_name": "Admin", "avatar_url": nil}, "added_by": nil, "joined_at": "2026-10-26T09:30:00Z"},
+			map[string]any{"user": map[string]any{"id": float64(f.userID("bob")), "username": "bob", "display_name": "Bob", "avatar_url": nil}, "added_by": nil, "joined_at": "2026-10-26T09:30:00Z"},
 		}
 		if !reflect.DeepEqual(members, want) {
 			t.Errorf("members = %v\nwant %v", members, want)

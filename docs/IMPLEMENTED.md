@@ -1034,3 +1034,47 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** the tag `v1.1.0` on `origin`
 - **Manual checks:** none
 - **Deviations and follow-ups:** the recommendations of D47 (caps per user on sockets, streams and staged bytes) are left for a later release.
+
+## 18.1 The settings page, profile, avatar and password
+- **Date:** 2026-10-28
+- **Branch:** feat/step-18.1-settings
+- **Summary:**
+  - `/me/settings` has four sections:
+    - **Profile:** the display name and the avatar.
+    - **Password:** checks the current password through the hashing gate, counts a wrong one in the limiter, and in one transaction sets the new hash, ends every other session (browser and API) and writes `user.password_changed`.
+    - **Appearance:** System, Light or Dark, set as `data-theme` on `<html>`.
+    - **Sessions:** `/me/sessions` now redirects here.
+  - Avatars:
+    - PNG, JPEG or GIF (first frame), up to 2 MiB and 4096×4096 px, with the size checked from the header before decoding.
+    - The centre square is scaled to 256×256 with a box filter written in the code, and stored as a PNG under `files/avatars/`.
+    - Served at `/avatars/{id}` and `/api/v1/avatars/{id}`, with versioned addresses.
+    - At most 2 are decoded at once (a gate, which returns the memory afterwards).
+    - Avatars, or initials on one of 8 colours chosen by user ID, appear wherever users are shown.
+  - The audit log has account events: entity type `user`, `RoomID` 0 meaning "no room", and an "Accounts" filter. Migration `0003_audit_entity_user` rebuilds `audit_events` on SQLite and changes the CHECK constraint on PostgreSQL, keeping every row and ID.
+  - `user_settings` rows are made lazily: the defaults (System, sound on, browser notifications off) apply until the first save.
+  - API: `PATCH /me`, `GET`/`PATCH /me/settings`, `PUT`/`DELETE /me/avatar`, `POST /me/password` and `GET /avatars/{id}`, plus `avatar_url` on user objects. The WebSocket carries `user.updated` and `settings.changed` on the user's own topic.
+  - The demo draws cat avatars for admin, alice and bob, and apicheck has a `settings` scenario.
+  - The 1.2 plan was revised on this branch with the owner's answers:
+    - Sunbeam in light and dark (D57);
+    - notifications like Mattermost's and their texts (§7.15, D50, steps 18.3–18.4);
+    - one-to-one calls with pion (§7.18, D63–D65, milestone M22, so operations moved to M23 and the release to M24).
+- **Main files:** `internal/app/{avatar,profile,accounts}.go`, `internal/store/{settings,users_queries,audit,migrations}.go`, `internal/web/{settings,stream}.go`, `internal/web/views/{settings,avatar}.templ`, `internal/api/` (the settings handlers, `openapi.json`), `cmd/clowder-apicheck/settings_scenario.go`, `cmd/clowder/demo.go`, `docs/SPEC.md`, `docs/IMPLEMENTATION.md`, `CLAUDE.md`.
+- **Tests:** new test files:
+  - `internal/store/settings_test.go`;
+  - `internal/store/migrate_audit_test.go`: both dialects keep the rows, IDs, times and indexes, and a second run changes nothing;
+  - `internal/app/profile_test.go`: permission tables, the image table, sessions ending, the limiter, audit with and without an event, and route tests for every new tag;
+  - `internal/web/settings_test.go`;
+  - `internal/web/browser_settings_test.go`: 3 browser tests;
+  - `internal/web/views/avatar_test.go`;
+  - `internal/api/settings_test.go`: every answer validated against the schema.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [18.1 settings](implemented-proof-images/18.1-settings.png) · [18.1 avatars in a thread](implemented-proof-images/18.1-feed-avatars.png) · [18.1 password change](implemented-proof-images/18.1-password.txt)
+  - The settings page as alice, with her avatar.
+  - A post with its thread, showing the avatars of bob and alice and carol's initials.
+  - The apicheck `settings` scenario: a second login's token gets 401 after the password change, and the current one still works.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Other users see a new name or avatar on their next page load. Only the user's own pages update live.
+  - `openapi.json` keeps `info.version` 1.1.0 until the release step.
+  - `TestRunInvite` timed out once under CPU load from another project's tests, and passed on every rerun.

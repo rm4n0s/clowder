@@ -7,23 +7,6 @@ import (
 	"github.com/rm4n0s/clowder/internal/web/views"
 )
 
-// sessionsPage answers GET /me/sessions: the live sessions of the person,
-// browsers and apps, with the one that shows the page marked (SPEC D43).
-func (s *Server) sessionsPage(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	actor, _ := actorFrom(ctx)
-	list, err := s.svc.Accounts.Sessions(ctx, actor, sessionIDFrom(ctx))
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	sb, ok := s.sidebarFor(w, r, 0)
-	if !ok {
-		return
-	}
-	s.render(w, r, http.StatusOK, views.SessionsPage(views.SessionsData{Sidebar: sb, Sessions: list}))
-}
-
 // sessionEnd answers POST /me/sessions/{id}/end: it ends one session of the
 // person and sends them back to the list. A session that is not theirs, or is
 // gone, is a 404. Ending the session that shows the page logs it out: the
@@ -45,5 +28,5 @@ func (s *Server) sessionEnd(w http.ResponseWriter, r *http.Request) {
 		s.redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	s.redirect(w, r, views.SessionsPath, http.StatusSeeOther)
+	s.redirect(w, r, views.SettingsSessionsPath, http.StatusSeeOther)
 }

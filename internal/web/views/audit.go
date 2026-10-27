@@ -169,3 +169,13 @@ func adminRoomLink(id uint64) string {
 func auditRoomLabel(name string) string {
 	return "#" + strings.TrimPrefix(name, "#")
 }
+
+// AuditEntityLabel is the text of an entity type in the filter of the audit
+// log: the events about accounts are "Accounts", every other type is shown as
+// it is stored.
+func AuditEntityLabel(entity string) string {
+	if entity == "user" {
+		return "Accounts"
+	}
+	return entity
+}

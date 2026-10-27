@@ -46,9 +46,13 @@ func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
 	}
 	clk := clock.NewFake(time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC))
 	st := storetest.Open(t, clk)
+	avatarStore, err := files.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	accounts := app.NewAccounts(st, clk, auth.FastHasher(), app.AccountsConfig{
 		InvitationLifetime: 7 * 24 * time.Hour, SessionLifetime: 30 * 24 * time.Hour,
-		Publisher: hub,
+		Publisher: hub, Avatars: avatarStore,
 	})
 	for _, u := range []struct {
 		name string
@@ -506,6 +510,7 @@ func TestRedaction(t *testing.T) {
 		{"a token field", `{"token":"abc","user":{"id":1}}`, "\"token\": \"<token>\""},
 		{"an invitation token", `{"invitation_token":"abc"}`, "\"invitation_token\": \"<token>\""},
 		{"a password", `{"password":"abc"}`, "\"password\": \"<password>\""},
+		{"the message of a password field", `{"error":{"fields":{"current_password":"is not right"}}}`, `"current_password": "is not right"`},
 		{"nested", `{"a":{"b":[{"token":"x"}]}}`, "\"token\": \"<token>\""},
 		{"the link of an invitation", `{"url":"https://c.example/invite/abc"}`, `"url": "https://c.example/invite/<token>"`},
 		{"another url", `{"url":"https://c.example/other"}`, `"url": "https://c.example/other"`},
@@ -798,5 +803,40 @@ func TestWatchWithAWrongBaseURL(t *testing.T) {
 	code := run(t.Context(), args, func(string) string { return "" }, &out, &errOut)
 	if code != 1 || !strings.Contains(out.String(), "FAILED watch") || !strings.Contains(out.String(), "RequestFailed") {
 		t.Fatalf("exit code = %d\nstdout:\n%s", code, out.String())
+	}
+}
+
+// TestSettingsScenario runs the settings scenario and checks what it prints and
+// what it leaves behind: the name, the theme and the password as they were.
+func TestSettingsScenario(t *testing.T) {
+	t.Parallel()
+	base := startAPI(t)
+	var out, errOut bytes.Buffer
+	code := run(t.Context(), []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", settingsScenarioName},
+		func(string) string { return "" }, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d\n%s\n%s", code, out.String(), errOut.String())
+	}
+	text := out.String()
+	for _, want := range []string{
+		"== settings:", "> GET /api/v1/me/settings", `"theme": "system"`, "> PATCH /api/v1/me", `"display_name": "Alice (apicheck)"`,
+		"> PATCH /api/v1/me/settings", `"theme": "dark"`, "> PUT /api/v1/me/avatar", "> (the field file: avatar.png,",
+		"> GET /api/v1/avatars/", "< Content-Type: image/png", "< Cache-Control: private, max-age=86400",
+		"> POST /api/v1/me/password", `"current_password": "<password>"`, `"new_password": "<password>"`,
+		"< 422 Unprocessable Entity", "< 204 No Content", "< 401 Unauthorized", "> DELETE /api/v1/me/avatar", "ok settings",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the output does not contain %q:\n%s", want, text)
+		}
+	}
+	for _, secret := range []string{testPassword, testPassword + "-changed-by-apicheck"} {
+		if strings.Contains(text, secret) || strings.Contains(errOut.String(), secret) {
+			t.Errorf("the password %q is in the output", secret)
+		}
+	}
+	// Everything is as it was: the same password logs in, the name is back, no avatar.
+	var out2, err2 bytes.Buffer
+	if code := run(t.Context(), []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "session"}, func(string) string { return "" }, &out2, &err2); code != 0 {
+		t.Fatalf("the password was not put back: exit %d\n%s\n%s", code, out2.String(), err2.String())
 	}
 }

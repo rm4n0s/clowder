@@ -28,6 +28,14 @@ func securedRoutes() []securedRoute {
 	reactPath := "/api/v1/posts" + missing + "/reactions/%F0%9F%91%8D"
 	return []securedRoute{
 		{"me", http.MethodGet, "/api/v1/me", http.StatusOK, nil},
+		{"change my profile", http.MethodPatch, "/api/v1/me", http.StatusOK, map[string]any{"display_name": "Zed"}},
+		{"my settings", http.MethodGet, "/api/v1/me/settings", http.StatusOK, nil},
+		{"change my settings", http.MethodPatch, "/api/v1/me/settings", http.StatusOK, map[string]any{"sound": false}},
+		// The avatar reads a form: a JSON body is the wrong type for everybody.
+		{"set my avatar", http.MethodPut, "/api/v1/me/avatar", http.StatusUnsupportedMediaType, map[string]any{}},
+		{"remove my avatar", http.MethodDelete, "/api/v1/me/avatar", http.StatusNoContent, nil},
+		{"change my password", http.MethodPost, "/api/v1/me/password", http.StatusUnprocessableEntity, map[string]any{"current_password": "not the password", "new_password": "a new long passphrase"}},
+		{"download an avatar", http.MethodGet, "/api/v1/avatars" + missing, http.StatusNotFound, nil},
 		{"sessions", http.MethodGet, "/api/v1/me/sessions", http.StatusOK, nil},
 		{"users", http.MethodGet, "/api/v1/users", http.StatusOK, nil},
 		{"users with a query", http.MethodGet, "/api/v1/users?q=al", http.StatusOK, nil},

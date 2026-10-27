@@ -227,8 +227,8 @@ func TestOpenAPIOperations(t *testing.T) {
 			content, _ := at(op.spec, "requestBody", "content").(map[string]any)
 			_, isJSON := content["application/json"]
 			_, isForm := content["multipart/form-data"]
-			if !isJSON && (!isForm || op.spec["operationId"] != "uploadFile") {
-				t.Errorf("%s: the request body is not application/json (only an upload is multipart/form-data)", name)
+			if !isJSON && (!isForm || (op.spec["operationId"] != "uploadFile" && op.spec["operationId"] != "setAvatar")) {
+				t.Errorf("%s: the request body is not application/json (only an upload and the avatar are multipart/form-data)", name)
 			}
 		}
 		declared := map[string]bool{}

@@ -434,6 +434,9 @@ func TestEveryPostRouteCapsItsBody(t *testing.T) {
 				if bodyRoutes[pattern] {
 					limit = maxPostFormBytes
 				}
+				if pattern == "POST /me/settings/avatar" && multipart {
+					limit = app.AvatarMaxBytes + avatarFormSlack
+				}
 				if got := body.read.Load(); got > limit+(8<<10) {
 					t.Errorf("read %d bytes, want at most %d; status %d", got, limit, rec.Code)
 				}
@@ -621,6 +624,11 @@ func (sc *scope) postPaths() map[string]string {
 		"POST /messages/m/{msgID}/react":                   "/messages/m/" + gm + "/react",
 		"POST /notifications/read":                         "/notifications/read",
 		"POST /me/sessions/{id}/end":                       "/me/sessions/99999/end",
+		"POST /me/settings/profile":                        "/me/settings/profile",
+		"POST /me/settings/avatar":                         "/me/settings/avatar",
+		"POST /me/settings/avatar/remove":                  "/me/settings/avatar/remove",
+		"POST /me/settings/password":                       "/me/settings/password",
+		"POST /me/settings/appearance":                     "/me/settings/appearance",
 	}
 }
 

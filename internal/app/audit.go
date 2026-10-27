@@ -28,6 +28,8 @@ const (
 	EntityColumn = store.EntityColumn
 	// EntityMember is a room membership.
 	EntityMember = store.EntityMember
+	// EntityUser is a user's account; its events belong to no room.
+	EntityUser = store.EntityUser
 )
 
 // AuditAction is what an audit event records. It is the store's type, so the
@@ -72,6 +74,8 @@ const (
 	ActionRoomRenamed = store.ActionRoomRenamed
 	// ActionRoomDeleted is the deletion of a room.
 	ActionRoomDeleted = store.ActionRoomDeleted
+	// ActionUserPasswordChanged is a user who changed their own password.
+	ActionUserPasswordChanged = store.ActionUserPasswordChanged
 )
 
 // AuditFilter narrows Audit.Events (SPEC §7.10). A zero field does not

@@ -613,6 +613,14 @@ func TestRunDemoMakesTheDemoUsers(t *testing.T) {
 		if ok, err := hasher.Verify("demo-password-1234", row.PasswordHash); err != nil || !ok {
 			t.Errorf("%s: the password does not verify: %v, %v", d.username, ok, err)
 		}
+		// Some have an avatar drawn in code; carol keeps her initials.
+		if _, want := demoAvatarColours[d.username]; want != (row.AvatarKey != "") {
+			t.Errorf("%s: avatar key %q, want an avatar: %v", d.username, row.AvatarKey, want)
+		} else if want {
+			if _, err := os.Stat(filepath.Join(dir, "files", "avatars", row.AvatarKey)); err != nil {
+				t.Errorf("%s: the avatar file: %v", d.username, err)
+			}
+		}
 	}
 
 	// The database is there now, so the directory is no longer empty.

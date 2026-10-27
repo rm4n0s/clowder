@@ -118,6 +118,8 @@ type NotificationRow struct {
 	ActorID          uint64
 	ActorUsername    string
 	ActorDisplayName string
+	// ActorAvatarKey is the avatar key of the actor; empty for none.
+	ActorAvatarKey string
 	// RoomID and RoomName are the room of the notification.
 	RoomID   uint64
 	RoomName string
@@ -145,7 +147,7 @@ AND (rooms.visibility = 'visible'
 func (s *Store) ListNotifications(ctx context.Context, userID, beforeID uint64, limit int) ([]NotificationRow, error) {
 	q := s.db(ctx).Table("notifications").
 		Select(`notifications.id AS id, notifications.created_at AS created_at, notifications.kind AS kind,
-notifications.actor_id AS actor_id, actors.username AS actor_username, actors.display_name AS actor_display_name,
+notifications.actor_id AS actor_id, actors.username AS actor_username, actors.display_name AS actor_display_name, actors.avatar_key AS actor_avatar_key,
 rooms.id AS room_id, rooms.name AS room_name,
 COALESCE(notifications.post_id, 0) AS post_id, COALESCE(posts.root_id, posts.id, 0) AS root_id,
 COALESCE(notifications.task_id, 0) AS task_id, COALESCE(tasks.title, '') AS task_title,

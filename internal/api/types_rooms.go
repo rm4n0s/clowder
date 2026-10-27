@@ -8,11 +8,13 @@ type userRefJSON struct {
 	ID          uint64 `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	// AvatarURL is the address of the avatar (see avatarURL), null for none.
+	AvatarURL *string `json:"avatar_url"`
 }
 
 // userRefOf makes the JSON of a reference to a user.
 func userRefOf(u app.UserRef) userRefJSON {
-	return userRefJSON{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+	return userRefJSON{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, AvatarURL: avatarURL(u.ID, u.AvatarKey)}
 }
 
 // userRefsOf makes the JSON of references to users; never nil.
@@ -62,7 +64,7 @@ type memberJSON struct {
 // memberOf makes the JSON of a member.
 func memberOf(m app.Member) memberJSON {
 	out := memberJSON{
-		User:     userRefJSON{ID: m.UserID, Username: m.Username, DisplayName: m.DisplayName},
+		User:     userRefJSON{ID: m.UserID, Username: m.Username, DisplayName: m.DisplayName, AvatarURL: avatarURL(m.UserID, m.AvatarKey)},
 		JoinedAt: rfc3339(m.JoinedAt),
 	}
 	if m.AddedBy != nil {

@@ -1,0 +1,262 @@
+package views
+
+import (
+	"strconv"
+
+	"github.com/rm4n0s/clowder/internal/app"
+)
+
+// The paths of the settings page and of what it sends.
+const (
+	// SettingsPath is the settings page of the logged-in user (SPEC §7.14).
+	SettingsPath = "/me/settings"
+	// SessionsPath is the old page of the sessions, which redirects to the
+	// Sessions section of the settings page.
+	SessionsPath = "/me/sessions"
+	// SettingsSessionsPath is the Sessions section of the settings page.
+	SettingsSessionsPath = SettingsPath + "#sessions"
+	// SettingsProfilePath saves the display name.
+	SettingsProfilePath = SettingsPath + "/profile"
+	// SettingsAvatarPath uploads the avatar.
+	SettingsAvatarPath = SettingsPath + "/avatar"
+	// SettingsAvatarRemovePath removes the avatar.
+	SettingsAvatarRemovePath = SettingsPath + "/avatar/remove"
+	// SettingsPasswordPath changes the password.
+	SettingsPasswordPath = SettingsPath + "/password"
+	// SettingsAppearancePath saves the theme.
+	SettingsAppearancePath = SettingsPath + "/appearance"
+)
+
+// SessionEndPath is the path that ends the session with the id.
+func SessionEndPath(id uint64) string {
+	return SessionsPath + "/" + strconv.FormatUint(id, 10) + "/end"
+}
+
+// ProfileData is what the Profile section shows.
+type ProfileData struct {
+	// User is the logged-in user, with their avatar.
+	User app.User
+	// DisplayName is the value of the display name input: the user's name, or
+	// what they typed in a submit that failed.
+	DisplayName string
+	// Errors are the problems of the last submit; the avatar's are under the
+	// field "avatar", the name's under "displayName".
+	Errors FormErrors
+	// Saved is true right after a submit that worked.
+	Saved bool
+}
+
+// PasswordData is what the Password section shows. No password is ever put
+// back into the form.
+type PasswordData struct {
+	// Errors are the problems of the last submit.
+	Errors FormErrors
+	// Saved is true right after a submit that worked.
+	Saved bool
+}
+
+// AppearanceData is what the Appearance section shows.
+type AppearanceData struct {
+	// Theme is the theme in use, which the radio button checks.
+	Theme app.Theme
+	// Errors are the problems of the last submit.
+	Errors FormErrors
+	// Saved is true right after a submit that worked.
+	Saved bool
+}
+
+// SettingsData is what the settings page shows.
+type SettingsData struct {
+	// Sidebar is the sidebar of the page.
+	Sidebar SidebarData
+	// Profile, Password and Appearance are their sections.
+	Profile    ProfileData
+	Password   PasswordData
+	Appearance AppearanceData
+	// Sessions are the live sessions of the user, the newest first.
+	Sessions []app.SessionInfo
+}
+
+// SettingsPage is the settings page of the user: the sections Profile,
+// Password, Appearance and Sessions, each of which saves on its own.
+templ SettingsPage(d SettingsData) {
+	@Layout("Settings", Sidebar(d.Sidebar)) {
+		<h1>Settings</h1>
+		<nav class="settings-nav" aria-label="Settings sections">
+			<a href="#profile">Profile</a>
+			<a href="#password">Password</a>
+			<a href="#appearance">Appearance</a>
+			// TODO(step 18.3): the Notifications section (sound, browser notifications, muted rooms).
+			// TODO(step 19.1): the Sign-in section (SSH keys and the sign-in code).
+			<a href="#sessions">Sessions</a>
+		</nav>
+		@ProfileSection(d.Profile)
+		@PasswordSection(d.Password)
+		@AppearanceSection(d.Appearance)
+		@SessionsSection(d.Sessions)
+		@liveStream(MeStreamPath)
+	}
+}
+
+// savedNote is the note "Saved" under a section that was just saved.
+templ savedNote(saved bool) {
+	if saved {
+		<p class="saved" role="status">Saved</p>
+	}
+}
+
+// ProfileSection is the Profile section: the avatar, with the form that
+// uploads one and the button that removes it, and the display name. The
+// server sends it alone as a Datastar patch after a submit.
+templ ProfileSection(d ProfileData) {
+	<section id="profile" class="settings-section">
+		<h2>Profile</h2>
+		@formProblem(d.Errors.Form)
+		<div class="settings-avatar">
+			@AvatarSized(d.User.ID, d.User.DisplayName, d.User.AvatarURL(), "lg")
+			<div>
+				<form id="avatar-form" method="post" action={ templ.SafeURL(SettingsAvatarPath) } enctype="multipart/form-data" data-on:submit={ FormPost(SettingsAvatarPath) }>
+					<div class="field">
+						<label for="avatar-file">Avatar</label>
+						<input id="avatar-file" name="avatar" type="file" accept="image/png,image/jpeg,image/gif" required/>
+						if d.Errors.Fields["avatar"] != "" {
+							<p class="field-error" id="avatar-file-error" role="alert">{ d.Errors.Fields["avatar"] }</p>
+						} else {
+							<p class="hint">A PNG, JPEG or GIF of up to 2 MiB. The middle square is used.</p>
+						}
+					</div>
+					<button type="submit">Upload</button>
+				</form>
+				if d.User.AvatarKey != "" {
+					<form id="avatar-remove-form" class="inline-form" method="post" action={ templ.SafeURL(SettingsAvatarRemovePath) } data-on:submit={ FormPost(SettingsAvatarRemovePath) }>
+						<button type="submit" class="secondary">Remove avatar</button>
+					</form>
+				}
+			</div>
+		</div>
+		<form id="profile-form" method="post" action={ templ.SafeURL(SettingsProfilePath) } data-on:submit={ FormPost(SettingsProfilePath) }>
+			@inputField(formField{ID: "profile-display-name", Name: "displayName", Label: "Display name", Type: "text", Value: d.DisplayName, Autocomplete: "name", Error: d.Errors.Fields["displayName"], Hint: "1 to 64 characters."})
+			<button type="submit">Save</button>
+		</form>
+		@savedNote(d.Saved)
+	</section>
+}
+
+// PasswordSection is the Password section: the current password and the new
+// one twice. The server sends it alone as a Datastar patch after a submit.
+templ PasswordSection(d PasswordData) {
+	<section id="password" class="settings-section">
+		<h2>Password</h2>
+		<p class="hint">Changing it logs you out everywhere else.</p>
+		<form id="password-form" method="post" action={ templ.SafeURL(SettingsPasswordPath) } data-on:submit={ FormPost(SettingsPasswordPath) }>
+			@formProblem(d.Errors.Form)
+			@inputField(formField{ID: "password-current", Name: "currentPassword", Label: "Current password", Type: "password", Autocomplete: "current-password", Error: d.Errors.Fields["currentPassword"]})
+			@inputField(formField{ID: "password-new", Name: "newPassword", Label: "New password", Type: "password", Autocomplete: "new-password", Error: d.Errors.Fields["newPassword"], Hint: "At least 12 characters, and not the current one."})
+			@inputField(formField{ID: "password-confirm", Name: "newPasswordConfirm", Label: "New password again", Type: "password", Autocomplete: "new-password", Error: d.Errors.Fields["newPasswordConfirm"]})
+			<button type="submit">Change password</button>
+		</form>
+		@savedNote(d.Saved)
+	</section>
+}
+
+// themeChoice is one radio button of the Appearance section.
+type themeChoice struct {
+	Theme app.Theme
+	Label string
+}
+
+// themeChoices are the three themes in the order they are offered.
+func themeChoices() []themeChoice {
+	return []themeChoice{
+		{app.ThemeSystem, "System"},
+		{app.ThemeLight, "Light"},
+		{app.ThemeDark, "Dark"},
+	}
+}
+
+// AppearanceSection is the Appearance section: the theme. The server sends it
+// alone as a Datastar patch after a submit.
+templ AppearanceSection(d AppearanceData) {
+	<section id="appearance" class="settings-section">
+		<h2>Appearance</h2>
+		<form id="appearance-form" method="post" action={ templ.SafeURL(SettingsAppearancePath) } data-on:submit={ FormPost(SettingsAppearancePath) }>
+			@formProblem(d.Errors.Form)
+			<fieldset class="theme-choices">
+				<legend>Theme</legend>
+				for _, c := range themeChoices() {
+					<label class="theme-choice" for={ "theme-" + string(c.Theme) }>
+						<input id={ "theme-" + string(c.Theme) } type="radio" name="theme" value={ string(c.Theme) } checked?={ d.Theme == c.Theme }/>
+						{ c.Label }
+					</label>
+				}
+				if d.Errors.Fields["theme"] != "" {
+					<p class="field-error" role="alert">{ d.Errors.Fields["theme"] }</p>
+				}
+			</fieldset>
+			<button type="submit">Save</button>
+		</form>
+		@savedNote(d.Saved)
+	</section>
+}
+
+// SessionsSection is the Sessions section: every browser and every app that
+// is logged in, with when it was made and last used, the one that shows the
+// page marked, and a button to end each of them. Ending the session of the
+// page logs it out.
+templ SessionsSection(sessions []app.SessionInfo) {
+	<section id="sessions" class="settings-section">
+		<h2>Sessions</h2>
+		<p class="hint">These are the browsers and apps that are logged in to your account. End a session to log that browser or app out.</p>
+		<div id="sessions-panel">
+			<table class="sessions">
+				<thead>
+					<tr>
+						<th scope="col">Type</th>
+						<th scope="col">Client</th>
+						<th scope="col">Created</th>
+						<th scope="col">Last used</th>
+						<th scope="col">Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, sess := range sessions {
+						@sessionRow(sess)
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+}
+
+// sessionRow is one row of the table of sessions.
+templ sessionRow(sess app.SessionInfo) {
+	<tr id={ "session-" + strconv.FormatUint(sess.ID, 10) } data-kind={ string(sess.Kind) } class={ templ.KV("current", sess.Current) }>
+		<td class="kind">{ sessionKindText(sess.Kind) }</td>
+		<td class="client">
+			if sess.ClientName != "" {
+				{ sess.ClientName }
+			} else {
+				<span class="hint">Unknown</span>
+			}
+			if sess.Current {
+				<span class="session-current">This browser</span>
+			}
+		</td>
+		<td><time class="post-time" datetime={ postTimeStamp(sess.CreatedAt) } title={ postTimeStamp(sess.CreatedAt) }>{ postTimeText(sess.CreatedAt) }</time></td>
+		<td><time class="post-time" datetime={ postTimeStamp(sess.LastSeenAt) } title={ postTimeStamp(sess.LastSeenAt) }>{ postTimeText(sess.LastSeenAt) }</time></td>
+		<td class="actions">
+			<form class="action" method="post" action={ templ.SafeURL(SessionEndPath(sess.ID)) }>
+				<button type="submit" class="secondary">End</button>
+			</form>
+		</td>
+	</tr>
+}
+
+// sessionKindText is "Browser" for a browser session and "App" for an API
+// session.
+func sessionKindText(k app.SessionKind) string {
+	if k == app.SessionAPI {
+		return "App"
+	}
+	return "Browser"
+}

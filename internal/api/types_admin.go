@@ -10,7 +10,9 @@ type adminUserJSON struct {
 	DisplayName string `json:"display_name"`
 	Role        string `json:"role"`
 	Disabled    bool   `json:"disabled"`
-	CreatedAt   string `json:"created_at"`
+	// AvatarURL is the address of the avatar (see avatarURL), null for none.
+	AvatarURL *string `json:"avatar_url"`
+	CreatedAt string  `json:"created_at"`
 }
 
 // adminUserOf makes the JSON of a user for an admin.
@@ -21,6 +23,7 @@ func adminUserOf(u app.User) adminUserJSON {
 		DisplayName: u.DisplayName,
 		Role:        string(u.Role),
 		Disabled:    u.Disabled,
+		AvatarURL:   avatarURL(u.ID, u.AvatarKey),
 		CreatedAt:   rfc3339(u.CreatedAt),
 	}
 }

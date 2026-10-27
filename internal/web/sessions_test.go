@@ -53,18 +53,18 @@ func TestSessionsPage(t *testing.T) {
 	e.apiToken("alice", "Clowder Desktop <b>on</b> laptop")
 	e.apiToken("bob", "bobs-secret-app")
 
-	rec := e.send(get("/me/sessions", withCookie(browser)))
+	rec := e.send(get("/me/settings", withCookie(browser)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d; body:\n%s", rec.Code, rec.Body)
 	}
 	body := rec.Body.String()
 	requireBody(t, rec, []string{
-		"<title>Sessions · Clowder</title>", "<h1>Sessions</h1>", `<table class="sessions">`,
+		"<title>Settings · Clowder</title>", "<h1>Settings</h1>", `<section id="sessions" class="settings-section">`, `<table class="sessions">`,
 		// The app session first (the newest), with its name escaped.
 		`data-kind="api"`, `<td class="kind">App</td>`, "Clowder Desktop &lt;b&gt;on&lt;/b&gt; laptop",
 		`data-kind="browser"`, `<td class="kind">Browser</td>`,
 		"This browser", `datetime="2026-10-26T09:30:00Z"`, `datetime="2026-10-26T10:30:00Z"`,
-		`id="sidebar-user">Alice</p>`, `<a href="/me/sessions">Sessions</a>`,
+		`id="sidebar-user">Alice</p>`, `<a href="/me/settings">Settings</a>`,
 	}, "bobs-secret-app", "<b>on</b>", "token")
 	ids := sessionRowID.FindAllStringSubmatch(body, -1)
 	if len(ids) != 2 {
@@ -91,15 +91,15 @@ func TestSessionsPageNeedsALogin(t *testing.T) {
 		name string
 		req  *http.Request
 	}{
-		{"no cookie", get("/me/sessions")},
-		{"an unknown cookie", get("/me/sessions", withCookie("nope"))},
-		{"an api token as the cookie", get("/me/sessions", withCookie(e.apiToken("alice", "app")))},
-		{"a bearer header only", get("/me/sessions", withHeader("Authorization", "Bearer "+e.apiToken("alice", "app")))},
+		{"no cookie", get("/me/settings")},
+		{"an unknown cookie", get("/me/settings", withCookie("nope"))},
+		{"an api token as the cookie", get("/me/settings", withCookie(e.apiToken("alice", "app")))},
+		{"a bearer header only", get("/me/settings", withHeader("Authorization", "Bearer "+e.apiToken("alice", "app")))},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := e.send(tt.req)
-			if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/login?next=%2Fme%2Fsessions" {
+			if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/login?next=%2Fme%2Fsettings" {
 				t.Errorf("status %d Location %q, want a redirect to the login page", rec.Code, rec.Header().Get("Location"))
 			}
 		})
@@ -111,7 +111,24 @@ func TestSessionsPageShowsTheSidebarLink(t *testing.T) {
 	e := newTestEnv(t, nil)
 	e.addUser("alice", "Alice", store.RoleMember)
 	rec := e.send(get("/", withCookie(e.session("alice"))))
-	requireBody(t, rec, []string{`id="sidebar-user">Alice</p>`, `<p class="sidebar-account"><a href="/me/sessions">Sessions</a></p>`})
+	requireBody(t, rec, []string{`id="sidebar-user">Alice</p>`, `<p class="sidebar-account"><a href="/me/settings">Settings</a></p>`,
+		`<a class="sidebar-avatar" href="/me/settings"`, `<span class="avatar avatar-md avatar-c`})
+}
+
+// TestOldSessionsPageRedirectsToTheSettings: the page of the sessions of 1.1 is
+// the Sessions section of the settings page now.
+func TestOldSessionsPageRedirectsToTheSettings(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t, nil)
+	e.addUser("alice", "Alice", store.RoleMember)
+	rec := e.send(get("/me/sessions", withCookie(e.session("alice"))))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/me/settings#sessions" {
+		t.Errorf("status %d Location %q, want 303 to /me/settings#sessions", rec.Code, rec.Header().Get("Location"))
+	}
+	rec = e.send(get("/me/sessions"))
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/login?next=%2Fme%2Fsessions" {
+		t.Errorf("without a login: status %d Location %q, want the login page", rec.Code, rec.Header().Get("Location"))
+	}
 }
 
 func TestEndSession(t *testing.T) {
@@ -157,8 +174,8 @@ func TestEndSession(t *testing.T) {
 
 	// Another session of the person: the person goes back to the list.
 	rec := end(strconv.FormatUint(otherID, 10), browser)
-	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/me/sessions" {
-		t.Fatalf("status %d Location %q, want 303 to /me/sessions", rec.Code, rec.Header().Get("Location"))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/me/settings#sessions" {
+		t.Fatalf("status %d Location %q, want 303 to /me/settings#sessions", rec.Code, rec.Header().Get("Location"))
 	}
 	if c := sessionCookieOf(rec); c != nil {
 		t.Errorf("a cookie was set: %+v", c)
@@ -204,7 +221,7 @@ func TestEndSessionFromDatastarRedirectsInBand(t *testing.T) {
 	}
 	rec := e.send(postForm("/me/sessions/"+strconv.FormatUint(otherID, 10)+"/end", url.Values{}, withCookie(browser), asDatastar()))
 	requireSSE(t, rec)
-	requireBody(t, rec, []string{redirectScript("/me/sessions")})
+	requireBody(t, rec, []string{redirectScript("/me/settings#sessions")})
 }
 
 func TestEndSessionPublishesUserChanged(t *testing.T) {
@@ -291,7 +308,7 @@ func TestBearerTokensAreIgnoredByThePages(t *testing.T) {
 	e := newTestEnv(t, nil)
 	alice := e.addUser("alice", "Alice", store.RoleMember)
 	token := e.apiToken("alice", "app")
-	for _, target := range []string{"/", "/rooms", "/me/sessions", "/messages", "/notifications"} {
+	for _, target := range []string{"/", "/rooms", "/me/sessions", "/me/settings", "/messages", "/notifications"} {
 		for name, req := range map[string]*http.Request{
 			"cookie": get(target, withCookie(token)),
 			"header": get(target, withHeader("Authorization", "Bearer "+token)),

@@ -118,7 +118,7 @@ func (n *Notifications) List(ctx context.Context, actor Actor, before uint64, li
 		page.Notifications[i] = Notification{
 			ID:        r.ID,
 			Kind:      r.Kind,
-			Actor:     UserRef{ID: r.ActorID, Username: r.ActorUsername, DisplayName: r.ActorDisplayName},
+			Actor:     UserRef{ID: r.ActorID, Username: r.ActorUsername, DisplayName: r.ActorDisplayName, AvatarKey: r.ActorAvatarKey},
 			RoomID:    r.RoomID,
 			RoomName:  r.RoomName,
 			PostID:    r.PostID,

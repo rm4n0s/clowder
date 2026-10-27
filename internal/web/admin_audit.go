@@ -31,7 +31,7 @@ const (
 // auditEntities are the entity types of the filter, in the order of SPEC
 // §7.10. It is read-only.
 var auditEntities = []app.EntityType{
-	app.EntityRoom, app.EntityPost, app.EntityComment, app.EntityTask, app.EntityColumn, app.EntityMember,
+	app.EntityRoom, app.EntityPost, app.EntityComment, app.EntityTask, app.EntityColumn, app.EntityMember, app.EntityUser,
 }
 
 // auditActions are the actions of the filter, in the order of SPEC §7.10. It
@@ -42,6 +42,7 @@ var auditActions = []app.AuditAction{
 	app.ActionColumnCreated, app.ActionColumnRenamed, app.ActionColumnMoved, app.ActionColumnDeleted,
 	app.ActionMemberJoined, app.ActionMemberAdded, app.ActionMemberLeft, app.ActionMemberRemoved,
 	app.ActionRoomCreated, app.ActionRoomRenamed, app.ActionRoomDeleted,
+	app.ActionUserPasswordChanged,
 }
 
 // auditQuery reads the filters and the page number from the query of the

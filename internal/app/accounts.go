@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
+	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
@@ -55,6 +57,9 @@ type User struct {
 	Role store.Role
 	// Disabled is true when an admin disabled the account.
 	Disabled bool
+	// AvatarKey is the key of the user's avatar, for AvatarPath; empty when
+	// the user has none.
+	AvatarKey string
 	// CreatedAt is when the user signed up.
 	CreatedAt time.Time
 }
@@ -87,6 +92,11 @@ type Accounts struct {
 	limiter            *LoginLimiter
 	pub                Publisher
 	hashes             *gate
+	// pictures bounds the avatars decoded at once: a picture of 4096 by
+	// 4096 pixels takes 64 MiB while it is decoded.
+	pictures *gate
+	avatars  *files.Store
+	cleaner  fileCleaner
 }
 
 // AccountsConfig holds the settings and the injected parts of Accounts.
@@ -107,6 +117,13 @@ type AccountsConfig struct {
 	// the same time, each costing 64 MiB; the other requests wait. 0 means
 	// twice the number of CPUs, at least 2 and at most 8.
 	MaxConcurrentHashes int
+	// Avatars stores the avatars (SPEC §7.14), in its own directory. Nil
+	// turns the avatars off: SetAvatar then fails with the tag
+	// AvatarsUnavailable and nobody has one.
+	Avatars *files.Store
+	// Logger receives what could not be cleaned up, such as the file of an
+	// avatar that was replaced. Nil discards it.
+	Logger *slog.Logger
 }
 
 // NewAccounts makes the service. Time is counted on clk; a nil clk is the real
@@ -120,6 +137,8 @@ func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg Accou
 		limiter = NewLoginLimiter(clk)
 	}
 	hashes := newGate(hashSlots(cfg.MaxConcurrentHashes))
+	pictures := newGate(pictureSlots)
+	pictures.idle = releaseMemory
 	if hasher.MemoryBytes() >= heavyHashBytes {
 		hashes.idle = releaseMemory
 	}
@@ -132,6 +151,9 @@ func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg Accou
 		limiter:            limiter,
 		pub:                orNop(cfg.Publisher),
 		hashes:             hashes,
+		pictures:           pictures,
+		avatars:            cfg.Avatars,
+		cleaner:            newFileCleaner(cfg.Avatars, cfg.Logger),
 	}
 }
 
@@ -487,6 +509,7 @@ func viewOf(u store.User) User {
 		DisplayName: u.DisplayName,
 		Role:        u.Role,
 		Disabled:    u.DisabledAt != nil,
+		AvatarKey:   u.AvatarKey,
 		CreatedAt:   u.CreatedAt,
 	}
 }

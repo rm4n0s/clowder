@@ -142,12 +142,13 @@ SPEC D22.
 | M15 Several processes | 15.1–15.2 |
 | M16 REST API and WebSocket | 16.1–16.5 |
 | M17 1.1 | 17.1–17.2 |
-| M18 Settings | 18.1–18.3 |
+| M18 Settings | 18.1–18.4 |
 | M19 SSH sign-in codes | 19.1–19.2 |
 | M20 Reading | 20.1–20.3 |
 | M21 The new look | 21.1–21.5 |
-| M22 Operations and limits | 22.1–22.3 |
-| M23 1.2 | 23.1–23.2 |
+| M22 One-to-one calls | 22.1–22.3 |
+| M23 Operations and limits | 23.1–23.3 |
+| M24 1.2 | 24.1–24.2 |
 
 ---
 
@@ -705,7 +706,7 @@ The owner's request, 2026-10-27 (SPEC §3a). M14–M17 make version 1.1.
 
 # Version 1.2
 
-Planned 2026-10-28 from the owner's request (SPEC §3b). The rules above apply unchanged. Every new or changed API route goes into `internal/api/openapi.json` in the step that adds it (D45). From step 22.3 on, `go tool govulncheck ./...` is part of rule 8 (D61).
+Planned 2026-10-28 from the owner's request (SPEC §3b). The rules above apply unchanged. Every new or changed API route goes into `internal/api/openapi.json` in the step that adds it (D45). From step 23.3 on, `go tool govulncheck ./...` is part of rule 8 (D61).
 
 ## M18: Settings
 
@@ -761,34 +762,72 @@ Planned 2026-10-28 from the owner's request (SPEC §3b). The rules above apply u
 
 **Proof:** `18.2-reset.png` (the reset page) and `18.2-reset-cli.txt` (`clowder reset-password` output, then a login with the new password through apicheck).
 
-### 18.3 Notification preferences: mutes, sound and browser notifications
-**Goal:** a user mutes a group conversation or a room, and hears a chime for what is not muted.
-**Read:** SPEC §7.9, §7.11, §7.15, §8, D50.
+### 18.3 Notification preferences
+**Goal:** a user sets what notifies them, globally and per room or conversation, and hears the sound they chose for it.
+**Read:** SPEC §7.9, §7.11, §7.15, §7.17, §8, D50.
 **Tasks:**
-1. Store: `mutes` (user, room or conversation; unique). Leaving a room or conversation deletes the mute. The unread count of conversations leaves muted ones out.
-2. `internal/app`: `Mutes.MuteRoom`/`UnmuteRoom`/`MuteConversation`/`UnmuteConversation`/`List`, with permission checks (a private room or conversation the user cannot read is "not found"). Publish `mute.changed` to the user.
-3. The user's stream (`me_stream`) and the WebSocket carry what the page needs to ring:
-   - `notification.created`;
-   - `message.created` for conversations that are not muted, with the place's name and the author.
+1. Store:
+   - `place_prefs` (user, room or conversation; notify, sound, ignore group mentions, mark unread, muted), unique per user and place, deleted when the user leaves;
+   - the global fields of `user_settings` (notify, sound and sound name, browser notifications, replies). Keywords are 18.4.
 
-   The page script (`internal/web/static/notify.js`, small, no framework):
-   - plays a Web Audio chime (rate limited to one every 2 s);
-   - shows a browser notification when no tab has the focus, picking one tab through `BroadcastChannel`;
-   - does neither for the conversation open in the focused tab.
-4. Settings: the Notifications section (sound switch, browser-notification switch that asks the permission, the list of mutes). The room and conversation pages get Mute/Unmute in their menu, and the sidebar shows muted rooms dimmed.
-5. API: `GET /me/mutes`, `PUT`/`DELETE /rooms/{id}/mute`, `PUT`/`DELETE /conversations/{id}/mute`, and `settings.changed` and `mute.changed` on the WebSocket. Put them in the OpenAPI document and add an apicheck scenario.
+   The unread count of conversations leaves muted ones out.
+2. `internal/app`: `Prefs.Global`/`UpdateGlobal` and `Prefs.Place`/`UpdatePlace`, checking permissions (a private room or conversation the user cannot read is "not found"), and publishing `settings.changed` and `place_prefs.changed` to the user. Also:
+   - one function that decides, for an event and a user, whether it rings (sound, browser notification) and how it counts, with a table test;
+   - every place that sends an event to a user's stream uses it.
+3. The user's stream (`me_stream`) and the WebSocket carry what the page needs: `notification.created`, `post.created` for *All new activity*, and `message.created`. Each has the place's name, the author and the kind, and the event says whether it rings for this user; the body is never in it. The page script, `internal/web/static/notify.js` (small, no framework):
+   - plays the chosen Web Audio sound (Purr, Chirp, Bell, Meow), rate limited to one every 2 seconds;
+   - shows the browser notification with the text of §7.15 when no tab has the focus, with one tab chosen through `BroadcastChannel`;
+   - does neither for the place open in the focused tab.
+4. Pages:
+   - the Notifications section of the settings: notify, sound with its choice and a Play button, browser notifications (asking the permission), replies;
+   - the "Notification preferences" dialog in the menu of a room and of a conversation;
+   - muted places dimmed at the end of the sidebar, with a mention badge only.
+5. API: the fields and routes of §7.15 (not presence and keywords, which are 18.4), in the OpenAPI document, with an apicheck scenario.
 
 **Tests:**
 - The permission tables.
-- A muted conversation leaves the unread count, and a mute ends when the user leaves.
-- A notification from a muted room still reaches the bell.
+- The table of the ringing decision: every global choice × every place choice × mute × event kind.
+- A muted conversation leaves the unread count, and the preferences end when the user leaves.
+- A mention in a muted room still reaches the bell but does not ring.
 - The stream carries the events with the right names and no body.
-- A browser test with two tabs: one chime is played (counted through a test hook in the page) and none when muted.
+- A browser test with two tabs: one sound (counted through a test hook in the page), none when muted, and the chosen sound's name.
 
 **Proof:**
-- `18.3-notifications.png`: the settings section, with one muted group.
-- `18.3-muted-sidebar.png`: the sidebar with a muted room.
-- `18.3-chime.txt`: the browser test's log of the chime and notification events.
+- `18.3-notifications.png`: the settings section.
+- `18.3-place-prefs.png`: the dialog of a group conversation.
+- `18.3-muted-sidebar.png`: the sidebar with a muted room showing a mention badge.
+- `18.3-ring.txt`: the browser test's log of the sound and notification events.
+
+### 18.4 Group mentions, keywords, presence and following posts
+**Goal:** `@room`, `@here` and keywords notify as in Mattermost, and following a post brings its replies.
+**Read:** SPEC §7.9, §7.15, §8.1, D50.
+**Tasks:**
+1. Presence:
+   - a user is online while a page stream or a WebSocket of theirs is open, in any process;
+   - in one process, counted in memory by the hub's owner; with Redis, a key per process with a TTL of 60 s, refreshed every 20 s, kept by `internal/cluster` (owned and stopped like the bridge);
+   - `GET /me/presence?user_ids=` in the API, and online dots in the members list of a room and a group.
+2. `internal/markdown` and the mentions code:
+   - `@room`, `@all` and `@here` in posts and comments of a room, and in messages of a group conversation;
+   - keywords (up to 10 per user, whole words, case-insensitive, outside code), stored in `user_settings`, with the Mention keywords part of the settings and the API field;
+   - each user's ignore-group-mentions preference honoured;
+   - the editor's confirmation above 5 people (the count comes from the server, with presence for `@here`).
+3. Following:
+   - `post_follows` (user, post), made when a user writes a post, comments under it, or is mentioned in it;
+   - Follow and Unfollow on the post page and the post's menu, and `PUT`/`DELETE /posts/{id}/follow`;
+   - with the global *Threads I follow*, a comment notifies every follower except its author, with the burst of 1 minute grouped into one notification ("Bob and 2 others replied in …").
+4. Notifications of §7.9 gain the kinds `group_mention` and `keyword` (shown as mentions), and the `reply` kind covers followed threads.
+
+**Tests:**
+- Mentions: `@room` reaches every member except the author and the ignoring ones; `@here` reaches only those online; `@all` is the same as `@room`. Neither works in a direct conversation, nor inside code.
+- Keywords: whole words, case, code, the limit of 10.
+- Following: automatic follows, unfollowing, the grouping of a burst, and no notification for the author.
+- Presence: in one process, and across two with Redis (on `scripts/test-docker.sh`).
+- The permission tables, and a route test for every tag.
+
+**Proof:**
+- `18.4-room-mention.png`: the confirmation, and the bell of a member.
+- `18.4-following.png`: a followed post's notification.
+- `18.4-presence.png`: the online dots in a room's members list.
 
 ## M19: SSH sign-in codes
 
@@ -904,7 +943,7 @@ Planned 2026-10-28 from the owner's request (SPEC §3b). The rules above apply u
 
 ## M21: The new look
 
-The owner picks the direction on the design canvas (D57). The manager writes it into the SPEC before step 21.1 starts; without an answer by then, the recommendation of D57 is used and recorded. Each step keeps every browser test passing and adds proofs in light, dark and at 390 px for the pages it changes.
+The owner picked "Sunbeam" with a full dark theme (D57); the artboards "A · Sunbeam" and "A · Sunbeam, dark" of the design canvas are the reference. Each step keeps every browser test passing and adds proofs in light, dark and at 390 px for the pages it changes.
 
 ### 21.1 The foundations
 **Goal:** the theme, fonts, logo and page shell of the chosen direction, in light and dark.
@@ -959,9 +998,93 @@ The owner picks the direction on the design canvas (D57). The manager writes it 
 
 **Proof:** `21.5-phone-*.png` for the main pages, and `21.5-manifest.txt`.
 
-## M22: Operations and limits
+## M22: One-to-one calls
 
-### 22.1 Backup and restore
+### 22.1 The media server and its signalling
+**Goal:** two pion clients in a test, the two users of a direct conversation, call each other through the server and receive each other's audio and video.
+**Read:** SPEC §7.11, §7.18, §8, D44, D63, D64.
+**Tasks:**
+1. Add `github.com/pion/webrtc/v4` (allowed by D63 and in CLAUDE.md). `CGO_ENABLED=0 go build ./...` still works. Check that `go mod tidy` adds only pion modules and their small dependencies, and list them.
+2. Store: `calls` (the direct conversation, caller, callee, video, state: ringing, active, ended; started, answered and ended times, how it ended, home process), on both dialects.
+3. `internal/app`: `Calls.Start`, `Answer`, `Decline`, `Cancel`, `HangUp`, `Current` and the 45-second timeout.
+   - They check that the conversation is direct and that the user is one of its two members (404 otherwise; 409 for a group conversation, a busy user or a disabled callee).
+   - Publish `call.*` after the commit.
+   - Being disabled, or a session ending, ends the call.
+   - The call entry ("Video call · 12 min", "Declined …", "Missed …") is written to the conversation when the call ends.
+4. `internal/calls`:
+   - one `webrtc.API` with a UDP mux and an ICE-TCP mux on `-media-addr`, and the NAT 1:1 IP;
+   - a call per pair: each side's tracks forwarded to the other, and renegotiation when a screen share replaces the camera;
+   - the deadlines and limits of D64.
+
+   It is owned by `serve`'s context, closes every peer connection on shutdown, and waits for its goroutines.
+5. Signalling:
+   - for pages, `GET /calls/{id}/ws` (session cookie, origin check);
+   - for the API, `GET /api/v1/conversations/{id}/call/ws` (bearer) and the REST routes of §7.18, in the OpenAPI document with the message schemas;
+   - session changes close the socket (D44).
+6. Config: `-media-addr`, `-media-public-ip`, `-max-calls` and their variables, validated, with route tests. The compose files publish the media port as UDP and TCP.
+
+**Tests:**
+- The permission tables of each method.
+- With two pion clients in the test (offer and answer over the signalling socket, a synthetic VP8 track and an Opus track):
+  - each receives the other's tracks;
+  - replacing the video track works (screen share);
+  - a third user gets 404, and a group conversation gets 409;
+  - a busy callee gets 409, and has a missed call;
+  - the timeout makes a missed call;
+  - a disabled user ends the call;
+  - an ending session closes the socket;
+  - ICE that never connects times out;
+  - shutdown leaves no goroutine.
+- ICE-TCP alone, with UDP filtered in the test's setting engine.
+- A route test for every tag.
+- Run on PostgreSQL too.
+
+**Proof:** `22.1-media.txt`, the log of a test run with two pion clients: the call started and answered, the tracks each side received, the packets counted, and the hang-up.
+
+### 22.2 Calls in the pages
+**Goal:** alice video-calls bob from their conversation, and bob answers in his browser.
+**Read:** SPEC §7.15, §7.18, D57.
+**Tasks:**
+1. In the Sunbeam style, light and dark (D57):
+   - the call buttons in the header of a direct conversation (none in groups);
+   - "Calling Bob…" with Cancel;
+   - the ringing dialog on every page (through the user's stream), with the *Purr ring* ringtone made with Web Audio;
+   - the call view: the other side large and yourself small, the controls (microphone, camera, screen share, devices, hang up), the duration, and the muted and camera-off marks;
+   - the call entry, the declined call and the missed call in the conversation;
+   - the browser notification "Bob is calling you".
+2. `internal/web/static/call.js`, written by hand: `RTCPeerConnection`, `getUserMedia`, `getDisplayMedia`, the signalling messages, renegotiation, and reconnecting the signalling once.
+3. It works at phone width (D58): the other side fills the screen, and the controls are large.
+
+**Tests:**
+- Handler tests of the pages and the call entries.
+- A browser test with two Chromium browsers using fake devices (`--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`):
+  - alice calls and bob answers;
+  - each page's `<video>` elements play the other's stream (checked through `videoWidth` and `currentTime` advancing);
+  - muting shows the mark;
+  - hanging up writes the call entry;
+  - an unanswered call becomes a missed call.
+
+**Proof:** `22.2-ringing.png` (bob's ringing dialog), `22.2-call-light.png`, `22.2-call-dark.png` and `22.2-call-phone.png` (the call), and `22.2-missed.png`.
+
+### 22.3 Calls across processes
+**Goal:** with two processes, bob, whose page is on the second process, answers alice's call, whose home is the first.
+**Read:** SPEC §8.1, D41, D65.
+**Tasks:**
+1. Record the home process with the call. Each process gets an ID at start, its media address, and its Redis channel `clowder:calls:<process>`.
+2. Relay the signalling and the call state through Redis to the home (`internal/cluster` owns the Redis side; `internal/calls` stays free of go-redis). Media goes straight to the home's port.
+3. When a process stops, its calls end, as D65 says. In the cluster composition, each process publishes its own media port, and the Caddyfile passes the signalling WebSockets.
+4. Extend `clowder-proof -cluster` so that the `-other` user is on the other process during a call.
+
+**Tests:**
+- Two processes with Redis (`scripts/test-docker.sh`): two pion clients on different processes call each other and receive each other's tracks.
+- The home stopping ends the call for both.
+- The relay drops messages for a call that has ended.
+
+**Proof:** `22.3-cluster-call.png` (the call seen by bob on the second process) and `22.3-cluster-call.txt` (the log of the relay).
+
+## M23: Operations and limits
+
+### 23.1 Backup and restore
 **Goal:** `clowder backup` makes an archive that `clowder restore` turns back into a working installation.
 **Read:** SPEC D59, README "Backups".
 **Tasks:**
@@ -975,9 +1098,9 @@ The owner picks the direction on the design canvas (D57). The manager writes it 
 - The hostile archives: traversal, absolute path, symlink, a non-empty target.
 - A route test for every tag.
 
-**Proof:** `22.1-backup.txt` (backup of the demo while serving, restore into an empty directory, apicheck against the restored server).
+**Proof:** `23.1-backup.txt` (backup of the demo while serving, restore into an empty directory, apicheck against the restored server).
 
-### 22.2 Metrics
+### 23.2 Metrics
 **Goal:** `/metrics` on `-metrics-addr` answers the counters of D60.
 **Read:** SPEC D60, §8, §9.
 **Tasks:**
@@ -994,9 +1117,9 @@ The owner picks the direction on the design canvas (D57). The manager writes it 
 - The listener is off by default.
 - A route test for every tag.
 
-**Proof:** `22.2-metrics.txt` (the output after a short apicheck run).
+**Proof:** `23.2-metrics.txt` (the output after a short apicheck run).
 
-### 22.3 Per-user limits and govulncheck
+### 23.3 Per-user limits and govulncheck
 **Goal:** the limits of D62 hold, and `govulncheck` is a standard check.
 **Read:** SPEC D47, D61, D62.
 **Tasks:**
@@ -1006,13 +1129,13 @@ The owner picks the direction on the design canvas (D57). The manager writes it 
 
 **Tests:** each limit at its boundary, on SSE, on WebSocket and on uploads, and the limiter on sign-up.
 
-**Proof:** `22.3-govulncheck.txt`.
+**Proof:** `23.3-govulncheck.txt`.
 
-## M23: 1.2
+## M24: 1.2
 
-### 23.1 Security review and documentation
+### 24.1 Security review and documentation
 **Goal:** the 1.2 surface is reviewed, documented and measured.
-**Read:** SPEC §3b, §7.14–§7.17, D49–D62, `docs/SECURITY.md`, `docs/PERFORMANCE.md`.
+**Read:** SPEC §3b, §7.14–§7.18, D49–D65, `docs/SECURITY.md`, `docs/PERFORMANCE.md`.
 **Tasks:**
 1. Review, as 17.1 did, and record it in a "Clowder 1.2" part of `docs/SECURITY.md`:
    - the SSH server: authentication, refused requests, resource limits, the host key's file mode, the log contents, a fuzz test of the key parsing;
@@ -1020,16 +1143,17 @@ The owner picks the direction on the design canvas (D57). The manager writes it 
    - the pending login cookie, the reset links and the avatars (decompression bombs, polyglots, the served content type);
    - the settings routes, the mutes, and the search of messages;
    - the service worker's scope, the metrics listener, and restoring hostile archives.
+   - calls: membership on every signalling message, SDP and candidate parsing (a fuzz test of the signalling messages), the limits of D64, a participant dropped when their access ends, the media port answering only ICE with valid credentials (no amplification), and the shutdown;
 
    Fix what is found, with tests.
 2. Update the docs:
    - the README: settings, the SSH codes (with the compose port and firewall advice), the reset, backups, metrics, the PWA;
    - `docs/API.md`: the new routes, the login with `ssh_code`, mutes and settings events, unread counts, message search, the code CSS classes.
-3. A short check of SPEC §10 on SQLite and PostgreSQL with the unread counts and the new look, in `docs/PERFORMANCE.md`.
+3. A short check of SPEC §10 on SQLite and PostgreSQL with the unread counts and the new look, and the CPU and memory of the server during 1 and during 10 simultaneous one-to-one calls (pion clients, `clowder-perf -calls`), in `docs/PERFORMANCE.md`.
 
 **Done when:** the standard checks (with govulncheck) and the browser tests pass, and the review is recorded.
 
-### 23.2 Release 1.2
+### 24.2 Release 1.2
 **Goal:** version 1.2.0 is published.
 **Tasks:**
 1. Run every check, `scripts/test-docker.sh`, every browser test and `scripts/compose-smoke.sh` (both modes). Update the SPEC's status to 1.2.

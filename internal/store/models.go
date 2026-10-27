@@ -5,6 +5,7 @@ package store
 func allModels() []any {
 	return []any{
 		&User{},
+		&UserSettings{},
 		&Invitation{},
 		&Session{},
 		&Room{},

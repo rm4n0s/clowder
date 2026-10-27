@@ -63,6 +63,7 @@ templ SearchPanel(d SearchData) {
 						<li class="search-result" id={ "result-" + strconv.FormatUint(r.PostID, 10) }>
 							<header class="post-meta">
 								<a class="search-room" href={ templ.SafeURL(RoomPath(r.RoomID)) }>{ r.RoomName }</a>
+								@Avatar(r.Author.ID, r.Author.DisplayName, r.Author.AvatarURL())
 								<span class="post-author">{ r.Author.DisplayName }</span>
 								<span class="post-username">{ "@" + r.Author.Username }</span>
 								<time class="post-time" datetime={ postTimeStamp(r.CreatedAt) } title={ postTimeStamp(r.CreatedAt) }>{ searchResultTime(r.CreatedAt) }</time>
