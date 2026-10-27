@@ -17,6 +17,7 @@ type dialectMigration struct {
 func migrationList() []dialectMigration {
 	return []dialectMigration{
 		{ID: "0001_posts_fts", SQLite: migrationPostsFTS, Postgres: migrationPostsSearchPostgres},
+		{ID: "0002_posts_feed_roots", SQLite: migrationPostsFeedRootsSQLite, Postgres: migrationPostsFeedRootsPostgres},
 	}
 }
 
@@ -103,4 +104,23 @@ SELECT p.id,
     chr(57344), ''), chr(57345), ''), chr(10))
 FROM posts p
 WHERE p.deleted_at IS NULL;
+`
+
+// migrationPostsFeedRootsPostgres adds the index that serves the feed of a
+// room on PostgreSQL. The feed reads the posts with parent_id IS NULL, newest
+// first. The index idx_posts_feed (room_id, parent_id, id DESC) finds them, but
+// the planner of PostgreSQL treats IS NULL as a filter and not as an equality,
+// so it cannot tell that the rows come out in id order and sorts all the root
+// posts of the room before it takes the page. A partial index on the root posts
+// delivers them in order, and the page costs the same as a page of a short feed
+// (found in step 14.2, by the test of the plan of the feed query).
+const migrationPostsFeedRootsPostgres = `
+CREATE INDEX idx_posts_feed_roots ON posts (room_id, id DESC) WHERE parent_id IS NULL;
+`
+
+// migrationPostsFeedRootsSQLite is the migration 0002 of SQLite: nothing to do.
+// SQLite treats IS NULL as an equality and reads the feed from idx_posts_feed
+// in order, without a sort.
+const migrationPostsFeedRootsSQLite = `
+SELECT 1;
 `

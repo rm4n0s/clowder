@@ -18,7 +18,12 @@ import (
 )
 
 // openAccounts opens the database that a command made in dir, with the
-// accounts service on it. Both are closed when the test ends.
+// accounts service on it. Both are closed when the test ends. The commands
+// under test run on the SQLite database of their data directory, whatever
+// CLOWDER_TEST_POSTGRES says (the tests of step 14.2 on PostgreSQL are those of
+// the store, the services and the handlers; the binary on a database URL is
+// tried by step 14.1's proof and by the compose smoke test), so this opens
+// SQLite on purpose.
 func openAccounts(t *testing.T, dir string) (*app.Accounts, *store.Store) {
 	t.Helper()
 	st, err := store.Open(t.Context(), filepath.Join(dir, databaseFile), clock.Real(), nil)

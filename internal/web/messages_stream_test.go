@@ -282,7 +282,7 @@ func TestConversationStreamShowsEditsDeletionsAndReactions(t *testing.T) {
 		// The service refuses it, so publish the event the way a race would.
 		e.hub.Publish(live.Event{Topic: live.ConversationTopic(conv), Kind: live.KindMessageReaction, ConversationID: conv, MessageID: msg.ID})
 		for _, c := range []*streamClient{alice, bob} {
-			if got := patchesWith(c.drain(), "msg-reactions-"); len(got) != 0 {
+			if got := patchesWith(c.drainQuiet(), "msg-reactions-"); len(got) != 0 {
 				t.Errorf("patches = %+v", got)
 			}
 		}
@@ -444,7 +444,7 @@ func TestConversationStreamKeepsTheCountsLive(t *testing.T) {
 
 	// A second person gets a badge of 1 for the other conversation, live.
 	carol := e.serveStreams().open("carol", streamOfConversation(elsewhere, "seen=0"), asDatastar())
-	carol.drain()
+	carol.drainQuiet() // whatever the stream starts with
 	e.say("alice", e.direct("alice", "bob"), "a second one")
 	// carol's own conversation is not this one: her count does not change.
 	for _, p := range carol.drain() {

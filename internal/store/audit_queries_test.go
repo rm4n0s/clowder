@@ -2,7 +2,6 @@ package store
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 )
@@ -204,19 +203,11 @@ func TestAuditQueriesUseTheIndexes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var plan []struct {
-				Detail string
+			plan := explain(t, f.s, "SELECT * FROM audit_events WHERE "+tt.where+" ORDER BY id DESC LIMIT 51")
+			if plan.uses(tt.index) {
+				return
 			}
-			q := "EXPLAIN QUERY PLAN SELECT * FROM audit_events WHERE " + tt.where + " ORDER BY id DESC LIMIT 51"
-			if err := f.s.db(f.ctx).Raw(q).Scan(&plan).Error; err != nil {
-				t.Fatal(err)
-			}
-			for _, row := range plan {
-				if strings.Contains(row.Detail, tt.index) {
-					return
-				}
-			}
-			t.Errorf("plan %v does not use %s", plan, tt.index)
+			t.Errorf("plan %q does not use %s", plan.details, tt.index)
 		})
 	}
 }

@@ -118,8 +118,9 @@ func TestRebuildSearchIndex(t *testing.T) {
 	want := f.indexRows()
 
 	// Lose the index, then rebuild it: it holds what ReindexPost made.
-	f.exec("DELETE FROM posts_fts")
-	f.exec("INSERT INTO posts_fts (rowid, text) VALUES (?, 'stale')", deleted.ID)
+	table, idColumn := f.indexTable()
+	f.exec("DELETE FROM " + table)
+	f.exec("INSERT INTO "+table+" ("+idColumn+", text) VALUES (?, 'stale')", deleted.ID)
 	if err := f.s.RebuildSearchIndex(f.ctx); err != nil {
 		t.Fatalf("RebuildSearchIndex: %+v", err)
 	}

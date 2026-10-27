@@ -82,3 +82,54 @@ func TestOpenClosesInCleanup(t *testing.T) {
 		t.Errorf("Tx after cleanup returned %v, want a tagged error from the closed database", err)
 	}
 }
+
+// TestOpenOnPostgres is TestOpenGivesIndependentDatabases for the PostgreSQL
+// path of storetest.Open: every call gets a database of its own, copied from
+// the template, with the schema and with no rows of the other, and the database
+// is dropped when the test ends. It runs only when CLOWDER_TEST_POSTGRES is set.
+func TestOpenOnPostgres(t *testing.T) {
+	if !storetest.Postgres() {
+		t.Skipf("set %s (scripts/test-docker.sh does) to run the PostgreSQL path of storetest.Open", store.PostgresTestEnv)
+	}
+	clk := clock.NewFake(time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC))
+	ctx := t.Context()
+	database := func(s *store.Store) string {
+		t.Helper()
+		var name string
+		if err := s.DB(ctx).Raw("SELECT current_database()").Scan(&name).Error; err != nil {
+			t.Fatal(err)
+		}
+		return name
+	}
+
+	a, b := storetest.Open(t, clk), storetest.Open(t, clk)
+	nameA, nameB := database(a), database(b)
+	if nameA == nameB {
+		t.Fatalf("both stores are on the database %s", nameA)
+	}
+	u := &store.User{Username: "ann", DisplayName: "Ann", PasswordHash: "h", Role: store.RoleMember}
+	if err := a.CreateUser(ctx, u); err != nil {
+		t.Fatalf("CreateUser: %+v", err)
+	}
+	if _, err := a.UserByID(ctx, u.ID); err != nil {
+		t.Errorf("the store that wrote the user lost it: %+v", err)
+	}
+	if _, err := b.UserByID(ctx, u.ID); err == nil {
+		t.Error("b sees the user of a")
+	}
+	var users int64
+	if err := b.DB(ctx).Raw("SELECT count(*) FROM users").Scan(&users).Error; err != nil || users != 0 {
+		t.Errorf("b has %d users (%v), want the empty schema", users, err)
+	}
+
+	// The cleanup closes the store and drops its database.
+	tb := &cleanupTB{TB: t}
+	c := storetest.Open(tb, clk)
+	nameC := database(c)
+	tb.runCleanups()
+	var left int64
+	err := a.DB(ctx).Raw("SELECT count(*) FROM pg_database WHERE datname = ?", nameC).Scan(&left).Error
+	if err != nil || left != 0 {
+		t.Errorf("the database %s still exists after the cleanup (%d, %v)", nameC, left, err)
+	}
+}

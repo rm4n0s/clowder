@@ -2,8 +2,6 @@ package store
 
 import (
 	"reflect"
-	"slices"
-	"strings"
 	"testing"
 	"time"
 )
@@ -268,19 +266,16 @@ func TestFeedQueryUsesItsIndex(t *testing.T) {
 		"SELECT * FROM posts WHERE room_id = 1 AND parent_id IS NULL ORDER BY id DESC LIMIT 31",
 		"SELECT * FROM posts WHERE room_id = 1 AND parent_id IS NULL AND id < 50 ORDER BY id DESC LIMIT 31",
 	} {
-		var plan []struct{ Detail string }
-		if err := f.s.db(f.ctx).Raw("EXPLAIN QUERY PLAN " + query).Scan(&plan).Error; err != nil {
-			t.Fatal(err)
+		plan := explain(t, f.s, query)
+		if !plan.uses("idx_posts_feed") {
+			t.Errorf("plan %q of %q does not use idx_posts_feed", plan.details, query)
 		}
-		var details []string
-		for _, p := range plan {
-			details = append(details, p.Detail)
+		if plan.sorts {
+			t.Errorf("plan %q of %q sorts", plan.details, query)
 		}
-		if !slices.ContainsFunc(details, func(d string) bool { return strings.Contains(d, "idx_posts_feed") }) {
-			t.Errorf("plan %q of %q does not use idx_posts_feed", details, query)
-		}
-		if slices.ContainsFunc(details, func(d string) bool { return strings.Contains(d, "TEMP B-TREE") }) {
-			t.Errorf("plan %q of %q sorts", details, query)
+		if onPostgres() && !plan.uses("idx_posts_feed_roots") {
+			// idx_posts_feed does not deliver the roots in order on PostgreSQL.
+			t.Errorf("plan %q of %q does not use idx_posts_feed_roots", plan.details, query)
 		}
 	}
 }

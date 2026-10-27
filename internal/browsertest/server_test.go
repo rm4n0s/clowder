@@ -350,8 +350,18 @@ func TestStopServer(t *testing.T) {
 					t.Errorf("unexpected stop error: %v (route %s)", err, appErr.Route())
 				}
 			}
-			// Nothing of the group is left, and Stop is repeatable.
-			if killErr := syscall.Kill(-pid, 0); killErr == nil {
+			// Nothing of the group is left, and Stop is repeatable. A child
+			// of the killed shell (the sleep) is reaped by init or the
+			// session's subreaper, not by Stop, so it may linger for a moment
+			// as a zombie after the kill: wait for the group to go.
+			groupGone := false
+			for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+				if syscall.Kill(-pid, 0) != nil {
+					groupGone = true
+					break
+				}
+			}
+			if !groupGone {
 				t.Errorf("process group %d still exists after Stop", pid)
 			}
 			if _, statErr := os.Stat(srv.tmpDir); !os.IsNotExist(statErr) {

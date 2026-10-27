@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/store"
@@ -22,12 +23,32 @@ var template = sync.OnceValues(func() (*store.Template, error) {
 	return store.NewTemplate(context.Background())
 })
 
-// Open returns a Store on a new, empty database in a file of the test's
-// temporary directory, migrated and using clk. Each call gets its own
-// database, so tests do not see each other's rows, not even in parallel. The
-// Store is closed when the test ends. A failure stops the test.
+// postgresTemplate makes the migrated template database on the PostgreSQL
+// server of store.PostgresTestEnv on first use and returns the same one
+// afterwards, for the same reason as template.
+var postgresTemplate = sync.OnceValues(func() (*store.PostgresTemplate, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	return store.NewPostgresTemplate(ctx, os.Getenv(store.PostgresTestEnv))
+})
+
+// Postgres reports whether the tests run on PostgreSQL, that is whether the
+// environment variable store.PostgresTestEnv (CLOWDER_TEST_POSTGRES) is set.
+func Postgres() bool {
+	return os.Getenv(store.PostgresTestEnv) != ""
+}
+
+// Open returns a Store on a new, empty database, migrated and using clk: a
+// file in the test's temporary directory on SQLite, or, when Postgres is true,
+// a database made with CREATE DATABASE … TEMPLATE on the server of
+// CLOWDER_TEST_POSTGRES. Each call gets its own database, so tests do not see
+// each other's rows, not even in parallel. The Store is closed, and a
+// PostgreSQL database dropped, when the test ends. A failure stops the test.
 func Open(tb testing.TB, clk clock.Clock) *store.Store {
 	tb.Helper()
+	if Postgres() {
+		return openPostgres(tb, clk)
+	}
 	tmpl, err := template()
 	if err != nil {
 		tb.Fatalf("storetest: template: %+v", err)
@@ -44,6 +65,25 @@ func Open(tb testing.TB, clk clock.Clock) *store.Store {
 	return s
 }
 
+// openPostgres is Open on PostgreSQL.
+func openPostgres(tb testing.TB, clk clock.Clock) *store.Store {
+	tb.Helper()
+	tmpl, err := postgresTemplate()
+	if err != nil {
+		tb.Fatalf("storetest: postgres template: %+v", err)
+	}
+	s, release, err := tmpl.Open(tb.Context(), clk, nil)
+	if err != nil {
+		tb.Fatalf("storetest: open postgres: %+v", err)
+	}
+	tb.Cleanup(func() {
+		if err := release(); err != nil {
+			tb.Errorf("storetest: release: %+v", err)
+		}
+	})
+	return s
+}
+
 // LargeDemoEnv is the environment variable that names the database file of a
 // large demo (`clowder demo -size large`, SPEC §10) for the benchmarks.
 const LargeDemoEnv = "CLOWDER_BENCH_DB"
@@ -55,6 +95,9 @@ const LargeDemoEnv = "CLOWDER_BENCH_DB"
 // is closed when the test ends. A failure stops the test.
 func OpenLarge(tb testing.TB, clk clock.Clock) *store.Store {
 	tb.Helper()
+	if Postgres() {
+		tb.Skipf("the large demo benchmarks run on SQLite only; unset %s", store.PostgresTestEnv)
+	}
 	src := os.Getenv(LargeDemoEnv)
 	if src == "" {
 		tb.Skipf("set %s to the clowder.db of `clowder demo -size large` to run this benchmark", LargeDemoEnv)

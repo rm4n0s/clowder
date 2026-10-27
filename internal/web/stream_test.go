@@ -14,7 +14,12 @@ import (
 )
 
 // streamTimeout is how long a test waits for an event, or for a stream to end.
-const streamTimeout = 3 * time.Second
+// It is only the limit after which a missing event fails the test, so a long
+// one costs nothing when the event comes. An event is read from the database
+// and rendered, which on PostgreSQL under the load of the parallel tests, the
+// race detector and the server's own processes took longer than 3 seconds
+// (step 14.2; the same load on SQLite did not).
+const streamTimeout = 10 * time.Second
 
 // quietTime is how long a test waits to see that nothing is sent. The stream
 // of an event reads and renders under the load of the other tests that run in
@@ -186,8 +191,41 @@ func (c *streamClient) patches(n int) []patch {
 	return out
 }
 
-// drain returns the patches that come until the stream is quiet for quietTime.
+// drain returns the patches of the change that the test just made: it waits
+// for the first one for up to streamTimeout, and then until the stream is
+// quiet for quietTime. The first wait is long because the event has to be read
+// from the database and rendered, which under the load of the other tests, the
+// race detector and a database server takes longer than any short quiet time
+// (found in step 14.2 on PostgreSQL: a drain that waited only quietTime
+// returned empty and the test took the late patch for no patch). A test that
+// expects no patch uses drainQuiet.
 func (c *streamClient) drain() []patch {
+	c.t.Helper()
+	var out []patch
+	timer := time.NewTimer(streamTimeout)
+	defer timer.Stop()
+	for {
+		select {
+		case b, ok := <-c.blocks:
+			if !ok {
+				c.t.Fatal("the stream ended; wanted quiet")
+			}
+			if b.event != "" {
+				out = append(out, patchOf(c.t, b))
+				timer.Reset(quietTime)
+			}
+		case <-timer.C:
+			return out
+		}
+	}
+}
+
+// drainQuiet returns the patches that come until the stream is quiet for
+// quietTime. It is for the start of a stream, which may send nothing, and for
+// a change after which nothing is expected: it cannot wait for an event that
+// may not come, so it proves the absence of a patch only as far as quietTime
+// reaches.
+func (c *streamClient) drainQuiet() []patch {
 	c.t.Helper()
 	var out []patch
 	timer := time.NewTimer(quietTime)

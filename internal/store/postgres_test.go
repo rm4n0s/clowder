@@ -87,11 +87,15 @@ func TestDialectString(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreCarriesItsDialectIntoTransactions(t *testing.T) {
+func TestStoreCarriesItsDialectIntoTransactions(t *testing.T) {
 	t.Parallel()
 	f := newFix(t)
-	if f.s.dialect != dialectSQLite {
-		t.Errorf("dialect = %v, want sqlite", f.s.dialect)
+	want := dialectSQLite
+	if onPostgres() {
+		want = dialectPostgres
+	}
+	if f.s.dialect != want {
+		t.Errorf("dialect = %v, want %v", f.s.dialect, want)
 	}
 	err := f.s.Tx(f.ctx, func(tx *Store) error {
 		if tx.dialect != f.s.dialect {

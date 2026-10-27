@@ -20,11 +20,15 @@ type fix struct {
 	n   int
 }
 
-// newFix opens a store on a file in a temporary directory with the models of
-// the program. The store is closed when the test ends.
+// newFix opens a store with the models of the program: on a file in a
+// temporary directory, or, when CLOWDER_TEST_POSTGRES is set, on a new
+// PostgreSQL database. The store is closed when the test ends.
 func newFix(tb testing.TB) *fix {
 	tb.Helper()
 	clk := clock.NewFake(fakeStart)
+	if onPostgres() {
+		return &fix{tb: tb, ctx: tb.Context(), s: openPostgresCopy(tb, clk), clk: clk}
+	}
 	path := filepath.Join(tb.TempDir(), "models.db")
 	s, err := open(tb.Context(), path, clk, nil, defaultOptions())
 	if err != nil {

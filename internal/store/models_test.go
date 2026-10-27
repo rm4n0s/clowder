@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/errors"
 	"gorm.io/gorm"
@@ -435,12 +436,22 @@ func TestCheckConstraints(t *testing.T) {
 			if classify(err) == failureConflict {
 				t.Fatalf("reported as a conflict: %v", err)
 			}
-			want := "CHECK constraint failed: " + tt.constraint
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("error = %v, want it to contain %q", err, want)
+			if !isCheckFailure(err, tt.constraint) {
+				t.Errorf("error = %v, want a failure of the check constraint %s", err, tt.constraint)
 			}
 		})
 	}
+}
+
+// isCheckFailure reports whether err is the failure of the check constraint
+// named constraint. SQLite words it ("CHECK constraint failed: name"); on
+// PostgreSQL it is the SQLSTATE 23514 with the constraint's name.
+func isCheckFailure(err error, constraint string) bool {
+	if onPostgres() {
+		var pgErr *pgconn.PgError
+		return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == constraint
+	}
+	return err != nil && strings.Contains(err.Error(), "CHECK constraint failed: "+constraint)
 }
 
 func TestIDsAreNeverReused(t *testing.T) {
@@ -453,10 +464,15 @@ func TestIDsAreNeverReused(t *testing.T) {
 	}
 }
 
-// isForeignKeyFailure reports whether err is a foreign key violation: GORM
-// translates the one of an insert, and the driver words the one of a RESTRICT
-// action by itself.
+// isForeignKeyFailure reports whether err is a foreign key violation: on
+// SQLite GORM translates the one of an insert, and the driver words the one of
+// a RESTRICT action by itself; on PostgreSQL it is the SQLSTATE.
 func isForeignKeyFailure(err error) bool {
+	if onPostgres() {
+		// 23503 is a foreign key violation; a RESTRICT action reports 23001.
+		var pgErr *pgconn.PgError
+		return errors.As(err, &pgErr) && (pgErr.Code == "23503" || pgErr.Code == "23001")
+	}
 	return err != nil && (errors.Is(err, gorm.ErrForeignKeyViolated) || strings.Contains(err.Error(), "FOREIGN KEY constraint failed"))
 }
 
@@ -527,10 +543,21 @@ func TestForeignKeyActions(t *testing.T) {
 
 	f := newFix(t)
 	var got []foreignKey
-	err := f.s.db(f.ctx).Raw(`
+	query := `
 		SELECT m.name AS "table", p."from" AS "column", p."table" AS ref_table, p.on_delete
 		FROM sqlite_master m, pragma_foreign_key_list(m.name) p
-		WHERE m.type = 'table'`).Scan(&got).Error
+		WHERE m.type = 'table'`
+	if onPostgres() {
+		// confdeltype: a no action, r restrict, c cascade, n set null.
+		query = `
+		SELECT c.conrelid::regclass::text AS "table", a.attname AS "column", c.confrelid::regclass::text AS ref_table,
+			CASE c.confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'r' THEN 'RESTRICT' WHEN 'n' THEN 'SET NULL'
+				WHEN 'a' THEN 'NO ACTION' ELSE 'OTHER' END AS on_delete
+		FROM pg_constraint c
+		JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+		WHERE c.contype = 'f' AND c.connamespace = 'public'::regnamespace`
+	}
+	err := f.s.db(f.ctx).Raw(query).Scan(&got).Error
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -595,18 +622,64 @@ func TestIndexes(t *testing.T) {
 		"idx_audit_events_action":                   {"audit_events", false, "action,id"},
 	}
 
+	if onPostgres() {
+		// Found in step 14.2: see migrationPostsFeedRootsPostgres.
+		want["idx_posts_feed_roots"] = struct {
+			table   string
+			unique  bool
+			columns string
+		}{"posts", false, "room_id,id DESC"}
+	}
+
 	f := newFix(t)
+	// Each index with the columns of its key, in order.
 	var indexes []struct {
 		Name     string
 		TblName  string
 		IsUnique bool
+		Columns  string
 	}
-	err := f.s.db(f.ctx).Raw(`
-		SELECT m.name, m.tbl_name, l."unique" AS is_unique
-		FROM sqlite_master m, pragma_index_list(m.tbl_name) l
-		WHERE m.type = 'index' AND m.name = l.name AND m.sql IS NOT NULL`).Scan(&indexes).Error
-	if err != nil {
-		t.Fatal(err)
+	if onPostgres() {
+		// The search index (posts_search and its GIN index) has no SQLite
+		// counterpart among these: SQLite keeps it in a virtual table.
+		err := f.s.db(f.ctx).Raw(`
+			SELECT i.relname AS name, t.relname AS tbl_name, x.indisunique AS is_unique, (
+				SELECT string_agg(a.attname || CASE WHEN x.indoption[k.n - 1] & 1 = 1 THEN ' DESC' ELSE '' END, ',' ORDER BY k.n)
+				FROM generate_series(1, x.indnkeyatts) AS k(n)
+				JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.indkey[k.n - 1]) AS columns
+			FROM pg_index x
+			JOIN pg_class i ON i.oid = x.indexrelid
+			JOIN pg_class t ON t.oid = x.indrelid
+			WHERE t.relnamespace = 'public'::regnamespace AND NOT x.indisprimary AND t.relname <> 'posts_search'`).Scan(&indexes).Error
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		err := f.s.db(f.ctx).Raw(`
+			SELECT m.name, m.tbl_name, l."unique" AS is_unique
+			FROM sqlite_master m, pragma_index_list(m.tbl_name) l
+			WHERE m.type = 'index' AND m.name = l.name AND m.sql IS NOT NULL`).Scan(&indexes).Error
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, idx := range indexes {
+			var cols []struct {
+				Name string
+				Desc bool
+			}
+			err := f.s.db(f.ctx).Raw(`SELECT name, "desc" FROM pragma_index_xinfo(?) WHERE key = 1 ORDER BY seqno`, idx.Name).Scan(&cols).Error
+			if err != nil {
+				t.Fatal(err)
+			}
+			names := make([]string, len(cols))
+			for j, c := range cols {
+				names[j] = c.Name
+				if c.Desc {
+					names[j] += " DESC"
+				}
+			}
+			indexes[i].Columns = strings.Join(names, ",")
+		}
 	}
 	seen := map[string]bool{}
 	for _, idx := range indexes {
@@ -619,23 +692,8 @@ func TestIndexes(t *testing.T) {
 		if w.table != idx.TblName || w.unique != idx.IsUnique {
 			t.Errorf("index %s is on %s (unique %v), want %s (unique %v)", idx.Name, idx.TblName, idx.IsUnique, w.table, w.unique)
 		}
-		var cols []struct {
-			Name string
-			Desc bool
-		}
-		err := f.s.db(f.ctx).Raw(`SELECT name, "desc" FROM pragma_index_xinfo(?) WHERE key = 1 ORDER BY seqno`, idx.Name).Scan(&cols).Error
-		if err != nil {
-			t.Fatal(err)
-		}
-		names := make([]string, len(cols))
-		for i, c := range cols {
-			names[i] = c.Name
-			if c.Desc {
-				names[i] += " DESC"
-			}
-		}
-		if got := strings.Join(names, ","); got != w.columns {
-			t.Errorf("index %s has columns %s, want %s", idx.Name, got, w.columns)
+		if idx.Columns != w.columns {
+			t.Errorf("index %s has columns %s, want %s", idx.Name, idx.Columns, w.columns)
 		}
 	}
 	for name := range want {
@@ -661,7 +719,7 @@ func TestFeedAndThreadQueriesUseTheirIndexes(t *testing.T) {
 		{"audit by room", "SELECT id FROM audit_events WHERE room_id = ? ORDER BY id DESC LIMIT 50", []any{1}, "idx_audit_events_room"},
 		{"audit by actor", "SELECT id FROM audit_events WHERE actor_id = ? ORDER BY id DESC LIMIT 50", []any{1}, "idx_audit_events_actor"},
 		{"audit by action", "SELECT id FROM audit_events WHERE action = ? ORDER BY id DESC LIMIT 50", []any{"x"}, "idx_audit_events_action"},
-		{"audit by time", "SELECT id FROM audit_events WHERE created_at >= ? AND created_at < ?", []any{"a", "b"}, "idx_audit_events_created_at"},
+		{"audit by time", "SELECT id FROM audit_events WHERE created_at >= ? AND created_at < ?", []any{fakeStart, fakeStart.Add(time.Hour)}, "idx_audit_events_created_at"},
 		{"task of a post", "SELECT id FROM tasks WHERE post_id = ?", []any{1}, "idx_tasks_post_id"},
 		{"attachments of a post", "SELECT id FROM attachments WHERE post_id = ?", []any{1}, "idx_attachments_post_id"},
 		{"session by token", "SELECT id FROM sessions WHERE token_hash = ?", []any{"x"}, "uq_sessions_token_hash"},
@@ -670,16 +728,9 @@ func TestFeedAndThreadQueriesUseTheirIndexes(t *testing.T) {
 	f := newFix(t)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var plan []struct{ Detail string }
-			if err := f.s.db(f.ctx).Raw("EXPLAIN QUERY PLAN "+tt.query, tt.args...).Scan(&plan).Error; err != nil {
-				t.Fatal(err)
-			}
-			var details []string
-			for _, p := range plan {
-				details = append(details, p.Detail)
-			}
-			if !slices.ContainsFunc(details, func(d string) bool { return strings.Contains(d, tt.index) }) {
-				t.Errorf("plan %q does not use %s", details, tt.index)
+			plan := explain(t, f.s, tt.query, tt.args...)
+			if !plan.uses(tt.index) {
+				t.Errorf("plan %q does not use %s", plan.details, tt.index)
 			}
 		})
 	}

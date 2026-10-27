@@ -70,8 +70,14 @@ func TestStats(t *testing.T) {
 		break_ func(w *statsWorld)
 		check  func(s Stats) int64
 	}{
-		{"a post without an index row", func(w *statsWorld) { w.f.exec("DELETE FROM posts_fts WHERE rowid = ?", w.post.ID) }, func(s Stats) int64 { return s.Unindexed }},
-		{"an index row without a post", func(w *statsWorld) { w.f.exec("INSERT INTO posts_fts (rowid, text) VALUES (999, 'stray')") }, func(s Stats) int64 { return s.StrayIndexRows }},
+		{"a post without an index row", func(w *statsWorld) {
+			table, idColumn := w.f.indexTable()
+			w.f.exec("DELETE FROM "+table+" WHERE "+idColumn+" = ?", w.post.ID)
+		}, func(s Stats) int64 { return s.Unindexed }},
+		{"an index row without a post", func(w *statsWorld) {
+			table, idColumn := w.f.indexTable()
+			w.f.exec("INSERT INTO " + table + " (" + idColumn + ", text) VALUES (999, 'stray')")
+		}, func(s Stats) int64 { return s.StrayIndexRows }},
 		{"a deleted post that is still indexed", func(w *statsWorld) {
 			w.f.exec("UPDATE posts SET deleted_at = ? WHERE id = ?", fakeStart, w.answer.ID)
 		}, func(s Stats) int64 { return s.StrayIndexRows }},

@@ -48,6 +48,9 @@ func writeTestFiles(t *testing.T) (pngPath, textPath string) {
 func seedAttachment(t *testing.T, srv *browsertest.Server, username, room, name string) uint64 {
 	t.Helper()
 	ctx := t.Context()
+	// SQLite on purpose: the browser tests run the real binary on a data
+	// directory, whatever CLOWDER_TEST_POSTGRES says (step 15.2 teaches
+	// browsertest about database URLs).
 	st, err := store.Open(ctx, filepath.Join(srv.DataDir, "clowder.db"), clock.Real(), nil)
 	if err != nil {
 		t.Fatalf("open the database of the server: %+v", err)

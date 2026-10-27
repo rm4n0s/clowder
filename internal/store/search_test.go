@@ -12,11 +12,26 @@ import (
 	"github.com/rm4n0s/errors"
 )
 
-// ftsIDs returns the IDs the index matches for the FTS5 expression, sorted.
+// indexTable names the full-text index table of the store's database and its
+// column of post IDs.
+func (f *fix) indexTable() (table, idColumn string) {
+	return searchIndex(f.s.dialect)
+}
+
+// ftsIDs returns the IDs the index matches for the quoted phrase match (an
+// FTS5 expression such as `"quarterly"`, whose double quotes PostgreSQL's
+// phrase query does not need), sorted.
 func (f *fix) ftsIDs(match string) []uint64 {
 	f.tb.Helper()
 	var ids []uint64
-	if err := f.s.db(f.ctx).Raw("SELECT rowid FROM posts_fts WHERE posts_fts MATCH ?", match).Scan(&ids).Error; err != nil {
+	var err error
+	if f.s.dialect == dialectPostgres {
+		err = f.s.db(f.ctx).Raw("SELECT post_id FROM posts_search WHERE tsv @@ phraseto_tsquery('clowder_search', ?)",
+			strings.Trim(match, `"`)).Scan(&ids).Error
+	} else {
+		err = f.s.db(f.ctx).Raw("SELECT rowid FROM posts_fts WHERE posts_fts MATCH ?", match).Scan(&ids).Error
+	}
+	if err != nil {
 		f.tb.Fatalf("MATCH %s: %v", match, err)
 	}
 	slices.Sort(ids)
@@ -44,6 +59,7 @@ func (f *fix) indexRows() map[uint64]string {
 }
 
 func TestFTS5IsAvailable(t *testing.T) {
+	skipOnPostgres(t, "FTS5 is SQLite's full-text engine; TestPostgresSearchIsAvailable checks PostgreSQL's")
 	f := newFix(t)
 	err := f.s.db(f.ctx).Exec("CREATE VIRTUAL TABLE fts5_probe USING fts5(text)").Error
 	if err != nil {
@@ -65,6 +81,32 @@ func TestFTS5IsAvailable(t *testing.T) {
 	}
 	if !strings.Contains(def, "remove_diacritics 2") {
 		t.Errorf("posts_fts is %q, want the unicode61 tokenizer that removes diacritics", def)
+	}
+}
+
+// TestPostgresSearchIsAvailable is TestFTS5IsAvailable for PostgreSQL: the
+// search configuration folds diacritics and the case, the index table exists
+// with its GIN index, and the migration is recorded.
+func TestPostgresSearchIsAvailable(t *testing.T) {
+	skipUnlessPostgres(t)
+	f := newFix(t)
+	var vector string
+	if err := f.s.db(f.ctx).Raw("SELECT to_tsvector('clowder_search', 'Ünal CAFÉ')::text").Scan(&vector).Error; err != nil {
+		t.Fatalf("the search configuration: %v", err)
+	}
+	if vector != "'cafe':2 'unal':1" {
+		t.Errorf("to_tsvector = %s, want the words without accents and in lower case", vector)
+	}
+	var applied int64
+	if err := f.s.db(f.ctx).Model(&schemaMigration{}).Where("id = ?", "0001_posts_fts").Count(&applied).Error; err != nil || applied != 1 {
+		t.Errorf("migration 0001_posts_fts recorded %d times, err %v", applied, err)
+	}
+	var def string
+	if err := f.s.db(f.ctx).Raw("SELECT indexdef FROM pg_indexes WHERE indexname = 'posts_search_tsv_idx'").Scan(&def).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(def, "USING gin (tsv)") {
+		t.Errorf("posts_search_tsv_idx is %q, want a GIN index on tsv", def)
 	}
 }
 
@@ -168,7 +210,8 @@ func TestReindexPost(t *testing.T) {
 			t.Errorf("the old text still matches: %v", got)
 		}
 		var n int64
-		if err := f.s.db(f.ctx).Raw("SELECT count(*) FROM posts_fts WHERE rowid = ?", p.ID).Scan(&n).Error; err != nil || n != 1 {
+		table, idColumn := f.indexTable()
+		if err := f.s.db(f.ctx).Raw("SELECT count(*) FROM "+table+" WHERE "+idColumn+" = ?", p.ID).Scan(&n).Error; err != nil || n != 1 {
 			t.Errorf("%d rows for the post, err %v", n, err)
 		}
 	})
@@ -226,16 +269,48 @@ func TestUnindexRoom(t *testing.T) {
 // index does, as in a database made by an earlier version.
 func TestBackfill(t *testing.T) {
 	ctx := t.Context()
-	path := filepath.Join(t.TempDir(), "backfill.db")
 	clk := clock.NewFake(fakeStart)
 
-	before := defaultOptions()
-	before.migrations = []migration{}
-	s, err := open(ctx, path, clk, nil, before)
-	if err != nil {
-		t.Fatalf("open without the index: %+v", err)
+	var f *fix
+	// reopen brings the database to the state of an upgrade: the index is
+	// created from the posts that exist. It leaves f ready to read the index.
+	var reopen func()
+	if onPostgres() {
+		f = newFix(t)
+		reopen = func() {
+			// Undo migration 0001 (the search table and its configuration).
+			f.exec("DROP TABLE posts_search")
+			f.exec("DROP TEXT SEARCH CONFIGURATION clowder_search")
+			f.exec("DELETE FROM schema_migrations WHERE id = ?", "0001_posts_fts")
+			if err := f.s.migrate(ctx, allModels(), rawMigrations(dialectPostgres)); err != nil {
+				t.Fatalf("migrate with the index: %+v", err)
+			}
+		}
+	} else {
+		path := filepath.Join(t.TempDir(), "backfill.db")
+		before := defaultOptions()
+		before.migrations = []migration{}
+		s, err := open(ctx, path, clk, nil, before)
+		if err != nil {
+			t.Fatalf("open without the index: %+v", err)
+		}
+		f = &fix{tb: t, ctx: ctx, s: s, clk: clk}
+		reopen = func() {
+			if err := f.s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			s, err := open(ctx, path, clk, nil, defaultOptions())
+			if err != nil {
+				t.Fatalf("open with the index: %+v", err)
+			}
+			t.Cleanup(func() {
+				if err := s.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			f = &fix{tb: t, ctx: ctx, s: s, clk: clk}
+		}
 	}
-	f := &fix{tb: t, ctx: ctx, s: s, clk: clk}
 	alice := f.user()
 	room := f.room(alice)
 	col := f.column(room)
@@ -247,20 +322,7 @@ func TestBackfill(t *testing.T) {
 	comment := f.comment(rich, alice)
 	placeholder := f.post(room, alice)
 	f.exec("UPDATE posts SET deleted_at = ?, body = '' WHERE id = ?", day(time.Hour).UTC(), placeholder.ID)
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	s, err = open(ctx, path, clk, nil, defaultOptions())
-	if err != nil {
-		t.Fatalf("open with the index: %+v", err)
-	}
-	defer func() {
-		if err := s.Close(); err != nil {
-			t.Error(err)
-		}
-	}()
-	f = &fix{tb: t, ctx: ctx, s: s, clk: clk}
+	reopen()
 	got := f.indexRows()
 	want := map[uint64]string{
 		plain.ID:   plain.Body,
@@ -521,8 +583,14 @@ func TestSearchErrors(t *testing.T) {
 	alice := f.user()
 	room := f.room(alice)
 	p := f.post(room, alice)
-	f.exec("DROP TABLE posts_fts")
+	table, _ := f.indexTable()
+	f.exec("DROP TABLE " + table)
 
+	// SearchPosts calls the search of the dialect, which fails.
+	searchRoute := "Store.SearchPosts.QueryFailed"
+	if onPostgres() {
+		searchRoute = "Store.SearchPosts->Store.searchPostsPostgres.QueryFailed"
+	}
 	tests := []struct {
 		name string
 		call func() error
@@ -535,7 +603,7 @@ func TestSearchErrors(t *testing.T) {
 		{"SearchPosts with words", func() error {
 			_, err := f.s.SearchPosts(f.ctx, SearchQuery{ReaderID: alice.ID, Terms: []SearchTerm{{Text: "x"}}, Limit: 5})
 			return err
-		}, "Store.SearchPosts.QueryFailed", "searchPosts"},
+		}, searchRoute, "searchPosts"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

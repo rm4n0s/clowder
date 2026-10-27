@@ -1,0 +1,43 @@
+$ scripts/test-docker.sh -count=1 ./...
+test-docker.sh: waiting for PostgreSQL on port 32771 and Redis on port 32772
+ok  	github.com/rm4n0s/clowder/cmd/clowder	29.250s
+ok  	github.com/rm4n0s/clowder/cmd/clowder-perf	2.931s
+ok  	github.com/rm4n0s/clowder/internal/app	29.113s
+ok  	github.com/rm4n0s/clowder/internal/auth	1.327s
+ok  	github.com/rm4n0s/clowder/internal/clock	1.009s
+ok  	github.com/rm4n0s/clowder/internal/config	1.010s
+ok  	github.com/rm4n0s/clowder/internal/files	1.051s
+ok  	github.com/rm4n0s/clowder/internal/live	1.121s
+ok  	github.com/rm4n0s/clowder/internal/markdown	1.231s
+ok  	github.com/rm4n0s/clowder/internal/store	28.658s
+?   	github.com/rm4n0s/clowder/internal/store/storetest	[no test files]
+ok  	github.com/rm4n0s/clowder/internal/web	59.402s
+ok  	github.com/rm4n0s/clowder/internal/web/static	1.009s
+ok  	github.com/rm4n0s/clowder/internal/web/views	1.067s
+
+real	1m1.611s
+user	3m49.012s
+sys	0m26.060s
+exit status: 0
+
+----------------------------------------------------------------------
+
+$ go test -race -count=1 ./...   (no CLOWDER_TEST_POSTGRES: SQLite)
+ok  	github.com/rm4n0s/clowder/cmd/clowder	30.838s
+ok  	github.com/rm4n0s/clowder/cmd/clowder-perf	2.934s
+ok  	github.com/rm4n0s/clowder/internal/app	33.278s
+ok  	github.com/rm4n0s/clowder/internal/auth	1.345s
+ok  	github.com/rm4n0s/clowder/internal/clock	1.009s
+ok  	github.com/rm4n0s/clowder/internal/config	1.010s
+ok  	github.com/rm4n0s/clowder/internal/files	1.047s
+ok  	github.com/rm4n0s/clowder/internal/live	1.115s
+ok  	github.com/rm4n0s/clowder/internal/markdown	1.209s
+ok  	github.com/rm4n0s/clowder/internal/store	34.728s
+?   	github.com/rm4n0s/clowder/internal/store/storetest	[no test files]
+ok  	github.com/rm4n0s/clowder/internal/web	63.254s
+ok  	github.com/rm4n0s/clowder/internal/web/static	1.008s
+ok  	github.com/rm4n0s/clowder/internal/web/views	1.079s
+
+real	1m4.074s
+user	9m27.185s
+sys	0m28.578s

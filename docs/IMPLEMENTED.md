@@ -720,3 +720,22 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   `clowder demo` on a `postgres:18` container, its tables and the filled `posts_search`, then `clowder serve` on it: the login page, a login with a cookie, the room page showing "Release checklist", a prefix search and a two-word search with their marks, a clean stop, and no password in the server's log.
 - **Manual checks:** none
 - **Deviations and follow-ups:** the PostgreSQL details found here (the `clowder_search` configuration, the ICU `nocase` collation for the `COLLATE NOCASE` columns, `json_valid` with `pg_input_is_valid`, UTC scanning of `timestamptz`; PostgreSQL 16+ with ICU and `unaccent`) are recorded in SPEC D38. The manager replaced the worker's plpgsql `json_valid` (an exception block, ~300 ms per 500-row audit batch in the large demo) with `pg_input_is_valid`. For 14.2: the SQLite-only store tests (`EXPLAIN QUERY PLAN`, `sqlite_master`, FTS5 tables, constraint message texts), microsecond precision on PostgreSQL, `--shm-size` for the test container. For 15.2: two processes migrating an empty database at once need an advisory lock around the migrations.
+
+## 14.2 The test suite on PostgreSQL
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-14.2-tests-on-postgres
+- **Summary:** With `CLOWDER_TEST_POSTGRES` set, `storetest.Open` gives each test its own PostgreSQL database copied from a template migrated once per test binary (`store.PostgresTemplate`, `CREATE DATABASE … TEMPLATE`, dropped at cleanup, leftovers older than an hour swept by the next run). `scripts/test-docker.sh` starts `postgres:18` and `redis:8` on free ports, runs `go test -race` with both variables and removes the containers; the whole suite passes on PostgreSQL and on SQLite, and the script is now a standard check.
+- **Main files:** `internal/store/pgtemplate.go`, `internal/store/storetest/storetest.go`, `internal/store/migrations.go` (migration `0002_posts_feed_roots`), `scripts/test-docker.sh`, the PostgreSQL branches of the store tests (`pgtest_test.go`, `models_test.go`, `posts_queries_test.go`, `audit_queries_test.go`, `search_test.go`, `stats_test.go`, `bulk_test.go`), `internal/web/stream_test.go`, `internal/browsertest/server_test.go`.
+- **Tests:** new `TestOpenOnPostgres`, `TestPostgresTemplateOnAServer` (independence, drop on release, 8 concurrent copies, the sweep), `TestPostgresSearchIsAvailable` (these three run with the variable and skip without it), `TestPostgresTemplateFailures` (6 route cases, no password leak) and `TestDatabaseNames`; PostgreSQL versions of the index, plan, foreign-key, check-constraint and search-index tests.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ (64 s) · scripts/test-docker.sh ✅ (62 s) · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅
+- **Proof:**
+  [14.2 test-docker](implemented-proof-images/14.2-test-docker.txt)
+  `scripts/test-docker.sh -count=1 ./...` with every package `ok` on PostgreSQL, then `go test -race -count=1 ./...` with every package `ok` on SQLite.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The feed query sorted all the root posts of a room on PostgreSQL, because its planner treats `parent_id IS NULL` as a filter. The new migration `0002_posts_feed_roots` adds a partial index there (a no-op on SQLite). It is recorded in SPEC D38.
+  - Time precision is microseconds on PostgreSQL. One test advanced the fake clock by 1 ns and now advances it by 1 µs; nothing in the program depends on finer precision.
+  - Stream tests in `internal/web` flaked under load. `drain` waited only the quiet time for the first event; it now waits up to `streamTimeout` (raised from 3 s to 10 s, the failure limit only), and `drainQuiet` keeps the old behaviour where no event is expected.
+  - SQLite-only on purpose: `TestFTS5IsAvailable`, the large-demo benchmarks, the tests of the SQLite opener, and the tests that open the real binary's data directory.
+  - The manager fixed `TestStopServer` in `internal/browsertest`, which failed on this machine before this step too. A child of the killed shell is reaped by the subreaper after `Stop`, so the test now waits up to 2 s for the process group to go instead of checking once.

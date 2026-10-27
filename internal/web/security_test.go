@@ -309,7 +309,7 @@ func TestStreamsEndAtOnceWhenTheAccountChanges(t *testing.T) {
 					t.Fatalf("status = %d: %s", c.status, c.body)
 				}
 				// Whatever the stream starts with is read first.
-				c.drain()
+				c.drainQuiet()
 				ch.do(e)
 				// A change that bob would see if he were still allowed.
 				e.writePost("alice", "general", "a secret for the members")
@@ -330,7 +330,7 @@ func TestAccountEventLeavesAValidSessionAlone(t *testing.T) {
 	e := newRoomsEnv(t)
 	ss := e.serveStreams()
 	c := ss.open("bob", e.streamOfRoom("general", "seen=0"), asDatastar())
-	c.drain()
+	c.drainQuiet() // whatever the stream starts with
 	other := e.session("bob")
 	if err := e.accounts.Logout(e.t.Context(), other); err != nil {
 		t.Fatalf("Logout: %+v", err)

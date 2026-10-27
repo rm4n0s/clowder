@@ -591,7 +591,9 @@ func TestPostsEditAttachments(t *testing.T) {
 
 	// Keep a, drop b, add c.
 	before := len(e.events())
-	e.clk.Advance(1)
+	// One microsecond is the finest step that PostgreSQL keeps (SQLite keeps
+	// nanoseconds), so the edit has a time of its own on both.
+	e.clk.Advance(time.Microsecond)
 	edited, err := e.posts.Edit(t.Context(), e.as("bob"), p.ID, app.PostInput{
 		Format: app.FormatText, Body: "post", KeepAttachments: []uint64{ids[0]}, Uploads: []app.Upload{c},
 	})
