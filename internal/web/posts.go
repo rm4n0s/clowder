@@ -206,6 +206,11 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.patchAll(w, r,
+		// The live stream of the page may have put the card at the top
+		// already (the event reaches it before this answer does): it is
+		// removed first, so that the feed never shows it twice. The stream
+		// does the same.
+		patchOp{remove: "#post-" + strconv.FormatUint(post.ID, 10)},
 		patchOp{
 			component: views.PostCard(views.PostCardData{Post: post}),
 			options:   []datastar.PatchElementOption{datastar.WithSelector("#feed-posts"), datastar.WithModePrepend()},
@@ -288,34 +293,42 @@ func (s *Server) postPageData(w http.ResponseWriter, r *http.Request, id uint64)
 // shown there (from is views.FromPost). When a read fails it has answered (see
 // postFail) and returns false.
 func (s *Server) cardFor(w http.ResponseWriter, r *http.Request, post app.Post, from, message string) (views.PostCardData, bool) {
+	actor, _ := actorFrom(r.Context())
+	d, err := s.cardData(r.Context(), actor, post, from, message)
+	if err != nil {
+		s.postFail(w, r, err, post.ID)
+		return views.PostCardData{}, false
+	}
+	return d, true
+}
+
+// cardData is cardFor without the answer: it returns the error.
+func (s *Server) cardData(ctx context.Context, actor app.Actor, post app.Post, from, message string) (views.PostCardData, error) {
 	d := views.PostCardData{Post: post, From: from, Message: message}
 	if post.IsComment {
 		d.From = views.FromPost
 	}
 	if d.From != views.FromPost {
-		return d, true
+		return d, nil
 	}
-	actor, _ := actorFrom(r.Context())
-	room, err := s.svc.Rooms.Get(r.Context(), actor, post.RoomID)
+	room, err := s.svc.Rooms.Get(ctx, actor, post.RoomID)
 	if err != nil {
-		s.postFail(w, r, err, post.ID)
-		return views.PostCardData{}, false
+		return views.PostCardData{}, err
 	}
 	d.CanReply = room.IsMember
 	if !post.IsComment {
-		return d, true
+		return d, nil
 	}
-	thread, err := s.svc.Posts.Thread(r.Context(), actor, post.ID)
+	thread, err := s.svc.Posts.Thread(ctx, actor, post.ID)
 	if err != nil {
-		s.postFail(w, r, err, post.ID)
-		return views.PostCardData{}, false
+		return views.PostCardData{}, err
 	}
 	for _, c := range thread.Comments {
 		if c.ID == post.ID {
 			d.Depth, d.ParentAuthor = c.Depth, c.ParentAuthor
 		}
 	}
-	return d, true
+	return d, nil
 }
 
 // patchThread answers a Datastar request with the thread of the top-level post

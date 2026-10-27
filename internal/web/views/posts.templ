@@ -182,6 +182,20 @@ templ PostCard(d PostCardData) {
 			data-init={ scrollIntoViewAction }
 		}
 	>
+		@PostContent(d)
+		if d.CanReply && !d.Post.Deleted {
+			@ReplySlot(d.Post.ID, d.Reply)
+		}
+	</article>
+}
+
+// PostContent is the card of a post or comment without its article and its
+// reply slot: the message above it, the author and time, the body, the
+// attachments, the tags and the footer with the buttons. A live update of a
+// post or comment replaces only this part, so that a reply editor open in the
+// slot below it, or the editor that replaced the article, is left alone.
+templ PostContent(d PostCardData) {
+	<div id={ postContentID(d.Post.ID) } class="post-content">
 		@formProblem(d.Message)
 		if d.Post.Deleted {
 			<p class="post-deleted-note">{ deletedNote(d.Post) }</p>
@@ -234,10 +248,7 @@ templ PostCard(d PostCardData) {
 				</form>
 			}
 		</footer>
-		if d.CanReply && !d.Post.Deleted {
-			@ReplySlot(d.Post.ID, d.Reply)
-		}
-	</article>
+	</div>
 }
 
 // Attachments shows the files of a post or comment under its body: the images
@@ -347,23 +358,29 @@ func postTitle(d PostPageData) string {
 // the old one.
 templ Thread(d PostPageData) {
 	<div id="thread" class="thread">
-		@threadItem(d, d.rootCard())
+		@threadItem(d, d.RootCard())
 		if !d.CanReply {
 			<p id="join-to-reply" class="hint join-note">Join this room to reply</p>
 		}
-		<section id="comments" class="comments">
-			<h2>Comments</h2>
-			if len(d.Comments) == 0 {
-				<p class="empty">No comments yet.</p>
-			} else {
-				<div class="comment-list">
-					for _, c := range d.Comments {
-						@threadItem(d, d.commentCard(c))
-					}
-				</div>
-			}
-		</section>
+		@CommentsSection(d)
 	</div>
+}
+
+// CommentsSection is the comments of the thread, or the note that there are
+// none. A live update replaces it alone when the first comment arrives.
+templ CommentsSection(d PostPageData) {
+	<section id="comments" class="comments">
+		<h2>Comments</h2>
+		if len(d.Comments) == 0 {
+			<p class="empty">No comments yet.</p>
+		} else {
+			<div class="comment-list">
+				for _, c := range d.Comments {
+					@threadItem(d, d.CommentCard(c))
+				}
+			</div>
+		}
+	</section>
 }
 
 // threadItem is one post or comment of the thread: its card, or its editor
@@ -381,6 +398,7 @@ templ threadItem(d PostPageData, c PostCardData) {
 // the page of its post with that comment in focus.
 templ PostPage(d PostPageData) {
 	@Layout(postTitle(d), Sidebar(d.Sidebar)) {
+		@liveStream(PostStreamPath(d.Post.ID, d.NewestID()))
 		<p class="post-room hint">in <a href={ templ.SafeURL(RoomPath(d.Post.RoomID)) }>{ d.Post.RoomName }</a></p>
 		@Thread(d)
 	}

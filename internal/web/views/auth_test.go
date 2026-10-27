@@ -71,7 +71,7 @@ func TestAuthViews(t *testing.T) {
 			c:    views.LoginPage(views.LoginData{}),
 			want: []string{"<title>Log in · Clowder</title>", `<div class="auth-card">`, "<h1>Log in</h1>", `id="login-form"`},
 			// No sidebar for a person who is not logged in.
-			notWant: []string{"<aside>"},
+			notWant: []string{"<aside"},
 		},
 		{
 			name: "sign-up form",
@@ -158,11 +158,11 @@ func TestFormPost(t *testing.T) {
 
 func TestLayoutSidebar(t *testing.T) {
 	with := render(t, views.Layout("T", templ.Raw("S")))
-	if !strings.Contains(with, "<aside>S</aside>") {
+	if !strings.Contains(with, `<aside id="sidebar">S</aside>`) {
 		t.Errorf("sidebar missing:\n%s", with)
 	}
 	without := render(t, views.Layout("T", nil))
-	if strings.Contains(without, "<aside>") {
+	if strings.Contains(without, "<aside") {
 		t.Errorf("empty sidebar drawn:\n%s", without)
 	}
 }

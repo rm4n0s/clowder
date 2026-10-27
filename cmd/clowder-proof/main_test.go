@@ -50,6 +50,30 @@ func TestParseFlags(t *testing.T) {
 			args: []string{"-o", "x.png", "-as", "alice", "-page", "{post:Quick question}"},
 			want: options{page: "{post:Quick question}", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond},
 		},
+		{
+			name: "a second user",
+			args: []string{
+				"-o", "x.png", "-as", "bob", "-page", "{room:general}", "-other", "alice", "-other-page", "{room:general}",
+				"-other-fill", "#post-body-new=Live from **alice**", "-other-fill", "#post-tags-new=a=b", "-other-click", "button[type=submit]",
+			},
+			want: options{
+				page: "{room:general}", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond,
+				other: script{
+					user: "alice", page: "{room:general}", click: "button[type=submit]",
+					fills: fills{{"#post-body-new", "Live from **alice**"}, {"#post-tags-new", "a=b"}},
+				},
+			},
+		},
+		{
+			name: "a second user opens the home page by default",
+			args: []string{"-o", "x.png", "-as", "bob", "-other", "alice"},
+			want: options{page: "/", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond, other: script{user: "alice", page: "/"}},
+		},
+		{name: "other-page without other", args: []string{"-o", "x.png", "-other-page", "/rooms"}, wantTag: tagFlagsInvalid},
+		{name: "other-fill without other", args: []string{"-o", "x.png", "-other-fill", "#a=b"}, wantTag: tagFlagsInvalid},
+		{name: "other-click without other", args: []string{"-o", "x.png", "-other-click", "button"}, wantTag: tagFlagsInvalid},
+		{name: "other without as", args: []string{"-o", "x.png", "-other", "alice"}, wantTag: tagFlagsInvalid},
+		{name: "other-page without slash", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-other-page", "rooms"}, wantTag: tagFlagsInvalid},
 		{name: "post placeholder without a user", args: []string{"-o", "x.png", "-page", "{post:Quick question}"}, wantTag: tagFlagsInvalid},
 		{name: "room placeholder without a user", args: []string{"-o", "x.png", "-page", "{room:secret}"}, wantTag: tagFlagsInvalid},
 		{name: "invite without the placeholder", args: []string{"-o", "x.png", "-invite", "-page", "/invite/x"}, wantTag: tagFlagsInvalid},

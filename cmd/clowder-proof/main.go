@@ -135,6 +135,24 @@ type options struct {
 	// click is the selector of the element to click after the fills; the tool
 	// then waits for the page to settle.
 	click string
+	// other is a second user who acts in a second browser after the page of
+	// the first one has loaded and its live stream is open.
+	other script
+}
+
+// script is what a user does in a browser: log in, open a page, type into
+// fields and click. The first user's script is the -as, -page, -fill and
+// -click flags; the second user's is the -other flags.
+type script struct {
+	// user is the demo user to log in as; empty for none.
+	user string
+	// page is the page to open; {room:name} and {post:text} are resolved in
+	// the sidebar and the feeds of user.
+	page string
+	// fills are typed into the page, in order, before the click.
+	fills fills
+	// click is the selector of the element to click after the fills.
+	click string
 }
 
 // run takes one screenshot. It stops the server and the browser it started
@@ -183,6 +201,10 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.BoolVar(&o.invite, "invite", false, "start with an invitation for a new member and put its token in -page where it says "+invitePlaceholder)
 	fs.Var(&o.fills, "fill", "type text into an element before the click, as selector=value, such as '#username=ana' (repeatable)")
 	fs.StringVar(&o.click, "click", "", "CSS selector of an element to click after the -fill flags; the tool then waits for the page to settle")
+	fs.StringVar(&o.other.user, "other", "", "a second demo user who acts in a second browser once the page has loaded and its live stream is open, before the screenshot of the first one; see -other-page, -other-fill and -other-click")
+	fs.StringVar(&o.other.page, "other-page", "", "path of the page the -other user opens (default /); {room:name} and {post:text} are looked up for that user")
+	fs.Var(&o.other.fills, "other-fill", "type text into an element of the -other user's page before the click, as selector=value (repeatable)")
+	fs.StringVar(&o.other.click, "other-click", "", "CSS selector of an element the -other user clicks after the -other-fill flags")
 	if err := fs.Parse(args); err != nil {
 		return options{}, errors.NewErr(tagFlagsInvalid, err)
 	}
@@ -204,16 +226,27 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	case o.as == "" && postPlaceholder.MatchString(o.page):
 		return options{}, errors.New(tagFlagsInvalid, "{post:text} in -page needs -as: the post is found in the rooms of a user",
 			"page", o.page)
+	case o.other.user == "" && (o.other.page != "" || len(o.other.fills) > 0 || o.other.click != ""):
+		return options{}, errors.New(tagFlagsInvalid, "-other-page, -other-fill and -other-click need -other", "flag", "other")
+	case o.other.user != "" && o.as == "":
+		return options{}, errors.New(tagFlagsInvalid, "-other needs -as: the second user acts while the first one watches", "flag", "other")
+	case o.other.user != "" && o.other.page != "" && !strings.HasPrefix(o.other.page, "/") && !strings.HasPrefix(o.other.page, "{room:") && !strings.HasPrefix(o.other.page, "{post:"):
+		return options{}, errors.New(tagFlagsInvalid, "-other-page must start with /, {room:name} or {post:text}", "page", o.other.page)
 	case o.invite != strings.Contains(o.page, invitePlaceholder):
 		return options{}, errors.New(tagFlagsInvalid, "-invite and "+invitePlaceholder+" in -page go together",
 			"invite", o.invite, "page", o.page)
+	}
+	if o.other.user != "" && o.other.page == "" {
+		o.other.page = "/"
 	}
 	return o, nil
 }
 
 // screenshot opens the page of srv in a headless Chromium, waits for it to
-// settle and returns the PNG of the viewport. The browser is closed before it
-// returns.
+// settle and returns the PNG of the viewport. When -other is set, a second user
+// acts in a second browser after the page has loaded and before the fills and
+// the click of the first one, so that the screenshot shows what the first user
+// sees of it. The browsers are closed before it returns.
 func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte, error) {
 	browser, cancel, err := browsertest.NewBrowser(ctx, chromedp.WindowSize(o.width, o.height))
 	if err != nil {
@@ -225,53 +258,100 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 	// page.
 	pageCtx, cancelPage := context.WithTimeout(browser, pageTimeout)
 	defer cancelPage()
-	if o.as != "" {
-		if err := browsertest.LogIn(pageCtx, srv, o.as); err != nil {
-			return nil, err
-		}
-	}
-	page, err := resolveRooms(pageCtx, o.page)
+	first := script{user: o.as, page: o.page, fills: o.fills, click: o.click}
+	url, err := first.open(pageCtx, srv, o)
 	if err != nil {
 		return nil, err
 	}
-	page, err = resolvePosts(pageCtx, srv.URL, page)
-	if err != nil {
-		return nil, err
-	}
-	url := srv.URL + page
-	err = chromedp.Do(pageCtx,
-		chromedp.EmulateViewport(int64(o.width), int64(o.height)),
-		chromedp.Navigate(url),
-		chromedp.WaitReady("body"),
-		chromedp.Sleep(o.wait),
-	)
-	if err != nil {
-		return nil, errors.NewErr(tagPageLoadFailed, err).SetMetadata("url", url)
-	}
-	for _, f := range o.fills {
-		err = chromedp.Do(pageCtx, browsertest.Fill(f.selector, f.value))
-		if _, tagged := errors.FromError(err); err != nil && !tagged {
-			// Fill tags its own failures; this is chromedp's (the browser died).
-			return nil, errors.NewErr(tagFillFailed, err).SetMetadata("url", url, "selector", f.selector)
-		}
-		if err != nil {
+	if o.other.user != "" {
+		if err := actAs(ctx, srv, o); err != nil {
 			return nil, err
 		}
-	}
-	if o.click != "" {
-		err = chromedp.Do(pageCtx,
-			chromedp.Click(o.click),
-			chromedp.Sleep(o.wait),
-		)
-		if err != nil {
-			return nil, errors.NewErr(tagClickFailed, err).SetMetadata("url", url, "selector", o.click)
+		// The live update takes a moment to reach the page.
+		if err := chromedp.Do(pageCtx, chromedp.Sleep(o.wait)); err != nil {
+			return nil, errors.NewErr(tagPageLoadFailed, err).SetMetadata("url", url)
 		}
+	}
+	if err := first.interact(pageCtx, url, o); err != nil {
+		return nil, err
 	}
 	shot, err := chromedp.Run(pageCtx, chromedp.CaptureScreenshot())
 	if err != nil {
 		return nil, errors.NewErr(tagScreenshotFailed, err).SetMetadata("url", url)
 	}
 	return shot, nil
+}
+
+// actAs runs the script of the -other user in a browser of their own, which is
+// closed when it is done.
+func actAs(ctx context.Context, srv *browsertest.Server, o options) error {
+	browser, cancel, err := browsertest.NewBrowser(ctx, chromedp.WindowSize(o.width, o.height))
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	pageCtx, cancelPage := context.WithTimeout(browser, pageTimeout)
+	defer cancelPage()
+	other := o.other
+	url, err := other.open(pageCtx, srv, o)
+	if err != nil {
+		return err
+	}
+	return other.interact(pageCtx, url, o)
+}
+
+// open logs the user in, resolves the placeholders of the page, opens it and
+// waits for it to settle. It returns the URL of the page.
+func (sc script) open(ctx context.Context, srv *browsertest.Server, o options) (string, error) {
+	if sc.user != "" {
+		if err := browsertest.LogIn(ctx, srv, sc.user); err != nil {
+			return "", err
+		}
+	}
+	page, err := resolveRooms(ctx, sc.page)
+	if err != nil {
+		return "", err
+	}
+	page, err = resolvePosts(ctx, srv.URL, page)
+	if err != nil {
+		return "", err
+	}
+	url := srv.URL + page
+	err = chromedp.Do(ctx,
+		chromedp.EmulateViewport(int64(o.width), int64(o.height)),
+		chromedp.Navigate(url),
+		chromedp.WaitReady("body"),
+		chromedp.Sleep(o.wait),
+	)
+	if err != nil {
+		return "", errors.NewErr(tagPageLoadFailed, err).SetMetadata("url", url)
+	}
+	return url, nil
+}
+
+// interact types the fills of the script into the page, then clicks and waits
+// for the page to settle.
+func (sc script) interact(ctx context.Context, url string, o options) error {
+	for _, f := range sc.fills {
+		err := chromedp.Do(ctx, browsertest.Fill(f.selector, f.value))
+		if _, tagged := errors.FromError(err); err != nil && !tagged {
+			// Fill tags its own failures; this is chromedp's (the browser died).
+			return errors.NewErr(tagFillFailed, err).SetMetadata("url", url, "selector", f.selector)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if sc.click != "" {
+		err := chromedp.Do(ctx,
+			chromedp.Click(sc.click),
+			chromedp.Sleep(o.wait),
+		)
+		if err != nil {
+			return errors.NewErr(tagClickFailed, err).SetMetadata("url", url, "selector", sc.click)
+		}
+	}
+	return nil
 }
 
 // resolveRooms replaces every {room:name} in page with the path of the room of

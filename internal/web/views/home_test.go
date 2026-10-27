@@ -27,7 +27,7 @@ func TestHome(t *testing.T) {
 		{"title", "<title>Home · Clowder</title>"},
 		{"css link", `<link rel="stylesheet" href="/static/app.css">`},
 		{"datastar module script", `<script type="module" src="/static/datastar.js"></script>`},
-		{"sidebar", "<aside>"},
+		{"sidebar", `<aside id="sidebar">`},
 		{"main", "<main>"},
 		{"heading", "<h1>Clowder</h1>"},
 		{"signed in as", `<p id="signed-in-as">Signed in as Alice</p>`},

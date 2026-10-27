@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -30,12 +31,22 @@ func (s *Server) sidebarFor(w http.ResponseWriter, r *http.Request, current uint
 		s.redirectToLogin(w, r)
 		return views.SidebarData{}, false
 	}
-	rooms, err := s.svc.Rooms.Mine(r.Context(), actor)
+	sb, err := s.sidebarData(r.Context(), actor, user, current)
 	if err != nil {
 		s.fail(w, r, err)
 		return views.SidebarData{}, false
 	}
-	return views.SidebarData{User: user, Rooms: rooms, CurrentRoomID: current}, true
+	return sb, true
+}
+
+// sidebarData reads the rooms of the user and makes the data of the sidebar;
+// see sidebarFor.
+func (s *Server) sidebarData(ctx context.Context, actor app.Actor, user app.User, current uint64) (views.SidebarData, error) {
+	rooms, err := s.svc.Rooms.Mine(ctx, actor)
+	if err != nil {
+		return views.SidebarData{}, err
+	}
+	return views.SidebarData{User: user, Rooms: rooms, CurrentRoomID: current}, nil
 }
 
 // roomFail answers a failed read of a room: the error page, except that a
@@ -85,24 +96,33 @@ func (s *Server) roomData(w http.ResponseWriter, r *http.Request, id uint64) (vi
 	if !ok {
 		return views.RoomData{}, false
 	}
-	room, err := s.svc.Rooms.Get(r.Context(), actor, id)
+	d, err := s.roomView(r.Context(), actor, id)
 	if err != nil {
 		s.roomFail(w, r, err, id)
 		return views.RoomData{}, false
 	}
-	members, err := s.svc.Rooms.Members(r.Context(), actor, id)
+	d.Sidebar, d.Viewer = sb, sb.User
+	return d, true
+}
+
+// roomView reads a room, its members and, for a member, the users to add, as
+// the actor sees them. The data has no sidebar and no viewer yet.
+func (s *Server) roomView(ctx context.Context, actor app.Actor, id uint64) (views.RoomData, error) {
+	room, err := s.svc.Rooms.Get(ctx, actor, id)
 	if err != nil {
-		s.roomFail(w, r, err, id)
-		return views.RoomData{}, false
+		return views.RoomData{}, err
 	}
-	d := views.RoomData{Sidebar: sb, Viewer: sb.User, Room: room, Members: members, Editor: views.NewPostEditorData(id)}
+	members, err := s.svc.Rooms.Members(ctx, actor, id)
+	if err != nil {
+		return views.RoomData{}, err
+	}
+	d := views.RoomData{Room: room, Members: members, Editor: views.NewPostEditorData(id)}
 	if room.IsMember {
-		if d.Candidates, err = s.svc.Rooms.Candidates(r.Context(), actor, id); err != nil {
-			s.roomFail(w, r, err, id)
-			return views.RoomData{}, false
+		if d.Candidates, err = s.svc.Rooms.Candidates(ctx, actor, id); err != nil {
+			return views.RoomData{}, err
 		}
 	}
-	return d, true
+	return d, nil
 }
 
 // roomPageData is roomData with the page of the feed that starts after the

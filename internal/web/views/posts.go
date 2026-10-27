@@ -139,6 +139,16 @@ type PostCardData struct {
 	Reply *PostEditorData
 }
 
+// NewestID is the ID of the newest post of the page, 0 when it has none. The
+// stream of the page is told it, to find out what was written while the page
+// was loading.
+func (d FeedData) NewestID() uint64 {
+	if len(d.Page.Posts) == 0 {
+		return 0
+	}
+	return d.Page.Posts[0].ID
+}
+
 // PostEditData is the post replaced by its editor.
 type PostEditData struct {
 	// Post is the post being edited.
@@ -210,14 +220,59 @@ func (d PostPageData) card(c PostCardData) PostCardData {
 	return c
 }
 
-// rootCard is the card of the top-level post of the page.
-func (d PostPageData) rootCard() PostCardData {
+// RootCard is the card of the top-level post of the page.
+func (d PostPageData) RootCard() PostCardData {
 	return d.card(PostCardData{Post: d.Post})
 }
 
-// commentCard is the card of a comment of the thread.
-func (d PostPageData) commentCard(c app.Comment) PostCardData {
+// CommentCard is the card of a comment of the thread.
+func (d PostPageData) CommentCard(c app.Comment) PostCardData {
 	return d.card(PostCardData{Post: c.Post, Depth: c.Depth, ParentAuthor: c.ParentAuthor})
+}
+
+// NewestID is the largest ID among the top-level post and the comments of the
+// thread: the newest item the page shows. The stream of the page is told it,
+// to find out what was written while the page was loading.
+func (d PostPageData) NewestID() uint64 {
+	newest := d.Post.ID
+	for _, c := range d.Comments {
+		newest = max(newest, c.ID)
+	}
+	return newest
+}
+
+// PostStreamPath returns the path of the live stream of the thread of the
+// top-level post rootID. newest is the ID of the newest item the page showed
+// (PostPageData.NewestID).
+func PostStreamPath(rootID, newest uint64) string {
+	return PostPath(rootID) + "/stream?seen=" + strconv.FormatUint(newest, 10)
+}
+
+// RoomStreamPath returns the path of the live stream of the room. newest is
+// the ID of the newest post the page showed, 0 for none; before is the beforeID
+// of the page of the feed (0 for the newest posts), which a stream does not
+// keep up to date.
+func RoomStreamPath(roomID, newest, before uint64) string {
+	path := RoomPath(roomID) + "/stream?seen=" + strconv.FormatUint(newest, 10)
+	if before != 0 {
+		path += "&before=" + strconv.FormatUint(before, 10)
+	}
+	return path
+}
+
+// postContentID is the id of the element that holds the content of the card of
+// a post or comment (see PostContent).
+func postContentID(id uint64) string {
+	return "post-content-" + roomIDText(id)
+}
+
+// streamAction is the Datastar expression that opens the live stream at path.
+// A stream that ends is opened again after a second, however it ended (the
+// default is to retry only after an error), and on every attempt the client
+// sends the id of the last event, which tells the server that this is not the
+// first connection. A hidden page keeps its stream.
+func streamAction(path string) string {
+	return "@get('" + escapeQuote(path) + "', {retry: 'always', retryMaxCount: 1000, openWhenHidden: true})"
 }
 
 // PostPath returns the path of the page of a post, /posts/<id>. Its actions

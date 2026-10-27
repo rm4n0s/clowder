@@ -23,6 +23,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/files"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/store/storetest"
@@ -95,6 +96,7 @@ type testEnv struct {
 	rooms    *app.Rooms
 	audit    *app.Audit
 	posts    *app.Posts
+	hub      *live.Hub
 	st       *store.Store
 	clk      *clock.Fake
 	// filesDir is the directory of the files of the attachments.
@@ -122,18 +124,20 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	if err != nil {
 		t.Fatalf("files.New: %+v", err)
 	}
-	rooms := app.NewRooms(st, fileStore, logger, nil)
+	hub := live.New()
+	t.Cleanup(hub.Close)
+	rooms := app.NewRooms(st, fileStore, logger, hub)
 	audit := app.NewAudit(st)
 	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
-	}, nil)
-	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts}, static.FS, extra...)
+	}, hub)
+	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, st: st, clk: clk, filesDir: filesDir}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, hub: hub, st: st, clk: clk, filesDir: filesDir}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

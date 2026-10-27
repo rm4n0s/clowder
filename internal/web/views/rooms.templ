@@ -190,20 +190,36 @@ type RoomData struct {
 // member; others are told to join), the feed and the members panel.
 templ RoomPage(d RoomData) {
 	@Layout(d.Room.Name, Sidebar(d.Sidebar)) {
+		@liveStream(RoomStreamPath(d.Room.ID, d.Feed.NewestID(), d.Feed.Before))
 		@RoomHeader(d)
 		<div class="room-body">
 			<section id="room-feed" class="room-feed">
 				<h2>Posts</h2>
-				if d.Room.IsMember {
-					@PostEditor(d.Editor)
-				} else {
-					<p id="join-to-post" class="hint join-note">Join this room to post</p>
-				}
+				@RoomComposer(d)
 				@Feed(d.Feed)
 			</section>
 			@MembersPanel(d)
 		</div>
 	}
+}
+
+// RoomComposer is the place where a member writes a new post: the editor, or
+// for anyone else the note to join the room. A live update replaces it when the
+// viewer joins or leaves the room.
+templ RoomComposer(d RoomData) {
+	<div id="post-composer" class="post-composer">
+		if d.Room.IsMember {
+			@PostEditor(d.Editor)
+		} else {
+			<p id="join-to-post" class="hint join-note">Join this room to post</p>
+		}
+	</div>
+}
+
+// RoomMemberCount is the number of members in the header of a room. A live
+// update replaces it alone when someone joins or leaves.
+templ RoomMemberCount(d RoomData) {
+	<p id="room-members-count" class="hint room-members-count">{ memberCountText(d.Room.MemberCount) }</p>
 }
 
 // RoomHeader is the header of a room: its name, visibility, description and
@@ -223,7 +239,7 @@ templ RoomHeader(d RoomData) {
 		if d.Room.Description != "" {
 			<p class="room-description">{ d.Room.Description }</p>
 		}
-		<p class="hint room-members-count">{ memberCountText(d.Room.MemberCount) }</p>
+		@RoomMemberCount(d)
 		@formProblem(d.Message)
 		<div class="room-actions">
 			if d.Room.IsMember {

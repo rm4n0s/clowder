@@ -166,7 +166,7 @@ func TestLoginPage(t *testing.T) {
 				`data-on:submit="@post(&#39;/login&#39;, {contentType: &#39;form&#39;})"`,
 				`name="username"`, `name="password"`, `type="password"`, "Log in</button>",
 			},
-			notWant: []string{`name="next"`, "<aside>", "form-error", "field-error"},
+			notWant: []string{`name="next"`, "<aside", "form-error", "field-error"},
 		},
 		{
 			name:     "next is carried in the form",
@@ -219,7 +219,7 @@ func TestHome(t *testing.T) {
 		{
 			name: "greets the user by display name", user: "alice",
 			wantBody: []string{
-				"Signed in as Alice", "<aside>", `<form id="logout-form" method="post" action="/logout"`,
+				"Signed in as Alice", `<aside id="sidebar">`, `<form id="logout-form" method="post" action="/logout"`,
 				`data-on:submit="@post(&#39;/logout&#39;, {contentType: &#39;form&#39;})"`, "Log out</button>",
 			},
 		},
@@ -316,9 +316,7 @@ func TestProtectedRoutesNeedASession(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := newTestEnv(t, nil, route{pattern: "GET /rooms/{id}/stream", handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte("STREAM-HANDLER"))
-			})})
+			e := newTestEnv(t, nil)
 			e.addUser("alice", "Alice", store.RoleMember)
 			req := tt.request()
 			tt.cookie(e)(req)
@@ -791,7 +789,7 @@ func TestSignUpPage(t *testing.T) {
 				`data-on:submit="@post(&#39;/invite/` + valid + `&#39;, {contentType: &#39;form&#39;})"`,
 				`name="username"`, `name="displayName"`, `name="password"`, "Create account</button>",
 			},
-			notWant: []string{"field-error", "form-error", "<aside>"},
+			notWant: []string{"field-error", "form-error", "<aside"},
 		},
 		{name: "used", token: used, wantStatus: http.StatusNotFound, wantBody: []string{"<h1>404</h1>", "This invitation is not valid."}, notWant: []string{"signup-form"}},
 		{name: "expired", token: expired, wantStatus: http.StatusNotFound, wantBody: []string{"This invitation is not valid."}},

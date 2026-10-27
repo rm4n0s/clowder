@@ -428,12 +428,12 @@ func TestRoomCreateFailures(t *testing.T) {
 				want := append([]string{`id="room-new-form"`}, tt.wantText...)
 				if datastar {
 					requireSSE(t, rec)
-					requireBody(t, rec, want, "<aside>", "window.location")
+					requireBody(t, rec, want, "<aside", "window.location")
 				} else {
 					if rec.Code != tt.wantStatus {
 						t.Fatalf("status = %d, want %d; body:\n%s", rec.Code, tt.wantStatus, rec.Body)
 					}
-					requireBody(t, rec, append(want, "<aside>", `data-room="general"`))
+					requireBody(t, rec, append(want, `<aside id="sidebar">`, `data-room="general"`))
 				}
 				if tt.wantNoRoom != "" {
 					if _, ok := e.roomNamed(tt.user, tt.wantNoRoom); ok {
@@ -692,12 +692,12 @@ func TestRoomAddMemberFailures(t *testing.T) {
 				rec := e.post(tt.user, "/rooms/"+idText(room.ID)+"/members", form, datastar)
 				if datastar {
 					requireSSE(t, rec)
-					requireBody(t, rec, []string{`id="members-panel"`, `<p class="form-error" role="alert">` + tt.wantText + `</p>`}, "window.location", "<aside>")
+					requireBody(t, rec, []string{`id="members-panel"`, `<p class="form-error" role="alert">` + tt.wantText + `</p>`}, "window.location", "<aside")
 				} else {
 					if rec.Code != tt.wantStatus {
 						t.Fatalf("status = %d, want %d; body:\n%s", rec.Code, tt.wantStatus, rec.Body)
 					}
-					requireBody(t, rec, []string{`id="members-panel"`, tt.wantText, "<aside>"})
+					requireBody(t, rec, []string{`id="members-panel"`, tt.wantText, `<aside id="sidebar">`})
 				}
 				if got := e.members(tt.room, "alice"); strings.Join(got, ",") != strings.Join(before, ",") {
 					t.Errorf("members changed from %v to %v", before, got)
@@ -835,7 +835,7 @@ func TestRoomRenameFailures(t *testing.T) {
 					if rec.Code != tt.wantStatus {
 						t.Fatalf("status = %d, want %d; body:\n%s", rec.Code, tt.wantStatus, rec.Body)
 					}
-					requireBody(t, rec, append([]string{`id="room-header"`, "<aside>"}, tt.wantText...))
+					requireBody(t, rec, append([]string{`id="room-header"`, `<aside id="sidebar">`}, tt.wantText...))
 				}
 				// Nothing changed.
 				got, err := e.rooms.Get(t.Context(), e.actor(e.alice), room.ID)

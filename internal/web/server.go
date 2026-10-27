@@ -12,6 +12,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/web/static"
 	"github.com/rm4n0s/clowder/internal/web/views"
 	"github.com/rm4n0s/errors"
@@ -44,6 +45,10 @@ type Services struct {
 	Audit *app.Audit
 	// Posts is the service of posts, their tags and their feeds.
 	Posts *app.Posts
+	// Hub delivers the live events of the services to the streams of the
+	// pages (SPEC §8). The services must publish to the same hub. Nil makes a
+	// hub that nothing publishes to.
+	Hub *live.Hub
 }
 
 // Server is the HTTP server of Clowder: the routes, the middleware and the
@@ -54,6 +59,9 @@ type Server struct {
 	svc             Services
 	handler         http.Handler
 	shutdownTimeout time.Duration
+	// pingInterval is how often an open stream writes a comment line, so that
+	// proxies keep the connection.
+	pingInterval time.Duration
 }
 
 // access says what a route needs from the session of the request.
@@ -89,7 +97,10 @@ func New(cfg config.Config, logger *slog.Logger, svc Services) (*Server, error) 
 // which the tests use to fail the hashing and to add a handler that panics or
 // blocks.
 func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs.FS, extra ...route) (*Server, error) {
-	s := &Server{cfg: cfg, logger: logger, svc: svc, shutdownTimeout: shutdownTimeout}
+	if svc.Hub == nil {
+		svc.Hub = live.New()
+	}
+	s := &Server{cfg: cfg, logger: logger, svc: svc, shutdownTimeout: shutdownTimeout, pingInterval: pingInterval}
 
 	notFound := http.HandlerFunc(s.notFound)
 	staticFiles, err := newStaticHandler(staticFS, staticPrefix, notFound)
@@ -124,11 +135,13 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /rooms/{id}/members", handler: http.HandlerFunc(s.memberAdd)},
 		{pattern: "POST /rooms/{id}/members/{userID}/remove", handler: http.HandlerFunc(s.memberRemove)},
 		{pattern: "GET /rooms/{id}/feed", handler: http.HandlerFunc(s.roomFeed)},
+		{pattern: "GET /rooms/{id}/stream", handler: http.HandlerFunc(s.roomStream)},
 		{pattern: "POST /rooms/{id}/posts", handler: http.HandlerFunc(s.postCreate)},
 		{pattern: "GET /posts/{id}", handler: http.HandlerFunc(s.postPage)},
 		{pattern: "GET /posts/{id}/edit", handler: http.HandlerFunc(s.postEditForm)},
 		{pattern: "POST /posts/{id}/edit", handler: http.HandlerFunc(s.postEditSave)},
 		{pattern: "GET /posts/{id}/view", handler: http.HandlerFunc(s.postView)},
+		{pattern: "GET /posts/{id}/stream", handler: http.HandlerFunc(s.postStream)},
 		{pattern: "POST /posts/{id}/delete", handler: http.HandlerFunc(s.postDelete)},
 		{pattern: "GET /posts/{id}/reply", handler: http.HandlerFunc(s.postReplyForm)},
 		{pattern: "POST /posts/{id}/replies", handler: http.HandlerFunc(s.postReply)},
@@ -176,7 +189,9 @@ func (s *Server) serve(ctx context.Context, ln net.Listener) error {
 		Handler:           s.handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
-	// TODO(step 7.2): the open event streams are closed with srv.RegisterOnShutdown.
+	// The open event streams never end by themselves: closing the hub ends
+	// them, so that Shutdown does not wait for them.
+	srv.RegisterOnShutdown(s.svc.Hub.Close)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 	s.logger.Info("server listening", "addr", ln.Addr().String())

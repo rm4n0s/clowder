@@ -305,12 +305,13 @@ func TestStopServer(t *testing.T) {
 		wantRoute string
 	}{
 		{
-			name:  "exits on SIGINT",
-			serve: listenLine + "; trap 'exit 0' INT; while true; do sleep 0.05; done",
+			name: "exits on SIGINT",
+			// The trap comes before the listen line: Stop may signal as soon as it sees the line.
+			serve: "trap 'exit 0' INT; " + listenLine + "; while true; do sleep 0.05; done",
 		},
 		{
 			name:      "ignores SIGINT and is killed",
-			serve:     listenLine + "; trap '' INT; while true; do sleep 0.05; done",
+			serve:     "trap '' INT; " + listenLine + "; while true; do sleep 0.05; done",
 			wantErr:   true,
 			wantRoute: "Server.stop->Server.stopProcess.ServerStopFailed",
 		},

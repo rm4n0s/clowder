@@ -16,7 +16,7 @@ templ Layout(title string, sidebar templ.Component) {
 		</head>
 		<body>
 			if sidebar != nil {
-				<aside>
+				<aside id="sidebar">
 					@sidebar
 				</aside>
 			}
@@ -25,4 +25,11 @@ templ Layout(title string, sidebar templ.Component) {
 			</main>
 		</body>
 	</html>
+}
+
+// liveStream is the element that opens the live stream of a page: when the
+// page loads, Datastar opens the stream at path and applies the patches it
+// sends. The element is never patched, so the stream is opened once.
+templ liveStream(path string) {
+	<div id="live-stream" hidden data-init={ streamAction(path) }></div>
 }
