@@ -103,3 +103,22 @@ SELECT p.id, ` + ftsText(s.dialect) + ` FROM posts p WHERE p.deleted_at IS NULL`
 	}
 	return nil
 }
+
+// Analyze makes the database collect the statistics its planner needs, after
+// a bulk load. On PostgreSQL it runs ANALYZE: a table that was just loaded has
+// no statistics until autovacuum gets to it (about a minute later), and until
+// then the planner reads the feed of a room with a bitmap scan of all its
+// posts and a sort instead of the index (step 17.1: 6 ms instead of 0.1 ms for
+// the query, 30 ms instead of 5 ms for the page, in the first minute after the
+// large demo). A database that grows through the services does not need it:
+// autovacuum keeps up. SQLite keeps no such statistics and does nothing. Call
+// it after the load has been committed. It fails with TagQueryFailed.
+func (s *Store) Analyze(ctx context.Context) error {
+	if s.dialect != dialectPostgres {
+		return nil
+	}
+	if err := s.db(ctx).Exec("ANALYZE").Error; err != nil {
+		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "analyze")
+	}
+	return nil
+}

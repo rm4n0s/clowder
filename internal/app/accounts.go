@@ -119,6 +119,10 @@ func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg Accou
 	if limiter == nil {
 		limiter = NewLoginLimiter(clk)
 	}
+	hashes := newGate(hashSlots(cfg.MaxConcurrentHashes))
+	if hasher.MemoryBytes() >= heavyHashBytes {
+		hashes.idle = releaseMemory
+	}
 	return &Accounts{
 		st:                 st,
 		clk:                clk,
@@ -127,7 +131,7 @@ func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg Accou
 		sessionLifetime:    cfg.SessionLifetime,
 		limiter:            limiter,
 		pub:                orNop(cfg.Publisher),
-		hashes:             newGate(hashSlots(cfg.MaxConcurrentHashes)),
+		hashes:             hashes,
 	}
 }
 

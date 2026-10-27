@@ -158,3 +158,19 @@ func TestVerifyTags(t *testing.T) {
 		t.Errorf("err = %v, want tag %s", err, TagPasswordHashUnsupported)
 	}
 }
+
+func TestMemoryBytes(t *testing.T) {
+	tests := []struct {
+		name string
+		h    Hasher
+		want uint64
+	}{
+		{"the default hasher", DefaultHasher(), 64 << 20},
+		{"the fast hasher", FastHasher(), 8 << 10},
+	}
+	for _, tt := range tests {
+		if got := tt.h.MemoryBytes(); got != tt.want {
+			t.Errorf("%s: MemoryBytes = %d, want %d", tt.name, got, tt.want)
+		}
+	}
+}

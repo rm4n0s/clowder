@@ -68,7 +68,7 @@ func (s *Server) boardStart(w http.ResponseWriter, r *http.Request, post bool) (
 // boardTask reads the ID of the card from the path; false when it is not a
 // number or the board has no such card. The card is then answered.
 func (s *Server) boardTask(w http.ResponseWriter, r *http.Request, br boardRequest) (app.TaskCard, bool) {
-	id, err := strconv.ParseUint(r.PathValue("taskID"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("taskID"), 10, 63)
 	if err == nil {
 		for _, c := range br.view.Columns {
 			for _, t := range c.Tasks {
@@ -85,7 +85,7 @@ func (s *Server) boardTask(w http.ResponseWriter, r *http.Request, br boardReque
 // boardColumn reads the ID of the column from the path; false when it is not a
 // number or the board has no such column. The column is then answered.
 func (s *Server) boardColumn(w http.ResponseWriter, r *http.Request, br boardRequest) (app.ColumnView, bool) {
-	id, err := strconv.ParseUint(r.PathValue("columnID"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("columnID"), 10, 63)
 	if err == nil {
 		for _, c := range br.view.Columns {
 			if c.ID == id {

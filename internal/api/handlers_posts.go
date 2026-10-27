@@ -65,7 +65,7 @@ func (s *Server) postRoutes() []Route {
 func feedParams(r *http.Request) (before uint64, limit int, err error) {
 	query := r.URL.Query()
 	if text := query.Get("before"); query.Has("before") {
-		before, err = strconv.ParseUint(text, 10, 64)
+		before, err = strconv.ParseUint(text, 10, 63)
 		if err != nil || before == 0 {
 			return 0, 0, errors.New(tagBeforeInvalid, "before is not the ID of a post",
 				"fields", map[string]string{"before": messageBeforeInvalid})

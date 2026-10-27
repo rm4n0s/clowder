@@ -78,7 +78,7 @@ func (s *Server) adminRooms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A value that is not an ID is 0: no room is open.
-	openID, _ := strconv.ParseUint(r.URL.Query().Get("members"), 10, 64)
+	openID, _ := strconv.ParseUint(r.URL.Query().Get("members"), 10, 63)
 	data, ok := s.adminRoomsData(w, r, actor, openID)
 	if !ok {
 		return
@@ -260,7 +260,7 @@ func (s *Server) adminMemberRemove(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	userID, err := strconv.ParseUint(r.PathValue("userID"), 10, 64)
+	userID, err := strconv.ParseUint(r.PathValue("userID"), 10, 63)
 	if err != nil || userID == 0 {
 		s.notFound(w, r)
 		return

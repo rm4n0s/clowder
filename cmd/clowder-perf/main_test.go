@@ -295,3 +295,128 @@ func TestStatusKiB(t *testing.T) {
 		t.Errorf("err = %v, want statusKiB.PerfRSSFailed", err)
 	}
 }
+
+func TestParseOptionsOfTwoProcesses(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    options
+		wantErr string
+	}{
+		{"the second process", []string{"-base", "http://a", "-base2", "http://b", "-pid", "7", "-pid2", "8", "-streams", "10"},
+			options{base: "http://a", base2: "http://b", pid: 7, pid2: 8, streams: 10}, ""},
+		{"one stream for two processes", []string{"-base", "http://a", "-base2", "http://b", "-streams", "1"}, options{},
+			"parseOptions.PerfFlagsInvalid"},
+		{"a second pid without a second process", []string{"-base", "http://a", "-pid2", "8"}, options{}, "parseOptions.PerfFlagsInvalid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseOptions(tt.args, io.Discard)
+			if tt.wantErr != "" {
+				appErr, ok := errors.FromError(err)
+				if !ok || !appErr.HasRoute(tt.wantErr) {
+					t.Fatalf("err = %v, want route %s", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseOptions: %+v", err)
+			}
+			if got.base != tt.want.base || got.base2 != tt.want.base2 || got.pid != tt.want.pid || got.pid2 != tt.want.pid2 || got.streams != tt.want.streams {
+				t.Errorf("options = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSplitStreams(t *testing.T) {
+	tests := []struct {
+		name            string
+		o               options
+		wantLocal, want int
+	}{
+		{"one process", options{streams: 200}, 200, 0},
+		{"two processes", options{streams: 200, base2: "x"}, 100, 100},
+		{"an odd number", options{streams: 5, base2: "x"}, 3, 2},
+	}
+	for _, tt := range tests {
+		if local, peer := splitStreams(tt.o); local != tt.wantLocal || peer != tt.want {
+			t.Errorf("%s: splitStreams = %d, %d; want %d, %d", tt.name, local, peer, tt.wantLocal, tt.want)
+		}
+	}
+}
+
+func TestDurations(t *testing.T) {
+	ms := time.Millisecond
+	samples := []sample{{1 * ms, false}, {2 * ms, true}, {3 * ms, false}, {4 * ms, true}}
+	tests := []struct {
+		name         string
+		local, other bool
+		want         []time.Duration
+	}{
+		{"all", true, true, []time.Duration{1 * ms, 2 * ms, 3 * ms, 4 * ms}},
+		{"the first process", true, false, []time.Duration{1 * ms, 3 * ms}},
+		{"the second process", false, true, []time.Duration{2 * ms, 4 * ms}},
+		{"none", false, false, []time.Duration{}},
+	}
+	for _, tt := range tests {
+		got := durations(samples, tt.local, tt.other)
+		if len(got) != len(tt.want) {
+			t.Errorf("%s: durations = %v, want %v", tt.name, got, tt.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tt.want[i] {
+				t.Errorf("%s: durations = %v, want %v", tt.name, got, tt.want)
+			}
+		}
+	}
+}
+
+// TestMeasureAcrossTwoProcesses runs the measurement with a second server.
+// Both fake servers share their streams, as two processes share their events
+// through Redis: a post written on the first reaches the streams opened on
+// the second.
+func TestMeasureAcrossTwoProcesses(t *testing.T) {
+	f := &fakeServer{}
+	first := httptest.NewServer(f.handler())
+	second := httptest.NewServer(f.handler())
+	t.Cleanup(first.Close)
+	t.Cleanup(second.Close)
+	o := testOptions(first.URL)
+	o.base2 = second.URL
+	o.streams = 6
+	o.pid, o.pid2 = os.Getpid(), os.Getpid()
+	var out bytes.Buffer
+	if err := measure(t.Context(), o, &out); err != nil {
+		t.Fatalf("measure: %+v", err)
+	}
+	for _, want := range []string{
+		"streams open: 6 of room 1 (3 on " + first.URL + ", where the posts are written, 3 on " + second.URL + ")",
+		"reached 6 streams", "fan-out to 6 streams over 2 posts",
+		"streams of the process that took the post: p50", "streams of the other process, through Redis: p50",
+		"server memory:", "second server memory:", "MiB with 3 idle streams",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.streams) != 6 {
+		t.Errorf("%d streams were opened, want 6", len(f.streams))
+	}
+}
+
+func TestMeasureSecondProcessNotReady(t *testing.T) {
+	srv := httptest.NewServer((&fakeServer{}).handler())
+	t.Cleanup(srv.Close)
+	o := testOptions(srv.URL)
+	o.base2 = "http://127.0.0.1:1"
+	o.ready = 150 * time.Millisecond
+	err := measure(t.Context(), o, io.Discard)
+	appErr, ok := errors.FromError(err)
+	if !ok || !appErr.HasRoute("measure->waitReady.PerfNotReady") {
+		t.Errorf("err = %v, want measure->waitReady.PerfNotReady", err)
+	}
+}

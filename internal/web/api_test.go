@@ -332,3 +332,30 @@ func TestAPIUploadHasTheUploadDeadline(t *testing.T) {
 		t.Errorf("a slow JSON body was accepted: status %d", status)
 	}
 }
+
+// TestAPIPreflightGetsNoCORSHeaders checks that the preflight request of a
+// browser on another site gets no permission: a JSON 405, with no
+// Access-Control header, so the browser refuses the real request (SPEC D43,
+// docs/SECURITY.md).
+func TestAPIPreflightGetsNoCORSHeaders(t *testing.T) {
+	t.Parallel()
+	e := newTestEnv(t, nil)
+	for _, target := range []string{"/api/v1/me", "/api/v1/auth/login", "/api/v1/rooms/1/posts", "/api/v1/nope"} {
+		r := httptest.NewRequest(http.MethodOptions, target, nil)
+		r.Header.Set("Origin", "https://evil.example")
+		r.Header.Set("Access-Control-Request-Method", "POST")
+		r.Header.Set("Access-Control-Request-Headers", "authorization, content-type")
+		rec := e.send(r)
+		if rec.Code != http.StatusMethodNotAllowed && rec.Code != http.StatusNotFound {
+			t.Errorf("OPTIONS %s: status = %d, want 405 or 404", target, rec.Code)
+		}
+		for name := range rec.Header() {
+			if strings.HasPrefix(strings.ToLower(name), "access-control-") {
+				t.Errorf("OPTIONS %s: the answer has %s", target, name)
+			}
+		}
+		if !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+			t.Errorf("OPTIONS %s: Content-Type = %q", target, rec.Header().Get("Content-Type"))
+		}
+	}
+}

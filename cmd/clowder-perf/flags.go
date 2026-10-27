@@ -16,6 +16,8 @@ func newFlagSet(o *options, stderr io.Writer) *flag.FlagSet {
 	fs.IntVar(&o.streams, "streams", defaultStreams, "number of streams to open")
 	fs.IntVar(&o.rounds, "rounds", defaultRounds, "number of probe posts; each gives one sample per stream")
 	fs.IntVar(&o.pid, "pid", 0, "process ID of the server, to read its memory from /proc/<pid>/status (0: skip)")
+	fs.StringVar(&o.base2, "base2", "", "base URL of a second process of the same installation (several processes with Redis, SPEC §8.1): every other stream is opened on it, and the probe posts are still written on -base")
+	fs.IntVar(&o.pid2, "pid2", 0, "process ID of the second server, to read its memory (0: skip); needs -base2")
 	fs.DurationVar(&o.settle, "settle", defaultSettle, "how long the streams rest before the memory is read")
 	fs.DurationVar(&o.ready, "ready-timeout", defaultReadyTimeout, "how long to wait for the server to answer")
 	fs.DurationVar(&o.timeout, "timeout", defaultRoundTimeout, "how long a probe post has to reach every stream")

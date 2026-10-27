@@ -317,7 +317,7 @@ func duplicateCardSelector(id uint64) string {
 // uintQuery reads the query value key as a number; a missing or wrong value is
 // 0.
 func uintQuery(r *http.Request, key string) uint64 {
-	n, err := strconv.ParseUint(r.URL.Query().Get(key), 10, 64)
+	n, err := strconv.ParseUint(r.URL.Query().Get(key), 10, 63)
 	if err != nil {
 		return 0
 	}

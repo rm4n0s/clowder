@@ -71,7 +71,7 @@ func (s *Server) roomFail(w http.ResponseWriter, r *http.Request, err error, id 
 // roomID reads the ID of the room from the path. When it is not a number it
 // has answered with the 404 page and returns false.
 func (s *Server) roomID(w http.ResponseWriter, r *http.Request) (uint64, bool) {
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 63)
 	if err != nil || id == 0 {
 		s.notFound(w, r)
 		return 0, false
@@ -411,7 +411,7 @@ func (s *Server) memberAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A value that is not an ID is 0, which the service answers as "Choose a user".
-	userID, _ := strconv.ParseUint(r.PostFormValue("user"), 10, 64)
+	userID, _ := strconv.ParseUint(r.PostFormValue("user"), 10, 63)
 	if err := s.svc.Rooms.AddMember(r.Context(), actor, id, userID); err != nil {
 		s.roomActionFailed(w, r, err, id, target)
 		return
@@ -426,7 +426,7 @@ func (s *Server) memberRemove(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	userID, err := strconv.ParseUint(r.PathValue("userID"), 10, 64)
+	userID, err := strconv.ParseUint(r.PathValue("userID"), 10, 63)
 	if err != nil {
 		s.roomActionFailed(w, r, errors.New(app.TagInvalidInput, "the user ID is not a number",
 			"fields", map[string]string{app.FieldUser: messageActionInvalid}), id, target)

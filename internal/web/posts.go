@@ -51,7 +51,7 @@ func (s *Server) patchAll(w http.ResponseWriter, r *http.Request, ops ...patchOp
 // beforeOf reads the query "before": the ID of the post after which a page of
 // the feed starts. A missing or wrong value is 0, which starts at the newest.
 func beforeOf(r *http.Request) uint64 {
-	before, err := strconv.ParseUint(r.URL.Query().Get("before"), 10, 64)
+	before, err := strconv.ParseUint(r.URL.Query().Get("before"), 10, 63)
 	if err != nil {
 		return 0
 	}
@@ -131,7 +131,7 @@ func typedInto(d views.PostEditorData, r *http.Request) views.PostEditorData {
 // postID reads the ID of the post from the path. When it is not a number it has
 // answered with the 404 page and returns false.
 func (s *Server) postID(w http.ResponseWriter, r *http.Request) (uint64, bool) {
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 63)
 	if err != nil || id == 0 {
 		s.notFound(w, r)
 		return 0, false

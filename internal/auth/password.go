@@ -53,6 +53,13 @@ func DefaultHasher() Hasher {
 	}
 }
 
+// MemoryBytes is the memory one hash or one check of a password takes, which
+// the Go runtime keeps as part of the process after the call: 64 MiB for
+// DefaultHasher.
+func (h Hasher) MemoryBytes() uint64 {
+	return uint64(h.memoryKiB) * 1024
+}
+
 // FastHasher returns a Hasher with tiny parameters so that tests run quickly.
 // It is for tests only: its hashes are not safe to keep.
 func FastHasher() Hasher {

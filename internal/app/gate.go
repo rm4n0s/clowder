@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/rm4n0s/errors"
 )
@@ -18,11 +19,29 @@ const (
 // for a place or for their context to end. Make it with newGate.
 type gate struct {
 	slots chan struct{}
+	// idle, when it is not nil, is called when a caller leaves and nobody
+	// else is inside.
+	idle func()
 }
 
 // newGate makes a gate with n places; n below 1 is 1.
 func newGate(n int) *gate {
 	return &gate{slots: make(chan struct{}, max(n, 1))}
+}
+
+// heavyHashBytes is the memory of one hash from which the gate gives it back to
+// the system when the last hash is done (releaseMemory).
+const heavyHashBytes = 16 << 20
+
+// releaseMemory returns what the hashing left over to the operating system.
+// An argon2id hash takes 64 MiB, which the Go runtime keeps in the process
+// after the hash ends and does not give back for minutes, if ever, while the
+// server does little else: one login left the server at 95 MiB instead of 30.
+// A server with 100 open streams was measured at 155 MiB for it, over the
+// target of SPEC §10. debug.FreeOSMemory runs a garbage collection and returns
+// the free memory; once per burst of logins is cheap next to a hash.
+func releaseMemory() {
+	debug.FreeOSMemory()
 }
 
 // hashSlots returns the number of places of the gate of the password hashing:
@@ -50,6 +69,9 @@ func (g *gate) enter(ctx context.Context) error {
 // leave gives the place back.
 func (g *gate) leave() {
 	<-g.slots
+	if g.idle != nil && len(g.slots) == 0 {
+		g.idle()
+	}
 }
 
 // hash hashes the password once a place of the gate is free.

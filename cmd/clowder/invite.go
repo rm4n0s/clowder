@@ -33,7 +33,7 @@ func runInvite(ctx context.Context, args []string, env func(string) string, stdo
 	flags.SetOutput(stderr)
 	flags.StringVar(&cfg.DataDir, "data", envString(env, "CLOWDER_DATA", config.DefaultDataDir),
 		"data directory (CLOWDER_DATA)")
-	flags.StringVar(&cfg.DatabaseURL, "database-url", envString(env, "CLOWDER_DATABASE_URL", cfg.DatabaseURL),
+	databaseFromEnv := urlFlag(flags, &cfg.DatabaseURL, "database-url", env, "CLOWDER_DATABASE_URL", cfg.DatabaseURL,
 		"PostgreSQL URL, postgres://...; empty: SQLite in the data directory (CLOWDER_DATABASE_URL)")
 	flags.StringVar(&cfg.BaseURL, "base-url", envString(env, "CLOWDER_BASE_URL", config.DefaultBaseURL),
 		"base URL of invitation links (CLOWDER_BASE_URL)")
@@ -47,6 +47,7 @@ func runInvite(ctx context.Context, args []string, env func(string) string, stdo
 	if flags.NArg() > 0 {
 		return errors.New(tagFlagsInvalid, "unexpected arguments", "args", flags.Args())
 	}
+	databaseFromEnv()
 	if admin == member {
 		return errors.New(tagInviteRoleInvalid, "give exactly one of -admin and -member",
 			"admin", admin, "member", member)

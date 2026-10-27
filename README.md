@@ -1,6 +1,6 @@
 # Clowder
 
-Clowder is a self-hosted web application where a team talks in rooms. A room is a feed of posts, and the conversation about a post happens in the comments under it, which can be answered in turn. Posts and comments carry text or markdown, attachments, tags and tasks, and the tasks of a room are the cards of its Kanban board. People also write private messages to each other, one to one or in small groups. Nobody joins without an invitation. Clowder is one program with an SQLite database and a directory of attachments; the pages are rendered on the server and kept live over server-sent events, so what one person posts or moves appears for everyone looking at it.
+Clowder is a self-hosted web application where a team talks in rooms. A room is a feed of posts, and the conversation about a post happens in the comments under it, which can be answered in turn. Posts and comments carry text or markdown, attachments, tags and tasks, and the tasks of a room are the cards of its Kanban board. People also write private messages to each other, one to one or in small groups. Nobody joins without an invitation. Clowder is one program with an SQLite database (or PostgreSQL) and a directory of attachments; the pages are rendered on the server and kept live over server-sent events, so what one person posts or moves appears for everyone looking at it. A REST API and a WebSocket let a desktop client do the same.
 
 ## What it does
 
@@ -15,6 +15,8 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 - **Private messages** between users and in groups, with replies, reactions, attachments, editing, deleting and read state.
 - **Live updates** of feeds, threads, reactions, boards and counts.
 - **Audit log** of changes to posts, tasks, columns, rooms and memberships, which admins read and filter.
+- **A REST API and a WebSocket** for desktop clients, with an OpenAPI document (see "API for desktop clients").
+- **PostgreSQL, Docker and several processes** for installations that want them (see "Running with Docker").
 
 ## Screenshots
 
@@ -26,6 +28,16 @@ Clowder is a self-hosted web application where a team talks in rooms. A room is 
 | The board of a room | Search |
 | ![The notifications page](docs/implemented-proof-images/11.2-notifications.png) | ![A private conversation](docs/implemented-proof-images/12.2-messages.png) |
 | Notifications | Private messages |
+
+## API for desktop clients
+
+Everything a person does in the pages can also be done through a JSON API under `/api/v1`, and the live changes of the pages arrive over a WebSocket at `/api/v1/ws`. A client logs in with a username and password, gets a token (a session that the user can see and end on the `/me/sessions` page) and sends it as `Authorization: Bearer <token>`. The API calls the same code as the pages, so every rule is the same: a private room is `404` to anyone who is not in it, files are downloaded only by people who can read them, and so on.
+
+- [`docs/API.md`](docs/API.md) is the guide for the people who write a client: logging in, errors, paging, uploads, the PATCH rules, the WebSocket (subscribe, events, closing, reconnecting) and an example session with `curl` and Go.
+- `/api/v1/openapi.json` is the OpenAPI 3.1 document of the installation you talk to (no login needed); it is also in the repository as [`internal/api/openapi.json`](internal/api/openapi.json). A test keeps it equal to the routes. Use it to generate a client.
+- `go run ./cmd/clowder-apicheck -h` is a small client that runs a whole session against a server and prints every request and answer; with `-watch` it also prints the live events.
+
+The API sets no cross-origin headers and a web page of another site cannot call it. Behind a reverse proxy it needs the same things as the pages (the `Host` header, `-trust-proxy` for the login limit), and a proxy must pass WebSocket upgrades (see "Running behind a TLS reverse proxy").
 
 ## Building
 
@@ -59,6 +71,10 @@ The data directory holds `clowder.db` (the database) and `files/` (the attachmen
 
 Clowder runs as one process per database, unless it runs on PostgreSQL with Redis: then several processes can serve one database (see "Several processes" below). It speaks plain HTTP, so put a reverse proxy with TLS in front of it (see below).
 
+### Upgrading
+
+Back up the data directory first (see "Backups"), stop the old process, start the new binary on the same data directory (or the same `-database-url`), and Clowder migrates the database when it starts: it only adds what the new version needs. **A 1.0 installation on SQLite upgrades to 1.1 this way, with nothing else to do**: the sessions of the people who are logged in stay valid (they become browser sessions), and the API is on at once. Moving an existing SQLite installation to PostgreSQL is not supported (there is no tool for it): PostgreSQL is for a new installation, or you start the new one empty and invite people again. Downgrading is not supported either: restore the backup of the old version.
+
 ## Running with Docker
 
 `compose.yaml` runs Clowder and PostgreSQL 18. The image is built from the `Dockerfile` (a static binary on a distroless base, running as a user that is not root); PostgreSQL is the official image. You need Docker with the Compose plugin.
@@ -89,6 +105,7 @@ The second command prints the link of the first admin (see "The first admin"); i
   ```
 
   (The volume is named `<project>_clowderdata`, here for a project called `clowder`, which is the name of the directory unless you set `-p` or `COMPOSE_PROJECT_NAME`; `docker volume ls` shows it.) To restore into a new, empty installation: `docker compose up -d postgres`, then `docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < clowder.dump`, unpack `files.tgz` into the volume the same way, and `docker compose up -d`. Both files hold private data (password hashes, attachments): keep them private.
+- **Who can reach it:** compose publishes `CLOWDER_PORT` on every interface of the machine. Behind a reverse proxy on the same machine, publish it on the loopback address only, with a `compose.override.yaml` next to `compose.yaml`: `services: {clowder: {ports: !override ["127.0.0.1:8080:8080"]}}`. PostgreSQL (and, in the cluster, Redis and the Clowder processes) are never published; they are reachable only inside the compose network. The database password is in the environment of the Clowder container, so anyone who may use Docker on the machine can read it: that is already root-equivalent.
 - **TLS and a reverse proxy:** the container speaks plain HTTP, so put a reverse proxy with TLS in front of it, as "Running behind a TLS reverse proxy" says: proxy to the published port, set `CLOWDER_BASE_URL` to the public `https://` address and, only when every request comes through the proxy, `CLOWDER_TRUST_PROXY=true`.
 
 `scripts/compose-smoke.sh` checks the whole composition on a throw-away project: it builds the image, starts both services, makes an admin invitation, signs up through the form, opens a page and removes everything.
@@ -121,7 +138,19 @@ Notes:
 
 ### PostgreSQL without Docker
 
-`clowder serve` uses PostgreSQL instead of SQLite when it is given a database URL, with `-database-url` or `CLOWDER_DATABASE_URL`, for example `postgres://clowder:secret@db.example.org:5432/clowder?sslmode=require`. `clowder invite` and `clowder demo` read the same setting. The server needs PostgreSQL 16 or later (18 is the tested version) with ICU and the `unaccent` extension, which the official images and the usual packages (`postgresql-contrib`) have. The database user must be allowed to create the extension, a collation and functions in the database, because Clowder migrates the database when it starts. The URL is never written to a log with its password. The attachments stay in `files/` of the data directory.
+`clowder serve` uses PostgreSQL instead of SQLite when it is given a database URL, with `-database-url` or `CLOWDER_DATABASE_URL`, for example `postgres://clowder:secret@db.example.org:5432/clowder?sslmode=verify-full`. `clowder invite` and `clowder demo` read the same setting. The attachments stay in `files/` of the data directory.
+
+- **Version and extensions.** PostgreSQL 16 or later (18 is the tested version) with ICU and the `unaccent` extension, which the official images and the usual packages (`postgresql-contrib`) have.
+- **The rights of the database user.** Clowder migrates the database when it starts, so the user must be allowed to create, in its database: tables and indexes, the extension `unaccent` (a trusted extension, so the owner of the database may create it), a text search configuration (`clowder_search`), an ICU collation (`nocase`) and functions (`json_valid`), and to use advisory locks. The simplest way is to make the user the **owner of the database**: `CREATE ROLE clowder LOGIN PASSWORD '...'; CREATE DATABASE clowder OWNER clowder;`. It needs no other right, and no superuser. From PostgreSQL 15 only the owner may create objects in the `public` schema, so a user that is not the owner needs `GRANT CREATE ON SCHEMA public` and `GRANT CREATE ON DATABASE clowder`.
+- **TLS.** The URL's `sslmode` decides. The driver's default is `prefer`, which uses TLS when the server offers it and goes on without it when not, so an attacker on the network can make it go without. For a database that is not on the same machine or the same private network use `sslmode=verify-full` (with `sslrootcert=/path/to/ca.pem` when the certificate is not from a public authority) or at least `require`. `sslmode=disable` is for a database in the same compose network.
+- **The password in the URL.** A password with characters that have a meaning in a URL (`@`, `:`, `/`, `?`, `#`, `%`) must be percent-encoded, or use letters and digits only. The URL is never written to a log or an error with its password (it shows `xxxxx`), and `clowder serve -h` does not print the URL of the environment. Keep it in the environment (`CLOWDER_DATABASE_URL`) or in a file your service manager reads, not on a command line that others can list with `ps`.
+- **Connections.** Each process keeps up to 32 connections (two per CPU, at least 8): `max_connections` of the server must be above that times the number of processes.
+- **Backups.** `pg_dump -Fc`, then the attachments after it (see "Running with Docker" and "Backups").
+- **Sizes and speed.** The numbers on PostgreSQL are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+
+### Redis
+
+Several processes need Redis (`-redis-url`, version 8 is tested, Valkey works too). Redis carries only the live events (the topic and the IDs involved, never a text) and the counters of failed logins, so it keeps nothing worth saving and needs no persistence. **Keep it private**: whoever can write to the channel `clowder:events` can make every page reload or log a user's streams out, and whoever can write to the keys `clowder:login:*` can lock people out or clear the limit. Put it on a private network or bind it to the machine, give it a password (`redis://:password@host:6379/0`; percent-encode special characters) and, if it crosses a network, use TLS with a `rediss://` URL. The URL is redacted in logs and errors like the database URL. With Redis 6 or later ACLs, the user of Clowder needs the commands `ping`, `publish`, `subscribe`, `multi`, `exec`, `zadd`, `zcard`, `zremrangebyscore`, `zremrangebyrank`, `pexpire` and `del` (and `hello` and `client|setinfo`, which the client sends when it connects), the keys `clowder:login:*` and the channel `clowder:events`.
 
 ## Configuration
 
@@ -171,6 +200,11 @@ Caddy gets the certificate itself, passes `Host` unchanged and sets `X-Forwarded
 nginx:
 
 ```
+map $http_upgrade $connection_upgrade {
+	default upgrade;
+	""      "";
+}
+
 server {
 	listen 443 ssl;
 	http2 on;
@@ -185,7 +219,11 @@ server {
 	location / {
 		proxy_pass http://127.0.0.1:8080;
 		proxy_http_version 1.1;
-		proxy_set_header Connection "";
+		# an empty Connection keeps the connection to Clowder alive; the
+		# WebSocket of the API (/api/v1/ws) needs the upgrade headers, which
+		# $connection_upgrade (the map above the server block) provides
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $connection_upgrade;
 		proxy_set_header Host $http_host;
 		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 		proxy_set_header X-Forwarded-Proto $scheme;
@@ -199,7 +237,7 @@ server {
 }
 ```
 
-Start Clowder with `-addr 127.0.0.1:8080 -base-url https://chat.example.org -trust-proxy`. Do not turn on `gzip` for `text/event-stream` in nginx.
+Start Clowder with `-addr 127.0.0.1:8080 -base-url https://chat.example.org -trust-proxy`. Do not turn on `gzip` for `text/event-stream` in nginx. Caddy passes the WebSocket of the API without any setting. The server pings every open WebSocket every 30 seconds, so a proxy timeout of a minute or more (`proxy_read_timeout 1h` above) keeps it open.
 
 ## Backups
 
@@ -242,6 +280,7 @@ Sessions are in the database, so everyone stays logged in after a restore to a r
 ## Development
 
 - [`CLAUDE.md`](CLAUDE.md) says how the code is written and checked.
+- [`docs/API.md`](docs/API.md) is the guide for the writers of clients of the API.
 - [`docs/SPEC.md`](docs/SPEC.md) is the specification, [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) the plan, [`docs/IMPLEMENTED.md`](docs/IMPLEMENTED.md) the log of finished steps, [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) the measurements and [`docs/SECURITY.md`](docs/SECURITY.md) the security review.
 
 ```sh

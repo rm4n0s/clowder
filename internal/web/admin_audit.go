@@ -58,14 +58,14 @@ func auditQuery(q url.Values) (app.AuditFilter, views.AuditFilterForm, int) {
 		}
 	}
 	if v := q.Get("room"); v != "" {
-		if id, err := strconv.ParseUint(v, 10, 64); err == nil && id != 0 {
+		if id, err := strconv.ParseUint(v, 10, 63); err == nil && id != 0 {
 			filter.RoomID, form.Room = id, id
 		} else {
 			problem(messageAuditRoom)
 		}
 	}
 	if v := q.Get("actor"); v != "" {
-		if id, err := strconv.ParseUint(v, 10, 64); err == nil && id != 0 {
+		if id, err := strconv.ParseUint(v, 10, 63); err == nil && id != 0 {
 			filter.ActorID, form.Actor = id, id
 		} else {
 			problem(messageAuditActor)

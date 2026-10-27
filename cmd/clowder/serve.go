@@ -245,10 +245,12 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		"address to listen on, as host:port (CLOWDER_ADDR)")
 	fs.StringVar(&cfg.DataDir, "data", envString(env, "CLOWDER_DATA", def.DataDir),
 		"data directory (CLOWDER_DATA)")
-	fs.StringVar(&cfg.DatabaseURL, "database-url", envString(env, "CLOWDER_DATABASE_URL", def.DatabaseURL),
-		"PostgreSQL URL, postgres://...; empty: SQLite in the data directory (CLOWDER_DATABASE_URL)")
-	fs.StringVar(&cfg.RedisURL, "redis-url", envString(env, "CLOWDER_REDIS_URL", def.RedisURL),
-		"Redis URL, redis://...; carries the live events between several processes; needs -database-url (CLOWDER_REDIS_URL)")
+	fromEnv := []func(){
+		urlFlag(fs, &cfg.DatabaseURL, "database-url", env, "CLOWDER_DATABASE_URL", def.DatabaseURL,
+			"PostgreSQL URL, postgres://...; empty: SQLite in the data directory (CLOWDER_DATABASE_URL)"),
+		urlFlag(fs, &cfg.RedisURL, "redis-url", env, "CLOWDER_REDIS_URL", def.RedisURL,
+			"Redis URL, redis://...; carries the live events between several processes; needs -database-url (CLOWDER_REDIS_URL)"),
+	}
 	fs.StringVar(&cfg.BaseURL, "base-url", envString(env, "CLOWDER_BASE_URL", def.BaseURL),
 		"base URL of invitation links (CLOWDER_BASE_URL)")
 	fs.Int64Var(&cfg.MaxAttachmentSize, "max-attachment-size", maxAttachmentSize,
@@ -268,6 +270,9 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 	}
 	if fs.NArg() > 0 {
 		return config.Config{}, errors.New(tagFlagsInvalid, "unexpected arguments", "args", fs.Args())
+	}
+	for _, apply := range fromEnv {
+		apply()
 	}
 	if err := cfg.Validate(); err != nil {
 		return config.Config{}, err
@@ -290,6 +295,23 @@ func newLogger(level string, w io.Writer) *slog.Logger {
 		lvl = slog.LevelInfo
 	}
 	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lvl}))
+}
+
+// urlFlag defines the string flag name for a URL that holds a password (the
+// database and the Redis URL) and returns the function that applies its
+// setting once the flags are parsed: the flag if it was given (an empty one
+// too), else the variable key, else def. The environment is not the default
+// of the flag, because the flag package prints the default in the usage
+// text, and the usage text must never show a password.
+func urlFlag(fs *flag.FlagSet, p *string, name string, env func(string) string, key, def, usage string) func() {
+	fs.StringVar(p, name, "", usage)
+	return func() {
+		given := false
+		fs.Visit(func(f *flag.Flag) { given = given || f.Name == name })
+		if !given {
+			*p = envString(env, key, def)
+		}
+	}
 }
 
 // envString returns the variable key, or def when it is unset or empty.

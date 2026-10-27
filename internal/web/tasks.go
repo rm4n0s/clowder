@@ -104,7 +104,7 @@ func taskInputsFrom(r *http.Request) ([]app.TaskInput, error) {
 		label := "Task " + strconv.Itoa(i+1) + ": "
 		in := app.TaskInput{Title: row.title}
 		if row.hasID() {
-			id, err := strconv.ParseUint(strings.TrimSpace(row.id), 10, 64)
+			id, err := strconv.ParseUint(strings.TrimSpace(row.id), 10, 63)
 			if err != nil || id == 0 {
 				return nil, errors.New(app.TagInvalidInput, "a task row has a wrong ID",
 					"fields", map[string]string{app.FieldTasks: label + "this task is not part of the post."}, "row", i+1)

@@ -1,0 +1,65 @@
+== machine
+kernel:  Linux 7.3.0-363.vanilla.fc44.x86_64 #1 SMP PREEMPT_DYNAMIC Mon Oct 19 00:08:48 UTC 2026 x86_64
+cpu:     AMD RYZEN AI MAX+ 395 w/ Radeon 8060S (32 logical CPUs)
+memory:  31 GiB
+go:      go version go1.27.3 linux/amd64
+postgres: postgres (PostgreSQL) 18.6 (Debian 18.6-1.pgdg13+2)
+redis:   Redis server v=8.10.3 sha=00000000:1
+pg shared_buffers: 128MB
+pg work_mem: 4MB
+pg effective_cache_size: 4GB
+pg max_connections: 100
+pg fsync: on
+pg synchronous_commit: on
+
+== the large demo on PostgreSQL
+large demo users: 200
+large demo rooms: 100 (14 private), 4957 memberships, 300 board columns
+large demo posts and comments: 100000 (69977 posts, 30023 comments)
+large demo tags: 48 (68154 on posts), reactions: 30325, mentions: 8233, attachments: 415
+large demo tasks: 20000 (17425 assignments)
+large demo conversations: 13 with 446 messages
+large demo audit events: 124962, search index rows: 99999
+large demo made in 22.608s
+whole clowder demo -size large -database-url ... process: 23.4 s
+database size: 189 MB
+
+== fan-out and memory, two processes on PostgreSQL and Redis (streams rest 2s)
+building clowder and clowder-perf
+copying the large demo in /home/rmanos/ai-projects/github-projects/clowder/.tmp/clowder-perf-pg.bgvWC6/data
+starting the server on 127.0.0.1:46663
+starting the second server on 127.0.0.1:33261 (same database, same data directory)
+measuring with 200 streams and 5 probe posts
+streams open: 200 of room 1 (100 on http://127.0.0.1:46663, where the posts are written, 100 on http://127.0.0.1:33261)
+round 1: post answered in 24ms, reached 200 streams: p50 31.7 ms p95 35.3 ms max 36.4 ms
+round 2: post answered in 25ms, reached 200 streams: p50 32.3 ms p95 36.0 ms max 36.9 ms
+round 3: post answered in 21ms, reached 200 streams: p50 24.0 ms p95 29.0 ms max 29.7 ms
+round 4: post answered in 20ms, reached 200 streams: p50 17.9 ms p95 20.3 ms max 21.8 ms
+round 5: post answered in 16ms, reached 200 streams: p50 21.1 ms p95 24.4 ms max 25.1 ms
+fan-out to 200 streams over 5 posts: p50 23.9 ms p95 35.4 ms max 36.9 ms (target: max under 200ms) OK
+  streams of the process that took the post: p50 24.0 ms p95 35.1 ms max 36.4 ms
+  streams of the other process, through Redis: p50 23.9 ms p95 35.7 ms max 36.9 ms
+server memory: 34.1 MiB before the streams, 70.7 MiB with 100 idle streams (target: under 150 MiB) OK
+server memory peak over the run: 94.8 MiB
+second server memory: 33.4 MiB before the streams, 70.1 MiB with 100 idle streams (target: under 150 MiB) OK
+second server memory peak over the run: 69.2 MiB
+
+== the same, the streams resting 20s
+building clowder and clowder-perf
+copying the large demo in /home/rmanos/ai-projects/github-projects/clowder/.tmp/clowder-perf-pg.bgvWC6/data
+starting the server on 127.0.0.1:42029
+starting the second server on 127.0.0.1:42861 (same database, same data directory)
+measuring with 200 streams and 5 probe posts
+streams open: 200 of room 1 (100 on http://127.0.0.1:42029, where the posts are written, 100 on http://127.0.0.1:42861)
+round 1: post answered in 30ms, reached 200 streams: p50 27.5 ms p95 30.1 ms max 31.3 ms
+round 2: post answered in 17ms, reached 200 streams: p50 21.3 ms p95 23.2 ms max 23.6 ms
+round 3: post answered in 22ms, reached 200 streams: p50 22.5 ms p95 26.1 ms max 26.4 ms
+round 4: post answered in 15ms, reached 200 streams: p50 17.2 ms p95 20.2 ms max 20.5 ms
+round 5: post answered in 15ms, reached 200 streams: p50 16.7 ms p95 19.6 ms max 19.9 ms
+fan-out to 200 streams over 5 posts: p50 20.2 ms p95 30.0 ms max 31.3 ms (target: max under 200ms) OK
+  streams of the process that took the post: p50 21.0 ms p95 30.0 ms max 31.3 ms
+  streams of the other process, through Redis: p50 20.0 ms p95 30.0 ms max 30.7 ms
+server memory: 33.7 MiB before the streams, 66.7 MiB with 100 idle streams (target: under 150 MiB) OK
+server memory peak over the run: 94.2 MiB
+second server memory: 33.7 MiB before the streams, 66.0 MiB with 100 idle streams (target: under 150 MiB) OK
+second server memory peak over the run: 72.7 MiB

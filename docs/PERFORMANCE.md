@@ -1,6 +1,6 @@
 # Performance
 
-Step 13.1 measured the targets of SPEC §10 on the large demo data set and fixed what missed. This file records the machine, the commands, the numbers and the test-suite times. Numbers are from 2026-10-27.
+Step 13.1 measured the targets of SPEC §10 on the large demo data set on SQLite and fixed what missed; step 17.1 measured them on PostgreSQL, and the fan-out across two processes with Redis (the last part of this file). This file records the machine, the commands, the numbers and the test-suite times. Numbers are from 2026-10-27.
 
 ## Machine
 
@@ -98,3 +98,69 @@ Causes, found with `go test -race -json` sorted by elapsed time and a CPU profil
 - **Timing.** The stream tests wait `quietTime` to see that nothing more comes. With the tests in parallel and the race detector on, 150 ms was sometimes too short for a stream to read and render an event (`TestPageStreamsKeepTheMessageCountLive` failed once in three shuffled runs). It is 400 ms now; three shuffled runs of both packages (`-count=3 -shuffle=on`) pass.
 
 The production hashing parameters are untouched, and `internal/auth` still tests them (`DefaultHasher`).
+
+---
+
+# PostgreSQL and several processes (step 17.1)
+
+SPEC §10 says that from 1.1 the same targets are measured on PostgreSQL too, and the fan-out also across two processes with Redis. The raw output of the runs is in `docs/implemented-proof-images/17.1-perf-postgres.txt` (the data set, the benchmarks, one process) and `17.1-perf-cluster.txt` (two processes).
+
+## Setup
+
+The machine is the one above (32 logical CPUs, 30 GiB), shared with other work: the load average during the runs was 9 to 13, so single numbers vary. PostgreSQL 18.6 and Redis 8.10 run in the official images (`postgres:18`, `redis:8`) on the same machine, on the loopback address, with the **default configuration of the image** (`shared_buffers` 128 MB, `work_mem` 4 MB, `fsync` and `synchronous_commit` on; only `--shm-size=256m` is added), which is what `docker compose up` runs. The database holds the same data set as the SQLite runs (the generator is seeded): 189 MB on disk against 107 MB for the SQLite file. The server, the load generator, PostgreSQL and Redis share the machine.
+
+## Commands to reproduce
+
+```sh
+# Everything below on throw-away containers: the large demo on PostgreSQL, the benchmarks,
+# the fan-out and the memory with one process, then with two processes and Redis.
+# Needs docker (or podman). About 6 minutes. The output is the proof files.
+SKIP_CLUSTER=1 scripts/perf-postgres.sh     # the data set, the benchmarks, one process
+ONLY_CLUSTER=1 scripts/perf-postgres.sh     # the two processes
+
+# By hand, against a PostgreSQL you already have (an empty database for the demo):
+CLOWDER_DATABASE_URL=postgres://... clowder demo -data /tmp/pgdemo -size large
+CLOWDER_BENCH_DATABASE_URL=postgres://... go test ./internal/web ./internal/app -run '^$' -bench Large -benchtime 200x -count 3
+DATABASE_URL=postgres://... scripts/perf.sh /tmp/pgdemo                          # one process
+DATABASE_URL=postgres://... REDIS_URL=redis://... PROCESSES=2 scripts/perf.sh /tmp/pgdemo   # two processes, 100 streams on each
+```
+
+`clowder-perf -base A -base2 B -pid P1 -pid2 P2` is what the script runs: half of the streams are opened on each process, the probe posts are written on the first, and the time counts from sending the post to its arrival in each stream (for the streams of the second process that includes the way through Redis). The memory is the resident memory (`VmRSS`) of each Clowder process, not of the machine.
+
+The large demo was made on PostgreSQL in 12.8 s (13.2 s to 22.6 s in the other runs; 7.5 to 9 s on SQLite), by the same generator, with one `ANALYZE` at the end (below).
+
+## Results
+
+SQLite is the number of step 13.1 (the memory and the fan-out were measured again in this step, in brackets). PostgreSQL is the final run of this step (ranges are the three runs of each benchmark); one process unless it says two.
+
+| What | Target | SQLite (13.1) | PostgreSQL | |
+|---|---|---|---|---|
+| A room's feed page (30 posts), whole handler, busiest room (12,283 posts and comments) | under 50 ms | 2.8–3.4 ms | 3.2–4.0 ms | ✅ |
+| The same, `general` (200 members) | under 50 ms | 6.9–7.1 ms | 5.3–6.4 ms | ✅ |
+| A search with words and two tags (`review deploy #release #bug`), handler | under 100 ms | 31–32 ms | 10.6–11.0 ms (`Search.Query`: 10.2–13.9 ms) | ✅ |
+| The same with a very common word (`the #docs #backend`) | under 100 ms | 66–72 ms | 4.9–5.1 ms | ✅ |
+| Two words (`release plan`), handler | (under 100 ms) | 41–47 ms | 54.6–60.4 ms (`Search.Query`: 57.8–69.2 ms) | ✅ |
+| One tag (`#design`), handler | – | 0.7–1.6 ms | 1.7–2.5 ms | ✅ |
+| A new post reaching 200 open streams of its room, one process | under 200 ms | p50 20.0, p95 25.2, max 25.9 ms | p50 26–27, max 155 ms and 130 ms in the final run (see below); 37 to 77 ms in the runs before | ✅ |
+| The same, 100 streams on each of two processes with Redis, the post written on the first | under 200 ms | – | p50 20–24 ms, p95 30–35 ms, max 31–37 ms; the streams of the other process, through Redis, p50 20–24 ms, max 31–37 ms, the same as those of the process that took the post | ✅ |
+| Memory of an idle server with 200 open streams, one process | under 150 MB | 110.2 MiB (105.7 MiB again, after the fix below) | 80.2 MiB after 2 s of rest, 78.6 MiB after 20 s | ✅ |
+| Memory of each of two processes with 100 open streams | under 150 MB | – | 70.7 and 70.1 MiB (66.7 and 66.0 MiB after 20 s) | ✅ |
+
+Every target is met. Notes:
+
+- **Feed.** The page reads the posts with an index scan of `posts_pkey` backward (the filter `room_id` and `parent_id IS NULL` removes about 300 rows to find 31): 0.1 ms in `EXPLAIN (ANALYZE)`. The partial index `idx_posts_feed_roots` of migration 0002 is what the planner uses when it has no statistics (next section); with statistics the primary key is cheaper still. The rest of the 3 to 6 ms is the rendering of the page.
+- **Search.** The query with two tags starts from the tag (`idx_post_tags_tag_id`, 12,320 and 6,728 rows), joins the other tag, and then probes the primary keys and `posts_search_pkey`: 8,300 buffers, 11 ms. A very common word with two tags is faster than on SQLite because the planner starts from the tags too. A search with only words (`release plan`, 17,000 matches of 100,000) reads the whole `posts_search` table with a parallel sequential scan and ranks every match, because a ranking by relevance has to look at all of them: 55 to 60 ms. The GIN index (`posts_search_tsv_idx`) is used when the words are rare. It is slower than SQLite for this kind of search (41 to 47 ms) and well under the target for a search with tags (words and two tags is the target query).
+- **Fan-out.** The numbers of the two outliers (155 ms, 130 ms, and 77 ms in the run before) are rounds in which the post itself was slow to answer (129 ms, 107 ms and 57 ms: the write to PostgreSQL, with `fsync` on, on a machine with a load average above 10), and then every stream is late by the same amount. Rounds without a stall are 20 to 40 ms for one process and for two. The target is met in every run, but a single round on a busy machine can come to three quarters of it; a deployment on a quiet server has the numbers of the quiet rounds.
+- **Across processes.** The post written on the first process reaches the streams of the second in the same time as those of the first (p50 20 to 24 ms either way): one Redis publish and one fan-out in the other process add less than the spread between rounds.
+
+## What was found and fixed
+
+1. **A freshly loaded database has no statistics (`Store.Analyze`, D48).** The first run of the benchmarks gave the feed of the busiest room 31 ms in the first two runs and 5 ms in the third. `EXPLAIN (ANALYZE, BUFFERS)` of the feed query right after `clowder demo -size large`, with no statistics, showed a bitmap heap scan of all 8,628 root posts of the room and a sort (3,100 buffers, 6.4 ms); autovacuum analyzed the table about a minute later and the plan became the index scan (18 buffers, 0.1 ms). The large demo is a bulk load, which is the only case where this happens (a database that grows through the services is analyzed by autovacuum as it grows), so `clowder demo -size large` now runs `ANALYZE` once the load is committed. The page took 2.8 to 4.0 ms from the first request after that. Test: `TestAnalyze` (on PostgreSQL it checks `last_analyze`).
+2. **A login left 64 MiB in the process (found by the two-process run).** With two processes the first one, which took the login of the measurement, measured 153 to 161 MiB with 100 streams, over the target, while the second, with 100 streams and no login, measured 65 MiB. Doing one login against a server with nothing else to do left its resident memory at 95 MiB instead of 30, for ever (140 s were watched): an Argon2id hash allocates 64 MiB, the Go runtime keeps it, and it does not give it back while little else is allocated. With 200 streams the new allocations reuse that memory, which is why the single process showed 90 to 110 MiB and did not miss. The password-hashing gate (D37) now calls `debug.FreeOSMemory` when the last hash in flight ends, for hashers of 16 MiB or more (`gate.idle`, `Hasher.MemoryBytes`): the same login leaves the server at 32.6 MiB, and the processes of the runs above measure 70 MiB with 100 streams. A garbage collection after a burst of logins costs a few milliseconds next to the hash itself. Tests: `TestGateCallsIdleWhenTheLastCallerLeaves`, `TestOnlyTheRealHasherGivesMemoryBack`, `TestMemoryBytes`. On SQLite the memory with 200 streams is 105.7 MiB (110.2 before), most of it in the pool of SQLite connections as in 13.1.
+
+## What could not be measured, and what is not measured
+
+- The runs are on one machine that is shared with other work (a load average of 9 to 13), with the server, the load generator, PostgreSQL and Redis together. A real deployment with the database on another machine adds the network time to the write and the read of every request, and PostgreSQL on another machine does not compete with Clowder for the CPUs.
+- The default configuration of PostgreSQL was used. `shared_buffers` of 128 MB is below the 189 MB database; the operating system's cache holds the rest here. A deployment of this size would raise it.
+- The benchmarks of the feed and of the search call the handlers through `httptest`, without the network, as in 13.1.
+- The test suite on PostgreSQL (`scripts/test-docker.sh`) takes longer than the one on SQLite; its time is not part of the targets.

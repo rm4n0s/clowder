@@ -211,7 +211,7 @@ func auditFilter(r *http.Request) (app.AuditFilter, error) {
 		if !query.Has(name) {
 			return 0
 		}
-		n, err := strconv.ParseUint(query.Get(name), 10, 64)
+		n, err := strconv.ParseUint(query.Get(name), 10, 63)
 		if err != nil || n == 0 {
 			fields[name] = messageFilterID
 			return 0

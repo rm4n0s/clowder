@@ -48,7 +48,7 @@ type wsTopic struct {
 // the metadata "fields" and "topic".
 func parseTopic(name string, ownID uint64) (wsTopic, error) {
 	kind, text, found := strings.Cut(name, ":")
-	id, err := strconv.ParseUint(text, 10, 64)
+	id, err := strconv.ParseUint(text, 10, 63)
 	switch kind {
 	case topicRoom, topicPost, topicBoard, topicConversation, topicUser:
 	default:

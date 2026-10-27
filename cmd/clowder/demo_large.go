@@ -364,7 +364,7 @@ type largeRows struct {
 
 // makeContent writes the posts, comments, tags, reactions, mentions,
 // attachments, tasks and audit events in one transaction and rebuilds the
-// full-text index.
+// full-text index; on PostgreSQL it then collects the statistics.
 func (g *largeGen) makeContent() error {
 	st := g.d.st
 	stats, err := st.Stats(g.ctx)
@@ -385,7 +385,7 @@ func (g *largeGen) makeContent() error {
 	if err != nil {
 		return err
 	}
-	return st.Tx(g.ctx, func(tx *store.Store) error {
+	err = st.Tx(g.ctx, func(tx *store.Store) error {
 		if err := store.BulkCreate(g.ctx, tx, gen.newTags); err != nil {
 			return err
 		}
@@ -415,6 +415,12 @@ func (g *largeGen) makeContent() error {
 		}
 		return tx.RebuildSearchIndex(g.ctx)
 	})
+	if err != nil {
+		return err
+	}
+	// The load is committed: PostgreSQL has no statistics of the new rows yet,
+	// and would plan the first queries without them (Store.Analyze).
+	return st.Analyze(g.ctx)
 }
 
 // contentGen generates the rows of makeContent.

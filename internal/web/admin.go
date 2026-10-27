@@ -78,7 +78,7 @@ func (s *Server) userChange(w http.ResponseWriter, r *http.Request, change func(
 	if !ok {
 		return
 	}
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 63)
 	if err != nil {
 		s.notFound(w, r)
 		return

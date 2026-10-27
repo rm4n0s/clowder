@@ -979,3 +979,47 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The choices this step made are recorded in SPEC §7.13 and D44: valid JSON with an unknown type gets an `error` and the connection stays open, a resync closes with 1013, and `post:<id>` must be a top-level post.
   - A write timeout could not be tested reliably. A dead client is tested instead, and the `SocketWriteFailed` route is tested directly.
   - `notification.created` sends one event for each notification newer than the newest the connection has seen.
+
+## 17.1 Security review, documentation and performance
+- **Date:** 2026-10-27
+- **Branch:** feat/step-17.1-review-docs-perf
+- **Summary:**
+  - Security review of the 1.1 surface, recorded in the "Clowder 1.1" part of `docs/SECURITY.md`. Covered: every API route and the WebSocket, tokens, JSON, uploads, PostgreSQL and Redis, Docker and Caddy, and the upgrade from 1.0.
+  - Found and fixed:
+    - S9: an ID above 2^63-1 caused a 500. IDs are now parsed with 63 bits everywhere (pages, API, WebSocket topics, audit filters), and a JSON body with such a number is a 422 naming the field.
+    - S10: the usage text of `serve`, `invite` and `demo` printed the database and Redis URLs, passwords included. `urlFlag` gives the flag an empty default and reads the variable only when the flag is not given.
+    - S11: `.dockerignore` now also leaves out `.env.*`, database files and `.tmp/`.
+  - Accepted and recorded (D47):
+    - no limit on sign-up tries, because an invitation token is 256 random bits;
+    - no cap per user on sockets, streams or staged bytes (a recommendation for a later release);
+    - the cross-origin protection of the pages also covers the unsafe methods of the API.
+  - `docs/API.md` is the guide for client writers. Its curl session was run against a real server and its Go WebSocket example compiles.
+  - The README has new sections:
+    - an API section and Upgrading;
+    - PostgreSQL rights and TLS;
+    - Redis: ACL, password and `rediss://`;
+    - an nginx WebSocket configuration and binding to loopback.
+  - Performance on PostgreSQL, in `docs/PERFORMANCE.md` (D48). Every target of SPEC §10 is met on PostgreSQL and across two processes with Redis. Two fixes came out of the measurement:
+    - `Store.Analyze` runs after the large demo's bulk load, so the feed uses its index at once.
+    - The hashing gate calls `debug.FreeOSMemory` when the last Argon2id hash ends. Before, one login kept 64 MiB in the process, and a process with 100 streams reached 155 MiB.
+  - Perf tooling: `clowder-perf` takes `-base2` and `-pid2`. `scripts/perf.sh` takes `DATABASE_URL`, `REDIS_URL` and `PROCESSES=2`. `scripts/perf-postgres.sh` is new, and the benchmarks take `CLOWDER_BENCH_DATABASE_URL`.
+- **Main files:**
+  - Docs: `docs/{SECURITY,PERFORMANCE,API}.md`, `README.md`, `docs/SPEC.md` (D47, D48).
+  - Code: `internal/api/{respond,auth,handlers_posts,handlers_admin,ws_topics}.go`, `internal/web/*` (ID parsing), `internal/app/{gate,accounts}.go`, `internal/auth/password.go`, `internal/store/bulk.go`, `cmd/clowder/{serve,invite,demo,demo_large}.go`, `cmd/clowder-perf`, `scripts/{perf,perf-postgres}.sh`, `.dockerignore`.
+- **Tests:**
+  - About 75 new cases. `internal/api/hardening_test.go` covers huge IDs, hostile JSON, odd search queries, and tokens in answers and logs; `internal/web/ids_test.go` covers huge IDs in the pages.
+  - In `cmd/clowder`: `secrets_test.go` (no password in usage text) and `deploy_test.go` (Dockerfile, `.dockerignore`, compose and Caddyfile).
+  - Also `internal/store/upgrade_test.go`, `TestAnalyze`, the gate and `MemoryBytes` tests, and 5 tests of `clowder-perf`.
+  - No new error tags.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · compose-smoke ✅ (both modes) · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [17.1 perf on PostgreSQL](implemented-proof-images/17.1-perf-postgres.txt) · [17.1 perf across two processes](implemented-proof-images/17.1-perf-cluster.txt)
+  - On the large demo on PostgreSQL:
+    - the feed takes 3–6 ms and the search with words and two tags 11 ms;
+    - the fan-out to 200 streams peaks at 37–155 ms (155 ms was one round where the write stalled on a loaded machine);
+    - the idle memory with 200 streams is 80 MiB.
+  - Across two processes with Redis (100 streams each), the fan-out peaks at 31–37 ms and each process uses about 70 MiB.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The measurements were taken on a shared, loaded machine (load average 9–13), with PostgreSQL and Redis on their default config.
+  - `govulncheck` is not installed and was not run.

@@ -88,19 +88,38 @@ func openPostgres(tb testing.TB, clk clock.Clock) *store.Store {
 // large demo (`clowder demo -size large`, SPEC §10) for the benchmarks.
 const LargeDemoEnv = "CLOWDER_BENCH_DB"
 
-// OpenLarge opens a copy of the large demo database that LargeDemoEnv names,
-// in the test's temporary directory, so that the benchmark never changes the
-// original. It skips the test or benchmark with a message when the variable is
-// not set, which keeps the benchmarks out of the default test run. The Store
-// is closed when the test ends. A failure stops the test.
+// LargeDemoPostgresEnv is the environment variable that names the PostgreSQL
+// database of a large demo (`clowder demo -size large -database-url ...`) for
+// the benchmarks, as a postgres:// URL. It wins over LargeDemoEnv.
+const LargeDemoPostgresEnv = "CLOWDER_BENCH_DATABASE_URL"
+
+// OpenLarge opens the large demo for a benchmark. With LargeDemoPostgresEnv
+// set it opens that PostgreSQL database in place (a benchmark only reads it,
+// apart from the session it logs in with); with LargeDemoEnv set it opens a
+// copy of that SQLite file in the test's temporary directory, so that the
+// benchmark never changes the original. It skips the test or benchmark with a
+// message when neither is set, which keeps the benchmarks out of the default
+// test run. The Store is closed when the test ends. A failure stops the test.
 func OpenLarge(tb testing.TB, clk clock.Clock) *store.Store {
 	tb.Helper()
+	if url := os.Getenv(LargeDemoPostgresEnv); url != "" {
+		s, err := store.OpenPostgres(tb.Context(), url, clk, nil)
+		if err != nil {
+			tb.Fatalf("storetest: open the large demo on PostgreSQL: %+v", err)
+		}
+		tb.Cleanup(func() {
+			if err := s.Close(); err != nil {
+				tb.Errorf("storetest: close: %v", err)
+			}
+		})
+		return s
+	}
 	if Postgres() {
-		tb.Skipf("the large demo benchmarks run on SQLite only; unset %s", store.PostgresTestEnv)
+		tb.Skipf("the large demo benchmarks run on SQLite unless %s is set; unset %s", LargeDemoPostgresEnv, store.PostgresTestEnv)
 	}
 	src := os.Getenv(LargeDemoEnv)
 	if src == "" {
-		tb.Skipf("set %s to the clowder.db of `clowder demo -size large` to run this benchmark", LargeDemoEnv)
+		tb.Skipf("set %s to the clowder.db of `clowder demo -size large` (or %s to its PostgreSQL URL) to run this benchmark", LargeDemoEnv, LargeDemoPostgresEnv)
 	}
 	in, err := os.Open(src)
 	if err != nil {

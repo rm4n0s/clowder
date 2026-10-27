@@ -197,7 +197,7 @@ func keepOf(r *http.Request) []uint64 {
 
 // idOfText reads an ID; 0 when the text is not one.
 func idOfText(s string) uint64 {
-	id, err := strconv.ParseUint(strings.TrimSpace(s), 10, 64)
+	id, err := strconv.ParseUint(strings.TrimSpace(s), 10, 63)
 	if err != nil {
 		return 0
 	}

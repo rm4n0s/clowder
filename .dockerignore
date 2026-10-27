@@ -1,7 +1,13 @@
 .git
 .claude
+.tmp/
 data/
 docs/implemented-proof-images/
 *.test
 *.out
 .env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm

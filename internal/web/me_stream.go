@@ -57,7 +57,7 @@ func (s *Server) meStream(w http.ResponseWriter, r *http.Request) {
 	ms.conversations = r.URL.Query().Get("messages") == "1"
 	if v, ok := r.URL.Query()["notifications"]; ok && len(v) > 0 {
 		ms.list = true
-		ms.seen, _ = strconv.ParseUint(v[0], 10, 64)
+		ms.seen, _ = strconv.ParseUint(v[0], 10, 63)
 	}
 	st, err := ms.connect(ctx)
 	if err != nil {

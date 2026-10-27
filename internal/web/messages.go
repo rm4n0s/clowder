@@ -46,7 +46,7 @@ func usernamesOf(text string) []string {
 // conversationID reads the ID of the conversation from the path. When it is not
 // a number it has answered with the 404 page and returns false.
 func (s *Server) conversationID(w http.ResponseWriter, r *http.Request) (uint64, bool) {
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 63)
 	if err != nil || id == 0 {
 		s.notFound(w, r)
 		return 0, false
@@ -57,7 +57,7 @@ func (s *Server) conversationID(w http.ResponseWriter, r *http.Request) (uint64,
 // messageID reads the ID of the message from the path. When it is not a number
 // it has answered with the 404 page and returns false.
 func (s *Server) messageID(w http.ResponseWriter, r *http.Request) (uint64, bool) {
-	id, err := strconv.ParseUint(r.PathValue("msgID"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("msgID"), 10, 63)
 	if err != nil || id == 0 {
 		s.notFound(w, r)
 		return 0, false
@@ -323,7 +323,7 @@ func roomOfForm(r *http.Request) (uint64, bool) {
 	if !ok {
 		return 0, false
 	}
-	id, err := strconv.ParseUint(from, 10, 64)
+	id, err := strconv.ParseUint(from, 10, 63)
 	return id, err == nil && id != 0
 }
 

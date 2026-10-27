@@ -1,8 +1,11 @@
 // Command clowder-perf measures a running Clowder server against two targets
 // of SPEC §10: how long a new post takes to reach many open streams of its
 // room, and how much memory the server uses with those streams open and idle.
-// scripts/perf.sh builds the large demo, starts the server and runs it; see
-// docs/PERFORMANCE.md.
+// With -base2, the address of a second process of the same installation
+// (SPEC §8.1), half of the streams are opened on it and the post is still
+// written on the first, so the time includes the way through Redis.
+// scripts/perf.sh builds the large demo, starts the server (or two) and runs
+// it, on SQLite or on PostgreSQL; see docs/PERFORMANCE.md.
 package main
 
 import (
@@ -65,6 +68,8 @@ type options struct {
 	streams  int
 	rounds   int
 	pid      int
+	base2    string
+	pid2     int
 	settle   time.Duration
 	ready    time.Duration
 	timeout  time.Duration
@@ -103,6 +108,13 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagPerfFlagsInvalid, "-base is required and -streams, -rounds and -room must be positive",
 			"base", o.base, "streams", o.streams, "rounds", o.rounds, "room", o.roomID)
 	}
+	if o.base2 != "" && o.streams < 2 {
+		return options{}, errors.New(tagPerfFlagsInvalid, "-base2 needs at least 2 streams, one for each process",
+			"base2", o.base2, "streams", o.streams)
+	}
+	if o.pid2 != 0 && o.base2 == "" {
+		return options{}, errors.New(tagPerfFlagsInvalid, "-pid2 needs -base2", "pid2", o.pid2)
+	}
 	return o, nil
 }
 
@@ -128,10 +140,18 @@ func freePort(addr string) (int, error) {
 	return n, nil
 }
 
-// hit is the arrival of a probe post on one stream.
+// hit is the arrival of a probe post on one stream. peer is true for a stream
+// of the second process (-base2), which gets the post through Redis.
 type hit struct {
 	round int
 	at    time.Time
+	peer  bool
+}
+
+// sample is how long after the post was sent it reached one stream.
+type sample struct {
+	d    time.Duration
+	peer bool
 }
 
 // measure logs in, opens the streams, reads the memory of the server, posts
@@ -142,10 +162,21 @@ func measure(ctx context.Context, o options, stdout io.Writer) error {
 	if err := waitReady(ctx, client, o.base, o.ready); err != nil {
 		return err
 	}
-	var before int64
+	if o.base2 != "" {
+		if err := waitReady(ctx, client, o.base2, o.ready); err != nil {
+			return err
+		}
+	}
+	var before, before2 int64
 	if o.pid > 0 {
 		var err error
 		if before, err = statusKiB(o.pid, "VmRSS"); err != nil {
+			return err
+		}
+	}
+	if o.pid2 > 0 {
+		var err error
+		if before2, err = statusKiB(o.pid2, "VmRSS"); err != nil {
 			return err
 		}
 	}
@@ -173,41 +204,98 @@ func measure(ctx context.Context, o options, stdout io.Writer) error {
 	case <-ctx.Done():
 		return errors.NewErr(tagPerfCanceled, ctx.Err())
 	}
-	var idle int64
+	var idle, idle2 int64
 	if o.pid > 0 {
 		if idle, err = statusKiB(o.pid, "VmRSS"); err != nil {
 			return err
 		}
 	}
-	var all []time.Duration
-	_, _ = fmt.Fprintf(stdout, "streams open: %d of room %d\n", o.streams, o.roomID)
+	if o.pid2 > 0 {
+		if idle2, err = statusKiB(o.pid2, "VmRSS"); err != nil {
+			return err
+		}
+	}
+	var all []sample
+	local, peer := splitStreams(o)
+	if o.base2 == "" {
+		_, _ = fmt.Fprintf(stdout, "streams open: %d of room %d\n", o.streams, o.roomID)
+	} else {
+		_, _ = fmt.Fprintf(stdout, "streams open: %d of room %d (%d on %s, where the posts are written, %d on %s)\n",
+			o.streams, o.roomID, local, o.base, peer, o.base2)
+	}
 	for round := 1; round <= o.rounds; round++ {
-		latencies, postTook, err := s.probe(ctx, round)
+		samples, postTook, err := s.probe(ctx, round)
 		if err != nil {
 			return err
 		}
-		sum := summarize(latencies)
+		sum := summarize(durations(samples, true, true))
 		_, _ = fmt.Fprintf(stdout, "round %d: post answered in %s, reached %d streams: p50 %s p95 %s max %s\n",
-			round, postTook.Round(time.Millisecond), len(latencies), ms(sum.p50), ms(sum.p95), ms(sum.max))
-		all = append(all, latencies...)
+			round, postTook.Round(time.Millisecond), len(samples), ms(sum.p50), ms(sum.p95), ms(sum.max))
+		all = append(all, samples...)
 		select {
 		case <-time.After(betweenRoundsPause):
 		case <-ctx.Done():
 			return errors.NewErr(tagPerfCanceled, ctx.Err())
 		}
 	}
-	sum := summarize(all)
+	sum := summarize(durations(all, true, true))
 	_, _ = fmt.Fprintf(stdout, "fan-out to %d streams over %d posts: p50 %s p95 %s max %s (target: max under %s) %s\n",
 		o.streams, o.rounds, ms(sum.p50), ms(sum.p95), ms(sum.max), targetFanOut, verdict(sum.max < targetFanOut))
+	if o.base2 != "" {
+		for _, part := range []struct {
+			name         string
+			local, other bool
+		}{{"streams of the process that took the post", true, false}, {"streams of the other process, through Redis", false, true}} {
+			sum := summarize(durations(all, part.local, part.other))
+			_, _ = fmt.Fprintf(stdout, "  %s: p50 %s p95 %s max %s\n", part.name, ms(sum.p50), ms(sum.p95), ms(sum.max))
+		}
+	}
 	if o.pid > 0 {
-		_, _ = fmt.Fprintf(stdout, "server memory: %.1f MiB before the streams, %.1f MiB with %d idle streams (target: under %d MiB) %s\n",
-			mib(before), mib(idle), o.streams, targetIdleMemoryMiB, verdict(mib(idle) < targetIdleMemoryMiB))
-		peak, err := statusKiB(o.pid, "VmHWM")
-		if err != nil {
+		if err := reportMemory(stdout, "server memory", o.pid, before, idle, local); err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintf(stdout, "server memory peak over the run: %.1f MiB\n", mib(peak))
 	}
+	if o.pid2 > 0 {
+		if err := reportMemory(stdout, "second server memory", o.pid2, before2, idle2, peer); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// splitStreams returns how many streams are opened on the first process and
+// how many on the second: all of them on the first without -base2, half and
+// half with it (the first gets the odd one).
+func splitStreams(o options) (local, peer int) {
+	if o.base2 == "" {
+		return o.streams, 0
+	}
+	peer = o.streams / 2
+	return o.streams - peer, peer
+}
+
+// durations returns the durations of the samples of the streams of the first
+// process when local is true and of the second when other is true.
+func durations(samples []sample, local, other bool) []time.Duration {
+	out := make([]time.Duration, 0, len(samples))
+	for _, s := range samples {
+		if (s.peer && other) || (!s.peer && local) {
+			out = append(out, s.d)
+		}
+	}
+	return out
+}
+
+// reportMemory prints the resident memory of the process before the streams
+// and with its streams idle, against the target, and then its peak.
+func reportMemory(stdout io.Writer, what string, pid int, before, idle int64, streams int) error {
+	_, _ = fmt.Fprintf(stdout, "%s: %.1f MiB before the streams, %.1f MiB with %d idle streams (target: under %d MiB) %s\n",
+		what, mib(before), mib(idle), streams, targetIdleMemoryMiB, verdict(mib(idle) < targetIdleMemoryMiB))
+	peak, err := statusKiB(pid, "VmHWM")
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(stdout, "%s peak over the run: %.1f MiB\n", what, mib(peak))
 	return nil
 }
 
@@ -344,10 +432,15 @@ type streams struct {
 // fails with PerfStreamFailed when a stream cannot be opened.
 func (s *streams) open(ctx context.Context) error {
 	opened := make(chan error, s.o.streams)
-	for range s.o.streams {
+	for i := range s.o.streams {
 		s.readers++
+		// With a second process every other stream is opened on it.
+		base, peer := s.o.base, false
+		if s.o.base2 != "" && i%2 == 1 {
+			base, peer = s.o.base2, true
+		}
 		go func() {
-			s.read(ctx, opened)
+			s.read(ctx, opened, base, peer)
 			s.done <- struct{}{}
 		}()
 	}
@@ -372,11 +465,12 @@ func (s *streams) wait() {
 	}
 }
 
-// read opens one stream, reports on opened when its first line arrived (or
+// read opens one stream on the server at base (peer: the second process),
+// reports on opened when its first line arrived (or
 // why it failed) and then reads it until the context ends, recording the
 // arrival of every probe post.
-func (s *streams) read(ctx context.Context, opened chan<- error) {
-	target := s.o.base + "/rooms/" + strconv.FormatUint(s.o.roomID, 10) + "/stream?seen=" + s.seen
+func (s *streams) read(ctx context.Context, opened chan<- error, base string, peer bool) {
+	target := base + "/rooms/" + strconv.FormatUint(s.o.roomID, 10) + "/stream?seen=" + s.seen
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		opened <- errors.NewErr(tagPerfRequestFailed, err).SetMetadata("url", target)
@@ -410,7 +504,7 @@ func (s *streams) read(ctx context.Context, opened chan<- error) {
 		// A post is in several lines of its patch; the first one counts.
 		if round, ok := s.roundOf(line); ok && !seen[round] {
 			seen[round] = true
-			s.hits <- hit{round: round, at: time.Now()}
+			s.hits <- hit{round: round, at: time.Now(), peer: peer}
 		}
 		if err != nil {
 			return
@@ -441,7 +535,7 @@ func (s *streams) roundOf(line string) (int, bool) {
 // long after the post was sent it received the post, and how long the server
 // took to answer the post. It fails with PerfPostFailed when the server
 // refuses the post and with PerfTimeout when a stream does not receive it.
-func (s *streams) probe(ctx context.Context, round int) ([]time.Duration, time.Duration, error) {
+func (s *streams) probe(ctx context.Context, round int) ([]sample, time.Duration, error) {
 	form := url.Values{"format": {"text"}, "body": {s.prefix + strconv.Itoa(round) + " measuring the fan-out of a new post to the open streams"}}
 	target := s.o.base + "/rooms/" + strconv.FormatUint(s.o.roomID, 10) + "/posts"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, strings.NewReader(form.Encode()))
@@ -460,22 +554,22 @@ func (s *streams) probe(ctx context.Context, round int) ([]time.Duration, time.D
 	if resp.StatusCode != http.StatusSeeOther {
 		return nil, 0, errors.New(tagPerfPostFailed, "the server did not accept the post", "status", resp.StatusCode, "round", round)
 	}
-	latencies := make([]time.Duration, 0, s.o.streams)
+	samples := make([]sample, 0, s.o.streams)
 	timeout := time.After(s.o.timeout)
-	for len(latencies) < s.o.streams {
+	for len(samples) < s.o.streams {
 		select {
 		case h := <-s.hits:
 			if h.round == round {
-				latencies = append(latencies, h.at.Sub(start))
+				samples = append(samples, sample{d: h.at.Sub(start), peer: h.peer})
 			}
 		case <-timeout:
 			return nil, 0, errors.New(tagPerfTimeout, "not every stream received the post in time",
-				"round", round, "received", len(latencies), "streams", s.o.streams)
+				"round", round, "received", len(samples), "streams", s.o.streams)
 		case <-ctx.Done():
 			return nil, 0, errors.NewErr(tagPerfCanceled, ctx.Err())
 		}
 	}
-	return latencies, took, nil
+	return samples, took, nil
 }
 
 // summary holds the percentiles of a list of durations.

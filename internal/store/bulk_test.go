@@ -133,3 +133,46 @@ func TestRebuildSearchIndex(t *testing.T) {
 	}
 	_ = requireRoute(t, f.s.RebuildSearchIndex(f.ctx), "RebuildSearchIndex.QueryFailed")
 }
+
+func TestAnalyze(t *testing.T) {
+	t.Run("PostgreSQL collects statistics", func(t *testing.T) {
+		skipUnlessPostgres(t)
+		f := newFix(t)
+		author := f.user()
+		room := f.room(author)
+		posts := make([]Post, 50)
+		for i := range posts {
+			posts[i] = Post{ID: uint64(i + 1), RoomID: room.ID, AuthorID: author.ID, Format: FormatText, Body: "bulk"}
+		}
+		if err := BulkCreate(f.ctx, f.s, posts); err != nil {
+			t.Fatalf("BulkCreate: %+v", err)
+		}
+		if err := f.s.Analyze(f.ctx); err != nil {
+			t.Fatalf("Analyze: %+v", err)
+		}
+		var analyzed bool
+		err := f.s.db(f.ctx).Raw("SELECT last_analyze IS NOT NULL FROM pg_stat_user_tables WHERE relname = 'posts'").Scan(&analyzed).Error
+		if err != nil || !analyzed {
+			t.Errorf("posts analyzed = %v, %v; want true", analyzed, err)
+		}
+	})
+
+	t.Run("SQLite does nothing", func(t *testing.T) {
+		if onPostgres() {
+			t.Skip("this case is for SQLite")
+		}
+		f := newFix(t)
+		if err := f.s.Analyze(f.ctx); err != nil {
+			t.Errorf("Analyze = %+v", err)
+		}
+	})
+
+	t.Run("a closed store fails", func(t *testing.T) {
+		skipUnlessPostgres(t)
+		f := newFix(t)
+		if err := f.s.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		_ = requireRoute(t, f.s.Analyze(f.ctx), "Store.Analyze.QueryFailed")
+	})
+}

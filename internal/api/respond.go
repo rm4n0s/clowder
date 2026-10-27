@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"net/http"
+	"reflect"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -55,6 +57,7 @@ const (
 	messageBodyMoreThanOne   = "The body must be exactly one JSON value."
 	messageBodyUnknownField  = "Unknown field."
 	messageBodyWrongType     = "Wrong type."
+	messageBodyIDTooLarge    = "Not an ID."
 	wwwAuthenticateChallenge = `Bearer realm="clowder"`
 )
 
@@ -269,7 +272,54 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		}
 		return errors.NewErr(tagBodyInvalid, err).SetMetadata("fields", decodeProblems(err))
 	}
+	if name, bad := oversizedID(reflect.ValueOf(dst), ""); bad {
+		return errors.New(tagBodyInvalid, "a number in the body is larger than any ID",
+			"fields", map[string]string{name: messageBodyIDTooLarge})
+	}
 	return nil
+}
+
+// maxID is the largest ID the databases hold: the columns are 64-bit signed
+// integers, and a larger number in a query fails in the driver (a 500) instead
+// of finding nothing.
+const maxID = math.MaxInt64
+
+// oversizedID looks through the decoded body v for an unsigned number above
+// maxID, which only an ID can be. It returns the JSON name of the top-level
+// field that holds it (name is that field's name while it descends).
+func oversizedID(v reflect.Value, name string) (string, bool) {
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if v.IsNil() {
+			return "", false
+		}
+		return oversizedID(v.Elem(), name)
+	case reflect.Struct:
+		for i := range v.NumField() {
+			field := v.Type().Field(i)
+			if !field.IsExported() {
+				continue
+			}
+			jsonName, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+			if name != "" || jsonName == "" {
+				jsonName = name
+			}
+			if got, bad := oversizedID(v.Field(i), jsonName); bad {
+				return got, true
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			if got, bad := oversizedID(v.Index(i), name); bad {
+				return got, true
+			}
+		}
+	case reflect.Uint, reflect.Uint64:
+		if v.Uint() > maxID {
+			return name, true
+		}
+	}
+	return "", false
 }
 
 // decodeProblems says what is wrong with a body that json.Decoder refused: a

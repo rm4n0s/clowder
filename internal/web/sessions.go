@@ -31,7 +31,7 @@ func (s *Server) sessionsPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) sessionEnd(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	actor, _ := actorFrom(ctx)
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 63)
 	if err != nil {
 		s.notFound(w, r)
 		return

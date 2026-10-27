@@ -62,7 +62,7 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	flags.SetOutput(stderr)
 	flags.StringVar(&dataDir, "data", envString(env, "CLOWDER_DATA", config.DefaultDataDir),
 		"data directory, made if missing and empty (CLOWDER_DATA)")
-	flags.StringVar(&databaseURL, "database-url", envString(env, "CLOWDER_DATABASE_URL", ""),
+	databaseFromEnv := urlFlag(flags, &databaseURL, "database-url", env, "CLOWDER_DATABASE_URL", "",
 		"PostgreSQL URL, postgres://...; empty: SQLite in the data directory (CLOWDER_DATABASE_URL)")
 	flags.StringVar(&size, "size", demoSizeSmall,
 		"size of the demo: small, or large, the data set of SPEC §10 (200 users, 100 rooms, 100,000 posts and comments, 20,000 tasks)")
@@ -72,6 +72,7 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	if flags.NArg() > 0 {
 		return errors.New(tagFlagsInvalid, "unexpected arguments", "args", flags.Args())
 	}
+	databaseFromEnv()
 	if dataDir == "" {
 		return errors.New(tagFlagsInvalid, "data directory is empty", "flag", "data")
 	}

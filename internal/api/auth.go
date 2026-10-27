@@ -65,9 +65,11 @@ func (s *Server) authenticated(next http.Handler) http.Handler {
 
 // pathID reads the number in the path value name. Anything that is not a
 // positive number fails with tagIDInvalid, which is a 404: no resource has
-// such an ID.
+// such an ID. The number has 63 bits at most (ParseUint with bit size 63): the
+// databases keep an ID in a signed 64-bit column, and a larger number in a
+// query fails in the driver as a 500 instead of finding nothing.
 func pathID(r *http.Request, name string) (uint64, error) {
-	id, err := strconv.ParseUint(r.PathValue(name), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue(name), 10, 63)
 	if err != nil || id == 0 {
 		return 0, errors.New(tagIDInvalid, "the ID in the path is not a number", "name", name)
 	}

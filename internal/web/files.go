@@ -29,7 +29,7 @@ const (
 // Content-Security-Policy. http.ServeContent handles ranges and
 // If-Modified-Since (the time the file was attached).
 func (s *Server) fileDownload(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 63)
 	if err != nil || id == 0 {
 		s.notFound(w, r)
 		return
@@ -48,7 +48,7 @@ func (s *Server) fileDownload(w http.ResponseWriter, r *http.Request) {
 // admins included, a missing attachment and one of a deleted message get the
 // 404 page. The headers are those of fileDownload.
 func (s *Server) messageFileDownload(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 63)
 	if err != nil || id == 0 {
 		s.notFound(w, r)
 		return
