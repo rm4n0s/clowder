@@ -4,6 +4,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -107,6 +110,12 @@ func TestParseFlags(t *testing.T) {
 				other: script{user: "alice", page: "{room:general}"},
 			},
 		},
+		{
+			name: "api login",
+			args: []string{"-o", "x.png", "-as", "alice", "-page", "/me/sessions", "-api-login", "clowder-apicheck"},
+			want: options{page: "/me/sessions", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond, apiLogin: "clowder-apicheck"},
+		},
+		{name: "api login without a user", args: []string{"-o", "x.png", "-api-login", "clowder-apicheck"}, wantTag: tagFlagsInvalid},
 		{name: "cluster without other", args: []string{"-o", "x.png", "-as", "bob", "-cluster"}, wantTag: tagFlagsInvalid},
 		{name: "cluster with invite", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-invite", "-page", "/invite/{invite}"}, wantTag: tagFlagsInvalid},
 		{name: "postgres-url without cluster", args: []string{"-o", "x.png", "-postgres-url", "postgres://db"}, wantTag: tagFlagsInvalid},
@@ -240,5 +249,54 @@ func TestRunCluster(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "clowder:clowder@") {
 		t.Errorf("stdout holds a password: %q", stdout.String())
+	}
+}
+
+func TestAPILogin(t *testing.T) {
+	var got struct {
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		ClientName string `json:"client_name"`
+	}
+	tests := []struct {
+		name    string
+		status  int
+		wantTag string
+	}{
+		{name: "accepted", status: http.StatusOK},
+		{name: "refused", status: http.StatusUnauthorized, wantTag: tagAPILoginFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/v1/auth/login" || r.Header.Get("Content-Type") != "application/json" {
+					t.Errorf("request = %s %s %q", r.Method, r.URL.Path, r.Header.Get("Content-Type"))
+				}
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Error(err)
+				}
+				w.WriteHeader(tt.status)
+			}))
+			defer ts.Close()
+			err := apiLogin(t.Context(), ts.URL, "alice", "clowder-apicheck")
+			if got.Username != "alice" || got.ClientName != "clowder-apicheck" || got.Password != browsertest.DemoPassword {
+				t.Errorf("body = %+v", got)
+			}
+			if tt.wantTag == "" {
+				if err != nil {
+					t.Fatalf("apiLogin: %v", err)
+				}
+				return
+			}
+			appErr, ok := errors.FromError(err)
+			if !ok || appErr.Tag != tt.wantTag || !appErr.HasRoute("apiLogin.APILoginFailed") {
+				t.Errorf("error = %v", err)
+			}
+		})
+	}
+	// A server that is not there.
+	err := apiLogin(t.Context(), "http://127.0.0.1:1", "alice", "x")
+	if appErr, ok := errors.FromError(err); !ok || !appErr.HasRoute("apiLogin.APILoginFailed") {
+		t.Errorf("error = %v, want APILoginFailed", err)
 	}
 }

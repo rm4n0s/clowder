@@ -408,7 +408,7 @@ func TestSessionLookupFailureIs500(t *testing.T) {
 	if logged == nil || logged.Err == nil || logged.Err.Tag != store.TagQueryFailed {
 		t.Fatalf("the failure was not logged with its tag: %s", e.log.String())
 	}
-	if !logged.Err.HasRoute("Accounts.SessionActor->Store.SessionByTokenHash.QueryFailed") {
+	if !logged.Err.HasRoute("Accounts.SessionActor->Accounts.sessionActor->Store.SessionByTokenHash.QueryFailed") {
 		t.Errorf("route = %s", logged.Err.Route())
 	}
 }

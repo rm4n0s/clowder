@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
+	"github.com/rm4n0s/clowder/internal/api"
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/live"
@@ -76,6 +77,10 @@ type Services struct {
 	// Health answers the health check, GET /healthz (SPEC D40). Nil makes
 	// the check answer 503.
 	Health HealthChecker
+	// API is the REST API (SPEC D42). Its routes are mounted on the same mux
+	// under /api/v1/ and never read the session cookie. Nil serves no API:
+	// every /api/ path is then the page-not-found error page.
+	API *api.Server
 	// Hub delivers the live events of the services to the streams of the
 	// pages (SPEC §8). The services must publish to the same hub. Nil makes a
 	// hub that nothing publishes to.
@@ -156,6 +161,8 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /logout", handler: http.HandlerFunc(s.logout)},
 		{pattern: "GET /invite/{token}", handler: http.HandlerFunc(s.signUpPage), access: optionalSession},
 		{pattern: "POST /invite/{token}", handler: http.HandlerFunc(s.signUpSubmit), access: optionalSession},
+		{pattern: "GET " + views.SessionsPath, handler: http.HandlerFunc(s.sessionsPage)},
+		{pattern: "POST /me/sessions/{id}/end", handler: http.HandlerFunc(s.sessionEnd)},
 		{pattern: "GET /admin/users", handler: http.HandlerFunc(s.adminUsers)},
 		{pattern: "POST /admin/users/{id}/role", handler: http.HandlerFunc(s.setRole)},
 		{pattern: "POST /admin/users/{id}/disabled", handler: http.HandlerFunc(s.setDisabled)},
@@ -228,6 +235,14 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 	mux := http.NewServeMux()
 	for _, rt := range routes {
 		s.patterns = append(s.patterns, rt.pattern)
+	}
+	if svc.API != nil {
+		// The API checks its own bearer tokens: its routes never look at the
+		// cookie of the pages. They are not in s.patterns, which lists the
+		// routes of the pages.
+		for _, rt := range svc.API.Routes() {
+			routes = append(routes, route{pattern: rt.Pattern, handler: rt.Handler, access: noSession})
+		}
 	}
 	for _, rt := range append(routes, extra...) {
 		mux.Handle(rt.pattern, s.withAccess(rt.handler, rt.access))
@@ -382,3 +397,21 @@ const (
 	tagPageRenderFailed    = "PageRenderFailed"
 	tagResponseWriteFailed = "ResponseWriteFailed"
 )
+
+// NoteUser records on the request that user userID made it, so that the
+// request log names the user. It is the hook the API calls once a bearer token
+// is accepted (api.Options.NoteUser). A request that did not go through the
+// server's handler is not changed.
+func NoteUser(r *http.Request, userID uint64) {
+	if st, ok := r.Context().Value(requestStateKey{}).(*requestState); ok {
+		st.userID = userID
+	}
+}
+
+// ClientIPFunc returns the function that finds the address of the client of a
+// request, for the login limiter: the connection's address, or with
+// trustProxy the last address of X-Forwarded-For (see clientIP). It is what
+// the API is given as api.Options.ClientIP.
+func ClientIPFunc(trustProxy bool) func(*http.Request) string {
+	return func(r *http.Request) string { return clientIP(r, trustProxy) }
+}

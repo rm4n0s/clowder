@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/live"
@@ -20,20 +23,126 @@ const touchInterval = time.Minute
 // whether it does. The result of that check is never used.
 const dummyPasswordHash = "$argon2id$v=19$m=65536,t=3,p=2$a+cndfTcWEFz1DFlJ6Mwfw$AC9fd1czLf/NwN6/zh1Vd01ke5XoN6h56jGoqq6sYc0"
 
-// Login checks the username and the password of a person at the client
-// address clientIP and starts a session. It returns the session token, which
-// goes into the cookie and is never stored (only its SHA-256 is), and the user.
-//
-// The username is lower-cased and trimmed. A wrong password, an unknown
-// username and a disabled user all fail the same way, with TagInvalidInput
-// and the message under the field "form" (FieldForm), and cost the same time.
-// After 5 failed attempts for the username or the address within 15 minutes
-// it fails with TagRateLimited, before it looks at the password, until the
-// window has passed. A successful login clears the failures of the username.
+// SessionKind says where a session was made and where it is accepted: a
+// browser session belongs to the pages and travels in the cookie, an API
+// session to the API and travels in the Authorization header (SPEC D43). It is
+// the store's type.
+type SessionKind = store.SessionKind
+
+// The two kinds of sessions.
+const (
+	// SessionBrowser is the kind of the sessions made by the login and
+	// sign-up pages.
+	SessionBrowser SessionKind = store.SessionBrowser
+	// SessionAPI is the kind of the sessions made by the login of the API.
+	SessionAPI SessionKind = store.SessionAPI
+)
+
+// MaxClientNameRunes is the longest name of a client that a session keeps, in
+// characters.
+const MaxClientNameRunes = store.MaxClientNameRunes
+
+// ClientLogin is what a login names besides the username and the password.
+type ClientLogin struct {
+	// Username is the username as typed; it is lower-cased and trimmed.
+	Username string
+	// Password is the password as typed.
+	Password string
+	// ClientIP is the address of the client, for the login limiter.
+	ClientIP string
+	// Kind is the kind of the session to make: SessionBrowser for the pages,
+	// SessionAPI for the API.
+	Kind SessionKind
+	// ClientName names the client. For SessionAPI it is required: 1 to 80
+	// characters after trimming, without control characters. For
+	// SessionBrowser it is the user agent of the browser, which is cut to 80
+	// characters and cleaned of control characters, never refused; it may be
+	// empty.
+	ClientName string
+}
+
+// LoginResult is what a successful login returns.
+type LoginResult struct {
+	// Token is the session token, shown once and never stored (only its
+	// SHA-256 is).
+	Token string
+	// User is the user who logged in.
+	User User
+	// ExpiresAt is when the session ends if it is not used again.
+	ExpiresAt time.Time
+}
+
+// Login is LoginClient for a browser that sends no name: a SessionBrowser
+// session with an empty client name. It returns the token and the user.
 func (a *Accounts) Login(ctx context.Context, username, password, clientIP string) (string, User, error) {
-	username = normalizeUsername(username)
+	res, err := a.LoginClient(ctx, ClientLogin{Username: username, Password: password, ClientIP: clientIP, Kind: SessionBrowser})
+	if err != nil {
+		return "", User{}, err
+	}
+	return res.Token, res.User, nil
+}
+
+// CleanClientName returns the client name a session of the kind keeps, or
+// fails. For SessionAPI the name is trimmed and must have 1 to 80 characters
+// and no control character, else it fails with TagInvalidInput (field
+// "clientName"). For SessionBrowser, the user agent, it is cleaned of control
+// characters and bytes that are not UTF-8, trimmed and cut to 80 characters;
+// it never fails, and may come back empty. Any other kind fails with
+// TagInvalidInput (field "form").
+func CleanClientName(kind SessionKind, name string) (string, error) {
+	switch kind {
+	case SessionBrowser:
+		var b strings.Builder
+		n := 0
+		for _, r := range name {
+			if r == utf8.RuneError || unicode.IsControl(r) {
+				continue
+			}
+			if n == MaxClientNameRunes {
+				break
+			}
+			b.WriteRune(r)
+			n++
+		}
+		return strings.TrimSpace(b.String()), nil
+	case SessionAPI:
+		name = strings.TrimSpace(name)
+		if n := utf8.RuneCountInString(name); n < 1 || n > MaxClientNameRunes ||
+			strings.ContainsFunc(name, unicode.IsControl) || !utf8.ValidString(name) {
+			return "", errors.New(TagInvalidInput, "the client name is not valid",
+				"fields", map[string]string{FieldClientName: "Use 1 to 80 characters, without control characters."})
+		}
+		return name, nil
+	default:
+		return "", errors.New(TagInvalidInput, "the kind of session does not exist",
+			"fields", map[string]string{FieldForm: "Choose browser or api."}, "kind", string(kind))
+	}
+}
+
+// LoginClient checks the username and the password of a person at the client
+// address and starts a session of the kind and the client name given. It
+// returns the session token, which goes into the cookie or the Authorization
+// header and is never stored (only its SHA-256 is), the user and when the
+// session ends.
+//
+// An unknown kind, and for SessionAPI a client name that breaks its rules (see
+// CleanClientName), fail with TagInvalidInput before the limiter and the
+// password are looked at. The username is lower-cased and trimmed. A wrong
+// password, an unknown username and a disabled user all fail the same way,
+// with TagInvalidInput and the message under the field "form" (FieldForm), and
+// cost the same time. After 5 failed attempts for the username or the address
+// within 15 minutes it fails with TagRateLimited, before it looks at the
+// password, until the window has passed. A successful login clears the
+// failures of the username.
+func (a *Accounts) LoginClient(ctx context.Context, in ClientLogin) (LoginResult, error) {
+	clientName, err := CleanClientName(in.Kind, in.ClientName)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	username := normalizeUsername(in.Username)
+	clientIP := in.ClientIP
 	if !a.limiter.Allow(ctx, username, clientIP) {
-		return "", User{}, errors.New(TagRateLimited, "too many failed login attempts",
+		return LoginResult{}, errors.New(TagRateLimited, "too many failed login attempts",
 			"username", limiterKey(username), "ip", clientIP)
 	}
 
@@ -41,7 +150,7 @@ func (a *Accounts) Login(ctx context.Context, username, password, clientIP strin
 	known := err == nil
 	if err != nil {
 		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != store.TagNotFound {
-			return "", User{}, err
+			return LoginResult{}, err
 		}
 	}
 	hash := dummyPasswordHash
@@ -49,21 +158,21 @@ func (a *Accounts) Login(ctx context.Context, username, password, clientIP strin
 		hash = user.PasswordHash
 	}
 	match := false
-	if len(password) <= passwordMaxBytes {
-		match, err = a.verify(ctx, password, hash)
+	if len(in.Password) <= passwordMaxBytes {
+		match, err = a.verify(ctx, in.Password, hash)
 		if err != nil {
-			return "", User{}, err
+			return LoginResult{}, err
 		}
 	}
 	if !known || !match || user.DisabledAt != nil {
 		a.limiter.Fail(ctx, username, clientIP)
-		return "", User{}, errors.New(TagInvalidInput, "wrong username or password",
+		return LoginResult{}, errors.New(TagInvalidInput, "wrong username or password",
 			"fields", map[string]string{FieldForm: "Wrong username or password."})
 	}
 
 	token, err := auth.NewToken()
 	if err != nil {
-		return "", User{}, err
+		return LoginResult{}, err
 	}
 	now := a.clk.Now().UTC()
 	sess := &store.Session{
@@ -71,6 +180,8 @@ func (a *Accounts) Login(ctx context.Context, username, password, clientIP strin
 		UserID:     user.ID,
 		ExpiresAt:  now.Add(a.sessionLifetime),
 		LastSeenAt: now,
+		Kind:       in.Kind,
+		ClientName: clientName,
 	}
 	// The expired sessions of the user go in the same transaction that makes
 	// the new one.
@@ -81,14 +192,16 @@ func (a *Accounts) Login(ctx context.Context, username, password, clientIP strin
 		return tx.CreateSession(ctx, sess)
 	})
 	if err != nil {
-		return "", User{}, err
+		return LoginResult{}, err
 	}
 	a.limiter.Reset(ctx, username)
-	return token, viewOf(user), nil
+	return LoginResult{Token: token, User: viewOf(user), ExpiresAt: sess.ExpiresAt}, nil
 }
 
-// Session is who a session cookie belongs to, as SessionActor returns it.
+// Session is who a session token belongs to, as SessionActor returns it.
 type Session struct {
+	// SessionID is the ID of the session, for Sessions and EndSession.
+	SessionID uint64
 	// Actor is the actor to pass to the services.
 	Actor Actor
 	// User is the logged-in user.
@@ -101,13 +214,26 @@ type Session struct {
 	Refreshed bool
 }
 
-// SessionActor finds the session of the cookie token and returns who it
-// belongs to. For an empty, unknown or expired token, and for a disabled user,
-// it fails with TagUnauthenticated. A session lasts the configured lifetime
-// from its last use: when the last use is more than a minute old, the use and
-// the expiry are written again and Refreshed is true. A session that is found
-// expired is deleted; if that fails, the store's error is returned as it is.
+// SessionActor finds the browser session of the cookie token and returns who
+// it belongs to. For an empty, unknown or expired token, for a session of
+// another kind (an API token, SPEC D43) and for a disabled user, it fails with
+// TagUnauthenticated. A session lasts the configured lifetime from its last
+// use: when the last use is more than a minute old, the use and the expiry are
+// written again and Refreshed is true. A session that is found expired is
+// deleted; if that fails, the store's error is returned as it is.
 func (a *Accounts) SessionActor(ctx context.Context, token string) (Session, error) {
+	return a.sessionActor(ctx, token, SessionBrowser)
+}
+
+// APISessionActor is SessionActor for the token of the Authorization header
+// of the API: it accepts only a session of kind SessionAPI, so that the
+// session cookie of a browser is never a bearer token.
+func (a *Accounts) APISessionActor(ctx context.Context, token string) (Session, error) {
+	return a.sessionActor(ctx, token, SessionAPI)
+}
+
+// sessionActor is the one implementation of SessionActor and APISessionActor.
+func (a *Accounts) sessionActor(ctx context.Context, token string, kind SessionKind) (Session, error) {
 	if token == "" {
 		return Session{}, errors.New(TagUnauthenticated, "no session token", "reason", "none")
 	}
@@ -118,6 +244,10 @@ func (a *Accounts) SessionActor(ctx context.Context, token string) (Session, err
 			return Session{}, errors.New(TagUnauthenticated, "no such session", "reason", "unknown")
 		}
 		return Session{}, err
+	}
+	if sess.Kind != kind {
+		return Session{}, errors.New(TagUnauthenticated, "the session is of another kind",
+			"reason", "kind", "sessionID", sess.ID, "kind", string(sess.Kind))
 	}
 	now := a.clk.Now().UTC()
 	if !now.Before(sess.ExpiresAt) {
@@ -152,6 +282,7 @@ func (a *Accounts) SessionActor(ctx context.Context, token string) (Session, err
 	}
 	user := viewOf(row)
 	return Session{
+		SessionID: sess.ID,
 		Actor:     Actor{UserID: user.ID, Username: user.Username, Role: user.Role},
 		User:      user,
 		ExpiresAt: expires,
@@ -178,5 +309,66 @@ func (a *Accounts) Logout(ctx context.Context, token string) error {
 	}
 	// The other pages that are open with this session notice at once.
 	a.pub.Publish(live.Event{Topic: live.UserTopic(sess.UserID), Kind: live.KindUserChanged, UserID: sess.UserID})
+	return nil
+}
+
+// SessionInfo is a session of a user as the user sees it in the list of
+// their sessions: never the token.
+type SessionInfo struct {
+	// ID is the ID of the session, for EndSession.
+	ID uint64
+	// Kind says whether it is a browser or an API client.
+	Kind SessionKind
+	// ClientName is the user agent of the browser or the name the API client
+	// gave; empty for a session of version 1.0.
+	ClientName string
+	// CreatedAt is when the session was made.
+	CreatedAt time.Time
+	// LastSeenAt is when the session was last used.
+	LastSeenAt time.Time
+	// ExpiresAt is when the session ends, counting from its last use.
+	ExpiresAt time.Time
+	// Current is true for the session that made the request.
+	Current bool
+}
+
+// Sessions returns the live sessions of the actor, browsers and API clients,
+// the newest first, never anyone else's. currentID is the ID of the session of
+// the request (Session.SessionID), marked as current; 0 marks none. A session
+// that has expired is not listed.
+func (a *Accounts) Sessions(ctx context.Context, actor Actor, currentID uint64) ([]SessionInfo, error) {
+	rows, err := a.st.SessionsOfUser(ctx, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+	now := a.clk.Now().UTC()
+	out := make([]SessionInfo, 0, len(rows))
+	for _, row := range rows {
+		if !now.Before(row.ExpiresAt) {
+			continue
+		}
+		out = append(out, SessionInfo{
+			ID:         row.ID,
+			Kind:       row.Kind,
+			ClientName: row.ClientName,
+			CreatedAt:  row.CreatedAt,
+			LastSeenAt: row.LastSeenAt,
+			ExpiresAt:  row.ExpiresAt,
+			Current:    currentID != 0 && row.ID == currentID,
+		})
+	}
+	return out, nil
+}
+
+// EndSession deletes the session sessionID of the actor, which logs that
+// browser or client out. It fails with TagNotFound for a session that does not
+// exist or belongs to someone else, and does not tell the two apart. Like a
+// logout it publishes live.KindUserChanged on the topic of the user, so that
+// the open streams of that session read it again and end (SPEC D37).
+func (a *Accounts) EndSession(ctx context.Context, actor Actor, sessionID uint64) error {
+	if err := a.st.DeleteSessionOfUser(ctx, actor.UserID, sessionID); err != nil {
+		return err
+	}
+	a.pub.Publish(live.Event{Topic: live.UserTopic(actor.UserID), Kind: live.KindUserChanged, UserID: actor.UserID})
 	return nil
 }

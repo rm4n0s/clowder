@@ -35,6 +35,8 @@ const (
 	FieldRole = "role"
 	// FieldUser names the user an admin acts on.
 	FieldUser = "user"
+	// FieldClientName names the client name of an API login.
+	FieldClientName = "clientName"
 	// FieldForm names a problem of a whole form, not of one field: a login
 	// with the wrong username or password.
 	FieldForm = "form"
@@ -185,6 +187,26 @@ func (a *Accounts) InvitationValid(ctx context.Context, token string) error {
 	return err
 }
 
+// InvitationInfo is what a person who holds an invitation link may know about
+// it before signing up.
+type InvitationInfo struct {
+	// Role is the role the user who signs up with it gets.
+	Role store.Role
+	// ExpiresAt is when the invitation stops working.
+	ExpiresAt time.Time
+}
+
+// InvitationDetails returns the role and the expiry of the invitation of
+// token. For a used, expired or unknown one it fails with TagNotFound, like
+// InvitationValid, without saying which.
+func (a *Accounts) InvitationDetails(ctx context.Context, token string) (InvitationInfo, error) {
+	inv, err := a.usableInvitation(ctx, a.st, token)
+	if err != nil {
+		return InvitationInfo{}, err
+	}
+	return InvitationInfo{Role: inv.Role, ExpiresAt: inv.ExpiresAt}, nil
+}
+
 // usableInvitation finds the invitation of token in st and checks that it can
 // still be used. It is the one place that decides it, for InvitationValid and
 // for SignUp (which asks again inside its transaction, with the Store of the
@@ -288,6 +310,46 @@ func (a *Accounts) Users(ctx context.Context, actor Actor) ([]User, error) {
 		return nil, errors.New(TagForbidden, "only admins list the users", "userID", actor.UserID)
 	}
 	rows, err := a.st.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]User, len(rows))
+	for i, row := range rows {
+		users[i] = viewOf(row)
+	}
+	return users, nil
+}
+
+// The limits of SearchUsers.
+const (
+	// userSearchLimit is the most users SearchUsers returns.
+	userSearchLimit = 20
+	// userSearchMaxRunes is the longest prefix that can match a user: a
+	// username has at most 32 characters and a display name at most 64.
+	userSearchMaxRunes = displayNameMaxLength
+)
+
+// SearchUsers returns the users who are not disabled and whose username or
+// display name starts with prefix (case-insensitive, after trimming), ordered
+// by username, at most 20. An empty prefix returns the first 20. It is for
+// picking people: any logged-in user may call it. An actor whose account is
+// disabled gets TagUnauthenticated.
+func (a *Accounts) SearchUsers(ctx context.Context, actor Actor, prefix string) ([]User, error) {
+	me, err := a.st.UserByID(ctx, actor.UserID)
+	if err != nil {
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == store.TagNotFound {
+			return nil, errors.New(TagUnauthenticated, "the user does not exist", "userID", actor.UserID)
+		}
+		return nil, err
+	}
+	if me.DisabledAt != nil {
+		return nil, errors.New(TagUnauthenticated, "the user is disabled", "userID", actor.UserID)
+	}
+	prefix = strings.TrimSpace(prefix)
+	if utf8.RuneCountInString(prefix) > userSearchMaxRunes {
+		return []User{}, nil
+	}
+	rows, err := a.st.UsersByPrefix(ctx, prefix, userSearchLimit)
 	if err != nil {
 		return nil, err
 	}

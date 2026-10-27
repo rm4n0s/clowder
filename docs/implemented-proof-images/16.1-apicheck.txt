@@ -1,0 +1,93 @@
+# commands that ran (data directory: a temporary one):
+#   clowder demo -data <tmp>
+#   clowder serve -data <tmp> -addr 127.0.0.1:18081
+#   clowder-apicheck -base-url http://127.0.0.1:18081 -username alice -password demo-password-1234
+
+== session: log in, read who I am and my sessions, find users, log out
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "alice"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-26T15:31:43Z",
+<   "token": "<token>",
+<   "user": {
+<     "created_at": "2026-10-27T15:31:40Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "unread_conversations": 0,
+<   "unread_notifications": 4,
+<   "user": {
+<     "created_at": "2026-10-27T15:31:40Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/me/sessions
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "sessions": [
+<     {
+<       "client_name": "clowder-apicheck",
+<       "created_at": "2026-10-27T15:31:43Z",
+<       "current": true,
+<       "expires_at": "2026-11-26T15:31:43Z",
+<       "id": 1,
+<       "kind": "api",
+<       "last_seen_at": "2026-10-27T15:31:43Z"
+<     }
+<   ]
+< }
+
+> GET /api/v1/users?q=al
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "users": [
+<     {
+<       "created_at": "2026-10-27T15:31:40Z",
+<       "display_name": "Alice",
+<       "id": 2,
+<       "role": "member",
+<       "username": "alice"
+<     }
+<   ]
+< }
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 401 Unauthorized
+< WWW-Authenticate: Bearer realm="clowder"
+< {
+<   "error": {
+<     "code": "unauthenticated",
+<     "message": "Log in to use this."
+<   }
+< }
+
+ok session
+
+all scenarios passed (6 requests)
+# exit status: 0

@@ -184,7 +184,7 @@ func TestLoginLimiterFailsOpen(t *testing.T) {
 	}
 	for range 7 {
 		_, _, err := svc.Login(ctx, "alice", "a wrong password, long enough", loginIP)
-		_ = requireTag(t, err, app.TagInvalidInput, "Accounts.Login.InvalidInput")
+		_ = requireTag(t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 	}
 	if _, _, err := svc.Login(ctx, "alice", goodPassword, loginIP); err != nil {
 		t.Errorf("the right password after 7 failures was refused although the counter is down: %v", err)

@@ -190,6 +190,9 @@ type options struct {
 	postgresURL string
 	// redisURL is the Redis server of -cluster; empty: CLOWDER_TEST_REDIS.
 	redisURL string
+	// apiLogin is the client name of a session that the -as user starts
+	// through the API before the page is opened; empty for none.
+	apiLogin string
 }
 
 // script is what a user does in a browser: log in, open a page, type into
@@ -337,6 +340,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.BoolVar(&o.cluster, "cluster", false, "start two servers on one new PostgreSQL database, one Redis and one data directory (as compose.cluster.yaml runs them); the -other user acts on the first one and the screenshot is taken on the second one, so it shows a change that came through Redis; needs -other, a PostgreSQL server (-postgres-url or CLOWDER_TEST_POSTGRES) and a Redis (-redis-url or CLOWDER_TEST_REDIS), and prints both addresses")
 	fs.StringVar(&o.postgresURL, "postgres-url", "", "with -cluster: the PostgreSQL server where the new database is made, postgres://user:password@host:port/postgres; the user may create and drop databases (default: CLOWDER_TEST_POSTGRES)")
 	fs.StringVar(&o.redisURL, "redis-url", "", "with -cluster: the Redis server, redis://host:port/0 (default: CLOWDER_TEST_REDIS)")
+	fs.StringVar(&o.apiLogin, "api-login", "", "client name: the -as user also logs in through POST /api/v1/auth/login as a client of that name before the page opens, and the session stays, so that the page of the sessions shows it (needs -as)")
 	fs.Var(&o.other.clicks, "other-click", "CSS selector of an element the -other user clicks after the -other-fill flags (repeatable, in order)")
 	if err := fs.Parse(args); err != nil {
 		return options{}, errors.NewErr(tagFlagsInvalid, err)
@@ -362,6 +366,8 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	case o.as == "" && conversationPlaceholder.MatchString(o.page):
 		return options{}, errors.New(tagFlagsInvalid, "{conversation:members} in -page needs -as: the conversation is found in the list of a user",
 			"page", o.page)
+	case o.apiLogin != "" && o.as == "":
+		return options{}, errors.New(tagFlagsInvalid, "-api-login needs -as: the session is the user's", "flag", "api-login")
 	case o.other.user == "" && (o.other.page != "" || len(o.other.fills) > 0 || len(o.other.clicks) > 0):
 		return options{}, errors.New(tagFlagsInvalid, "-other-page, -other-fill and -other-click need -other", "flag", "other")
 	case o.other.user != "" && o.as == "":
@@ -402,6 +408,11 @@ func screenshot(ctx context.Context, srvs servers, o options) ([]byte, error) {
 	pageCtx, cancelPage := context.WithTimeout(browser, pageTimeout)
 	defer cancelPage()
 	first := script{user: o.as, page: o.page, fills: o.fills, clicks: o.clicks}
+	if o.apiLogin != "" {
+		if err := apiLogin(ctx, srvs.shot.URL, o.as, o.apiLogin); err != nil {
+			return nil, err
+		}
+	}
 	url, err := first.open(pageCtx, srvs.shot, o)
 	if err != nil {
 		return nil, err

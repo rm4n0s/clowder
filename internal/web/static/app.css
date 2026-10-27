@@ -127,32 +127,47 @@ body:not(:has(aside)) main { margin: 0 auto; }
 input[aria-invalid="true"] { border-color: var(--danger); }
 
 /* Sidebar: who is logged in, the navigation and the logout button. */
-.sidebar-user { margin: 0 0 1rem; font-weight: 700; }
+.sidebar-user { margin: 0 0 0.25rem; font-weight: 700; }
+
+.sidebar-account { margin: 0 0 1rem; font-size: 0.875rem; }
+
+.sidebar-account a { text-decoration: none; }
+
+.sidebar-account a:hover { text-decoration: underline; }
 
 aside nav ul { margin: 0 0 1rem; padding: 0; list-style: none; }
 
 aside nav li { margin-bottom: 0.25rem; }
 
 /* The users table of the admin page. */
-table.users { width: 100%; margin-bottom: 2rem; border-collapse: collapse; }
+table.users, table.sessions { width: 100%; margin-bottom: 2rem; border-collapse: collapse; }
 
-table.users th, table.users td {
+table.users th, table.users td, table.sessions th, table.sessions td {
   padding: 0.5rem 0.625rem;
   text-align: left;
   vertical-align: middle;
   border-bottom: 1px solid var(--border);
 }
 
-table.users th { font-size: 0.875rem; color: var(--fg-muted); }
+table.users th, table.sessions th { font-size: 0.875rem; color: var(--fg-muted); }
 
-table.users td.actions { white-space: nowrap; }
+table.users td.actions, table.sessions td.actions { white-space: nowrap; }
+
+.session-current {
+  margin-left: 0.5rem;
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
 
 form.action { display: inline-block; margin-right: 0.5rem; }
 
 form.action button { padding: 0.25rem 0.625rem; font-size: 0.875rem; }
 
 @media (max-width: 40rem) {
-  #users-panel { overflow-x: auto; }
+  #users-panel, #sessions-panel { overflow-x: auto; }
 }
 
 /* The box that shows a new invitation link once. */

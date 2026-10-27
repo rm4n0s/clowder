@@ -1,0 +1,779 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Clowder",
+    "version": "1.1.0",
+    "description": "The API of Clowder for desktop clients. Log in with POST /auth/login, then send the token of the answer as Authorization: Bearer <token>. Bodies are JSON (at most 64 KiB), names are in snake_case, times are RFC 3339 in UTC and IDs are numbers. Every error is {\"error\": {\"code\", \"message\", \"fields\"}}. A path the API does not have is 404 not_found and a known path in a wrong method is 405 method_not_allowed with the Allow header; neither is an operation of this document.",
+    "license": {
+      "name": "BSD-3-Clause",
+      "identifier": "BSD-3-Clause"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "auth",
+      "description": "Login, sign-up and logout."
+    },
+    {
+      "name": "me",
+      "description": "The logged-in user and their sessions."
+    },
+    {
+      "name": "users",
+      "description": "The other users."
+    },
+    {
+      "name": "meta",
+      "description": "The API itself."
+    }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Log in",
+        "operationId": "login",
+        "description": "Checks the username and the password and starts a session of the kind api. After 5 failed attempts for the username or the address within 15 minutes, further attempts get 429 until the window has passed. A wrong username and a wrong password are answered alike.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "description": "The credentials and the name of the client.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/auth/signup": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Sign up with an invitation",
+        "operationId": "signup",
+        "description": "Does what the sign-up page does: makes the user from an invitation, uses the invitation up and logs the new user in with a session of the kind api.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "description": "The invitation, the new account and the name of the client.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new user's session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/auth/invitations/{token}": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Check an invitation link",
+        "operationId": "getInvitation",
+        "description": "Says whether an invitation can still be used and which role it gives. A used, expired or unknown invitation is 404, and the answer does not say which.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "description": "The token of the invitation link.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The invitation can be used.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Log out",
+        "operationId": "logout",
+        "description": "Deletes the session of the token. The token stops working at once.",
+        "responses": {
+          "204": {
+            "description": "The session is gone."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Who am I",
+        "operationId": "getMe",
+        "description": "Returns the user of the token and the unread counts of the sidebar.",
+        "responses": {
+          "200": {
+            "description": "The user and the counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me/sessions": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "List my sessions",
+        "operationId": "listSessions",
+        "description": "Lists the live sessions of the user, browsers and apps, with the one of this request marked as current.",
+        "responses": {
+          "200": {
+            "description": "The sessions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me/sessions/{id}": {
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "End one of my sessions",
+        "operationId": "endSession",
+        "description": "Ends a session of the user, which logs that browser or app out. A session of someone else is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the session.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The session is gone."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Find users",
+        "operationId": "listUsers",
+        "description": "Lists the enabled users whose username or display name starts with q, in any case, ordered by username, 20 at most. Without q it lists the first 20.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "The start of a username or of a display name.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "The OpenAPI document",
+        "operationId": "getOpenAPI",
+        "description": "Returns this document. It needs no login.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "This document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The token of POST /auth/login or POST /auth/signup."
+      }
+    },
+    "schemas": {
+      "ErrorObject": {
+        "type": "object",
+        "description": "What went wrong. Branch on code, never on message.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "A stable name of the kind of error.",
+            "enum": [
+              "not_found",
+              "forbidden",
+              "invalid_input",
+              "conflict",
+              "rate_limited",
+              "too_large",
+              "unauthenticated",
+              "method_not_allowed",
+              "unsupported_media_type",
+              "internal"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "A short sentence for people; its wording may change."
+          },
+          "fields": {
+            "type": "object",
+            "description": "For invalid_input: the problem of each wrong field of the request, by its JSON name (a problem with the body as a whole is under body).",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "description": "The body of every error answer.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorObject"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "User": {
+        "type": "object",
+        "description": "A user.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the user."
+          },
+          "username": {
+            "type": "string",
+            "description": "The unique, lower-case name used to log in."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "The name shown to other people."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "description": "What the user may do."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the user signed up."
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "Session": {
+        "type": "object",
+        "description": "A login of the user: a browser or an app. Its token is never shown again.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the session, for DELETE /me/sessions/{id}."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "browser",
+              "api"
+            ],
+            "description": "browser is a login of the web pages, api a login of a client of this API."
+          },
+          "client_name": {
+            "type": "string",
+            "description": "The name the client gave when it logged in, or the user agent of the browser; empty for old sessions."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session was made."
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session was last used."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session ends if it is not used again."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "True for the session that made this request."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "client_name",
+          "created_at",
+          "last_seen_at",
+          "expires_at",
+          "current"
+        ],
+        "additionalProperties": false
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "The username, in any case."
+          },
+          "password": {
+            "type": "string",
+            "description": "The password."
+          },
+          "client_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Names this client in the list of the user's sessions, for example the name of the app and of the computer."
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "client_name"
+        ],
+        "additionalProperties": false
+      },
+      "SignupRequest": {
+        "type": "object",
+        "properties": {
+          "invitation_token": {
+            "type": "string",
+            "description": "The token of the invitation link (the last part of <base URL>/invite/<token>)."
+          },
+          "username": {
+            "type": "string",
+            "description": "3 to 32 characters of a-z, 0-9, _ and -."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "1 to 64 characters."
+          },
+          "password": {
+            "type": "string",
+            "description": "At least 12 characters."
+          },
+          "client_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Names this client in the list of the user's sessions."
+          }
+        },
+        "required": [
+          "invitation_token",
+          "username",
+          "display_name",
+          "password",
+          "client_name"
+        ],
+        "additionalProperties": false
+      },
+      "TokenResponse": {
+        "type": "object",
+        "description": "A new session: send the token as Authorization: Bearer <token>.",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "The bearer token. It is shown only now; keep it secret."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session ends if it is not used again; every use moves it 30 days on."
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at",
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "Invitation": {
+        "type": "object",
+        "description": "An invitation link that can be used.",
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Always true: an invitation that cannot be used is a 404."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "description": "The role of the user who signs up with it."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the invitation stops working."
+          }
+        },
+        "required": [
+          "valid",
+          "role",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "Me": {
+        "type": "object",
+        "description": "Who the token belongs to, and the counts the sidebar of the pages shows.",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "unread_notifications": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of unread notifications."
+          },
+          "unread_conversations": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of conversations with unread messages."
+          }
+        },
+        "required": [
+          "user",
+          "unread_notifications",
+          "unread_conversations"
+        ],
+        "additionalProperties": false
+      },
+      "SessionList": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "description": "The live sessions of the user, the newest first.",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "additionalProperties": false
+      },
+      "UserList": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "description": "The users, ordered by username, at most 20.",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          }
+        },
+        "required": [
+          "users"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "Unauthenticated": {
+        "description": "The token is missing, unknown, expired or of a user who is disabled, or (for a login) the username or password is wrong.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "headers": {
+          "WWW-Authenticate": {
+            "description": "Bearer realm=\"clowder\"",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "There is no such thing, or the user may not know it exists.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InvalidInput": {
+        "description": "The body or a parameter breaks a rule; fields names each problem.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Too many failed logins for the username or the address.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds to wait; the length of the window of the limiter.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "TooLarge": {
+        "description": "The body is over 64 KiB.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "The Content-Type of the body is not application/json.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "The server failed. Nothing more is said about the cause.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

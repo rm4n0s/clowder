@@ -60,7 +60,7 @@ func (s *Server) signUpSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionToken, user, err := s.svc.Accounts.Login(r.Context(), username, password, clientIP(r, s.cfg.TrustProxyHeaders))
+	login, err := s.svc.Accounts.LoginClient(r.Context(), s.browserLogin(r, username, password))
 	if err != nil {
 		// The account exists; only the login after it failed. The person can
 		// log in by hand.
@@ -68,7 +68,7 @@ func (s *Server) signUpSubmit(w http.ResponseWriter, r *http.Request) {
 		s.redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	stateOf(r.Context()).userID = user.ID
-	s.setSessionCookie(w, sessionToken)
+	stateOf(r.Context()).userID = login.User.ID
+	s.setSessionCookie(w, login.Token)
 	s.redirect(w, r, "/", http.StatusSeeOther)
 }

@@ -55,7 +55,7 @@ func TestLogin(t *testing.T) {
 
 			token, user, err := e.svc.Login(t.Context(), tt.username, tt.password, loginIP)
 			if tt.wantErr {
-				appErr := requireTag(t, err, app.TagInvalidInput, "Accounts.Login.InvalidInput")
+				appErr := requireTag(t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 				fields := fieldsOf(t, appErr)
 				if len(fields) != 1 || fields[app.FieldForm] != wrongLoginText {
 					t.Errorf("fields = %v, want only %s = %q", fields, app.FieldForm, wrongLoginText)
@@ -108,7 +108,7 @@ func TestLoginErrorsAreTheSame(t *testing.T) {
 		{"alice", goodPassword},      // disabled user
 	} {
 		_, _, err := e.svc.Login(t.Context(), c.user, c.password, loginIP)
-		appErr := requireTag(t, err, app.TagInvalidInput, "Accounts.Login.InvalidInput")
+		appErr := requireTag(t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 		messages = append(messages, appErr.Message+"|"+fieldsOf(t, appErr)[app.FieldForm])
 	}
 	if messages[0] != messages[1] || messages[1] != messages[2] {
@@ -142,7 +142,7 @@ func TestLoginRateLimit(t *testing.T) {
 		e.t.Helper()
 		for range n {
 			_, _, err := e.svc.Login(e.t.Context(), user, "wrong password", ip)
-			_ = requireTag(e.t, err, app.TagInvalidInput, "Accounts.Login.InvalidInput")
+			_ = requireTag(e.t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 		}
 	}
 	tests := []struct {
@@ -154,7 +154,7 @@ func TestLoginRateLimit(t *testing.T) {
 				failN(e, 1, "alice", "192.0.2."+string(rune('1'+i))) // five different addresses
 			}
 			_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, "192.0.2.99")
-			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login.RateLimited")
+			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 			// Another user from the same fresh address is fine.
 			if _, _, err := e.svc.Login(t.Context(), "bob", goodPassword, "192.0.2.99"); err != nil {
 				t.Errorf("another user was blocked: %+v", err)
@@ -165,7 +165,7 @@ func TestLoginRateLimit(t *testing.T) {
 				failN(e, 1, u, loginIP)
 			}
 			_, _, err := e.svc.Login(t.Context(), "bob", goodPassword, loginIP)
-			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login.RateLimited")
+			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 			if _, _, err := e.svc.Login(t.Context(), "bob", goodPassword, "192.0.2.77"); err != nil {
 				t.Errorf("another address was blocked: %+v", err)
 			}
@@ -180,7 +180,7 @@ func TestLoginRateLimit(t *testing.T) {
 			failN(e, 5, "alice", loginIP)
 			e.clk.Advance(14*time.Minute + 59*time.Second)
 			_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
-			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login.RateLimited")
+			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 			e.clk.Advance(time.Second)
 			if _, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
 				t.Errorf("Login after the window: %+v", err)
@@ -192,7 +192,7 @@ func TestLoginRateLimit(t *testing.T) {
 				e.clk.Advance(time.Minute)
 				_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
 				if i := e.clk.Now().Sub(start); i < 15*time.Minute {
-					_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login.RateLimited")
+					_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 				}
 			}
 			e.clk.Advance(6 * time.Minute)
@@ -222,17 +222,17 @@ func TestLoginRateLimit(t *testing.T) {
 			}
 			for range 5 {
 				_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
-				_ = requireTag(t, err, app.TagInvalidInput, "Accounts.Login.InvalidInput")
+				_ = requireTag(t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 			}
 			_, _, err = e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
-			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login.RateLimited")
+			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 		}},
 		{"the username is normalized for the limiter", func(t *testing.T, e *env) {
 			for _, u := range []string{"alice", "ALICE", " Alice ", "aLiCe", "alice"} {
 				failN(e, 1, u, "")
 			}
 			_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, "")
-			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login.RateLimited")
+			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 		}},
 	}
 	for _, tt := range tests {
@@ -257,7 +257,7 @@ func TestLoginUsesTheInjectedLimiter(t *testing.T) {
 		limiter.Fail(t.Context(), "ghost", "")
 	}
 	_, _, err := svc.Login(t.Context(), "ghost", goodPassword, "")
-	_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login.RateLimited")
+	_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 }
 
 func TestLoginStoreErrorsPassUp(t *testing.T) {
@@ -267,7 +267,7 @@ func TestLoginStoreErrorsPassUp(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, _, err := e.svc.Login(ctx, "alice", goodPassword, loginIP)
-	_ = requireTag(t, err, store.TagQueryFailed, "Accounts.Login->Store.UserByUsername.QueryFailed")
+	_ = requireTag(t, err, store.TagQueryFailed, "Accounts.Login->Accounts.LoginClient->Store.UserByUsername.QueryFailed")
 }
 
 // login logs in as the user and returns the token.
@@ -288,10 +288,10 @@ func TestSessionActor(t *testing.T) {
 		wantRoute string // empty: success
 	}{
 		{name: "valid", token: func(e *env, _ app.User) string { return e.login("alice") }},
-		{name: "empty token", token: func(*env, app.User) string { return "" }, wantRoute: "Accounts.SessionActor.Unauthenticated"},
-		{name: "unknown token", token: func(*env, app.User) string { return "no-such-token" }, wantRoute: "Accounts.SessionActor.Unauthenticated"},
+		{name: "empty token", token: func(*env, app.User) string { return "" }, wantRoute: "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated"},
+		{name: "unknown token", token: func(*env, app.User) string { return "no-such-token" }, wantRoute: "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated"},
 		{
-			name: "expired", wantRoute: "Accounts.SessionActor.Unauthenticated",
+			name: "expired", wantRoute: "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated",
 			token: func(e *env, _ app.User) string {
 				tok := e.login("alice")
 				e.clk.Advance(sessionLifetime)
@@ -307,7 +307,7 @@ func TestSessionActor(t *testing.T) {
 			},
 		},
 		{
-			name: "user disabled after the login", wantRoute: "Accounts.SessionActor.Unauthenticated",
+			name: "user disabled after the login", wantRoute: "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated",
 			token: func(e *env, u app.User) string {
 				tok := e.login("alice")
 				// SetDisabled deletes the sessions; disabling in the store
@@ -319,7 +319,7 @@ func TestSessionActor(t *testing.T) {
 			},
 		},
 		{
-			name: "user disabled by an admin", wantRoute: "Accounts.SessionActor.Unauthenticated",
+			name: "user disabled by an admin", wantRoute: "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated",
 			token: func(e *env, u app.User) string {
 				tok := e.login("alice")
 				root := e.signUp("root", store.RoleAdmin)
@@ -330,7 +330,7 @@ func TestSessionActor(t *testing.T) {
 			},
 		},
 		{
-			name: "after logout", wantRoute: "Accounts.SessionActor.Unauthenticated",
+			name: "after logout", wantRoute: "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated",
 			token: func(e *env, _ app.User) string {
 				tok := e.login("alice")
 				if err := e.svc.Logout(e.t.Context(), tok); err != nil {
@@ -375,18 +375,18 @@ func TestSessionActorReasons(t *testing.T) {
 	tok := e.login("alice")
 
 	_, err := e.svc.SessionActor(t.Context(), "")
-	if got := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor.Unauthenticated").Metadata["reason"]; got != "none" {
+	if got := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated").Metadata["reason"]; got != "none" {
 		t.Errorf("reason = %v, want none", got)
 	}
 	_, err = e.svc.SessionActor(t.Context(), "x")
-	if got := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor.Unauthenticated").Metadata["reason"]; got != "unknown" {
+	if got := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated").Metadata["reason"]; got != "unknown" {
 		t.Errorf("reason = %v, want unknown", got)
 	}
 	if err := e.st.SetUserDisabled(t.Context(), alice.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	_, err = e.svc.SessionActor(t.Context(), tok)
-	if got := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor.Unauthenticated").Metadata["reason"]; got != "disabled" {
+	if got := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated").Metadata["reason"]; got != "disabled" {
 		t.Errorf("reason = %v, want disabled", got)
 	}
 	if err := e.st.SetUserDisabled(t.Context(), alice.ID, false); err != nil {
@@ -394,7 +394,7 @@ func TestSessionActorReasons(t *testing.T) {
 	}
 	e.clk.Advance(sessionLifetime)
 	_, err = e.svc.SessionActor(t.Context(), tok)
-	if got := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor.Unauthenticated").Metadata["reason"]; got != "expired" {
+	if got := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated").Metadata["reason"]; got != "expired" {
 		t.Errorf("reason = %v, want expired", got)
 	}
 }
@@ -445,7 +445,7 @@ func TestSessionActorSlidingExpiry(t *testing.T) {
 	// ...and an unused session still ends 30 days after its last use.
 	e.clk.Advance(sessionLifetime)
 	_, err := e.svc.SessionActor(t.Context(), tok)
-	_ = requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor.Unauthenticated")
+	_ = requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated")
 }
 
 func TestSessionActorStoreErrorsPassUp(t *testing.T) {
@@ -456,7 +456,7 @@ func TestSessionActorStoreErrorsPassUp(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, err := e.svc.SessionActor(ctx, tok)
-	_ = requireTag(t, err, store.TagQueryFailed, "Accounts.SessionActor->Store.SessionByTokenHash.QueryFailed")
+	_ = requireTag(t, err, store.TagQueryFailed, "Accounts.SessionActor->Accounts.sessionActor->Store.SessionByTokenHash.QueryFailed")
 }
 
 func TestLogout(t *testing.T) {
@@ -470,7 +470,7 @@ func TestLogout(t *testing.T) {
 		t.Fatalf("Logout: %+v", err)
 	}
 	_, err := e.svc.SessionActor(t.Context(), tokA1)
-	_ = requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor.Unauthenticated")
+	_ = requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated")
 	for name, tok := range map[string]string{"the other session of the user": tokA2, "the session of another user": tokB} {
 		if _, err := e.svc.SessionActor(t.Context(), tok); err != nil {
 			t.Errorf("%s was logged out too: %+v", name, err)
@@ -544,7 +544,7 @@ func TestExpiredSessionIsDeletedWhenFound(t *testing.T) {
 	e.clk.Advance(sessionLifetime)
 	// "other" is used, then both expire; only the one that is looked up goes.
 	_, err := e.svc.SessionActor(t.Context(), tok)
-	_ = requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor.Unauthenticated")
+	_ = requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated")
 	if _, err := e.st.SessionByTokenHash(t.Context(), auth.HashToken(tok)); err == nil {
 		t.Error("the expired session is still stored")
 	}
@@ -556,7 +556,7 @@ func TestExpiredSessionIsDeletedWhenFound(t *testing.T) {
 	}
 	// Asking again is the same answer: the session is unknown now.
 	_, err = e.svc.SessionActor(t.Context(), tok)
-	appErr := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor.Unauthenticated")
+	appErr := requireTag(t, err, app.TagUnauthenticated, "Accounts.SessionActor->Accounts.sessionActor.Unauthenticated")
 	if appErr.Metadata["reason"] != "unknown" {
 		t.Errorf("reason = %v, want unknown", appErr.Metadata["reason"])
 	}

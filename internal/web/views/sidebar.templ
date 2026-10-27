@@ -32,6 +32,7 @@ type SidebarData struct {
 // button.
 templ Sidebar(d SidebarData) {
 	<p class="sidebar-user" id="sidebar-user">{ d.User.DisplayName }</p>
+	<p class="sidebar-account"><a href={ templ.SafeURL(SessionsPath) }>Sessions</a></p>
 	if !d.HideSearch {
 		@SearchBar()
 	}

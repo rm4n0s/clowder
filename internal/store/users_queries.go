@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -264,3 +265,52 @@ func (s *Store) DeleteExpiredSessionsOfUser(ctx context.Context, userID uint64, 
 	}
 	return nil
 }
+
+// SessionsOfUser returns the sessions of the user, expired or not, newest
+// first.
+func (s *Store) SessionsOfUser(ctx context.Context, userID uint64) ([]Session, error) {
+	var sessions []Session
+	err := s.db(ctx).Where("user_id = ?", userID).Order("created_at DESC, id DESC").Find(&sessions).Error
+	if err != nil {
+		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "sessionsOfUser")
+	}
+	return sessions, nil
+}
+
+// DeleteSessionOfUser deletes the session id when it belongs to the user. It
+// fails with TagNotFound when there is no such session or it belongs to
+// another user, so that a caller cannot tell the two apart.
+func (s *Store) DeleteSessionOfUser(ctx context.Context, userID, id uint64) error {
+	res := s.db(ctx).Where("id = ? AND user_id = ?", id, userID).Delete(&Session{})
+	if res.Error != nil {
+		return errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "deleteSessionOfUser")
+	}
+	if res.RowsAffected == 0 {
+		return errors.New(TagNotFound, "no session of this user with this ID",
+			"op", "deleteSessionOfUser", "sessionID", id)
+	}
+	return nil
+}
+
+// UsersByPrefix returns the users who are not disabled and whose username or
+// display name starts with prefix, in any case, ordered by username, at most
+// limit of them. An empty prefix matches every user. The case is ignored by
+// the lower() of the database: SQLite folds only ASCII letters, PostgreSQL
+// what its locale says.
+func (s *Store) UsersByPrefix(ctx context.Context, prefix string, limit int) ([]User, error) {
+	q := s.db(ctx).Where("disabled_at IS NULL")
+	if prefix != "" {
+		pattern := likeEscaper.Replace(strings.ToLower(prefix)) + "%"
+		q = q.Where(`(lower(username) LIKE ? ESCAPE '\' OR lower(display_name) LIKE ? ESCAPE '\')`, pattern, pattern)
+	}
+	var users []User
+	err := q.Order("username ASC").Limit(limit).Find(&users).Error
+	if err != nil {
+		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "usersByPrefix")
+	}
+	return users, nil
+}
+
+// likeEscaper escapes the characters that mean something in a LIKE pattern,
+// with the backslash as the escape character.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)

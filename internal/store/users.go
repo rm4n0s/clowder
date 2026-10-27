@@ -52,7 +52,23 @@ type Invitation struct {
 	User    *User `gorm:"foreignKey:UsedBy;constraint:OnDelete:RESTRICT"`
 }
 
-// Session is a login of a user, found by the SHA-256 of its cookie token.
+// SessionKind says where a session was made and where it is accepted (SPEC
+// D43).
+type SessionKind string
+
+const (
+	// SessionBrowser is a session made by the login or sign-up page; its token
+	// is the session cookie, accepted by the pages only.
+	SessionBrowser SessionKind = "browser"
+	// SessionAPI is a session made by the login of the API; its token is a
+	// bearer token, accepted by the API only.
+	SessionAPI SessionKind = "api"
+)
+
+// MaxClientNameRunes is the longest ClientName of a session, in characters.
+const MaxClientNameRunes = 80
+
+// Session is a login of a user, found by the SHA-256 of its token.
 type Session struct {
 	ID        uint64
 	CreatedAt time.Time
@@ -63,6 +79,15 @@ type Session struct {
 	// LastSeenAt is when the session was last used; a session lasts a set time
 	// from this moment (SPEC §7.1).
 	LastSeenAt time.Time `gorm:"not null"`
+	// Kind is where the session was made: a session of the pages is a
+	// browser session, one of the API an api session. The default makes the
+	// sessions of version 1.0 browser sessions.
+	Kind SessionKind `gorm:"not null;default:browser"`
+	// ClientName names the client of the session: the user agent of a
+	// browser, cut to MaxClientNameRunes characters, or the name an API
+	// client gave when it logged in. It is empty for the sessions of
+	// version 1.0.
+	ClientName string `gorm:"not null;default:''"`
 
 	// Relation: declared so that GORM creates the foreign key.
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:RESTRICT"`

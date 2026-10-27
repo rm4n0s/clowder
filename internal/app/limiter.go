@@ -22,6 +22,12 @@ const (
 	limiterKeyMaxLength = 128
 )
 
+// LoginWindow is the window of the login limiter: failures older than this
+// are forgotten. The API sends it as the Retry-After of a refused login, an
+// upper bound of the wait, because the limiter does not know the remaining
+// time.
+const LoginWindow = loginWindow
+
 // The namespaces of the keys that LoginLimiter gives a FailureCounter: the
 // failures of a username and the failures of a client address are counted
 // apart.

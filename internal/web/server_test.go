@@ -18,6 +18,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/api"
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
@@ -146,7 +147,16 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
 	}, hub)
-	s, err := newServer(cfg, logger, Services{Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Messages: msgs, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
+	apiServer, err := api.New(api.Options{
+		Services: api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs},
+		Logger:   logger,
+		NoteUser: NoteUser,
+		ClientIP: ClientIPFunc(cfg.TrustProxyHeaders),
+	})
+	if err != nil {
+		t.Fatalf("api.New: %+v", err)
+	}
+	s, err := newServer(cfg, logger, Services{API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Messages: msgs, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}

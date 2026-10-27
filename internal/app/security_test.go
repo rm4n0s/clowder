@@ -71,7 +71,7 @@ func TestHashingWaitEndsWithTheRequest(t *testing.T) {
 		{"login", func(ctx context.Context, e *env, _ string) error {
 			_, _, err := e.svc.Login(ctx, "alice", goodPassword, loginIP)
 			return err
-		}, "Accounts.Login->Accounts.verify->gate.enter.HashWaitCanceled"},
+		}, "Accounts.Login->Accounts.LoginClient->Accounts.verify->gate.enter.HashWaitCanceled"},
 		{"sign-up", func(ctx context.Context, e *env, token string) error {
 			_, err := e.svc.SignUp(ctx, token, "bobby", "Bobby", goodPassword)
 			return err

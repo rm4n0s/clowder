@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/web/views"
 	"github.com/rm4n0s/errors"
 )
@@ -76,7 +77,7 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	username := r.PostFormValue("username")
 	next := safeNext(r.PostFormValue("next"))
 
-	token, user, err := s.svc.Accounts.Login(r.Context(), username, r.PostFormValue("password"), clientIP(r, s.cfg.TrustProxyHeaders))
+	res, err := s.svc.Accounts.LoginClient(r.Context(), s.browserLogin(r, username, r.PostFormValue("password")))
 	if err != nil {
 		s.formFailed(w, r, err, func(problems views.FormErrors) formView {
 			data := views.LoginData{Username: username, Errors: problems}
@@ -87,9 +88,21 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	stateOf(r.Context()).userID = user.ID
-	s.setSessionCookie(w, token)
+	stateOf(r.Context()).userID = res.User.ID
+	s.setSessionCookie(w, res.Token)
 	s.redirect(w, r, next, http.StatusSeeOther)
+}
+
+// browserLogin is the login of a page: a browser session named by the user
+// agent of the request.
+func (s *Server) browserLogin(r *http.Request, username, password string) app.ClientLogin {
+	return app.ClientLogin{
+		Username:   username,
+		Password:   password,
+		ClientIP:   clientIP(r, s.cfg.TrustProxyHeaders),
+		Kind:       app.SessionBrowser,
+		ClientName: r.UserAgent(),
+	}
 }
 
 // logout answers POST /logout: it deletes the session, clears the cookie and

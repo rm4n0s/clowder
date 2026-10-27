@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/api"
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
@@ -82,7 +83,19 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
 	}
+	notifications := app.NewNotifications(st, pub)
+	messages := app.NewMessages(st, clock.Real(), fileStore, postsConfig, pub)
+	apiServer, err := api.New(api.Options{
+		Services: api.Services{Accounts: accounts, Notifications: notifications, Messages: messages},
+		Logger:   logger,
+		NoteUser: web.NoteUser,
+		ClientIP: web.ClientIPFunc(cfg.TrustProxyHeaders),
+	})
+	if err != nil {
+		return err
+	}
 	srv, err := web.New(cfg, logger, web.Services{
+		API:           apiServer,
 		Accounts:      accounts,
 		Rooms:         app.NewRooms(st, fileStore, logger, pub),
 		Audit:         app.NewAudit(st),
@@ -90,9 +103,9 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Search:        app.NewSearch(st),
 		Health:        app.NewHealth(st),
 		Hub:           hub,
-		Notifications: app.NewNotifications(st, pub),
+		Notifications: notifications,
 		Posts:         app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, pub),
-		Messages:      app.NewMessages(st, clock.Real(), fileStore, postsConfig, pub),
+		Messages:      messages,
 	})
 	if err != nil {
 		return err

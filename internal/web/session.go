@@ -24,11 +24,29 @@ type sessionKey struct{}
 type session struct {
 	actor app.Actor
 	user  app.User
+	// id is the ID of the session row, for the page of the sessions.
+	id uint64
 }
 
 // withSession returns ctx with the actor and the user in it.
 func withSession(ctx context.Context, actor app.Actor, user app.User) context.Context {
 	return context.WithValue(ctx, sessionKey{}, &session{actor: actor, user: user})
+}
+
+// withLoggedIn returns ctx with the actor, the user and the ID of the session
+// that sess names.
+func withLoggedIn(ctx context.Context, sess app.Session) context.Context {
+	return context.WithValue(ctx, sessionKey{}, &session{actor: sess.Actor, user: sess.User, id: sess.SessionID})
+}
+
+// sessionIDFrom returns the ID of the session of the request, or 0 when
+// nobody is logged in.
+func sessionIDFrom(ctx context.Context) uint64 {
+	sess, ok := ctx.Value(sessionKey{}).(*session)
+	if !ok {
+		return 0
+	}
+	return sess.id
 }
 
 // actorFrom returns the actor of the request, or false when nobody is logged
@@ -75,7 +93,7 @@ func (s *Server) withAccess(h http.Handler, a access) http.Handler {
 					// ends the session (logout) clears it after this.
 					s.setSessionCookie(w, cookie.Value)
 				}
-				h.ServeHTTP(w, r.WithContext(withSession(r.Context(), sess.Actor, sess.User)))
+				h.ServeHTTP(w, r.WithContext(withLoggedIn(r.Context(), sess)))
 				return
 			case isTag(err, app.TagUnauthenticated):
 				s.clearSessionCookie(w)

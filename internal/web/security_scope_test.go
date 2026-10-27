@@ -620,6 +620,7 @@ func (sc *scope) postPaths() map[string]string {
 		"POST /messages/m/{msgID}/delete":                  "/messages/m/" + gm + "/delete",
 		"POST /messages/m/{msgID}/react":                   "/messages/m/" + gm + "/react",
 		"POST /notifications/read":                         "/notifications/read",
+		"POST /me/sessions/{id}/end":                       "/me/sessions/99999/end",
 	}
 }
 

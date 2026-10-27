@@ -12,6 +12,11 @@
 // room of that name (the whole path, /rooms/<id>), found in the sidebar of the
 // user: -page {room:secret}.
 //
+// With -api-login <client name> the -as user also logs in through the API
+// (POST /api/v1/auth/login) as a client of that name before the page opens, and
+// the session stays: the page of the sessions (/me/sessions) shows it as an App
+// next to the browser's.
+//
 // With -other a second user acts in a second browser while the first one
 // watches. With -cluster the tool starts two servers on one new PostgreSQL
 // database, one Redis and one data directory, as compose.cluster.yaml does
