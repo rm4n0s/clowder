@@ -337,3 +337,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   Bob's view of `general` (1280×2300): the demo's chips under the posts (his own ✅ and 🚀 highlighted) and, on the newest post, the 🎉 chip with count 1 next to the demo's 🙏 2, which alice added from her picker in another browser without a reload.
 - **Manual checks:** none
 - **Deviations and follow-ups:** The proof tool's `-click` and `-other-click` are now repeatable (a closed picker needs two clicks). A live edit of the post itself (`post-content` patch) still re-renders the picker, which closes it.
+
+## 9.1 Tasks and columns service
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-9.1-tasks-service
+- **Summary:** Posts and comments carry tasks (`PostInput.Tasks`: title, assignees who are room members, a due date at midnight UTC; up to 20 per post); new tasks go to the end of the board's first column, edits keep, update, delete and append them by ID, and deleting a post (or keeping it as a placeholder) deletes its tasks. A post may have an empty body when it has tasks. `app.Board` shows a room's board (columns in order with their cards, `Last`, `Overdue` from the clock, `CanEdit`) and lets any member move cards (positions stay dense), update a card's title, assignees and due date, and add, rename, move and delete columns (not one with cards, not the last one; names unique per room). Every change writes its `task.*` or `column.*` audit event with a readable summary and publishes `board.changed` (and the post's update events) after the commit. An assignee who left the room may stay on a task; only new assignees must be members. `clowder demo` adds 9 tasks.
+- **Main files:** `internal/app/{tasks,board,posts}.go`, `internal/store/tasks_queries.go`, `internal/live/event.go`, `cmd/clowder/demo.go`.
+- **Tests:** task validation, tasks through create/reply/edit/delete and placeholders, former members kept or refused (10 rows), the board view with `Overdue`, permission tables for every board method, a 15-row move table keeping positions dense, column rules, exact audit summaries and details, live events after commit only, store queries, demo tasks.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · no process left ✅
+- **Proof:** none
+- **Manual checks:** none
+- **Deviations and follow-ups:** An edit that changes only tasks counts as a post edit (`EditedAt`, `post.edited` with the tasks added, edited and removed). `DeleteColumn` refuses the last column before checking its cards. No-op moves and patches write and publish nothing. Moving or deleting columns publishes only `board.changed`, so pages showing tasks refresh on it. `TODO(step 11.1)`: notify new assignees. The `internal/app` tests now take about 110 s under `-race`.

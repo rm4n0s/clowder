@@ -1134,3 +1134,100 @@ func TestRunDemoMakesTheDemoReactions(t *testing.T) {
 		}
 	}
 }
+
+func TestRunDemoMakesTheDemoTasks(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	if !strings.Contains(stdout.String(), "demo tasks: 9\n") {
+		t.Errorf("stdout lacks the number of tasks:\n%s", stdout.String())
+	}
+
+	_, st := openAccounts(t, dir)
+	rooms := app.NewRooms(st, openFiles(t, dir), nil, nil)
+	board := app.NewBoard(st, clock.Real(), nil)
+	actorOf := func(username string) app.Actor {
+		row, err := st.UserByUsername(t.Context(), username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return app.Actor{UserID: row.ID, Username: row.Username, Role: row.Role}
+	}
+	all, err := rooms.AllRooms(t.Context(), actorOf("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]app.Room{}
+	for _, r := range all {
+		byName[r.Name] = r
+	}
+	titles := func(v app.BoardView) [][]string {
+		out := make([][]string, len(v.Columns))
+		for i, c := range v.Columns {
+			out[i] = []string{}
+			for _, card := range c.Tasks {
+				out[i] = append(out[i], card.Title)
+			}
+		}
+		return out
+	}
+	general, err := board.Board(t.Context(), actorOf("carol"), byName["general"].ID)
+	if err != nil {
+		t.Fatalf("Board: %+v", err)
+	}
+	want := [][]string{
+		{"Invite the rest of the team", "Tag the release", "Write the release notes", "Write the changelog script"},
+		{"Run the tests", "Pick the colors"},
+		{"Write the welcome guide"},
+	}
+	if got := titles(general); !reflect.DeepEqual(got, want) {
+		t.Errorf("general board = %v, want %v", got, want)
+	}
+	overdue, assigned, dated, comments := 0, 0, 0, 0
+	for _, c := range general.Columns {
+		for _, card := range c.Tasks {
+			if card.Overdue {
+				overdue++
+				if card.Title != "Write the release notes" {
+					t.Errorf("%q is overdue", card.Title)
+				}
+			}
+			if len(card.Assignees) > 0 {
+				assigned++
+			}
+			if card.DueDate != nil {
+				dated++
+			}
+			if card.PostID != card.RootID {
+				comments++
+				if card.Title != "Write the changelog script" {
+					t.Errorf("%q is the task of a comment", card.Title)
+				}
+			}
+		}
+	}
+	if overdue != 1 || assigned != 7 || dated != 6 || comments != 1 {
+		t.Errorf("overdue %d, assigned %d, dated %d, comments %d; want 1, 7, 6, 1", overdue, assigned, dated, comments)
+	}
+	secret, err := board.Board(t.Context(), actorOf("alice"), byName["secret"].ID)
+	if err != nil {
+		t.Fatalf("Board: %+v", err)
+	}
+	if got, want := titles(secret), [][]string{{"Book the party room"}, {"Order the cake"}, {}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("secret board = %v, want %v", got, want)
+	}
+	random, err := board.Board(t.Context(), actorOf("alice"), byName["random"].ID)
+	if err != nil || !reflect.DeepEqual(titles(random), [][]string{{}, {}, {}}) {
+		t.Errorf("random board = %v, %v", titles(random), err)
+	}
+
+	// A move of a card that the room does not have is an error of the demo.
+	err = makeDemoBoard(t.Context(), board, map[string]app.Room{"general": byName["random"], "secret": byName["random"]},
+		map[string]app.Actor{"alice": actorOf("alice"), "bob": actorOf("bob")}, io.Discard)
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != tagDemoTaskUnknown || !appErr.HasRoute("makeDemoBoard.DemoTaskUnknown") {
+		t.Errorf("makeDemoBoard = %v", err)
+	}
+}

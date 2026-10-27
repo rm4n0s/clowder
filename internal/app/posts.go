@@ -70,13 +70,19 @@ type PostInput struct {
 	Tags []string
 	// Uploads are the new files of the post, as Posts.Upload returned them.
 	// They are attached to the post. The body may be empty when the post has
-	// at least one attachment.
+	// at least one attachment or one task.
 	Uploads []Upload
 	// KeepAttachments is used by Edit only: the IDs of the attachments of the
 	// post that stay. Every other attachment of the post is removed, so a nil
 	// list removes them all. An ID that is not an attachment of the post makes
 	// the input invalid.
 	KeepAttachments []uint64
+	// Tasks are the tasks of the post (D17), at most 20. Create and Reply add
+	// them to the end of the first column of the board. Edit matches them by
+	// ID: the tasks of the post that are not listed are deleted, the listed
+	// ones change, those with ID 0 are added; so a nil list deletes them all.
+	// A task whose ID is not a task of the post makes the input invalid.
+	Tasks []TaskInput
 }
 
 // UserRef names a user on a post.
@@ -111,6 +117,9 @@ type Post struct {
 	// Attachments are the files of the post, in the order they were attached;
 	// empty for a deleted post.
 	Attachments []AttachmentView
+	// Tasks are the tasks of the post, oldest first, with the column they are
+	// in; empty for a deleted post.
+	Tasks []TaskCard
 	// CommentCount is the number of comments in the thread of the post, at any
 	// depth, not counting deleted ones. It is 0 for a comment.
 	CommentCount int
@@ -238,6 +247,10 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 				"userID", actor.UserID, "roomID", room.ID)
 		}
 		clean, fields := checkPostInput(in, len(in.Uploads))
+		tasks, names, err := checkTasks(ctx, tx, room.ID, in.Tasks, nil, fields)
+		if err != nil {
+			return err
+		}
 		if err := p.checkUploads(ctx, tx, fields, in.Uploads, 0); err != nil {
 			return err
 		}
@@ -260,20 +273,27 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 		}
 		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
 		// TODO(step 11.1): mentions and notifications.
-		return recordAudit(ctx, tx, auditEntry{
+		details := map[string]any{
+			"format":      string(clean.Format),
+			"length":      utf8.RuneCountInString(clean.Body),
+			"tags":        clean.Tags,
+			"attachments": len(in.Uploads),
+		}
+		if len(tasks) > 0 {
+			details["tasks"] = len(tasks)
+		}
+		if err := recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostCreated,
 			RoomID:     room.ID,
 			EntityType: EntityPost,
 			EntityID:   created.ID,
 			Summary:    who + " posted in #" + room.Name,
-			Details: map[string]any{
-				"format":      string(clean.Format),
-				"length":      utf8.RuneCountInString(clean.Body),
-				"tags":        clean.Tags,
-				"attachments": len(in.Uploads),
-			},
-		})
+			Details:    details,
+		}); err != nil {
+			return err
+		}
+		return addNewTasks(ctx, tx, actor, who, room, created, tasks, names, &events)
 	})
 	if err != nil {
 		p.cleaner.discard(ctx, p.st, in.Uploads)
@@ -318,6 +338,10 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 				"userID", actor.UserID, "roomID", room.ID)
 		}
 		clean, fields := checkPostInput(in, len(in.Uploads))
+		tasks, names, err := checkTasks(ctx, tx, room.ID, in.Tasks, nil, fields)
+		if err != nil {
+			return err
+		}
 		if err := p.checkUploads(ctx, tx, fields, in.Uploads, 0); err != nil {
 			return err
 		}
@@ -347,22 +371,29 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 		}
 		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
 		// TODO(step 11.1): notify the parent's author (reply) and mentions.
-		return recordAudit(ctx, tx, auditEntry{
+		details := map[string]any{
+			"format":      string(clean.Format),
+			"length":      utf8.RuneCountInString(clean.Body),
+			"tags":        clean.Tags,
+			"rootID":      rootID,
+			"parentID":    parent.ID,
+			"attachments": len(in.Uploads),
+		}
+		if len(tasks) > 0 {
+			details["tasks"] = len(tasks)
+		}
+		if err := recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostCreated,
 			RoomID:     room.ID,
 			EntityType: EntityComment,
 			EntityID:   created.ID,
 			Summary:    who + " commented in #" + room.Name,
-			Details: map[string]any{
-				"format":      string(clean.Format),
-				"length":      utf8.RuneCountInString(clean.Body),
-				"tags":        clean.Tags,
-				"rootID":      rootID,
-				"parentID":    parent.ID,
-				"attachments": len(in.Uploads),
-			},
-		})
+			Details:    details,
+		}); err != nil {
+			return err
+		}
+		return addNewTasks(ctx, tx, actor, who, room, created, tasks, names, &events)
 	})
 	if err != nil {
 		p.cleaner.discard(ctx, p.st, in.Uploads)
@@ -414,6 +445,14 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		if unknown {
 			fields[FieldAttachments] = messageUploadAgain
 		}
+		taskRows, err := tx.TaskRowsOfPosts(ctx, []uint64{row.ID})
+		if err != nil {
+			return err
+		}
+		tasks, names, err := checkTasks(ctx, tx, room.ID, in.Tasks, tasksByID(taskRows[row.ID]), fields)
+		if err != nil {
+			return err
+		}
 		if err := p.checkUploads(ctx, tx, fields, in.Uploads, len(kept)); err != nil {
 			return err
 		}
@@ -450,6 +489,10 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 			}
 			details["attachments"] = map[string]any{"added": added, "removed": gone}
 		}
+		plan := planTasks(taskRows[row.ID], tasks, names)
+		if !plan.empty() {
+			details["tasks"] = plan.planDetails()
+		}
 		if len(details) == 0 {
 			return nil
 		}
@@ -479,7 +522,7 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		removedKeys = storageKeys(removed)
 		events = postEvents(refOf(row), live.KindPostUpdated, live.KindCommentUpdated)
 		// TODO(step 11.1): rebuild the mentions and notify the new ones.
-		return recordAudit(ctx, tx, auditEntry{
+		if err := recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostEdited,
 			RoomID:     room.ID,
@@ -487,7 +530,18 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 			EntityID:   row.ID,
 			Summary:    who + " edited a " + noun + " in #" + room.Name,
 			Details:    details,
-		})
+		}); err != nil {
+			return err
+		}
+		if plan.empty() {
+			return nil
+		}
+		audits, err := applyTasks(ctx, tx, actor, who, room, row, plan, names)
+		if err != nil {
+			return err
+		}
+		events = append(events, boardEvent(room.ID, row.ID))
+		return recordAudits(ctx, tx, audits)
 	})
 	if err != nil {
 		p.cleaner.discard(ctx, p.st, in.Uploads)
@@ -545,8 +599,17 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			return err
 		}
 		keys = storageKeys(own[row.ID])
+		// The tasks of the post leave the board, each with its own event, the
+		// kept placeholder included (D21). They go first: the events read them.
+		taskRows, err := tx.TaskRowsOfPosts(ctx, []uint64{row.ID})
+		if err != nil {
+			return err
+		}
+		taskAudits, err := applyTasks(ctx, tx, actor, who, room, row, taskPlan{remove: taskRows[row.ID]}, nil)
+		if err != nil {
+			return err
+		}
 		if kept {
-			// TODO(step 9.1): the tasks of the post leave the board.
 			if err := tx.DeletePostExtras(ctx, row.ID); err != nil {
 				return err
 			}
@@ -572,7 +635,7 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 				live.Event{Topic: live.RoomTopic(room.ID), Kind: live.KindPostDeleted, RoomID: room.ID, PostID: rootGone},
 				live.Event{Topic: live.PostTopic(rootGone), Kind: live.KindPostDeleted, RoomID: room.ID, PostID: rootGone})
 		}
-		return recordAudit(ctx, tx, auditEntry{
+		if err := recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,
 			Action:     ActionPostDeleted,
 			RoomID:     room.ID,
@@ -580,7 +643,13 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			EntityID:   row.ID,
 			Summary:    who + " deleted a " + noun + " in #" + room.Name,
 			Details:    map[string]any{"kept": kept},
-		})
+		}); err != nil {
+			return err
+		}
+		if len(taskAudits) > 0 {
+			events = append(events, boardEvent(room.ID, row.ID))
+		}
+		return recordAudits(ctx, tx, taskAudits)
 	})
 	if err != nil {
 		return err
@@ -690,6 +759,10 @@ func (p *Posts) Thread(ctx context.Context, actor Actor, postID uint64) (Thread,
 	if err != nil {
 		return Thread{}, err
 	}
+	tasks, err := p.st.TaskRowsOfPosts(ctx, ids)
+	if err != nil {
+		return Thread{}, err
+	}
 	member, err := isMember(ctx, p.st, actor.UserID, room.ID)
 	if err != nil {
 		return Thread{}, err
@@ -700,7 +773,7 @@ func (p *Posts) Thread(ctx context.Context, actor Actor, postID uint64) (Thread,
 			count++
 		}
 	}
-	extras := postExtras{tags: tags, atts: atts, reacts: reacts, member: member}
+	extras := postExtras{tags: tags, atts: atts, reacts: reacts, tasks: tasks, member: member}
 	rootExtras := extras
 	rootExtras.counts = map[uint64]int{root.ID: count}
 	rootView, err := p.buildViews(actor, room, []store.Post{root}, rootExtras)
@@ -779,8 +852,8 @@ func (p *Posts) viewOne(ctx context.Context, actor Actor, room store.Room, postI
 }
 
 // postViews makes the views of posts of one room for the actor, in the order
-// of rows, with five queries: the tags, the attachments, the comment counts,
-// the reactions and the membership of the actor. The rows have Author loaded.
+// of rows, with seven queries: the tags, the attachments, the comment counts,
+// the reactions, the tasks (two) and the membership of the actor. The rows have Author loaded.
 func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, room store.Room, rows []store.Post) ([]Post, error) {
 	ids := make([]uint64, len(rows))
 	for i, row := range rows {
@@ -802,21 +875,26 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 	if err != nil {
 		return nil, err
 	}
+	tasks, err := st.TaskRowsOfPosts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	member, err := isMember(ctx, st, actor.UserID, room.ID)
 	if err != nil {
 		return nil, err
 	}
-	return p.buildViews(actor, room, rows, postExtras{tags: tags, atts: atts, counts: counts, reacts: reacts, member: member})
+	return p.buildViews(actor, room, rows, postExtras{tags: tags, atts: atts, counts: counts, reacts: reacts, tasks: tasks, member: member})
 }
 
 // postExtras is what hangs on a set of posts of one room, read by the caller
 // of buildViews.
 type postExtras struct {
-	// tags, atts and reacts are the tags, attachments and reactions of each
-	// post, by post ID.
+	// tags, atts, reacts and tasks are the tags, attachments, reactions and
+	// tasks of each post, by post ID.
 	tags   map[uint64][]string
 	atts   map[uint64][]store.Attachment
 	reacts map[uint64][]store.ReactionRow
+	tasks  map[uint64][]store.TaskRow
 	// counts are the comment counts of the posts.
 	counts map[uint64]int
 	// member is true when the actor is a member of the room.
@@ -827,6 +905,7 @@ type postExtras struct {
 // of rows, from what the caller has read. The rows have Author loaded.
 func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, x postExtras) ([]Post, error) {
 	views := make([]Post, len(rows))
+	today := dayOf(p.clk.Now())
 	for i, row := range rows {
 		v := Post{
 			ID:           row.ID,
@@ -835,6 +914,7 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, x po
 			Format:       row.Format,
 			Tags:         []string{},
 			Attachments:  []AttachmentView{},
+			Tasks:        []TaskCard{},
 			CommentCount: x.counts[row.ID],
 			Reactions:    []ReactionCount{},
 			IsComment:    row.ParentID != nil,
@@ -852,6 +932,7 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, x po
 			v.Body = row.Body
 			v.Tags = nonNil(x.tags[row.ID])
 			v.Attachments = attachmentViews(x.atts[row.ID])
+			v.Tasks = taskCards(x.tasks[row.ID], today)
 			v.Reactions = reactionCounts(x.reacts[row.ID], actor.UserID)
 			v.CanReact = x.member
 			if row.Author != nil {
@@ -978,9 +1059,9 @@ func splitAttachments(current []store.Attachment, keep []uint64) (kept, removed 
 
 // checkPostInput applies the rules of SPEC §7.3 and §7.7 to in; attachments is
 // the number of attachments the post has when the call is done, and a post
-// with at least one may have an empty body. It returns the input as it is
-// stored (body without trailing whitespace, tags normalized and without
-// duplicates) and the problems as field name to message; the problems are
+// with at least one, or with a task, may have an empty body. It returns the
+// input as it is stored (body without trailing whitespace, tags normalized and
+// without duplicates) and the problems as field name to message; the problems are
 // empty when all rules hold.
 func checkPostInput(in PostInput, attachments int) (PostInput, map[string]string) {
 	fields := map[string]string{}
@@ -990,11 +1071,10 @@ func checkPostInput(in PostInput, attachments int) (PostInput, map[string]string
 	}
 
 	clean.Body = strings.TrimRightFunc(in.Body, unicode.IsSpace)
-	// TODO(step 9.1): allow an empty body with tasks.
 	switch {
 	case !utf8.ValidString(clean.Body):
 		fields[FieldBody] = "Use valid text."
-	case clean.Body == "" && attachments == 0:
+	case clean.Body == "" && attachments == 0 && len(in.Tasks) == 0:
 		fields[FieldBody] = "Write something."
 	case utf8.RuneCountInString(clean.Body) > postBodyMaxLength:
 		fields[FieldBody] = "Use at most 20,000 characters."

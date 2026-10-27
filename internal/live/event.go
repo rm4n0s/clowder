@@ -22,6 +22,11 @@ const (
 	// KindReactionChanged says a reaction was added to or removed from a post
 	// or comment; PostID is that post or comment.
 	KindReactionChanged = "reaction.changed"
+	// KindBoardChanged says a task or a column of the board of a room changed:
+	// a task was written, edited, moved or deleted, or a column was added,
+	// renamed, moved or deleted. It is published on BoardTopic; PostID is the
+	// post or comment of the task when a task is concerned.
+	KindBoardChanged = "board.changed"
 	// KindRoomUpdated says a room was renamed or its description changed.
 	KindRoomUpdated = "room.updated"
 	// KindRoomDeleted says a room was deleted.

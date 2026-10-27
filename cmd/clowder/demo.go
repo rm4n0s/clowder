@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/auth"
@@ -43,8 +44,10 @@ var demoUsers = []struct {
 // through the accounts service (an invitation and a sign-up for each), then
 // the rooms through the rooms service, their posts and the comments under
 // some of them through the posts service, and prints the directory, the users with their password, the rooms,
-// the number of posts, the number of attachments, the number of comments and
-// the number of reactions to stdout.
+// the number of posts, the number of attachments, the number of comments, the
+// number of reactions and the number of tasks to stdout. The tasks are
+// written with the posts and comments and some are moved on the board after
+// that. Their due dates are relative to the clock of the demo.
 // Later steps add their own demo data here.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	var dataDir string
@@ -108,20 +111,25 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	if err != nil {
 		return err
 	}
-	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, app.PostsConfig{
+	clk := clock.Real()
+	now := clk.Now()
+	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
 		MaxAttachmentSize: config.DefaultMaxAttachmentSize,
 		MaxAttachments:    config.DefaultMaxAttachmentsPerPost,
 		Logger:            logger,
 	}, nil)
-	written, err := makeDemoPosts(ctx, posts, made, actors, stdout)
+	written, err := makeDemoPosts(ctx, posts, made, actors, now, stdout)
 	if err != nil {
 		return err
 	}
-	comments, err := makeDemoComments(ctx, posts, written, actors, stdout)
+	comments, err := makeDemoComments(ctx, posts, written, actors, now, stdout)
 	if err != nil {
 		return err
 	}
-	return makeDemoReactions(ctx, posts, written, comments, actors, stdout)
+	if err := makeDemoReactions(ctx, posts, written, comments, actors, stdout); err != nil {
+		return err
+	}
+	return makeDemoBoard(ctx, app.NewBoard(st, clk, nil), made, actors, stdout)
 }
 
 // makeDemoRooms makes the rooms of the demo through the rooms service, as the
@@ -189,10 +197,10 @@ var demoPosts = []struct {
 // makeDemoPosts writes the posts of the demo through the posts service, as the
 // users who would write them. rooms holds the rooms by name, actors the demo
 // users by username. It returns the posts, in the order of demoPosts.
-func makeDemoPosts(ctx context.Context, posts *app.Posts, rooms map[string]app.Room, actors map[string]app.Actor, stdout io.Writer) ([]app.Post, error) {
+func makeDemoPosts(ctx context.Context, posts *app.Posts, rooms map[string]app.Room, actors map[string]app.Actor, now time.Time, stdout io.Writer) ([]app.Post, error) {
 	written := make([]app.Post, 0, len(demoPosts))
 	attachments := 0
-	for _, d := range demoPosts {
+	for i, d := range demoPosts {
 		var uploads []app.Upload
 		for _, name := range d.attach {
 			content, err := demoFile(name)
@@ -210,6 +218,7 @@ func makeDemoPosts(ctx context.Context, posts *app.Posts, rooms map[string]app.R
 			Body:    d.body,
 			Tags:    app.ParseTags(d.tags),
 			Uploads: uploads,
+			Tasks:   demoTaskInputs(demoPostTasks[i], actors, now),
 		})
 		if err != nil {
 			return nil, err
@@ -299,7 +308,7 @@ var demoComments = []struct {
 // (written, in the order of demoPosts), and then the deletions. actors holds
 // the demo users by username. It returns the comments by their id in
 // demoComments.
-func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post, actors map[string]app.Actor, stdout io.Writer) (map[string]app.Post, error) {
+func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post, actors map[string]app.Actor, now time.Time, stdout io.Writer) (map[string]app.Post, error) {
 	byID := map[string]app.Post{}
 	for _, d := range demoComments {
 		parent := written[d.post]
@@ -310,6 +319,7 @@ func makeDemoComments(ctx context.Context, posts *app.Posts, written []app.Post,
 			Format: d.format,
 			Body:   d.body,
 			Tags:   app.ParseTags(d.tags),
+			Tasks:  demoTaskInputs(demoCommentTasks[d.id], actors, now),
 		})
 		if err != nil {
 			return nil, err
@@ -375,7 +385,117 @@ func makeDemoReactions(ctx context.Context, posts *app.Posts, written []app.Post
 	return nil
 }
 
+// demoTask is a task of the demo: assignees are usernames, due is the number
+// of days from today (negative for the past), or nil for no due date.
+type demoTask struct {
+	title     string
+	assignees []string
+	due       *int
+}
+
+// dueIn returns the due date of a demoTask: days from today.
+func dueIn(days int) *int { return &days }
+
+// demoPostTasks are the tasks written with the posts of the demo, by the index
+// of the post in demoPosts: seven in general, two in secret. They all start in
+// the first column of the board (demoMoves moves some). One task is overdue:
+// its due date is two days before the demo is made.
+var demoPostTasks = map[int][]demoTask{
+	0: {
+		{"Write the welcome guide", []string{"alice"}, dueIn(3)},
+		{"Invite the rest of the team", []string{"admin"}, nil},
+	},
+	2: {
+		{"Run the tests", []string{"bob"}, dueIn(1)},
+		{"Tag the release", []string{"carol"}, dueIn(5)},
+		{"Write the release notes", []string{"alice", "carol"}, dueIn(-2)},
+	},
+	3: {
+		{"Pick the colors", []string{"alice", "bob"}, dueIn(2)},
+	},
+	7: {
+		{"Book the party room", []string{"alice", "bob"}, dueIn(10)},
+		{"Order the cake", []string{"bob"}, nil},
+	},
+}
+
+// demoCommentTasks are the tasks written with the comments of the demo, by the
+// id of the comment in demoComments.
+var demoCommentTasks = map[string][]demoTask{
+	"b4": {{"Write the changelog script", []string{"bob"}, dueIn(4)}},
+}
+
+// demoMoves are the cards that makeDemoBoard moves after all are written:
+// the room, the title, the index of the column to move it to (In progress is
+// 1, Done 2) and the user who moves it.
+var demoMoves = []struct {
+	room   string
+	title  string
+	column int
+	by     string
+}{
+	{"general", "Write the welcome guide", 2, "alice"},
+	{"general", "Pick the colors", 1, "alice"},
+	{"general", "Run the tests", 1, "bob"},
+	{"secret", "Order the cake", 1, "bob"},
+}
+
+// demoTaskInputs makes the task rows of the editor from demo tasks. actors
+// holds the demo users by username; the due dates count from now.
+func demoTaskInputs(tasks []demoTask, actors map[string]app.Actor, now time.Time) []app.TaskInput {
+	var out []app.TaskInput
+	for _, t := range tasks {
+		in := app.TaskInput{Title: t.title}
+		for _, name := range t.assignees {
+			in.Assignees = append(in.Assignees, actors[name].UserID)
+		}
+		if t.due != nil {
+			due := now.AddDate(0, 0, *t.due)
+			in.DueDate = &due
+		}
+		out = append(out, in)
+	}
+	return out
+}
+
+// makeDemoBoard moves the cards of demoMoves through the board service, as
+// the users who would drag them, and prints the number of tasks of the demo
+// (they are written with the posts and comments). rooms holds the rooms by
+// name, actors the demo users by username.
+func makeDemoBoard(ctx context.Context, board *app.Board, rooms map[string]app.Room, actors map[string]app.Actor, stdout io.Writer) error {
+	for _, m := range demoMoves {
+		view, err := board.Board(ctx, actors[m.by], rooms[m.room].ID)
+		if err != nil {
+			return err
+		}
+		var taskID uint64
+		for _, c := range view.Columns {
+			for _, card := range c.Tasks {
+				if card.Title == m.title {
+					taskID = card.ID
+				}
+			}
+		}
+		if taskID == 0 {
+			return errors.New(tagDemoTaskUnknown, "the demo has no such task", "room", m.room, "title", m.title)
+		}
+		if err := board.MoveTask(ctx, actors[m.by], taskID, view.Columns[m.column].ID, 0); err != nil {
+			return err
+		}
+	}
+	n := 0
+	for _, tasks := range demoPostTasks {
+		n += len(tasks)
+	}
+	for _, tasks := range demoCommentTasks {
+		n += len(tasks)
+	}
+	_, _ = fmt.Fprintf(stdout, "demo tasks: %d\n", n)
+	return nil
+}
+
 const (
+	tagDemoTaskUnknown   = "DemoTaskUnknown"
 	tagDataDirNotEmpty   = "DataDirNotEmpty"
 	tagDataDirReadFailed = "DataDirReadFailed"
 	tagDemoImageFailed   = "DemoImageFailed"
