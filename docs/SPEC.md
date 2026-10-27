@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | 1.0 released as `v1.0.0` (2026-10-27); 1.1 (PostgreSQL, several processes, the API for desktop clients) in progress |
+| Status | 1.0 released as `v1.0.0` (2026-10-27); 1.1 (PostgreSQL, several processes, the API for desktop clients) released as `v1.1.0` (2026-10-27) |
 | Date | 2026-10-27 |
 | Owner | Manos Ragiadakos |
 | Module | `github.com/rm4n0s/clowder` |

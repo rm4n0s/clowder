@@ -1023,3 +1023,14 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - The measurements were taken on a shared, loaded machine (load average 9–13), with PostgreSQL and Redis on their default config.
   - `govulncheck` is not installed and was not run.
+
+## 17.2 Release 1.1
+- **Date:** 2026-10-27
+- **Branch:** feat/step-17.2-release-1.1
+- **Summary:** Clowder 1.1 (PostgreSQL, several processes with Redis, and the REST API and WebSocket for desktop clients) is released as `v1.1.0`. The SPEC's status says so.
+- **Main files:** `docs/SPEC.md` (status), `docs/IMPLEMENTED.md`
+- **Tests:** none new
+- **Checks:** run on `ed5c7fc`, the code of this release (this step changes only docs): gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · compose-smoke ✅ (both modes) · CGO_ENABLED=0 build ✅ · go generate clean ✅. The static checks were run again on this branch ✅.
+- **Proof:** the tag `v1.1.0` on `origin`
+- **Manual checks:** none
+- **Deviations and follow-ups:** the recommendations of D47 (caps per user on sockets, streams and staged bytes) are left for a later release.
