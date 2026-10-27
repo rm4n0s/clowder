@@ -3,7 +3,7 @@
 Guidance for Claude Code when working in this repository (Go, hosted on GitHub).
 
 ## Project
-Clowder (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause) is a self-hosted web application where a team talks in rooms. A room is a feed of posts with threaded comments; posts and comments carry text or markdown, attachments, tags and tasks, and each room's tasks make its Kanban board. Users also write private messages to each other, one to one or in groups. People join by invitation only. It is one cgo-free binary: GORM on SQLite (pure-Go driver) for storage, pages rendered on the server with templ, and kept live with Datastar over server-sent events.
+Clowder (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause) is a self-hosted web application where a team talks in rooms. A room is a feed of posts with threaded comments; posts and comments carry text or markdown, attachments, tags and tasks, and each room's tasks make its Kanban board. Users also write private messages to each other, one to one or in groups. People join by invitation only. It is one cgo-free binary: GORM on SQLite (pure-Go driver) or PostgreSQL (pgx) for storage, pages rendered on the server with templ, and kept live with Datastar over server-sent events. From 1.1, several processes can share one PostgreSQL database with Redis carrying the live events, and a REST API with a WebSocket (`/api/v1`, described by `internal/api/openapi.json`) serves desktop clients.
 
 **`docs/SPEC.md` is the source of truth.** Read the sections that cover a task before starting it. If the code and the spec disagree, or a task needs a decision the spec doesn't make, ask instead of guessing. When a decision changes, update the spec on the same branch.
 
@@ -19,19 +19,25 @@ Clowder (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause) is a self-ho
 - Browser tests (need Chromium): `go test -tags clowder_browser ./...`
 - Proof screenshot of a page: `go run -tags clowder_browser ./cmd/clowder-proof -as <user> -page <path> -o docs/implemented-proof-images/<id>-<name>.png`; `-page` takes `{room:<name>}`, `{board:<name>}` (the board of the room), `{post:<text>}` and `{conversation:<user>,<user>}` (the conversation with exactly those members, found in the list of the `-as` user), `-fill sel=value`/`-click sel` act on the page, and `-other <user>` with `-other-page`/`-other-fill`/`-other-click` acts as a second user in another browser before the screenshot (live updates)
 - After changing dependencies: `go mod tidy`
+- Tests on PostgreSQL and Redis (needs docker or podman): `scripts/test-docker.sh` (passes its arguments to `go test`); one package: `scripts/test-docker.sh ./internal/store -run TestName -v`
+- Docker: `docker compose up -d` (Clowder + PostgreSQL); with two processes, Redis and Caddy: `docker compose -f compose.yaml -f compose.cluster.yaml up -d`; smoke test: `scripts/compose-smoke.sh` (`-cluster`)
+- API smoke client: `go run ./cmd/clowder-apicheck -base-url http://localhost:8080 -username <u> -password <p>`
 
 ## Definition of done
-Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint run` and `go test -race ./...`, and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
+Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint run`, `go test -race ./...` and (from step 14.2) `scripts/test-docker.sh`, and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
 - `CGO_ENABLED=0 go build ./...` passes
 - `go generate ./...` leaves no change in the tree (the committed `*_templ.go` files are up to date)
 - Every new exported identifier has a doc comment
 - Every new error tag has a route test (see "Error handling")
 - Every new service method has a permission test (SPEC §12)
+- Every new or changed API route is in `internal/api/openapi.json` (the OpenAPI test fails otherwise, SPEC D45)
 
 ## Layout
 The packages are listed in SPEC §6.2; the layers in SPEC §6.1.
 - `cmd/clowder/` is the binary (`serve`, `invite`, `demo`) and wires everything together
-- `internal/store` is the only package that imports GORM or knows the database; `internal/app` holds the services and every permission check, and never imports `net/http` or templ; `internal/web` holds the handlers, middleware and SSE streams, and never imports `internal/store`
+- `internal/store` is the only package that imports GORM or knows the database (SQLite or PostgreSQL: what differs stays behind its `dialect`); `internal/app` holds the services and every permission check, and never imports `net/http` or templ; `internal/web` holds the handlers, middleware and SSE streams, and never imports `internal/store`
+- `internal/api` holds the REST API and the WebSocket for desktop clients, their JSON types and the embedded `openapi.json`; like `internal/web` it never imports `internal/store`, and it never imports templ
+- `internal/cluster` is what several processes share through Redis (the event bridge, the login counters); the only package that imports go-redis
 - `internal/web/views` holds the templ components; `internal/web/static` holds the embedded `datastar.js`, CSS and scripts
 - `internal/live` is the event hub; `internal/markdown`, `internal/files`, `internal/auth`, `internal/config` and `internal/clock` are what their names say
 - `docs/SPEC.md` is the specification; `docs/IMPLEMENTATION.md` is the step-by-step plan; `docs/IMPLEMENTED.md` logs finished steps; `docs/implemented-proof-images/` holds each step's proofs
@@ -43,7 +49,7 @@ The packages are listed in SPEC §6.2; the layers in SPEC §6.1.
 - Pass `context.Context` as the first parameter of anything that does I/O or may block. Name it `ctx`
 - Tests are table-driven
 - No global mutable state. Package-level read-only values are fine and are never reassigned. Dependencies are passed through constructors
-- Prefer the standard library. Allowed dependencies: `github.com/rm4n0s/errors`, `gorm.io/gorm`, `github.com/glebarez/sqlite`, `github.com/starfederation/datastar-go`, `github.com/a-h/templ`, `github.com/yuin/goldmark`, `golang.org/x/crypto` and, for browser tests and proofs only, `github.com/chromedp/chromedp` (SPEC §4). Ask before adding any other
+- Prefer the standard library. Allowed dependencies: `github.com/rm4n0s/errors`, `gorm.io/gorm`, `github.com/glebarez/sqlite`, `github.com/starfederation/datastar-go`, `github.com/a-h/templ`, `github.com/yuin/goldmark`, `golang.org/x/crypto`, `gorm.io/driver/postgres` (with its `pgx`), `github.com/redis/go-redis/v9`, `github.com/coder/websocket` and, for browser tests and proofs only, `github.com/chromedp/chromedp` (SPEC §4). Ask before adding any other
 - **No cgo**: never write `import "C"` or add a dependency that needs it (the SQLite driver is the pure-Go one)
 - The SDK `datastar-go` and the embedded `datastar.js` are the same release; never upgrade one without the other
 - Routes use the standard `http.ServeMux` patterns (`"POST /rooms/{id}/posts"`)
@@ -115,7 +121,7 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 - Never look for, list, open or read files outside this project folder (no home-directory databases, configs, logs or other projects). If something outside it is needed, ask the user to provide it. Exception: dependency source in the Go module cache
 
 ## Testing notes
-- The default tests run without network access, a browser or external services; a fake replaces each external dependency
+- The default tests run without network access, a browser or external services; a fake replaces each external dependency. `CLOWDER_TEST_POSTGRES` and `CLOWDER_TEST_REDIS` (set by `scripts/test-docker.sh`) run the same tests on PostgreSQL and the Redis tests against real Redis
 - Browser tests carry the `clowder_browser` build tag and use `internal/browsertest`; `chromedp` is imported only in files with that tag
 - Store and service tests use a fresh SQLite database per test (`storetest.Open`: a file copy of a database migrated once), the fake clock (`internal/clock`) and a recording hub; independent tests call `t.Parallel()`
 - Handler tests run the real handlers with `httptest`, logged in, and check the status, the HTML and the Datastar SSE patches

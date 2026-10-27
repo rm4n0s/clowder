@@ -66,6 +66,7 @@ The main session is the **manager** (Opus 5.5, high effort) and **workers** writ
    go test -race ./...
    CGO_ENABLED=0 go build ./...
    go generate ./... && test -z "$(git status --porcelain)"   # the committed *_templ.go files are up to date
+   scripts/test-docker.sh                                     # from step 14.2 on: the suite on PostgreSQL and Redis (SPEC D39)
    ```
    If the step lists **Browser tests**, run them too: `go test -tags clowder_browser <packages>` (SPEC §12). Once the harness exists (M0), also check that `go vet -tags clowder_browser ./...` passes.
 9. **Proof.** Only when the step has a **Proof** item:
@@ -137,6 +138,10 @@ SPEC D22.
 | M11 Mentions and notifications | 11.1–11.2 |
 | M12 Private messages | 12.1–12.2 |
 | M13 1.0 | 13.1–13.3 |
+| M14 PostgreSQL | 14.1–14.3 |
+| M15 Several processes | 15.1–15.2 |
+| M16 REST API and WebSocket | 16.1–16.5 |
+| M17 1.1 | 17.1–17.2 |
 
 ---
 
@@ -552,3 +557,140 @@ SPEC D22.
 1. Run every check and every browser test; update the SPEC's status to 1.0.
 2. Publish the step, then make and push the annotated tag `v1.0.0` on it (CLAUDE.md "Git and GitHub").
 **Done when:** `v1.0.0` is on `origin`.
+
+---
+
+## M14: PostgreSQL
+
+The owner's request, 2026-10-27 (SPEC §3a). M14–M17 make version 1.1.
+
+### 14.1 The store on PostgreSQL
+**Goal:** `clowder serve` runs on PostgreSQL as well as on SQLite, with every feature of SPEC §7.
+**Read:** SPEC §3a, D6, D34, D38, §6.3, §7.8, §9.3, §11.
+**Tasks:**
+1. Add `gorm.io/driver/postgres` (already allowed in CLAUDE.md and SPEC D3/D38). `CGO_ENABLED=0 go build ./...` still works.
+2. `internal/config`: `DatabaseURL` (`-database-url`, `CLOWDER_DATABASE_URL`), validated (empty, `postgres://` or `postgresql://`; tagged errors with route tests). A helper that removes the password from a URL for logs.
+3. `internal/store`: `Open` takes the database to open (the SQLite path or the PostgreSQL URL) and keeps a `dialect` value; everything that differs is chosen by it: the dialector and pool (D34 bounds), the raw migrations (each migration gets a SQLite and a PostgreSQL text; the migration table records the same IDs), the full-text index and search (`posts_search` with a `tsvector`, GIN, `simple` + `unaccent`, prefix `:*`, `ts_headline` with the same match markers as the SQLite snippets), the unique-violation mapping (SQLSTATE 23505 → `TagConflict`), `BulkCreate` and the stats. File permissions apply only to SQLite. No SQLite-only SQL is left outside the dialect switch: grep for `Raw(`/`Exec(` and check each one.
+4. `cmd/clowder`: `serve`, `invite` and `demo` (both sizes) work with `-database-url`.
+5. A first run of the store tests on PostgreSQL by hand (a `postgres:18` container started with `docker run`), enough to show the store works; the full suite on PostgreSQL is step 14.2.
+**Tests:** config validation table; the dialect choice; store tests that do not need a server (URL parsing, the redaction, the migration lists of both dialects having the same IDs in the same order); every new tag's route test.
+**Proof:** `14.1-postgres-serve.txt`: the output of `clowder demo` and of a few `curl` requests (login page, a logged-in room page via the login form with a cookie jar, a search) against `clowder serve -database-url` on a `postgres:18` container, with the container's `psql \dt` listing the tables.
+
+### 14.2 The test suite on PostgreSQL
+**Goal:** every store, service and handler test passes on PostgreSQL too, and that run is a standard check.
+**Read:** SPEC D39, §12.
+**Tasks:**
+1. `storetest.Open` (and every helper that opens a store for tests) uses PostgreSQL when `CLOWDER_TEST_POSTGRES` is set: one migrated template database per test binary (its name unique per run, so parallel `go test` packages do not collide), a new database per test with `CREATE DATABASE … TEMPLATE`, dropped in `t.Cleanup`; leftovers of a crashed run are dropped on the next run by a name prefix.
+2. `scripts/test-docker.sh`: starts `postgres:18` and `redis:8` on free ports with docker (podman when docker is absent), waits until they answer, runs `go test -race ./...` (and passes its arguments through to `go test`), removes the containers in a `trap`, and exits with the tests' status. A clear message and a non-zero exit when neither tool exists.
+3. Run the whole suite on PostgreSQL and fix every difference in the code (never by weakening a test): order of rows, case-insensitive matches, time precision and zones, sequence values, error mapping, search ranking and snippets, the large-demo bulk path.
+4. `scripts/test-docker.sh` is then a standard check (already in rule 8 of this file and in CLAUDE.md).
+**Tests:** none new beyond what the fixes need; each fix that changes behavior gets a test that runs on both databases.
+**Proof:** `14.2-test-docker.txt`: the output of `scripts/test-docker.sh` (the summary lines of every package, `ok`), and of `go test -race ./...` without it.
+
+### 14.3 Docker image and compose
+**Goal:** `docker compose up` runs Clowder on PostgreSQL.
+**Read:** SPEC D40, §11.
+**Tasks:**
+1. `GET /healthz` (no login, the database pinged within 2 s; 200 `ok` / 503), with handler tests; `clowder healthcheck -addr` (exit 0/1), with tests.
+2. `Dockerfile` (the two stages of D40, a `.dockerignore` that leaves out `data/`, `.git`, `.claude`, proofs), `compose.yaml`, `.env.example` (documented variables, no secret values: a placeholder password the README says to change). The image's data directory is `/data`; `CLOWDER_ADDR=:8080`.
+3. `scripts/compose-smoke.sh`: builds the image, `docker compose up -d --wait`, makes an admin invitation with `docker compose run --rm clowder invite -admin`, signs up through the form with `curl`, opens a page logged in, shows `docker compose ps`, and takes everything down with its volumes (in a `trap`).
+4. README: running with Docker (compose, the first admin, the `.env`, backups of the PostgreSQL volume with `pg_dump` and of the files volume, upgrades).
+**Tests:** `/healthz` (up, database closed → 503), `clowder healthcheck` against an `httptest` server (200, 503, nothing listening).
+**Proof:** `14.3-compose.txt`: the output of `scripts/compose-smoke.sh`, showing both containers healthy, the sign-up and the logged-in page. Look at it: the containers must be `healthy`.
+
+## M15: Several processes
+
+### 15.1 Live events through Redis
+**Goal:** an event published on one process reaches the subscribers of every process.
+**Read:** SPEC D18, D41, §8, §8.1.
+**Tasks:**
+1. Add `github.com/redis/go-redis/v9` (already allowed in CLAUDE.md). `internal/config`: `RedisURL` (`-redis-url`, `CLOWDER_REDIS_URL`), refused without a PostgreSQL database URL, validated as `redis://`/`rediss://`, redacted in logs.
+2. `internal/cluster`: a `Bridge` that is an `app.Publisher` (it publishes to the local hub and to the channel `clowder:events`) and runs the subscriber goroutine (owned by a context, stopped and waited for in `Close`), delivering other processes' events to the local hub and skipping its own (a random process id in each message). The Redis client is behind a small interface, so the default tests use an in-memory fake; the tests against real Redis run when `CLOWDER_TEST_REDIS` is set. On a reconnect after a broken connection, every subscription of the local hub is closed as slow (add the hub method this needs, with tests).
+3. `cmd/clowder serve` wires the bridge when `RedisURL` is set; the services get it as their Publisher; shutdown order: stop accepting, close streams, stop the bridge, close the hub, close the database.
+**Tests:** the bridge with the fake (delivery to the other process, no echo, a malformed message is logged and skipped, reconnect closes the subscriptions, `Close` stops the goroutine) and the same delivery against real Redis; config validation; route tests of every new tag.
+**Proof:** `15.1-bridge.txt`: the verbose output of the bridge tests run by `scripts/test-docker.sh ./internal/cluster/... -run . -v`, showing the Redis tests ran (not skipped).
+
+### 15.2 Shared state and the cluster composition
+**Goal:** two processes behind a load balancer behave as one Clowder.
+**Read:** SPEC D37, D41, §7.1, §8.1.
+**Tasks:**
+1. The login limiter counts in Redis when it is set (`internal/cluster` implements the counter the limiter uses; `app.LoginLimiter` keeps its in-memory counter as the default). Tests with the fake and with real Redis.
+2. Review every piece of state kept in memory by `internal/app`, `internal/web` and `cmd/clowder` (caches, limiters, cleanups, upload staging) and make each one safe across processes or record why it is (in SPEC §8.1).
+3. `compose.cluster.yaml` (redis, a second Clowder service sharing the data volume, Caddy balancing round-robin) and its part of the README; `scripts/compose-smoke.sh -cluster` checks that both processes answer.
+4. A browser test with two servers on one PostgreSQL and Redis (`internal/browsertest` learns to start a server with a given database URL, Redis URL and data directory; the test skips with a message without `CLOWDER_TEST_POSTGRES` and `CLOWDER_TEST_REDIS`): alice posts on server A, bob sees it live on server B. `clowder-proof` gets a flag that does the same for a screenshot.
+**Tests:** the limiter across two limiter instances sharing a Redis; the cross-process browser test.
+**Proof:** `15.2-cluster-live.png`: bob's room page on the second process showing alice's post made on the first process, taken with `clowder-proof`; `15.2-compose-cluster.txt`: the output of `scripts/compose-smoke.sh -cluster`.
+
+## M16: REST API and WebSocket
+
+### 16.1 API foundation and login
+**Goal:** a desktop client logs in and reads who it is; the OpenAPI document exists and matches the routes.
+**Read:** SPEC §7.1, §7.12, §9.1, D11, D42, D43, D45.
+**Tasks:**
+1. `Session` gets `Kind` and `ClientName` (migration on both databases; the pages store `browser` and the user agent). `app.Accounts` gets what the API needs: login and sign-up for a client, the sessions of a user, ending one of them (each with its permission table).
+2. `internal/api`: the server type mounted by `internal/web` under `/api/v1/`, the bearer-token middleware (never the cookie), JSON reading (64 KiB, unknown fields refused) and writing, the error mapping of D42, request logging as SPEC §9.2 (no token, no body), and the security headers of D36 that apply to JSON.
+3. Routes: `/auth/login`, `/auth/signup`, `/auth/invitations/{token}`, `/auth/logout`, `/me`, `/me/sessions`, `DELETE /me/sessions/{id}`, `/users`, `/openapi.json`.
+4. The page `/me/sessions` in the web UI (list, end one, "this browser" marked), linked from the sidebar's user menu, with a handler test and a proof.
+5. `internal/api/openapi.json` with these routes and the shared schemas (`Error`, `User`, `Session`), and the test of D45 (routes ↔ document both ways, `$ref`s, summaries, error responses, a response validator used by every API handler test).
+6. `cmd/clowder-apicheck`: `-base-url`, `-username`, `-password`; logs in, calls `/me`, lists the sessions, logs out, and prints each request and answer (tokens shown as `<token>`).
+**Tests:** every route: statuses, JSON, schema validation, who may call it (logged out, member, admin, disabled user, expired token); the cookie is ignored by `/api/` and a bearer token by the pages; login limiter answers 429; every new tag's route test.
+**Proof:** `16.1-apicheck.txt`: `clowder-apicheck` against `clowder serve` on demo data; `16.1-sessions.png`: the sessions page with a browser and the apicheck client listed.
+
+### 16.2 Rooms, posts, comments and reactions
+**Goal:** a client reads and writes the rooms and their threads.
+**Read:** SPEC §7.2–§7.4, §7.7, §7.12, D42.
+**Tasks:**
+1. The rooms, members, posts, comments, thread, reactions and tag routes of §7.12, with their schemas in `openapi.json` (posts carry `body` and `html`, the author, tags, tasks, attachments, reactions with the user's own marked, counts, edited/deleted state).
+2. Any service method the API needs that the pages do not have yet (a JSON-friendly read, a candidate search) is added in `internal/app` with its permission table.
+3. `clowder-apicheck` lists the rooms, joins one, posts, comments, reacts, edits and deletes.
+**Tests:** every route: statuses, JSON, schema validation, the permission table of its service (including 404 for a private room's non-member), audit events written through the API.
+**Proof:** `16.2-apicheck.txt`.
+
+### 16.3 Attachments, board, search and notifications
+**Goal:** a client does everything with files, tasks and the board, and searches.
+**Read:** SPEC §7.5, §7.6, §7.8, §7.9, §7.12.
+**Tasks:**
+1. `/uploads` (multipart, the limits of §7.5, 413 `too_large`), attachments download (same headers and checks as the pages), posts with tasks and uploads through the API.
+2. The board, column and task routes; search; notifications (list, mark read).
+3. `clowder-apicheck` uploads a file into a post with a task, moves the card, searches for it, and reads the notifications.
+**Tests:** every route as in 16.2; an upload over the limit; an attachment of a private room for a non-member is 404.
+**Proof:** `16.3-apicheck.txt`.
+
+### 16.4 Messages and admin
+**Goal:** a client writes private messages, and an admin client manages the installation.
+**Read:** SPEC §7.1, §7.2 (admin), §7.10, §7.11, §7.12, D29, D32.
+**Tasks:**
+1. The conversation and message routes of §7.12 (with uploads, replies, reactions, read state, the unread count).
+2. The admin routes (users, invitations, rooms, audit log with its filters).
+3. `clowder-apicheck` starts a conversation and sends a message, and, run as an admin, makes an invitation and reads the audit log.
+**Tests:** every route as in 16.2; admin routes 403 for members; a non-member of a conversation gets 404, admins included.
+**Proof:** `16.4-apicheck.txt`.
+
+### 16.5 WebSocket
+**Goal:** a client sees every live change it would see in the pages.
+**Read:** SPEC §7.13, §8, §8.1, D37, D44.
+**Tasks:**
+1. Add `github.com/coder/websocket` (already allowed in CLAUDE.md). `GET /api/v1/ws`: the protocol of §7.13 (subscribe, unsubscribe, ping; ack, error, pong, event, resync), the permission checks on subscribe and on each event, `data` rendered by the same code as the REST answers, the user topic, the limits, pings, the close codes, and the session checks of D37.
+2. The messages of the WebSocket as schemas in `openapi.json`, and the D45 test validates the messages the WebSocket tests receive.
+3. `clowder-apicheck -watch`: connects, subscribes to a room, its board and a conversation, then makes a post, a comment, moves a card and sends a message through REST and prints each event that comes back; with `-other-base-url` it does the writes on a second process (M15).
+**Tests:** subscribe/unsubscribe/ping; a private room's topic refused for a non-member; an event of a room the user left is not sent; overflow sends `resync` and closes; logout and disable close with 4001, a role change with 4002; shutdown closes with 1001; invalid JSON and an oversized message close the connection.
+**Proof:** `16.5-websocket.txt`: `clowder-apicheck -watch` on demo data, every write followed by its event.
+**Done when:** the default "Done when" holds and `scripts/test-docker.sh` passes (the WebSocket tests on PostgreSQL and Redis too).
+
+## M17: 1.1
+
+### 17.1 Security review, documentation and performance
+**Goal:** the new surface is reviewed, documented and measured.
+**Read:** SPEC §3a, §7.12, §7.13, §8.1, §10, §17, D36–D46, `docs/SECURITY.md`, `docs/PERFORMANCE.md`.
+**Tasks:**
+1. Review every API route and the WebSocket for permission checks, token handling, limits, headers, logging (no tokens, no bodies, no database or Redis passwords); review the Docker files (non-root, no secrets in the image); fix what is found, with tests; record the review in `docs/SECURITY.md`.
+2. `docs/API.md` (SPEC D45) and the README (the API, PostgreSQL, Docker, several processes).
+3. The targets of SPEC §10 on PostgreSQL (`clowder demo -size large` on PostgreSQL; the fan-out also across two processes with Redis), in `docs/PERFORMANCE.md`. Fix what misses a target, or record it.
+**Done when:** the standard checks and the browser tests pass and the numbers are recorded.
+
+### 17.2 Release 1.1
+**Goal:** version 1.1.0 is published.
+**Tasks:**
+1. Run every check, `scripts/test-docker.sh`, every browser test and `scripts/compose-smoke.sh` (both modes); update the SPEC's status to 1.1.
+2. Publish the step, then make and push the annotated tag `v1.1.0` on it (CLAUDE.md "Git and GitHub").
+**Done when:** `v1.1.0` is on `origin`.
