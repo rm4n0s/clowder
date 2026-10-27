@@ -12,6 +12,7 @@ func TestFS(t *testing.T) {
 	}{
 		{"datastar.js"},
 		{"app.css"},
+		{"board.js"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

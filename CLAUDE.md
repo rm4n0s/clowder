@@ -17,7 +17,7 @@ Clowder (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause) is a self-ho
 - Generate (the templ views): `go generate ./...`; the generated `*_templ.go` files are committed
 - Run: `go run ./cmd/clowder serve`; first admin: `go run ./cmd/clowder invite -admin`; demo data: `go run ./cmd/clowder demo`
 - Browser tests (need Chromium): `go test -tags clowder_browser ./...`
-- Proof screenshot of a page: `go run -tags clowder_browser ./cmd/clowder-proof -as <user> -page <path> -o docs/implemented-proof-images/<id>-<name>.png`; `-page` takes `{room:<name>}` and `{post:<text>}`, `-fill sel=value`/`-click sel` act on the page, and `-other <user>` with `-other-page`/`-other-fill`/`-other-click` acts as a second user in another browser before the screenshot (live updates)
+- Proof screenshot of a page: `go run -tags clowder_browser ./cmd/clowder-proof -as <user> -page <path> -o docs/implemented-proof-images/<id>-<name>.png`; `-page` takes `{room:<name>}`, `{board:<name>}` (the board of the room) and `{post:<text>}`, `-fill sel=value`/`-click sel` act on the page, and `-other <user>` with `-other-page`/`-other-fill`/`-other-click` acts as a second user in another browser before the screenshot (live updates)
 - After changing dependencies: `go mod tidy`
 
 ## Definition of done

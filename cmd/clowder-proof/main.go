@@ -47,10 +47,11 @@ const invitePlaceholder = "{invite}"
 
 // roomPlaceholder in -page stands for the whole path of the room with the
 // name, as the sidebar of the logged-in user links it: -page {room:secret}
-// opens /rooms/<id>. It needs -as. The tool finds the room by following the
+// opens /rooms/<id>, and -page {board:general} opens /rooms/<id>/board, the
+// board of the room. It needs -as. The tool finds the room by following the
 // sidebar link of that name, so the proof does not depend on the IDs of the
 // demo rooms.
-var roomPlaceholder = regexp.MustCompile(`\{room:([^{}]+)\}`)
+var roomPlaceholder = regexp.MustCompile(`\{(room|board):([^{}]+)\}`)
 
 // postPlaceholder in -page stands for the path of the post whose text contains
 // the given text: -page {post:Quick question} opens /posts/<id>. It needs -as.
@@ -162,7 +163,7 @@ type options struct {
 type script struct {
 	// user is the demo user to log in as; empty for none.
 	user string
-	// page is the page to open; {room:name} and {post:text} are resolved in
+	// page is the page to open; {room:name}, {board:name} and {post:text} are resolved in
 	// the sidebar and the feeds of user.
 	page string
 	// fills are typed into the page, in order, before the click.
@@ -209,7 +210,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	var o options
 	fs := flag.NewFlagSet("clowder-proof", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1; {room:name} is the path of the room of that name in the sidebar of the -as user; {post:text} is the path of the first post in those rooms whose text contains text")
+	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1; {room:name} is the path of the room of that name in the sidebar of the -as user, {board:name} the path of its board; {post:text} is the path of the first post in those rooms whose text contains text")
 	fs.StringVar(&o.out, "o", "", "path of the PNG to write (required)")
 	fs.StringVar(&o.as, "as", "", "demo user to log in as through /login before the page is opened, such as admin or alice")
 	fs.IntVar(&o.width, "width", 1280, "viewport width in pixels")
@@ -219,7 +220,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.Var(&o.fills, "fill", "type text into an element before the click, as selector=value, such as '#username=ana' (repeatable)")
 	fs.Var(&o.clicks, "click", "CSS selector of an element to click after the -fill flags; the tool then waits for the page to settle (repeatable: the clicks are made in order, such as to open a menu and then pick from it)")
 	fs.StringVar(&o.other.user, "other", "", "a second demo user who acts in a second browser once the page has loaded and its live stream is open, before the screenshot of the first one; see -other-page, -other-fill and -other-click")
-	fs.StringVar(&o.other.page, "other-page", "", "path of the page the -other user opens (default /); {room:name} and {post:text} are looked up for that user")
+	fs.StringVar(&o.other.page, "other-page", "", "path of the page the -other user opens (default /); {room:name}, {board:name} and {post:text} are looked up for that user")
 	fs.Var(&o.other.fills, "other-fill", "type text into an element of the -other user's page before the click, as selector=value (repeatable)")
 	fs.Var(&o.other.clicks, "other-click", "CSS selector of an element the -other user clicks after the -other-fill flags (repeatable, in order)")
 	if err := fs.Parse(args); err != nil {
@@ -230,15 +231,15 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "unexpected arguments", "args", fs.Args())
 	case o.out == "":
 		return options{}, errors.New(tagFlagsInvalid, "-o is required", "flag", "o")
-	case !strings.HasPrefix(o.page, "/") && !strings.HasPrefix(o.page, "{room:") && !strings.HasPrefix(o.page, "{post:"):
-		return options{}, errors.New(tagFlagsInvalid, "-page must start with /, {room:name} or {post:text}", "page", o.page)
+	case !strings.HasPrefix(o.page, "/") && !strings.HasPrefix(o.page, "{room:") && !strings.HasPrefix(o.page, "{board:") && !strings.HasPrefix(o.page, "{post:"):
+		return options{}, errors.New(tagFlagsInvalid, "-page must start with /, {room:name}, {board:name} or {post:text}", "page", o.page)
 	case o.width <= 0 || o.height <= 0:
 		return options{}, errors.New(tagFlagsInvalid, "-width and -height must be positive",
 			"width", o.width, "height", o.height)
 	case o.wait < 0:
 		return options{}, errors.New(tagFlagsInvalid, "-wait must not be negative", "wait", o.wait.String())
 	case o.as == "" && roomPlaceholder.MatchString(o.page):
-		return options{}, errors.New(tagFlagsInvalid, "{room:name} in -page needs -as: the room is found in the sidebar of a user",
+		return options{}, errors.New(tagFlagsInvalid, "{room:name} or {board:name} in -page needs -as: the room is found in the sidebar of a user",
 			"page", o.page)
 	case o.as == "" && postPlaceholder.MatchString(o.page):
 		return options{}, errors.New(tagFlagsInvalid, "{post:text} in -page needs -as: the post is found in the rooms of a user",
@@ -247,8 +248,8 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "-other-page, -other-fill and -other-click need -other", "flag", "other")
 	case o.other.user != "" && o.as == "":
 		return options{}, errors.New(tagFlagsInvalid, "-other needs -as: the second user acts while the first one watches", "flag", "other")
-	case o.other.user != "" && o.other.page != "" && !strings.HasPrefix(o.other.page, "/") && !strings.HasPrefix(o.other.page, "{room:") && !strings.HasPrefix(o.other.page, "{post:"):
-		return options{}, errors.New(tagFlagsInvalid, "-other-page must start with /, {room:name} or {post:text}", "page", o.other.page)
+	case o.other.user != "" && o.other.page != "" && !strings.HasPrefix(o.other.page, "/") && !strings.HasPrefix(o.other.page, "{room:") && !strings.HasPrefix(o.other.page, "{board:") && !strings.HasPrefix(o.other.page, "{post:"):
+		return options{}, errors.New(tagFlagsInvalid, "-other-page must start with /, {room:name}, {board:name} or {post:text}", "page", o.other.page)
 	case o.invite != strings.Contains(o.page, invitePlaceholder):
 		return options{}, errors.New(tagFlagsInvalid, "-invite and "+invitePlaceholder+" in -page go together",
 			"invite", o.invite, "page", o.page)
@@ -372,16 +373,20 @@ func (sc script) interact(ctx context.Context, url string, o options) error {
 }
 
 // resolveRooms replaces every {room:name} in page with the path of the room of
-// that name, read from the link in the sidebar of the page the browser shows
-// (the home page, right after the login). It fails with a RoomNotFound error
-// when the sidebar has no link with that name.
+// that name, and every {board:name} with the path of its board (the path of the
+// room and "/board"), read from the link in the sidebar of the page the browser
+// shows (the home page, right after the login). It fails with a RoomNotFound
+// error when the sidebar has no link with that name.
 func resolveRooms(ctx context.Context, page string) (string, error) {
 	var out strings.Builder
 	last := 0
 	for _, m := range roomPlaceholder.FindAllStringSubmatchIndex(page, -1) {
-		href, err := roomHref(ctx, page[m[2]:m[3]])
+		href, err := roomHref(ctx, page[m[4]:m[5]])
 		if err != nil {
 			return "", err
+		}
+		if page[m[2]:m[3]] == "board" {
+			href += boardSuffix
 		}
 		out.WriteString(page[last:m[0]])
 		out.WriteString(href)
@@ -464,6 +469,9 @@ func postHref(ctx context.Context, baseURL string, rooms []string, text string) 
 	}
 	return "", errors.New(tagPostNotFound, "no post in the rooms of the sidebar contains this text", "text", text)
 }
+
+// boardSuffix is what {board:name} adds to the path of the room.
+const boardSuffix = "/board"
 
 // pageTimeout bounds loading the page and taking the screenshot.
 const pageTimeout = time.Minute

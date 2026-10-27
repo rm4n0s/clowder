@@ -790,3 +790,139 @@ button.reaction-submit { padding: 0.375rem 0.75rem; color: var(--fg); background
 .reply-slot:empty { display: none; }
 
 .reply-slot .post-editor { margin: 0.75rem 0 0.25rem; }
+
+/* The links between the pages of a room. */
+.room-nav { display: flex; gap: 0.5rem; margin: 0 0 0.75rem; }
+
+.room-nav a {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--fg);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.room-nav a[aria-current="page"] { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
+
+/* The board of a room: columns side by side, scrolling sideways when they do
+   not fit. The page uses the whole width next to the sidebar. */
+main:has(> .board-page) { max-width: none; }
+
+.board-title { font-size: 1.25rem; font-weight: 600; color: var(--fg-muted); }
+
+.board-header { margin-bottom: 1rem; }
+
+.board-message:empty { display: none; }
+
+.board-scroll { display: flex; gap: 1rem; align-items: flex-start; padding-bottom: 1rem; overflow-x: auto; }
+
+.board-columns { display: flex; flex: 0 0 auto; gap: 1rem; align-items: flex-start; }
+
+.board-column {
+  display: flex;
+  flex: 0 0 17rem;
+  flex-direction: column;
+  width: 17rem;
+  padding: 0.75rem;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.column-header { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+
+.column-header h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+
+.column-rename { display: flex; flex: 1 1 auto; gap: 0.25rem; min-width: 0; }
+
+.column-rename input { margin: 0; padding: 0.25rem 0.5rem; font-weight: 600; }
+
+.column-rename button, .column-actions button { padding: 0.25rem 0.5rem; font-size: 0.8125rem; }
+
+.column-count {
+  flex: 0 0 auto;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.column-actions { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.5rem; }
+
+.column-actions form.action { margin: 0; }
+
+.board-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-cards:empty { border: 1px dashed var(--border); border-radius: 6px; }
+
+.board-card {
+  padding: 0.5rem 0.625rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.board-card[draggable="true"] { cursor: grab; }
+
+.board-card:target { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+.board-card.dragging { opacity: 0.4; }
+
+.board-card p { margin: 0 0 0.25rem; }
+
+.card-title { font-weight: 600; overflow-wrap: anywhere; }
+
+.board-card-done .card-title { font-weight: 400; color: var(--fg-muted); text-decoration: line-through; }
+
+.card-assignees, .card-due, .card-links { font-size: 0.875rem; color: var(--fg-muted); }
+
+.card-links { display: flex; gap: 0.75rem; }
+
+.card-move { display: flex; gap: 0.25rem; margin-top: 0.25rem; }
+
+.card-move select { margin: 0; padding: 0.25rem 0.375rem; font-size: 0.875rem; }
+
+.card-move button { padding: 0.25rem 0.5rem; font-size: 0.8125rem; }
+
+/* Where a dragged card would land. */
+.board-cards.drop-over { outline: 2px dashed var(--accent); outline-offset: 2px; }
+
+.board-card.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+
+.board-cards.drop-end { box-shadow: inset 0 -3px 0 var(--accent); }
+
+.board-add { flex: 0 0 13rem; }
+
+.board-add:empty { display: none; }
+
+.board-add-form { padding: 0.75rem; border: 1px dashed var(--border); border-radius: 8px; }
+
+/* The form of the card being edited, above the columns. */
+.board-editor:empty { display: none; }
+
+.board-card-form {
+  max-width: 32rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.board-card-form h2 { font-size: 1.125rem; }
+
+.board-card-form .choice { display: flex; gap: 0.5rem; align-items: center; font-weight: 400; }
+
+.board-card-form .choice input { width: auto; margin: 0; }

@@ -363,3 +363,17 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   Carol's "Release checklist" post: "Run the tests" (In progress, Bob, 2026-10-28), "Tag the release" (To do, Carol, 2026-11-01) and "Write the release notes" (To do, Alice and Carol, 2026-10-25 in red), each with "On the board".
 - **Manual checks:** none
 - **Deviations and follow-ups:** New rows need JavaScript (existing rows submit without it). A row with a task ID is never ignored, so clearing its title is an error rather than a deletion. Board links point to `/rooms/{id}/board#task-N`, the page of step 9.3.
+
+## 9.3 The board
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-9.3-board
+- **Summary:** `/rooms/{id}/board` shows the room's Kanban board (Posts / Board links in the header): columns side by side with their cards (title, assignees, due date red when overdue, done cards struck through, a link to the post). Members drag cards with `board.js` (HTML drag and drop with delegated listeners; the drop fills a hidden form that Datastar posts, and the server answers with the columns in its own order) or use each card's "Move to…" select; they edit a card's title, assignees and due date in a separate editor panel, and add, rename, move and delete columns (both conflict messages shown at the top). Non-members of a visible room see it read-only; private rooms of others answer 404. A board stream patches only the columns on `board.changed`, so an open card form or new-column form keeps its text, and a held card freezes the board until the drag ends; the page's version hash avoids a needless first refresh. The proof tool resolves `{board:<room>}`.
+- **Main files:** `internal/web/{board,board_stream,server}.go`, `internal/web/views/{board.templ,board.go,rooms.templ}`, `internal/web/static/{board.js,app.css,static.go}`, `cmd/clowder-proof/main.go`.
+- **Tests:** handler tests (page, read-only, 404s for private rooms on every route, nine move positions in both modes, the select, card updates with former members and due-date clearing, column add/rename/move/delete and both conflicts), stream tests (moves reaching another member, read-only renders, connect modes, access lost, membership, renames, pings), view tests; browser tests dispatching real drag events: alice drags a card and bob sees it without reload, the select, a held card, columns and a card form surviving a live update, read-only for carol.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · no process left ✅
+- **Proof:**
+  ![9.3 board](implemented-proof-images/9.3-board.png)
+  The board of `general` as alice (1440×1000): To do (4 cards, "Write the release notes" overdue in red), In progress (2), Done (1, struck through), each card with assignees, date, Open post, Details and Move to…, the column controls and the New column form.
+- **Manual checks:** none
+- **Deviations and follow-ups:** Touch drag is not supported (the select works everywhere). A live update can replace a column's rename field while someone types in it. Skipped patches during a drag are recovered by the drop's answer or a refresh when the drag is cancelled.

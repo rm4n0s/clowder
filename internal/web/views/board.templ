@@ -1,0 +1,282 @@
+package views
+
+import (
+	"strconv"
+
+	"github.com/rm4n0s/clowder/internal/app"
+)
+
+// RoomNav is the navigation between the pages of a room: its posts and its
+// board. The page that is shown is marked as current.
+templ RoomNav(roomID uint64, current RoomNavCurrent) {
+	<nav class="room-nav" aria-label="Room pages">
+		<a
+			href={ templ.SafeURL(RoomPath(roomID)) }
+			if current == NavPosts {
+				aria-current="page"
+			}
+		>Posts</a>
+		<a
+			href={ templ.SafeURL(BoardPath(roomID)) }
+			if current == NavBoard {
+				aria-current="page"
+			}
+		>Board</a>
+	</nav>
+}
+
+// BoardPage is the page of the board of a room, in the layout with the
+// sidebar: the header with the way back to the posts, the note for a person
+// who has not joined, the form of the card being edited, the columns with
+// their cards, the form that adds a column, and the script of the drag and
+// drop. The hidden form and link next to the columns are what that script
+// uses to talk to the server through Datastar.
+templ BoardPage(d BoardData) {
+	@Layout("Board of "+d.Board.Room.Name, Sidebar(d.Sidebar)) {
+		@liveStream(BoardStreamPath(d.Board.Room.ID, BoardVersion(d.Board)))
+		<div class="board-page">
+			@BoardHeader(d)
+			<div id="board" class="board">
+				@BoardNote(d)
+				@BoardMessage(d.Message)
+				@BoardEditor(d)
+				<div class="board-scroll">
+					@BoardColumns(d)
+					@BoardAddColumn(d)
+				</div>
+				<form id="board-drop" hidden method="post" action={ templ.SafeURL(boardTaskPath(d.Board.Room.ID, 0, "move")) } data-on:submit={ boardDropAction }>
+					<input type="hidden" name="column" value=""/>
+					<input type="hidden" name="position" value="0"/>
+				</form>
+				<a id="board-refresh" hidden href={ templ.SafeURL(BoardPath(d.Board.Room.ID)) } data-on:click__prevent={ boardRefreshAction(d.Board.Room.ID) }>Refresh</a>
+			</div>
+		</div>
+		<script src="/static/board.js" defer></script>
+	}
+}
+
+// BoardHeader is the header of the board page: the name of the room, its
+// visibility and the navigation back to the posts. A live update replaces it
+// when the room is renamed.
+templ BoardHeader(d BoardData) {
+	<header id="board-header" class="room-header board-header">
+		<div class="room-title">
+			<h1>{ d.Board.Room.Name }</h1>
+			if d.Board.Room.Visibility == app.VisibilityPrivate {
+				<span class="badge badge-private">@lockIcon() Private</span>
+			} else {
+				<span class="badge badge-visible">Visible</span>
+			}
+			<span class="board-title">Board</span>
+		</div>
+		@RoomNav(d.Board.Room.ID, NavBoard)
+	</header>
+}
+
+// BoardNote tells a person who has not joined the room that the board is
+// theirs to read only. It is empty for a member. A live update replaces it
+// when the person joins or leaves.
+templ BoardNote(d BoardData) {
+	<div id="board-note">
+		if !d.Board.CanEdit {
+			<p class="hint join-note">Join this room to change the board</p>
+		}
+	</div>
+}
+
+// BoardMessage is the problem of the last action on the board, at the top of
+// it. The server sends it alone as a Datastar patch when an action fails.
+templ BoardMessage(message string) {
+	<div id="board-message" class="board-message">
+		@formProblem(message)
+	</div>
+}
+
+// BoardColumns are the columns of the board side by side, with their cards.
+// The server sends it alone as a Datastar patch after every action on the
+// board and, to every open board page, when the board changes. It holds no
+// form that the person fills in over time (the card form has its own panel and
+// the form that adds a column sits next to it), so that a live update never
+// takes a typed text away.
+templ BoardColumns(d BoardData) {
+	<div id="board-columns" class="board-columns">
+		for i, col := range d.Board.Columns {
+			@boardColumn(d, i, col)
+		}
+	</div>
+}
+
+// boardColumn is one column of the board: its name (a rename form for a
+// member) with the buttons that move and delete it, the count of its cards and
+// the cards.
+templ boardColumn(d BoardData, index int, col app.ColumnView) {
+	{{ roomID := d.Board.Room.ID }}
+	<section id={ "column-" + columnIDText(col.ID) } class={ boardColumnClasses(col) } data-column={ columnIDText(col.ID) } aria-label={ col.Name }>
+		<header class="column-header">
+			if d.Board.CanEdit {
+				<form class="column-rename" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "rename")) } data-on:submit={ FormPost(boardColumnPath(roomID, col.ID, "rename")) }>
+					<input class="column-name" name="name" type="text" value={ col.Name } maxlength="40" autocomplete="off" aria-label="Column name" required/>
+					<button type="submit" class="secondary">Rename</button>
+				</form>
+			} else {
+				<h2 class="column-name">{ col.Name }</h2>
+			}
+			<span class="column-count" title={ cardCountText(len(col.Tasks)) }>{ strconv.Itoa(len(col.Tasks)) }</span>
+		</header>
+		if d.Board.CanEdit {
+			<div class="column-actions">
+				<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "move")) } data-on:submit={ FormPost(boardColumnPath(roomID, col.ID, "move")) }>
+					<input type="hidden" name="position" value={ moveColumnTo(index - 1) }/>
+					<button type="submit" class="secondary" aria-label="Move the column left" title="Move left" disabled?={ index == 0 }>←</button>
+				</form>
+				<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "move")) } data-on:submit={ FormPost(boardColumnPath(roomID, col.ID, "move")) }>
+					<input type="hidden" name="position" value={ moveColumnTo(index + 1) }/>
+					<button type="submit" class="secondary" aria-label="Move the column right" title="Move right" disabled?={ index == len(d.Board.Columns)-1 }>→</button>
+				</form>
+				<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "delete")) } data-on:submit={ FormPostConfirm(boardColumnPath(roomID, col.ID, "delete"), "Delete this column?") }>
+					<button type="submit" class="danger" aria-label="Delete the column">Delete</button>
+				</form>
+			</div>
+		}
+		<ol class="board-cards" data-column={ columnIDText(col.ID) }>
+			for _, card := range col.Tasks {
+				@boardCard(d, col, card)
+			}
+		</ol>
+	</section>
+}
+
+// boardCard is one card: its title, assignees, due date (red when overdue)
+// and the link to the post it was written in. A member's card can be dragged
+// and has the link that opens its form and the "Move to…" choice, which does
+// the same as a drag for a keyboard or a browser without JavaScript.
+templ boardCard(d BoardData, col app.ColumnView, card app.TaskCard) {
+	<li
+		id={ "task-" + columnIDText(card.ID) }
+		class={ boardCardClasses(card) }
+		data-task={ columnIDText(card.ID) }
+		data-column={ columnIDText(col.ID) }
+		if d.Board.CanEdit {
+			draggable="true"
+		}
+	>
+		<p class="card-title">{ card.Title }</p>
+		if len(card.Assignees) > 0 {
+			<p class="card-assignees" title="Assigned to">{ taskAssigneesText(card.Assignees) }</p>
+		}
+		if card.DueDate != nil {
+			<p class="card-due"><time class={ taskDueClasses(card) } datetime={ taskDueText(card) } title={ taskDueTitle(card) }>{ taskDueText(card) }</time></p>
+		}
+		<p class="card-links">
+			<a class="card-post" href={ templ.SafeURL(CommentPath(card.RootID, card.PostID)) }>Open post</a>
+			if d.Board.CanEdit {
+				<a class="card-details" href={ templ.SafeURL(boardTaskPath(d.Board.Room.ID, card.ID, "edit")) } data-on:click__prevent={ "@get('" + escapeQuote(boardTaskPath(d.Board.Room.ID, card.ID, "edit")) + "')" }>Details</a>
+			}
+		</p>
+		if d.Board.CanEdit {
+			<form class="card-move" method="post" action={ templ.SafeURL(boardTaskPath(d.Board.Room.ID, card.ID, "move")) } data-on:submit={ FormPost(boardTaskPath(d.Board.Room.ID, card.ID, "move")) }>
+				<select name="column" aria-label="Move to column" required>
+					<option value="">Move to…</option>
+					for _, other := range d.Board.Columns {
+						if other.ID != col.ID {
+							<option value={ columnIDText(other.ID) }>{ other.Name }</option>
+						}
+					}
+				</select>
+				<button type="submit" class="secondary">Move</button>
+			</form>
+		}
+	</li>
+}
+
+// BoardAddColumn is the form that adds a column at the right end of the board,
+// for a member; empty for anyone else. It is not part of the columns, so that
+// a live update does not clear the name that is being typed. A live update
+// replaces it when the person joins or leaves the room.
+templ BoardAddColumn(d BoardData) {
+	<div id="board-add" class="board-add">
+		if d.Board.CanEdit {
+			<form id="board-add-form" class="board-add-form" method="post" action={ templ.SafeURL(BoardColumnsPath(d.Board.Room.ID)) } data-on:submit={ FormPost(BoardColumnsPath(d.Board.Room.ID)) }>
+				<label for="board-add-name">New column</label>
+				<input id="board-add-name" name="name" type="text" maxlength="40" autocomplete="off" required/>
+				<button type="submit">Add column</button>
+			</form>
+		}
+	</div>
+}
+
+// BoardEditor is the panel of the board where the form of a card opens, empty
+// until then. It is outside the columns, so that a live update of the columns
+// never closes the form or clears what is typed in it. The server sends it
+// alone as a Datastar patch to open the form and to show its problems.
+templ BoardEditor(d BoardData) {
+	<div id="board-editor" class="board-editor">
+		if d.Editor != nil {
+			@boardCardForm(d.Board.Room.ID, *d.Editor)
+		}
+	</div>
+}
+
+// boardCardForm is the form that edits a card: the title, the assignees, the
+// due date with the box that removes it. The people who left the room but are
+// still assigned stay in the picker.
+templ boardCardForm(roomID uint64, d BoardEditorData) {
+	{{ id := columnIDText(d.Task.ID) }}
+	<form id="board-card-form" class="board-card-form" method="post" action={ templ.SafeURL(boardTaskPath(roomID, d.Task.ID, "")) } data-init={ openBoardEditorAction } data-on:submit={ FormPost(boardTaskPath(roomID, d.Task.ID, "")) }>
+		<h2>Edit the card</h2>
+		@formProblem(d.Errors.Form)
+		<div class="field">
+			<label for={ "card-title-" + id }>Title</label>
+			<input
+				id={ "card-title-" + id }
+				name="title"
+				type="text"
+				value={ d.Title }
+				maxlength="200"
+				autocomplete="off"
+				if d.Errors.Fields["title"] != "" {
+					aria-invalid="true"
+					aria-describedby={ "card-title-" + id + "-error" }
+				}
+			/>
+			if d.Errors.Fields["title"] != "" {
+				<p class="field-error" id={ "card-title-" + id + "-error" } role="alert">{ d.Errors.Fields["title"] }</p>
+			}
+		</div>
+		<div class="field">
+			<label for={ "card-assignees-" + id }>Assigned to</label>
+			<select id={ "card-assignees-" + id } name="assignees" multiple size="4">
+				for _, o := range d.Options {
+					<option value={ columnIDText(o.ID) } selected?={ d.hasAssignee(o.ID) }>{ o.Label }</option>
+				}
+			</select>
+			if d.Errors.Fields["assignees"] != "" {
+				<p class="field-error" role="alert">{ d.Errors.Fields["assignees"] }</p>
+			}
+		</div>
+		<div class="field">
+			<label for={ "card-due-" + id }>Due</label>
+			<input
+				id={ "card-due-" + id }
+				name="due"
+				type="date"
+				value={ d.Due }
+				if d.Errors.Fields["dueDate"] != "" {
+					aria-invalid="true"
+					aria-describedby={ "card-due-" + id + "-error" }
+				}
+			/>
+			<label class="choice" for={ "card-clear-due-" + id }>
+				<input id={ "card-clear-due-" + id } name="clear_due" type="checkbox" value="1" checked?={ d.ClearDue }/>
+				Remove the due date
+			</label>
+			if d.Errors.Fields["dueDate"] != "" {
+				<p class="field-error" id={ "card-due-" + id + "-error" } role="alert">{ d.Errors.Fields["dueDate"] }</p>
+			}
+		</div>
+		<div class="post-editor-actions">
+			<button type="submit">Save</button>
+			<a class="button-link" href={ templ.SafeURL(BoardPath(roomID)) } data-on:click__prevent={ closeBoardEditorAction }>Cancel</a>
+		</div>
+	</form>
+}

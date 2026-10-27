@@ -114,12 +114,7 @@ func AssigneeOptions(members []app.Member) []AssigneeOption {
 // that an edit can keep them (SPEC §7.6).
 func (d PostEditorData) WithMembers(roomID uint64, members []app.Member) PostEditorData {
 	d.RoomID = roomID
-	d.Assignable = AssigneeOptions(members)
-	for _, u := range d.assigned {
-		if !slices.ContainsFunc(d.Assignable, func(o AssigneeOption) bool { return o.ID == u.ID }) {
-			d.Assignable = append(d.Assignable, AssigneeOption{ID: u.ID, Label: u.DisplayName + " (@" + u.Username + ", left the room)"})
-		}
-	}
+	d.Assignable = assigneeOptionsFor(members, d.assigned)
 	return d
 }
 

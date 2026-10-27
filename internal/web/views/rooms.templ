@@ -222,8 +222,8 @@ templ RoomMemberCount(d RoomData) {
 	<p id="room-members-count" class="hint room-members-count">{ memberCountText(d.Room.MemberCount) }</p>
 }
 
-// RoomHeader is the header of a room: its name, visibility, description and
-// member count, the join, leave and delete buttons, the message of the last
+// RoomHeader is the header of a room: its name, visibility, the links to its
+// posts and its board, its description and member count, the join, leave and delete buttons, the message of the last
 // action and the rename form. The server sends it alone as a Datastar patch
 // when an action on the room fails.
 templ RoomHeader(d RoomData) {
@@ -236,6 +236,7 @@ templ RoomHeader(d RoomData) {
 				<span class="badge badge-visible">Visible</span>
 			}
 		</div>
+		@RoomNav(d.Room.ID, NavPosts)
 		if d.Room.Description != "" {
 			<p class="room-description">{ d.Room.Description }</p>
 		}

@@ -31,6 +31,14 @@ func TestResolveRooms(t *testing.T) {
 	if !strings.HasPrefix(got, "/rooms/") || strings.Contains(got, "{") || !strings.HasSuffix(got, "?x=1") {
 		t.Errorf("page = %q, want /rooms/<id>?x=1", got)
 	}
+	// {board:name} is the path of the board of the room.
+	board, err := resolveRooms(ctx, "{board:secret}")
+	if err != nil {
+		t.Fatalf("resolveRooms board: %+v", err)
+	}
+	if want := strings.TrimSuffix(got, "?x=1") + "/board"; board != want {
+		t.Errorf("board page = %q, want %q", board, want)
+	}
 	if got, err := resolveRooms(ctx, "/plain"); err != nil || got != "/plain" {
 		t.Errorf("resolveRooms(/plain) = %q, %v", got, err)
 	}
