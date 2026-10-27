@@ -1,12 +1,37 @@
 package store
 
-// rawMigrations is the list of raw SQL migrations that Open applies, in
-// order. Never change or reorder one that has shipped: add a new one at the
-// end.
-func rawMigrations() []migration {
-	return []migration{
-		{ID: "0001_posts_fts", SQL: migrationPostsFTS},
+// dialectMigration is a raw migration in its two forms: the SQL of SQLite and
+// the SQL of PostgreSQL. Both do the same work, so the list of IDs is the
+// same for both dialects (SPEC D38).
+type dialectMigration struct {
+	// ID names the migration; see migration.ID.
+	ID string
+	// SQLite is the SQL for SQLite. Never change it once it has shipped.
+	SQLite string
+	// Postgres is the SQL for PostgreSQL. Never change it once it has shipped.
+	Postgres string
+}
+
+// migrationList is the list of raw SQL migrations, in order. Never change or
+// reorder one that has shipped: add a new one at the end, with both texts.
+func migrationList() []dialectMigration {
+	return []dialectMigration{
+		{ID: "0001_posts_fts", SQLite: migrationPostsFTS, Postgres: migrationPostsSearchPostgres},
 	}
+}
+
+// rawMigrations is the list of raw SQL migrations that Open applies for the
+// dialect d, in order.
+func rawMigrations(d dialect) []migration {
+	list := migrationList()
+	out := make([]migration, len(list))
+	for i, m := range list {
+		out[i] = migration{ID: m.ID, SQL: m.SQLite}
+		if d == dialectPostgres {
+			out[i].SQL = m.Postgres
+		}
+	}
+	return out
 }
 
 // migrationPostsFTS creates the full-text index of posts and comments (SPEC
@@ -26,6 +51,56 @@ SELECT p.id,
     || coalesce((SELECT char(10) || group_concat(title, char(10))
                  FROM (SELECT title FROM tasks WHERE post_id = p.id ORDER BY id)), ''),
     char(57344), ''), char(57345), ''), char(10))
+FROM posts p
+WHERE p.deleted_at IS NULL;
+`
+
+// migrationPostsSearchPostgres is migrationPostsFTS for PostgreSQL (SPEC D38):
+// the table posts_search holds the index text of each post and its tsvector,
+// with a GIN index on the vector.
+//
+// The search configuration clowder_search is the "simple" configuration (no
+// stemming, no stop words, like the unicode61 tokenizer of FTS5) with the
+// unaccent dictionary in front of it for the word tokens, which is what
+// remove_diacritics does in FTS5. unaccent() as a function is not IMMUTABLE,
+// so it cannot appear in a generated column or an index; as a dictionary of a
+// configuration it can, and to_tsvector('clowder_search', ...) is IMMUTABLE.
+// That is why tsv is a generated column: it can never disagree with text, and
+// no statement has to compute it. ts_headline with the same configuration
+// ignores accents when it marks the matches in the original text.
+//
+// The default parser of PostgreSQL keeps "report.pdf", an e-mail address or a
+// URL as one token, where FTS5 splits at every punctuation character, so a
+// search for "report" would not find "report.pdf". The regexp_replace turns
+// every ASCII character that is not a letter or a digit into a space before
+// the text is parsed (an explicit list of ranges, because the classes
+// [[:alnum:]] depend on the locale of the database, and a C locale would
+// split the Greek or Cyrillic words).
+//
+// The index text is filled like migration 0001 of SQLite fills posts_fts (see
+// ftsText in search.go for the later changes; this copy stays as it shipped).
+const migrationPostsSearchPostgres = `
+CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE TEXT SEARCH CONFIGURATION clowder_search (COPY = simple);
+ALTER TEXT SEARCH CONFIGURATION clowder_search
+  ALTER MAPPING FOR asciiword, word, numword, asciihword, hword, numhword,
+                    hword_asciipart, hword_part, hword_numpart
+  WITH unaccent, simple;
+CREATE TABLE posts_search (
+  post_id bigint PRIMARY KEY,
+  text text NOT NULL,
+  tsv tsvector GENERATED ALWAYS AS (
+    to_tsvector('clowder_search', regexp_replace(text, '[\x01-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]', ' ', 'g'))
+  ) STORED
+);
+CREATE INDEX posts_search_tsv_idx ON posts_search USING GIN (tsv);
+INSERT INTO posts_search (post_id, text)
+SELECT p.id,
+  btrim(replace(replace(
+    p.body
+    || coalesce((SELECT chr(10) || string_agg(file_name, chr(10) ORDER BY id) FROM attachments WHERE post_id = p.id), '')
+    || coalesce((SELECT chr(10) || string_agg(title, chr(10) ORDER BY id) FROM tasks WHERE post_id = p.id), ''),
+    chr(57344), ''), chr(57345), ''), chr(10))
 FROM posts p
 WHERE p.deleted_at IS NULL;
 `

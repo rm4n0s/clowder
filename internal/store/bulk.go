@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"strings"
 
 	"github.com/rm4n0s/errors"
+	"gorm.io/gorm"
 )
 
 // bulkBatchSize is how many rows BulkCreate writes in one INSERT. It stays far
@@ -38,7 +40,29 @@ func BulkCreate[T BulkRow](ctx context.Context, s *Store, rows []T) error {
 			return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "bulkCreate", "rows", len(rows))
 		}
 	}
+	if s.dialect == dialectPostgres {
+		// Rows written with their own primary keys leave the sequence of the
+		// table behind them: the next insert without a key would take a key
+		// that exists. SQLite takes the next key from the table itself.
+		stmt := &gorm.Statement{DB: s.gdb}
+		if parseErr := stmt.Parse(new(T)); parseErr != nil {
+			return errors.NewErr(TagQueryFailed, parseErr).SetMetadata("op", "bulkCreate", "step", "schema")
+		}
+		if pk := stmt.Schema.PrioritizedPrimaryField; pk != nil && pk.AutoIncrement {
+			err := s.db(ctx).Exec(`SELECT setval(pg_get_serial_sequence(?, ?), (SELECT COALESCE(MAX(`+quoteIdent(pk.DBName)+`), 1) FROM `+quoteIdent(stmt.Schema.Table)+`))`,
+				stmt.Schema.Table, pk.DBName).Error
+			if err != nil {
+				return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "bulkCreate", "step", "sequence")
+			}
+		}
+	}
 	return nil
+}
+
+// quoteIdent quotes a table or column name that comes from a GORM schema (not
+// from a user) for PostgreSQL.
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 // NextID returns the primary key that follows the largest one of the table of
@@ -68,11 +92,12 @@ func (s *Store) ListTags(ctx context.Context) ([]Tag, error) {
 // after BulkCreate wrote posts, attachments and tasks, which would otherwise
 // each need a ReindexPost. Call it in a transaction.
 func (s *Store) RebuildSearchIndex(ctx context.Context) error {
-	if err := s.db(ctx).Exec("DELETE FROM posts_fts").Error; err != nil {
+	table, idColumn := searchIndex(s.dialect)
+	if err := s.db(ctx).Exec("DELETE FROM " + table).Error; err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "rebuildSearchIndex", "step", "delete")
 	}
-	err := s.db(ctx).Exec(`INSERT INTO posts_fts (rowid, text)
-SELECT p.id, ` + ftsText + ` FROM posts p WHERE p.deleted_at IS NULL`).Error
+	err := s.db(ctx).Exec(`INSERT INTO ` + table + ` (` + idColumn + `, text)
+SELECT p.id, ` + ftsText(s.dialect) + ` FROM posts p WHERE p.deleted_at IS NULL`).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "rebuildSearchIndex", "step", "insert")
 	}

@@ -1,0 +1,102 @@
+# Step 14.1: clowder on PostgreSQL (postgres:18 container, throw-away password)
+
+$ docker run -d --rm --name clowder-pg-141 -e POSTGRES_USER=clowder -e POSTGRES_PASSWORD=xxxxx -e POSTGRES_DB=clowder -p 127.0.0.1:55432:5432 postgres:18
+PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+
+$ go run ./cmd/clowder demo -database-url 'postgres://clowder:xxxxx@127.0.0.1:55432/clowder?sslmode=disable' -data <tmp dir>
+demo data directory is ready: <tmp dir>
+demo users (password demo-password-1234):
+  admin  admin  Admin
+  alice  member Alice
+  bob    member Bob
+  carol  member Carol
+demo rooms:
+  general  visible Everything
+  random   visible Off topic
+  secret   private Just for a few of us
+demo posts: 8
+demo attachments: 2
+demo comments: 9 (1 deleted)
+demo reactions: 13
+demo tasks: 9
+demo notifications: 17 (admin 1, alice 4, bob 8, carol 4)
+demo messages: 6 in 2 conversations (2 reactions, 1 edited; bob has 1 unread)
+exit status: 0
+
+$ docker exec clowder-pg-141 psql -U clowder -d clowder -c '\dt'
+                 List of tables
+ Schema |         Name         | Type  |  Owner  
+--------+----------------------+-------+---------
+ public | attachments          | table | clowder
+ public | audit_events         | table | clowder
+ public | board_columns        | table | clowder
+ public | conversation_members | table | clowder
+ public | conversations        | table | clowder
+ public | invitations          | table | clowder
+ public | mentions             | table | clowder
+ public | message_attachments  | table | clowder
+ public | message_reactions    | table | clowder
+ public | messages             | table | clowder
+ public | notifications        | table | clowder
+ public | post_tags            | table | clowder
+ public | posts                | table | clowder
+ public | posts_search         | table | clowder
+ public | reactions            | table | clowder
+ public | room_members         | table | clowder
+ public | rooms                | table | clowder
+ public | schema_migrations    | table | clowder
+ public | sessions             | table | clowder
+ public | tags                 | table | clowder
+ public | task_assignees       | table | clowder
+ public | tasks                | table | clowder
+ public | users                | table | clowder
+(23 rows)
+
+$ docker exec clowder-pg-141 psql -U clowder -d clowder -c 'select * from schema_migrations'
+       id       
+----------------
+ 0001_posts_fts
+(1 row)
+
+$ docker exec clowder-pg-141 psql -U clowder -d clowder -c 'select count(*) as indexed_posts from posts_search'
+ indexed_posts 
+---------------
+            16
+(1 row)
+
+
+$ clowder serve -database-url 'postgres://clowder:xxxxx@127.0.0.1:55432/clowder?sslmode=disable' -data <tmp dir> -addr 127.0.0.1:18141 &
+
+$ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18141/login   (the login page)
+200
+$ curl -s -o /dev/null -D - http://127.0.0.1:18141/ | head -2   (a page without a login)
+HTTP/1.1 302 Found
+Cache-Control: no-store
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' https: http:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+
+$ curl -s -c jar.txt -D - -o /dev/null -d 'username=admin&password=demo-password-1234' http://127.0.0.1:18141/login   (log in as the demo admin)
+HTTP/1.1 303 See Other
+Location: /
+Set-Cookie: clowder_session=<token>; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax
+
+$ curl -s -b jar.txt -o page.html -w '%{http_code}' http://127.0.0.1:18141/rooms/1   (the room general, logged in)
+200
+$ grep -o 'Release checklist' page.html | sort | uniq -c
+      1 Release checklist
+
+$ curl -s -b jar.txt -o search.html -w '%{http_code}' 'http://127.0.0.1:18141/search?q=checkl'   (a search for the prefix checkl)
+200
+$ grep -o '<mark>[^<]*</mark>[^<]*' search.html | head
+<mark>checklist</mark>
+$ curl -s -b jar.txt -o search2.html -w '%{http_code}' 'http://127.0.0.1:18141/search?q=quick+design'   (two words: both must match)
+200
+$ grep -o '<mark>[^<]*</mark>' search2.html
+<mark>Quick</mark>
+<mark>design</mark>
+
+$ kill -TERM $SERVER   (stopping the server)
+server exit status: 0
+$ grep -c 'clowder:clowder' serve.log   (the password in the log of the server: no match)
+0
+
+$ docker stop clowder-pg-141

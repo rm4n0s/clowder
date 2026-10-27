@@ -211,8 +211,17 @@ func TestRunInviteErrors(t *testing.T) {
 			wantTag: tagDataDirCreateFailed, wantRoute: "run->runInvite.DataDirCreateFailed",
 		},
 		{
+			name: "database URL with another scheme", args: []string{"invite", "-admin", "-database-url", "mysql://u:secret@db/clowder"},
+			wantTag: config.TagDatabaseURLInvalid, wantRoute: "run->runInvite->Config.Validate.DatabaseURLInvalid",
+		},
+		{
+			name: "database URL from the environment that is not valid", args: []string{"invite", "-admin"},
+			env:     map[string]string{"CLOWDER_DATABASE_URL": "nowhere"},
+			wantTag: config.TagDatabaseURLInvalid, wantRoute: "run->runInvite->Config.Validate.DatabaseURLInvalid",
+		},
+		{
 			name: "database cannot be opened", args: []string{"invite", "-admin", "-data", badDB},
-			wantTag: "StoreOpenFailed", wantRoute: "run->runInvite->Open->open.StoreOpenFailed",
+			wantTag: "StoreOpenFailed", wantRoute: "run->runInvite->openStore->openStoreWith->Open->open.StoreOpenFailed",
 		},
 	}
 	for _, tt := range tests {

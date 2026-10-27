@@ -1,9 +1,14 @@
 package store
 
 import (
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rm4n0s/errors"
 	"gorm.io/gorm"
 )
+
+// sqlStateUniqueViolation is the SQLSTATE code of PostgreSQL for a unique or
+// primary key violation.
+const sqlStateUniqueViolation = "23505"
 
 // failure is how the database reported an error, as far as the store cares.
 type failure int
@@ -31,12 +36,17 @@ const (
 //
 // The unique violation is the one GORM translates (TranslateError) from the
 // SQLite codes 2067 (SQLITE_CONSTRAINT_UNIQUE) and 1555
-// (SQLITE_CONSTRAINT_PRIMARYKEY).
+// (SQLITE_CONSTRAINT_PRIMARYKEY), and from the SQLSTATE 23505 of PostgreSQL;
+// an error of pgx that carries 23505 and that GORM did not translate counts
+// too.
 func classify(err error) failure {
+	var pgErr *pgconn.PgError
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return failureNotFound
 	case errors.Is(err, gorm.ErrDuplicatedKey):
+		return failureConflict
+	case errors.As(err, &pgErr) && pgErr.Code == sqlStateUniqueViolation:
 		return failureConflict
 	default:
 		return failureOther

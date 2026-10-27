@@ -207,6 +207,25 @@ func TestParseServeConfig(t *testing.T) {
 			env:  map[string]string{"CLOWDER_ADDR": "", "CLOWDER_SESSION_LIFETIME": ""},
 			want: def,
 		},
+		{
+			name: "database URL from the environment",
+			env:  map[string]string{"CLOWDER_DATABASE_URL": "postgres://u:p@db:5432/clowder"},
+			want: func() config.Config {
+				c := def
+				c.DatabaseURL = "postgres://u:p@db:5432/clowder"
+				return c
+			}(),
+		},
+		{
+			name: "database URL: flag beats environment",
+			args: []string{"-database-url", "postgresql://flag/clowder"},
+			env:  map[string]string{"CLOWDER_DATABASE_URL": "postgres://env/clowder"},
+			want: func() config.Config {
+				c := def
+				c.DatabaseURL = "postgresql://flag/clowder"
+				return c
+			}(),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -303,6 +322,19 @@ func TestParseServeConfigErrors(t *testing.T) {
 			env:       map[string]string{"CLOWDER_BASE_URL": "chat.example.com"},
 			wantTag:   config.TagBaseURLInvalid,
 			wantRoute: "parseServeConfig->Config.Validate.BaseURLInvalid",
+		},
+		{
+			name:      "invalid config: database URL flag",
+			args:      []string{"-database-url", "mysql://u:secret@db/clowder"},
+			wantTag:   config.TagDatabaseURLInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.DatabaseURLInvalid",
+			wantMeta:  map[string]any{"databaseURL": "mysql://u:xxxxx@db/clowder"},
+		},
+		{
+			name:      "invalid config: database URL from the environment",
+			env:       map[string]string{"CLOWDER_DATABASE_URL": "clowder.db"},
+			wantTag:   config.TagDatabaseURLInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.DatabaseURLInvalid",
 		},
 		{
 			name:      "invalid config: session lifetime",
@@ -648,8 +680,30 @@ func TestRunDemoStoreOpenFailure(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
 	}
-	if !appErr.HasRoute("run->runDemo->fillDemo->Open->open") {
+	if !appErr.HasRoute("run->runDemo->fillDemo->openStore->openStoreWith->Open->open") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}
+
+func TestRunDemoDatabaseURL(t *testing.T) {
+	// A URL that is not valid is refused before anything is made.
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	err := run(t.Context(), []string{"demo", "-data", dir, "-database-url", "mysql://u:secret@db/clowder"}, mapEnv(nil), &stdout, &stderr, auth.FastHasher())
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+	}
+	if appErr.Tag != config.TagDatabaseURLInvalid || !appErr.HasRoute("run->runDemo->Config.Validate.DatabaseURLInvalid") {
+		t.Errorf("tag %s, path %s", appErr.Tag, appErr.Route())
+	}
+	if _, statErr := os.Stat(dir); statErr == nil {
+		t.Error("the data directory was made")
+	}
+	// The same from the environment.
+	err = run(t.Context(), []string{"demo", "-data", dir}, mapEnv(map[string]string{"CLOWDER_DATABASE_URL": "x"}), &stdout, &stderr, auth.FastHasher())
+	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != config.TagDatabaseURLInvalid {
+		t.Errorf("environment: %v", err)
 	}
 }
 
@@ -727,7 +781,7 @@ func TestServeStoreOpenFailure(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T: %v", err, err)
 	}
-	if !appErr.HasRoute("runServe->Open->open.StoreOpenFailed") {
+	if !appErr.HasRoute("runServe->openStore->openStoreWith->Open->open.StoreOpenFailed") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }

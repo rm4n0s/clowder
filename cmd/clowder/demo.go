@@ -57,11 +57,13 @@ var demoUsers = []struct {
 // add their own demo data here. With -size large it then adds the data set of
 // SPEC §10 (see makeLargeDemo) and prints its counts.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
-	var dataDir, size string
+	var dataDir, size, databaseURL string
 	flags := flag.NewFlagSet("demo", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&dataDir, "data", envString(env, "CLOWDER_DATA", config.DefaultDataDir),
 		"data directory, made if missing and empty (CLOWDER_DATA)")
+	flags.StringVar(&databaseURL, "database-url", envString(env, "CLOWDER_DATABASE_URL", ""),
+		"PostgreSQL URL, postgres://...; empty: SQLite in the data directory (CLOWDER_DATABASE_URL)")
 	flags.StringVar(&size, "size", demoSizeSmall,
 		"size of the demo: small, or large, the data set of SPEC §10 (200 users, 100 rooms, 100,000 posts and comments, 20,000 tasks)")
 	if err := flags.Parse(args); err != nil {
@@ -77,6 +79,11 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	if err != nil {
 		return err
 	}
+	cfg := config.Default()
+	cfg.DatabaseURL = databaseURL
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
 
 	if err := os.MkdirAll(dataDir, dataDirMode); err != nil {
 		return errors.NewErr(tagDataDirCreateFailed, err).SetMetadata("dir", dataDir)
@@ -90,16 +97,17 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 			"dir", dataDir, "entries", len(entries))
 	}
 	_, _ = fmt.Fprintf(stdout, "demo data directory is ready: %s\n", dataDir)
-	return fillDemo(ctx, dataDir, scale, stdout, stderr, hasher)
+	return fillDemo(ctx, dataDir, databaseURL, scale, stdout, stderr, hasher)
 }
 
-// fillDemo makes the demo in the empty data directory dataDir: the small demo
+// fillDemo makes the demo in the empty data directory dataDir, with its
+// database in dataDir or, when databaseURL is set, in PostgreSQL: the small demo
 // and, when scale is not nil, the large one on top of it (makeLargeDemo).
 // runDemo calls it with the scale of the flag -size; the tests call it with a
 // smaller one.
-func fillDemo(ctx context.Context, dataDir string, scale *demoScale, stdout, stderr io.Writer, hasher auth.Hasher) error {
+func fillDemo(ctx context.Context, dataDir, databaseURL string, scale *demoScale, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	logger := newLogger(config.DefaultLogLevel, stderr)
-	st, err := store.Open(ctx, filepath.Join(dataDir, databaseFile), clock.Real(), logger)
+	st, err := openStore(ctx, dataDir, databaseURL, clock.Real(), logger)
 	if err != nil {
 		return err
 	}

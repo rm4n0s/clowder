@@ -2,6 +2,7 @@ package config
 
 import (
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -50,6 +51,10 @@ type Config struct {
 	// one the proxy appended) and not the address of the connection. Leave it
 	// off when clients can reach Clowder directly, or they can forge the header.
 	TrustProxyHeaders bool
+	// DatabaseURL is the URL of the PostgreSQL database (postgres:// or
+	// postgresql://, SPEC D38). Empty means SQLite in DataDir/clowder.db. It
+	// holds a password: print it only through RedactURL.
+	DatabaseURL string
 }
 
 // Default returns the configuration with every setting at its default.
@@ -109,6 +114,21 @@ func (c Config) Validate() error {
 		return errors.New(TagInvitationLifetimeInvalid, "invitation lifetime must be positive",
 			"value", c.InvitationLifetime.String())
 	}
+	if c.DatabaseURL != "" {
+		// The error holds the redacted URL only, and not the error of
+		// url.Parse, which quotes the URL.
+		du, err := url.Parse(c.DatabaseURL)
+		if err != nil {
+			return errors.New(TagDatabaseURLInvalid, "database URL cannot be parsed",
+				"databaseURL", RedactURL(c.DatabaseURL))
+		}
+		scheme := strings.ToLower(du.Scheme)
+		if (scheme != "postgres" && scheme != "postgresql") || du.Host == "" {
+			return errors.New(TagDatabaseURLInvalid,
+				"database URL must be empty or a postgres:// or postgresql:// URL with a host",
+				"databaseURL", RedactURL(c.DatabaseURL))
+		}
+	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":
 	default:
@@ -118,7 +138,49 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// RedactedPassword replaces a password in the output of RedactURL.
+const RedactedPassword = "xxxxx"
+
+// unparseableURL is what RedactURL returns for a string that is not a URL: its
+// text could hold a password, so none of it is shown.
+const unparseableURL = "<unparseable url>"
+
+// RedactURL returns raw with its password replaced by "xxxxx", for logs and
+// error metadata. The password of the user info and the query parameters
+// password and sslpassword are replaced. A string that does not parse as a URL
+// is replaced altogether. An empty string stays empty.
+func RedactURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return unparseableURL
+	}
+	if u.User != nil {
+		if _, ok := u.User.Password(); ok {
+			u.User = url.UserPassword(u.User.Username(), RedactedPassword)
+		}
+	}
+	if u.RawQuery != "" {
+		q := u.Query()
+		changed := false
+		for _, key := range []string{"password", "sslpassword"} {
+			if q.Has(key) {
+				q.Set(key, RedactedPassword)
+				changed = true
+			}
+		}
+		if changed {
+			u.RawQuery = q.Encode()
+		}
+	}
+	return u.String()
+}
+
 const (
+	// TagDatabaseURLInvalid is the tag of a database URL that is not empty and not a postgres:// or postgresql:// URL with a host.
+	TagDatabaseURLInvalid = "DatabaseURLInvalid"
 	// TagListenAddrEmpty is the tag of a listen address that is empty.
 	TagListenAddrEmpty = "ListenAddrEmpty"
 	// TagDataDirEmpty is the tag of a data directory that is empty.

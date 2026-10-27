@@ -706,3 +706,17 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** method B: `git ls-remote --tags origin v1.0.0` shows the tag on `origin`.
 - **Manual checks:** none
 - **Deviations and follow-ups:** The SPEC §16 recommendations stand as written: admins don't read private messages, and messages are not audited or searched in 1.0. The owner may revise them, along with the decisions D29–D37 that the manager made.
+
+## 14.1 The store on PostgreSQL
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-14.1-store-on-postgres
+- **Summary:** `clowder serve`, `invite` and `demo` (both sizes) run on PostgreSQL when `-database-url` / `CLOWDER_DATABASE_URL` is set, with search; SQLite stays the default and unchanged. `internal/store` has `OpenPostgres` and a `dialect` that chooses the raw migrations, the full-text search (`posts_search` with a generated `tsvector` over the `clowder_search` configuration, `ts_rank`, snippets rebuilt in Go with the same markers), the stats, the sequences after `BulkCreate` and the conflict mapping (SQLSTATE 23505). The database URL is validated and only ever logged with its password redacted.
+- **Main files:** `internal/store/{store,migrate,migrations,search,search_postgres,bulk,stats,errors}.go`, `internal/config/config.go` (`DatabaseURL`, `RedactURL`, `TagDatabaseURLInvalid`), `cmd/clowder/database.go` (one opener for serve, invite and demo), `go.mod` (`gorm.io/driver/postgres` v1.6.3, `pgx/v5` v5.10.0).
+- **Tests:** 18 new test functions and about 66 new table cases: config validation and redaction (no password in errors), the migration lists of both dialects, the dialect through `Tx`, the tsquery builder (with injection strings), the snippet overlay, `OpenPostgres` failures without a server (routes, no password leak), the 23505 mapping, the choice of opener in `cmd/clowder`. Three route assertions changed for the new `openStore->openStoreWith` frames.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [14.1 postgres-serve](implemented-proof-images/14.1-postgres-serve.txt)
+  `clowder demo` on a `postgres:18` container, its tables and the filled `posts_search`, then `clowder serve` on it: the login page, a login with a cookie, the room page showing "Release checklist", a prefix search and a two-word search with their marks, a clean stop, and no password in the server's log.
+- **Manual checks:** none
+- **Deviations and follow-ups:** the PostgreSQL details found here (the `clowder_search` configuration, the ICU `nocase` collation for the `COLLATE NOCASE` columns, `json_valid` with `pg_input_is_valid`, UTC scanning of `timestamptz`; PostgreSQL 16+ with ICU and `unaccent`) are recorded in SPEC D38. The manager replaced the worker's plpgsql `json_valid` (an exception block, ~300 ms per 500-row audit batch in the large demo) with `pg_input_is_valid`. For 14.2: the SQLite-only store tests (`EXPLAIN QUERY PLAN`, `sqlite_master`, FTS5 tables, constraint message texts), microsecond precision on PostgreSQL, `--shm-size` for the test container. For 15.2: two processes migrating an empty database at once need an advisory lock around the migrations.

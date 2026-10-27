@@ -59,10 +59,11 @@ type Stats struct {
 }
 
 // statQueries lists, for each field of Stats, the query that computes it.
-func statQueries(st *Stats) []struct {
+func statQueries(st *Stats, d dialect) []struct {
 	dest *int64
 	sql  string
 } {
+	table, idColumn := searchIndex(d)
 	return []struct {
 		dest *int64
 		sql  string
@@ -86,11 +87,11 @@ func statQueries(st *Stats) []struct {
 		{&st.AuditEvents, "SELECT COUNT(*) FROM audit_events"},
 		{&st.PostEvents, "SELECT COUNT(*) FROM audit_events WHERE action = 'post.created'"},
 		{&st.TaskEvents, "SELECT COUNT(*) FROM audit_events WHERE action = 'task.created'"},
-		{&st.Indexed, "SELECT COUNT(*) FROM posts_fts"},
+		{&st.Indexed, "SELECT COUNT(*) FROM " + table},
 		{&st.Unindexed, `SELECT COUNT(*) FROM posts p WHERE p.deleted_at IS NULL
-  AND NOT EXISTS (SELECT 1 FROM posts_fts f WHERE f.rowid = p.id)`},
-		{&st.StrayIndexRows, `SELECT COUNT(*) FROM posts_fts f WHERE NOT EXISTS
-  (SELECT 1 FROM posts p WHERE p.id = f.rowid AND p.deleted_at IS NULL)`},
+  AND NOT EXISTS (SELECT 1 FROM ` + table + ` f WHERE f.` + idColumn + ` = p.id)`},
+		{&st.StrayIndexRows, `SELECT COUNT(*) FROM ` + table + ` f WHERE NOT EXISTS
+  (SELECT 1 FROM posts p WHERE p.id = f.` + idColumn + ` AND p.deleted_at IS NULL)`},
 		{&st.BadComments, `SELECT COUNT(*) FROM posts c
   JOIN posts r ON r.id = c.root_id JOIN posts a ON a.id = c.parent_id
   WHERE c.parent_id IS NOT NULL
@@ -106,7 +107,7 @@ func statQueries(st *Stats) []struct {
   JOIN board_columns c ON c.id = t.column_id JOIN posts p ON p.id = t.post_id
   WHERE c.room_id != t.room_id OR p.room_id != t.room_id`},
 		{&st.BadTaskPositions, `SELECT COUNT(*) FROM (SELECT column_id FROM tasks GROUP BY column_id
-  HAVING MIN(position) != 0 OR MAX(position) != COUNT(*) - 1 OR COUNT(DISTINCT position) != COUNT(*))`},
+  HAVING MIN(position) != 0 OR MAX(position) != COUNT(*) - 1 OR COUNT(DISTINCT position) != COUNT(*)) AS bad`},
 	}
 }
 
@@ -114,7 +115,7 @@ func statQueries(st *Stats) []struct {
 // of the Stats fields. On a large database it takes a second or two.
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	var st Stats
-	for _, q := range statQueries(&st) {
+	for _, q := range statQueries(&st, s.dialect) {
 		if err := s.db(ctx).Raw(q.sql).Scan(q.dest).Error; err != nil {
 			return Stats{}, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "stats", "sql", q.sql)
 		}

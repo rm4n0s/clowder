@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,6 +57,13 @@ func TestValidate(t *testing.T) {
 		{"negative session lifetime", func(c *Config) { c.SessionLifetime = -time.Hour }, TagSessionLifetimeInvalid},
 		{"zero invitation lifetime", func(c *Config) { c.InvitationLifetime = 0 }, TagInvitationLifetimeInvalid},
 		{"negative invitation lifetime", func(c *Config) { c.InvitationLifetime = -time.Hour }, TagInvitationLifetimeInvalid},
+		{"database URL postgres", func(c *Config) { c.DatabaseURL = "postgres://u:p@localhost:5432/clowder" }, ""},
+		{"database URL postgresql", func(c *Config) { c.DatabaseURL = "postgresql://localhost/clowder?sslmode=disable" }, ""},
+		{"database URL sqlite scheme", func(c *Config) { c.DatabaseURL = "sqlite://clowder.db" }, TagDatabaseURLInvalid},
+		{"database URL http scheme", func(c *Config) { c.DatabaseURL = "http://localhost/clowder" }, TagDatabaseURLInvalid},
+		{"database URL garbage", func(c *Config) { c.DatabaseURL = "not a url" }, TagDatabaseURLInvalid},
+		{"database URL without host", func(c *Config) { c.DatabaseURL = "postgres:///clowder" }, TagDatabaseURLInvalid},
+		{"database URL that does not parse", func(c *Config) { c.DatabaseURL = "postgres://u:secret@exa mple.com/%zz" }, TagDatabaseURLInvalid},
 		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }, TagLogLevelUnknown},
 		{"empty log level", func(c *Config) { c.LogLevel = "" }, TagLogLevelUnknown},
 	}
@@ -116,6 +125,57 @@ func TestSecureCookies(t *testing.T) {
 			cfg.BaseURL = tt.baseURL
 			if got := cfg.SecureCookies(); got != tt.want {
 				t.Errorf("SecureCookies() with %q = %v, want %v", tt.baseURL, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateDatabaseURLNeverLeaksThePassword(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		"mysql://u:hunter2@localhost/db",
+		"postgres://u:hunter2@exa mple.com/%zz",
+		"http://u:hunter2@localhost/db",
+	} {
+		cfg := Default()
+		cfg.DatabaseURL = raw
+		err := cfg.Validate()
+		appErr, ok := errors.FromError(err)
+		if !ok {
+			t.Fatalf("%q: expected *errors.Error, got %T", raw, err)
+		}
+		if strings.Contains(appErr.Message, "hunter2") || strings.Contains(fmt.Sprint(appErr.Metadata), "hunter2") ||
+			strings.Contains(appErr.Error(), "hunter2") {
+			t.Errorf("%q: the error leaks the password: %v %v", raw, appErr.Message, appErr.Metadata)
+		}
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, in, want string
+	}{
+		{"empty", "", ""},
+		{"with password", "postgres://clowder:hunter2@db:5432/clowder", "postgres://clowder:xxxxx@db:5432/clowder"},
+		{"without password", "postgres://clowder@db:5432/clowder", "postgres://clowder@db:5432/clowder"},
+		{"without user", "postgres://db/clowder", "postgres://db/clowder"},
+		{"query parameters kept", "postgres://u:pw@db/clowder?sslmode=disable&application_name=x",
+			"postgres://u:xxxxx@db/clowder?sslmode=disable&application_name=x"},
+		{"password in the query", "postgres://u@db/clowder?password=hunter2&sslmode=disable",
+			"postgres://u@db/clowder?password=xxxxx&sslmode=disable"},
+		{"special characters in the password", "postgres://u:p%40ss%2Fword@db/clowder", "postgres://u:xxxxx@db/clowder"},
+		{"unparseable", "postgres://u:hunter2@exa mple.com/%zz", unparseableURL},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := RedactURL(tt.in)
+			if got != tt.want {
+				t.Errorf("RedactURL(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+			if strings.Contains(got, "hunter2") {
+				t.Errorf("RedactURL(%q) = %q leaks the password", tt.in, got)
 			}
 		})
 	}

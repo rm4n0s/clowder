@@ -23,11 +23,11 @@ const (
 	plainSnippetRunes = 200
 )
 
-// ftsText is the SQL expression of the index text of the post p: its body,
-// the names of its attachments and the titles of its tasks, one per line,
-// without the characters that mark a match. Migration 0001 holds the copy
-// that shipped.
-const ftsText = `trim(replace(replace(
+// ftsTextSQLite is the SQL expression of the index text of the post p in
+// SQLite: its body, the names of its attachments and the titles of its tasks,
+// one per line, without the characters that mark a match. Migration 0001
+// holds the copy that shipped.
+const ftsTextSQLite = `trim(replace(replace(
   p.body
   || coalesce((SELECT char(10) || group_concat(file_name, char(10))
                FROM (SELECT file_name FROM attachments WHERE post_id = p.id ORDER BY id)), '')
@@ -35,17 +35,45 @@ const ftsText = `trim(replace(replace(
                FROM (SELECT title FROM tasks WHERE post_id = p.id ORDER BY id)), ''),
   char(57344), ''), char(57345), ''), char(10))`
 
+// ftsTextPostgres is ftsTextSQLite for PostgreSQL: the same text.
+const ftsTextPostgres = `btrim(replace(replace(
+  p.body
+  || coalesce((SELECT chr(10) || string_agg(file_name, chr(10) ORDER BY id) FROM attachments WHERE post_id = p.id), '')
+  || coalesce((SELECT chr(10) || string_agg(title, chr(10) ORDER BY id) FROM tasks WHERE post_id = p.id), ''),
+  chr(57344), ''), chr(57345), ''), chr(10))`
+
+// ftsText is the SQL expression of the index text of the post p: its body,
+// the names of its attachments and the titles of its tasks, one per line,
+// without the characters that mark a match. The text is the same on both
+// databases.
+func ftsText(d dialect) string {
+	if d == dialectPostgres {
+		return ftsTextPostgres
+	}
+	return ftsTextSQLite
+}
+
+// searchIndex names the full-text index table of a dialect and its column of
+// post IDs: posts_fts(rowid) in SQLite, posts_search(post_id) in PostgreSQL.
+func searchIndex(d dialect) (table, idColumn string) {
+	if d == dialectPostgres {
+		return "posts_search", "post_id"
+	}
+	return "posts_fts", "rowid"
+}
+
 // ReindexPost makes the full-text index hold the current text of the post
 // id: it deletes the row of the post and, when the post exists and is not
 // deleted, inserts its body, attachment names and task titles. A missing or
 // deleted post is simply removed from the index. Call it in the transaction
 // of every change that touches those texts.
 func (s *Store) ReindexPost(ctx context.Context, id uint64) error {
-	if err := s.db(ctx).Exec("DELETE FROM posts_fts WHERE rowid = ?", id).Error; err != nil {
+	table, idColumn := searchIndex(s.dialect)
+	if err := s.db(ctx).Exec("DELETE FROM "+table+" WHERE "+idColumn+" = ?", id).Error; err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "reindexPost", "postID", id)
 	}
-	err := s.db(ctx).Exec(`INSERT INTO posts_fts (rowid, text)
-SELECT p.id, `+ftsText+` FROM posts p WHERE p.id = ? AND p.deleted_at IS NULL`, id).Error
+	err := s.db(ctx).Exec(`INSERT INTO `+table+` (`+idColumn+`, text)
+SELECT p.id, `+ftsText(s.dialect)+` FROM posts p WHERE p.id = ? AND p.deleted_at IS NULL`, id).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "reindexPost", "postID", id)
 	}
@@ -56,7 +84,8 @@ SELECT p.id, `+ftsText+` FROM posts p WHERE p.id = ? AND p.deleted_at IS NULL`, 
 // index. Call it in the transaction that deletes the room, before the room
 // goes.
 func (s *Store) UnindexRoom(ctx context.Context, roomID uint64) error {
-	err := s.db(ctx).Exec("DELETE FROM posts_fts WHERE rowid IN (SELECT id FROM posts WHERE room_id = ?)", roomID).Error
+	table, idColumn := searchIndex(s.dialect)
+	err := s.db(ctx).Exec("DELETE FROM "+table+" WHERE "+idColumn+" IN (SELECT id FROM posts WHERE room_id = ?)", roomID).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "unindexRoom", "roomID", roomID)
 	}
@@ -70,7 +99,8 @@ func (s *Store) IndexRows(ctx context.Context) (map[uint64]string, error) {
 		ID   uint64
 		Text string
 	}
-	if err := s.db(ctx).Raw("SELECT rowid AS id, text FROM posts_fts").Scan(&rows).Error; err != nil {
+	table, idColumn := searchIndex(s.dialect)
+	if err := s.db(ctx).Raw("SELECT " + idColumn + " AS id, text FROM " + table).Scan(&rows).Error; err != nil {
 		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "indexRows")
 	}
 	out := make(map[uint64]string, len(rows))
@@ -162,6 +192,9 @@ func matchExpression(terms []SearchTerm) string {
 // (bm25), then newest first (by ID); without, newest first. The room, author,
 // date, tag and kind filters use parameters only.
 func (s *Store) SearchPosts(ctx context.Context, q SearchQuery) ([]SearchHit, error) {
+	if s.dialect == dialectPostgres {
+		return s.searchPostsPostgres(ctx, q)
+	}
 	var sb strings.Builder
 	var args []any
 	words := len(q.Terms) > 0
@@ -184,6 +217,32 @@ WHERE p.deleted_at IS NULL
 		sb.WriteString(" AND posts_fts MATCH ?")
 		args = append(args, matchExpression(q.Terms))
 	}
+	args = appendSearchFilters(&sb, args, q)
+	if words {
+		sb.WriteString(" ORDER BY bm25(posts_fts) ASC, p.id DESC")
+	} else {
+		sb.WriteString(" ORDER BY p.id DESC")
+	}
+	sb.WriteString(" LIMIT ? OFFSET ?")
+	args = append(args, q.Limit, q.Offset)
+
+	var hits []SearchHit
+	if err := s.db(ctx).Raw(sb.String(), args...).Scan(&hits).Error; err != nil {
+		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "searchPosts", "userID", q.ReaderID)
+	}
+	if !words {
+		for i := range hits {
+			hits[i].Snippet = cutRunes(hits[i].Snippet, plainSnippetRunes)
+		}
+	}
+	return hits, nil
+}
+
+// appendSearchFilters writes the conditions of q that do not depend on the
+// full-text index (room, author, dates, kind and tags) to sb, each starting
+// with " AND ", and returns args with their parameters. The query has the
+// aliases p (posts), r (rooms) and u (users).
+func appendSearchFilters(sb *strings.Builder, args []any, q SearchQuery) []any {
 	if q.Room != "" {
 		sb.WriteString(" AND r.name = ?")
 		args = append(args, q.Room)
@@ -217,24 +276,7 @@ WHERE p.deleted_at IS NULL
   AND pt.tag_id = (SELECT t.id FROM tags t WHERE t.name = ?))`)
 		args = append(args, name)
 	}
-	if words {
-		sb.WriteString(" ORDER BY bm25(posts_fts) ASC, p.id DESC")
-	} else {
-		sb.WriteString(" ORDER BY p.id DESC")
-	}
-	sb.WriteString(" LIMIT ? OFFSET ?")
-	args = append(args, q.Limit, q.Offset)
-
-	var hits []SearchHit
-	if err := s.db(ctx).Raw(sb.String(), args...).Scan(&hits).Error; err != nil {
-		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "searchPosts", "userID", q.ReaderID)
-	}
-	if !words {
-		for i := range hits {
-			hits[i].Snippet = cutRunes(hits[i].Snippet, plainSnippetRunes)
-		}
-	}
-	return hits, nil
+	return args
 }
 
 // cutRunes returns the first n characters of s, with an ellipsis when it

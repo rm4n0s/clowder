@@ -6,10 +6,12 @@ require (
 	github.com/a-h/templ v0.3.1100
 	github.com/chromedp/chromedp v0.21.0
 	github.com/glebarez/sqlite v1.11.0
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/rm4n0s/errors v0.2.0
 	github.com/starfederation/datastar-go v1.2.2
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/crypto v0.58.0
+	gorm.io/driver/postgres v1.6.3
 	gorm.io/gorm v1.31.2
 )
 
@@ -26,6 +28,9 @@ require (
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260213210345-44df1a37e875 // indirect
 	github.com/google/uuid v1.3.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect

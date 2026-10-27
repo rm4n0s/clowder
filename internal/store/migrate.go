@@ -40,6 +40,11 @@ func (s *Store) migrate(ctx context.Context, models []any, migrations []migratio
 		}
 		seen[m.ID] = true
 	}
+	if s.dialect == dialectPostgres {
+		if err := s.db(ctx).Exec(postgresPrelude).Error; err != nil {
+			return errors.NewErr(tagMigrationFailed, err).SetMetadata("migration", "prelude")
+		}
+	}
 	all := append([]any{&schemaMigration{}}, models...)
 	if err := s.db(ctx).AutoMigrate(all...); err != nil {
 		return errors.NewErr(tagMigrationFailed, err).SetMetadata("migration", "automigrate")
@@ -74,6 +79,25 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 	}
 	return nil
 }
+
+// postgresPrelude makes PostgreSQL accept the parts of the models that are
+// written for SQLite, before AutoMigrate runs. It is idempotent and runs at
+// every start:
+//
+//   - the collation nocase, for the columns declared "text COLLATE NOCASE" (the
+//     room names are unique without regard to case) and for ORDER BY ... COLLATE
+//     NOCASE: an ICU collation compared at the second level, so that case is
+//     ignored and equal-looking names are equal in comparisons and unique
+//     indexes (the collation is not deterministic);
+//   - the function json_valid(text), which the check on the details of an audit
+//     event calls. SQLite has it built in; the function returns NULL for NULL,
+//     like SQLite. pg_input_is_valid (PostgreSQL 16 and later) checks the text
+//     without the cost of catching an exception.
+const postgresPrelude = `
+CREATE COLLATION IF NOT EXISTS nocase (provider = icu, locale = 'und-u-ks-level2', deterministic = false);
+CREATE OR REPLACE FUNCTION json_valid(text) RETURNS boolean
+LANGUAGE sql IMMUTABLE STRICT AS $$ SELECT pg_input_is_valid($1, 'jsonb') $$;
+`
 
 const (
 	tagMigrationInvalid = "MigrationInvalid"

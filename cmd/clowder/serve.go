@@ -17,7 +17,6 @@ import (
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
-	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/web"
 	"github.com/rm4n0s/errors"
 )
@@ -41,7 +40,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	if err := os.MkdirAll(cfg.DataDir, dataDirMode); err != nil {
 		return errors.NewErr(tagDataDirCreateFailed, err).SetMetadata("dir", cfg.DataDir)
 	}
-	st, err := store.Open(ctx, filepath.Join(cfg.DataDir, databaseFile), clock.Real(), logger)
+	st, err := openStore(ctx, cfg.DataDir, cfg.DatabaseURL, clock.Real(), logger)
 	if err != nil {
 		return err
 	}
@@ -119,6 +118,8 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		"address to listen on, as host:port (CLOWDER_ADDR)")
 	fs.StringVar(&cfg.DataDir, "data", envString(env, "CLOWDER_DATA", def.DataDir),
 		"data directory (CLOWDER_DATA)")
+	fs.StringVar(&cfg.DatabaseURL, "database-url", envString(env, "CLOWDER_DATABASE_URL", def.DatabaseURL),
+		"PostgreSQL URL, postgres://...; empty: SQLite in the data directory (CLOWDER_DATABASE_URL)")
 	fs.StringVar(&cfg.BaseURL, "base-url", envString(env, "CLOWDER_BASE_URL", def.BaseURL),
 		"base URL of invitation links (CLOWDER_BASE_URL)")
 	fs.Int64Var(&cfg.MaxAttachmentSize, "max-attachment-size", maxAttachmentSize,

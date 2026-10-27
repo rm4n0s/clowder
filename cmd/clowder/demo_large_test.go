@@ -27,7 +27,7 @@ func makeLargeForTest(t *testing.T, sc demoScale) (string, string, *store.Store)
 	t.Helper()
 	dir := t.TempDir()
 	var stdout bytes.Buffer
-	if err := fillDemo(t.Context(), dir, &sc, &stdout, io.Discard, auth.FastHasher()); err != nil {
+	if err := fillDemo(t.Context(), dir, "", &sc, &stdout, io.Discard, auth.FastHasher()); err != nil {
 		t.Fatalf("fillDemo: %+v", err)
 	}
 	_, st := openAccounts(t, dir)
@@ -205,7 +205,7 @@ func TestLargeDemoFailures(t *testing.T) {
 		t.Parallel()
 		sc := testScale
 		sc.posts = 5
-		err := fillDemo(t.Context(), t.TempDir(), &sc, io.Discard, io.Discard, auth.FastHasher())
+		err := fillDemo(t.Context(), t.TempDir(), "", &sc, io.Discard, io.Discard, auth.FastHasher())
 		appErr, ok := errors.FromError(err)
 		if !ok || !appErr.HasRoute("fillDemo->makeLargeDemo->largeGen.makeContent.DemoScaleInvalid") {
 			t.Errorf("err = %v, want ...makeContent.DemoScaleInvalid", err)

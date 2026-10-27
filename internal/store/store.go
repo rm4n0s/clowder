@@ -12,8 +12,13 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rm4n0s/clowder/internal/clock"
+	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/errors"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -32,24 +37,46 @@ const (
 	maxOpenConns = 32
 )
 
-// poolSize returns the number of connections the pool of a file database may
-// open, all of which it keeps open. database/sql keeps only two idle
-// connections by default and opens a new one whenever a query finds none
-// free, and every new SQLite connection parses the whole schema: with 200
-// open streams that each read the same post, the server spent half its CPU
-// opening connections and held a page cache for each (13.1, docs/PERFORMANCE.md).
-// A bounded pool queues the queries instead.
+// dialect says which database a Store runs on (SPEC D38). Everything that
+// differs between them is chosen by it inside this package and nowhere else:
+// the raw migrations, the full-text index and search, the pool, the mapping of
+// a unique violation, BulkCreate and the stats. The zero value is SQLite.
+type dialect int
+
+const (
+	// dialectSQLite is SQLite through the pure-Go driver, the default.
+	dialectSQLite dialect = iota
+	// dialectPostgres is PostgreSQL through pgx.
+	dialectPostgres
+)
+
+// String names the dialect for logs and test output.
+func (d dialect) String() string {
+	if d == dialectPostgres {
+		return "postgres"
+	}
+	return "sqlite"
+}
+
+// poolSize returns the number of connections the pool of a file database or
+// of a PostgreSQL database may open, all of which it keeps open. database/sql
+// keeps only two idle connections by default and opens a new one whenever a
+// query finds none free, and every new SQLite connection parses the whole
+// schema: with 200 open streams that each read the same post, the server spent
+// half its CPU opening connections and held a page cache for each (13.1,
+// docs/PERFORMANCE.md). A bounded pool queues the queries instead.
 func poolSize(cpus int) int {
 	return max(minOpenConns, min(2*cpus, maxOpenConns))
 }
 
-// Store is the database of Clowder: the only thing that knows GORM and SQLite
-// (SPEC D6). Make it with Open and release it with Close. A Store is safe for
-// concurrent use.
+// Store is the database of Clowder: the only thing that knows GORM, SQLite and
+// PostgreSQL (SPEC D6, D38). Make it with Open or OpenPostgres and release it
+// with Close. A Store is safe for concurrent use.
 type Store struct {
-	gdb    *gorm.DB
-	clk    clock.Clock
-	logger *slog.Logger
+	gdb     *gorm.DB
+	clk     clock.Clock
+	logger  *slog.Logger
+	dialect dialect
 	// closer closes the connection pool. It is nil in the Store that Tx hands
 	// to its function, which must not close the database.
 	closer io.Closer
@@ -57,6 +84,8 @@ type Store struct {
 
 // options holds what Open fixes and the tests change.
 type options struct {
+	// dialect is the database to open; the zero value is SQLite.
+	dialect dialect
 	// models are the GORM models that AutoMigrate creates and updates.
 	models []any
 	// migrations are the raw SQL migrations, in the order they are applied.
@@ -69,7 +98,17 @@ type options struct {
 func defaultOptions() options {
 	return options{
 		models:     allModels(),
-		migrations: rawMigrations(),
+		migrations: rawMigrations(dialectSQLite),
+		slowQuery:  slowQueryThreshold,
+	}
+}
+
+// postgresOptions are the options of OpenPostgres.
+func postgresOptions() options {
+	return options{
+		dialect:    dialectPostgres,
+		models:     allModels(),
+		migrations: rawMigrations(dialectPostgres),
 		slowQuery:  slowQueryThreshold,
 	}
 }
@@ -83,34 +122,80 @@ func Open(ctx context.Context, path string, clk clock.Clock, logger *slog.Logger
 	return open(ctx, path, clk, logger, defaultOptions())
 }
 
-// open is Open with the options as a parameter.
-func open(ctx context.Context, path string, clk clock.Clock, logger *slog.Logger, opts options) (*Store, error) {
+// OpenPostgres opens the PostgreSQL database at databaseURL (postgres:// or
+// postgresql://), and brings its schema up to date, like Open does for SQLite:
+// the time of every row comes from clk, in UTC; a query slower than 200 ms is
+// logged to logger as a warning, without its arguments; the pool has the same
+// bounds as the pool of a file database (SPEC D34). The URL holds the
+// password: it never appears in an error or a log, only with the password
+// replaced by "xxxxx". The caller closes the Store with Close.
+func OpenPostgres(ctx context.Context, databaseURL string, clk clock.Clock, logger *slog.Logger) (*Store, error) {
+	return open(ctx, databaseURL, clk, logger, postgresOptions())
+}
+
+// open is Open and OpenPostgres with the options as a parameter. target is the
+// path of the SQLite database or the URL of the PostgreSQL one, by
+// opts.dialect.
+func open(ctx context.Context, target string, clk clock.Clock, logger *slog.Logger, opts options) (*Store, error) {
 	if clk == nil {
 		clk = clock.Real()
 	}
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	dsn, memory := buildDSN(path)
-	if !memory && !strings.HasPrefix(path, "file:") {
-		// The file holds password hashes and sessions: only its owner reads
-		// it, whatever the directory allows. SQLite gives the -wal and -shm
-		// files the mode of the database file.
-		if err := restrictFile(path); err != nil {
-			return nil, errors.NewErr(tagOpenFailed, err).SetMetadata("path", path, "step", "permissions")
+	var (
+		dialector gorm.Dialector
+		memory    bool
+		// where names the database in error metadata: the path of the
+		// SQLite file, or the PostgreSQL URL without its password.
+		whereKey, where = "path", target
+	)
+	switch opts.dialect {
+	case dialectPostgres:
+		whereKey, where = "databaseURL", config.RedactURL(target)
+		connConfig, err := pgx.ParseConfig(target)
+		if err != nil {
+			// The message of pgx can quote the URL: keep it out of the error.
+			return nil, errors.New(tagOpenFailed, "the database URL cannot be parsed", whereKey, where, "step", "parse")
 		}
+		// timestamptz comes back in UTC, like the times of SQLite, and not in
+		// the zone of the process.
+		utc := stdlib.OptionAfterConnect(func(_ context.Context, conn *pgx.Conn) error {
+			conn.TypeMap().RegisterType(&pgtype.Type{
+				Name: "timestamptz", OID: pgtype.TimestamptzOID,
+				Codec: &pgtype.TimestamptzCodec{ScanLocation: time.UTC},
+			})
+			return nil
+		})
+		dialector = postgres.New(postgres.Config{Conn: stdlib.OpenDB(*connConfig, utc)})
+	default:
+		var dsn string
+		dsn, memory = buildDSN(target)
+		if !memory && !strings.HasPrefix(target, "file:") {
+			// The file holds password hashes and sessions: only its owner reads
+			// it, whatever the directory allows. SQLite gives the -wal and -shm
+			// files the mode of the database file.
+			if err := restrictFile(target); err != nil {
+				return nil, errors.NewErr(tagOpenFailed, err).SetMetadata("path", target, "step", "permissions")
+			}
+		}
+		dialector = sqlite.Open(dsn)
 	}
-	gdb, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
+	gdb, err := gorm.Open(dialector, &gorm.Config{
 		NowFunc:        func() time.Time { return clk.Now().UTC() },
 		TranslateError: true,
 		Logger:         newGormLogger(logger, opts.slowQuery),
+		// GORM's own ping takes no context: for PostgreSQL the ping of
+		// pingAndMigrate does it, so that a stop signal ends the wait for a
+		// server that does not answer.
+		DisableAutomaticPing: opts.dialect == dialectPostgres,
 	})
 	if err != nil {
-		return nil, errors.NewErr(tagOpenFailed, err).SetMetadata("path", path)
+		return nil, errors.NewErr(tagOpenFailed, err).SetMetadata(whereKey, where)
 	}
 	sqlDB, err := gdb.DB()
 	if err != nil {
-		return nil, errors.NewErr(tagOpenFailed, err).SetMetadata("path", path)
+		return nil, errors.NewErr(tagOpenFailed, err).SetMetadata(whereKey, where)
 	}
 	if memory {
 		// A shared-cache in-memory database lives while a connection is open
@@ -122,7 +207,7 @@ func open(ctx context.Context, path string, clk clock.Clock, logger *slog.Logger
 		sqlDB.SetMaxOpenConns(n)
 		sqlDB.SetMaxIdleConns(n)
 	}
-	s := &Store{gdb: gdb, clk: clk, logger: logger, closer: sqlDB}
+	s := &Store{gdb: gdb, clk: clk, logger: logger, closer: sqlDB, dialect: opts.dialect}
 	if err := pingAndMigrate(ctx, s, sqlDB, opts); err != nil {
 		if closeErr := sqlDB.Close(); closeErr != nil {
 			logger.Warn("closing the database after a failed open failed", "err", closeErr)
@@ -220,7 +305,7 @@ func (s *Store) db(ctx context.Context) *gorm.DB {
 func (s *Store) Tx(ctx context.Context, fn func(tx *Store) error) error {
 	var fnErr error
 	err := s.db(ctx).Transaction(func(g *gorm.DB) error {
-		fnErr = fn(&Store{gdb: g, clk: s.clk, logger: s.logger})
+		fnErr = fn(&Store{gdb: g, clk: s.clk, logger: s.logger, dialect: s.dialect})
 		return fnErr
 	})
 	if err == nil {
