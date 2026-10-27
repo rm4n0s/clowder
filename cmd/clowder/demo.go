@@ -46,14 +46,15 @@ var demoUsers = []struct {
 // the rooms through the rooms service, their posts and the comments under
 // some of them through the posts service, and prints the directory, the users with their password, the rooms,
 // the number of posts, the number of attachments, the number of comments, the
-// number of reactions, the number of tasks and the number of notifications to
-// stdout. The tasks are
+// number of reactions, the number of tasks, the number of notifications and the
+// private messages to stdout. The tasks are
 // written with the posts and comments and some are moved on the board after
 // that. Their due dates are relative to the clock of the demo.
 // The notifications are not written by any step of its own: they come from the
 // mentions, replies, assignments and room additions of the data above, made
-// through the services, so that the rules of SPEC §7.9 and D30 apply. Later
-// steps add their own demo data here.
+// through the services, so that the rules of SPEC §7.9 and D30 apply. The
+// private messages (SPEC §7.11) come last: see makeDemoMessages. Later steps
+// add their own demo data here.
 func runDemo(ctx context.Context, args []string, env func(string) string, stdout, stderr io.Writer, hasher auth.Hasher) error {
 	var dataDir string
 	flags := flag.NewFlagSet("demo", flag.ContinueOnError)
@@ -137,7 +138,15 @@ func runDemo(ctx context.Context, args []string, env func(string) string, stdout
 	if err := makeDemoBoard(ctx, app.NewBoard(st, clk, nil), made, actors, stdout); err != nil {
 		return err
 	}
-	return reportDemoNotifications(ctx, app.NewNotifications(st, nil), actors, stdout)
+	if err := reportDemoNotifications(ctx, app.NewNotifications(st, nil), actors, stdout); err != nil {
+		return err
+	}
+	messages := app.NewMessages(st, clk, fileStore, app.MessagesConfig{
+		MaxAttachmentSize: config.DefaultMaxAttachmentSize,
+		MaxAttachments:    config.DefaultMaxAttachmentsPerPost,
+		Logger:            logger,
+	}, nil)
+	return makeDemoMessages(ctx, messages, actors, stdout)
 }
 
 // makeDemoRooms makes the rooms of the demo through the rooms service, as the
@@ -518,6 +527,97 @@ func reportDemoNotifications(ctx context.Context, notes *app.Notifications, acto
 		perUser = append(perUser, fmt.Sprintf("%s %d", d.username, len(page.Notifications)))
 	}
 	_, _ = fmt.Fprintf(stdout, "demo notifications: %d (%s)\n", total, strings.Join(perUser, ", "))
+	return nil
+}
+
+// demoMessage is a message of the demo. conv names the conversation (the
+// direct one of alice and bob, or the group), reply is the number (from 1,
+// in demoMessages) of the message it answers, or 0.
+type demoMessage struct {
+	conv  string
+	by    string
+	body  string
+	reply int
+}
+
+// The conversations of the private messages of the demo.
+const (
+	demoDirect = "alice-bob"
+	demoGroup  = "Launch crew"
+)
+
+// demoMessages are the private messages of the demo, in the order they are
+// sent. The group is read to its newest message by everyone but bob wrote it;
+// bob has not read the last message of the direct conversation.
+var demoMessages = []demoMessage{
+	{demoDirect, "alice", "Hi Bob, did you find the design notes?", 0},
+	{demoDirect, "bob", "Yes, they are in the shared folder. Thanks for asking!", 1},
+	{demoDirect, "alice", "Great! Lunch at noon?", 0},
+	{demoGroup, "alice", "Welcome to the launch crew! This is where we plan the release.", 0},
+	{demoGroup, "carol", "The release checklist is in general, have a look.", 0},
+	{demoGroup, "bob", "Thanks Carol, I will tag the release on Friday.", 5},
+}
+
+// makeDemoMessages makes the private conversations of the demo through the
+// messages service, as the users who would write in them: the direct
+// conversation of alice and bob, and the group "Launch crew" of alice, bob and
+// carol, with the messages of demoMessages (some are replies), an edit, two
+// reactions, and read state so that bob has one unread conversation. It prints
+// the number of messages, conversations, reactions and edits and the unread
+// conversations of bob. actors holds the demo users by username.
+func makeDemoMessages(ctx context.Context, messages *app.Messages, actors map[string]app.Actor, stdout io.Writer) error {
+	direct, err := messages.StartDirect(ctx, actors["alice"], actors["bob"].UserID)
+	if err != nil {
+		return err
+	}
+	group, err := messages.StartGroup(ctx, actors["alice"], []uint64{actors["bob"].UserID, actors["carol"].UserID}, demoGroup)
+	if err != nil {
+		return err
+	}
+	conversations := map[string]uint64{demoDirect: direct, demoGroup: group}
+	sent := make([]app.Message, 0, len(demoMessages))
+	for _, d := range demoMessages {
+		in := app.MessageInput{Body: d.body}
+		if d.reply != 0 {
+			in.ReplyToID = sent[d.reply-1].ID
+		}
+		m, err := messages.Send(ctx, actors[d.by], conversations[d.conv], in)
+		if err != nil {
+			return err
+		}
+		sent = append(sent, m)
+	}
+	// Alice corrects her lunch invitation.
+	if _, err := messages.Edit(ctx, actors["alice"], sent[2].ID, "Great! Lunch at noon? My treat."); err != nil {
+		return err
+	}
+	reactions := 0
+	for _, r := range []struct {
+		by    string
+		msg   int
+		emoji string
+	}{
+		{"alice", 2, "\u2764\uFE0F"},
+		{"bob", 3, "\U0001F44D"},
+	} {
+		if _, err := messages.React(ctx, actors[r.by], sent[r.msg-1].ID, r.emoji); err != nil {
+			return err
+		}
+		reactions++
+	}
+	// Everyone has read the group; bob has not read the last message of the
+	// direct conversation.
+	for _, username := range []string{"alice", "carol"} {
+		if err := messages.MarkRead(ctx, actors[username], group, sent[len(sent)-1].ID); err != nil {
+			return err
+		}
+	}
+	unread, err := messages.UnreadCount(ctx, actors["bob"])
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(stdout, "demo messages: %d in %d conversations (%d reactions, 1 edited; bob has %d unread)\n",
+		len(sent), len(conversations), reactions, unread)
 	return nil
 }
 

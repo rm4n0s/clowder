@@ -488,3 +488,52 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Opening the newest page also marks older pages read; D30 now says "everything up to the newest it shows".
   - The room, thread and board streams don't resend the count when they open; a reconnect resends the sidebar.
   - The live list inserts at most 30 new notifications at once.
+
+## 12.1 Conversations and messages service
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-12.1-messages-service
+- **Summary:** `app.Messages`, built by `NewMessages(st, clk, files, cfg, pub)`, implements SPEC §7.11 with D32. Every method checks membership; a non-member, a member who left, an admin or a missing conversation gets `TagNotFound`.
+  - **Starting:**
+    - `StartDirect` is unique per pair through `DirectKey` "min:max", and re-reads the conversation on a conflict.
+    - `StartGroup` needs 2 or more other enabled users and allows 50 members at most and a name up to 80 characters.
+  - **Groups:** `AddMembers` also re-adds people who left; `Rename` and `Leave` work on groups only.
+  - **Reading:**
+    - `Conversations` returns the newest first, with the display name, members, a preview of the last message and the unread mark, in at most 4 queries.
+    - `Conversation` returns the members, each one's last-read message, and `CanSend`.
+    - `History` returns 50 messages at a time, oldest first, with older pages through a cursor. Each message has its quote, attachments and reactions.
+  - **Writing:**
+    - `Send` takes a body up to 4,000 characters, a reply in the same conversation and attachments through the post upload checks (now shared as `checkUploadFiles`). Sending marks the conversation read.
+    - `Edit` and `Delete` are for the author only. A deleted message stays as "message deleted"; its attachments, their files (after commit) and its reactions are removed.
+    - `React` uses the same emoji rules as posts.
+  - **Read state:** `MarkRead` never moves back. `UnreadCount` is a single query.
+  - **Files:** `Attachment` serves members only. `Upload` and `DiscardUploads` are there for the pages of step 12.2.
+  - **Live events, published after commit:**
+    - On `conversation:<id>`: `message.created`, `message.updated`, `message.deleted`, `message.reaction`, `conversation.updated` and `conversation.read`.
+    - On `user:<id>`: `conversation.changed` to current, added and leaving members, and `conversation.read` to the reader.
+  - **Not included:** no audit events and no notifications.
+  - **Demo:** an alice–bob direct conversation with a reply, a reaction and an edit, and the group "Launch crew". Bob has 1 unread conversation.
+- **Main files:** `internal/app/{messages,messages_send,attachments}.go`, `internal/store/{messages_queries,attachments}.go`, `internal/live/event.go`, `cmd/clowder/demo.go`.
+- **Tests:**
+  - A permission table of 11 methods by 6 actors.
+  - The direct pair is unique, including 8 concurrent starts under `-race`.
+  - Group limits, re-adding after leaving, and leaving.
+  - Body and reply rules.
+  - Edit and delete rules: the placeholder, the quote of a deleted message, and file removal.
+  - Reactions.
+  - A direct conversation with a disabled user.
+  - Read state and unread count.
+  - History pages.
+  - Conversation order and previews.
+  - Exact events, none on refusal, published after commit.
+  - Routes asserted with `HasRoute`.
+  - Store queries, including a query-count test.
+  - Demo data.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ · no process left ✅
+- **Proof:** none (service step)
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The constructor also takes a clock and a config.
+  - A member who is added back keeps their old read position.
+  - Deleted messages and one's own messages never count as unread.
+  - The `StartDirect` conflict path is tested at store level, because immediate-lock transactions serialize concurrent starts.

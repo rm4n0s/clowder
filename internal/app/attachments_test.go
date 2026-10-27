@@ -564,7 +564,7 @@ func TestPostsUploadsMustBeOnDiskWhenTheDiskFails(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(e.filesDir, 0o750) })
 	_, err := e.posts.Create(t.Context(), e.as("bob"), e.lobby.ID, app.PostInput{Format: app.FormatText, Body: "x", Uploads: []app.Upload{u}})
-	_ = requireTag(t, err, "FileStatFailed", "Posts.Create.func1->Posts.checkUploads->Store.Size.FileStatFailed")
+	_ = requireTag(t, err, "FileStatFailed", "Posts.Create.func1->Posts.checkUploads->checkUploadFiles->Store.Size.FileStatFailed")
 }
 
 func TestPostsEditAttachments(t *testing.T) {

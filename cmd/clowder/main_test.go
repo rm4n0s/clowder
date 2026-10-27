@@ -1295,3 +1295,95 @@ func TestRunDemoMakesTheDemoNotifications(t *testing.T) {
 		})
 	}
 }
+
+func TestRunDemoMakesTheDemoMessages(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	if want := "demo messages: 6 in 2 conversations (2 reactions, 1 edited; bob has 1 unread)"; !strings.Contains(stdout.String(), want) {
+		t.Errorf("stdout lacks %q:\n%s", want, stdout.String())
+	}
+
+	_, st := openAccounts(t, dir)
+	msgs := app.NewMessages(st, clock.Real(), openFiles(t, dir), app.MessagesConfig{}, nil)
+	actors := map[string]app.Actor{}
+	for _, d := range demoUsers {
+		row, err := st.UserByUsername(t.Context(), d.username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actors[d.username] = app.Actor{UserID: row.ID, Username: row.Username, Role: row.Role}
+	}
+
+	// Who sees which conversations, and what is unread.
+	tests := []struct {
+		user   string
+		titles []string
+		unread []bool
+		count  int
+	}{
+		{"alice", []string{"Launch crew", "Bob"}, []bool{false, false}, 0},
+		{"bob", []string{"Launch crew", "Alice"}, []bool{false, true}, 1},
+		{"carol", []string{"Launch crew"}, []bool{false}, 0},
+		{"admin", nil, nil, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.user, func(t *testing.T) {
+			list, err := msgs.Conversations(t.Context(), actors[tt.user])
+			if err != nil {
+				t.Fatalf("Conversations: %+v", err)
+			}
+			var titles []string
+			var unread []bool
+			for _, c := range list {
+				titles = append(titles, c.DisplayName)
+				unread = append(unread, c.Unread)
+			}
+			if !reflect.DeepEqual(titles, tt.titles) || !reflect.DeepEqual(unread, tt.unread) {
+				t.Errorf("conversations = %v unread %v, want %v unread %v", titles, unread, tt.titles, tt.unread)
+			}
+			n, err := msgs.UnreadCount(t.Context(), actors[tt.user])
+			if err != nil || n != tt.count {
+				t.Errorf("unread count = %d, %v; want %d", n, err, tt.count)
+			}
+		})
+	}
+
+	list, err := msgs.Conversations(t.Context(), actors["bob"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var direct, group app.ConversationSummary
+	for _, c := range list {
+		if c.Kind == app.ConversationDirect {
+			direct = c
+		} else {
+			group = c
+		}
+	}
+	if len(group.Members) != 3 || group.LastMessage == nil || group.LastMessage.Author.Username != "bob" {
+		t.Errorf("the group = %+v", group)
+	}
+	page, err := msgs.History(t.Context(), actors["bob"], direct.ID, 0, 0)
+	if err != nil || len(page.Messages) != 3 {
+		t.Fatalf("direct history = %+v, %v", page, err)
+	}
+	first, reply, lunch := page.Messages[0], page.Messages[1], page.Messages[2]
+	if first.ReplyTo != nil || first.EditedAt != nil || len(first.Reactions) != 0 {
+		t.Errorf("first message = %+v", first)
+	}
+	if reply.ReplyTo == nil || reply.ReplyTo.ID != first.ID || reply.ReplyTo.Author.Username != "alice" ||
+		len(reply.Reactions) != 1 || reply.Reactions[0].Emoji != "\u2764\uFE0F" {
+		t.Errorf("reply = %+v", reply)
+	}
+	if lunch.EditedAt == nil || lunch.Body != "Great! Lunch at noon? My treat." ||
+		len(lunch.Reactions) != 1 || lunch.Reactions[0].Emoji != "\U0001F44D" || !lunch.Reactions[0].Mine {
+		t.Errorf("lunch = %+v", lunch)
+	}
+	gp, err := msgs.History(t.Context(), actors["carol"], group.ID, 0, 0)
+	if err != nil || len(gp.Messages) != 3 || gp.Messages[2].ReplyTo == nil || gp.Messages[2].ReplyTo.Author.Username != "carol" {
+		t.Errorf("group history = %+v, %v", gp, err)
+	}
+}

@@ -73,8 +73,8 @@ func (s *Store) DeleteAttachments(ctx context.Context, ids []uint64) error {
 	return nil
 }
 
-// StorageKeysInUse returns those of the keys that some attachment row uses,
-// in no particular order.
+// StorageKeysInUse returns those of the keys that some attachment row, of a
+// post or of a message, uses, in no particular order.
 func (s *Store) StorageKeysInUse(ctx context.Context, keys []string) ([]string, error) {
 	if len(keys) == 0 {
 		return nil, nil
@@ -84,7 +84,12 @@ func (s *Store) StorageKeysInUse(ctx context.Context, keys []string) ([]string, 
 	if err != nil {
 		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "storageKeysInUse")
 	}
-	return used, nil
+	var ofMessages []string
+	err = s.db(ctx).Model(&MessageAttachment{}).Where("storage_key IN ?", keys).Pluck("storage_key", &ofMessages).Error
+	if err != nil {
+		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "storageKeysInUse")
+	}
+	return append(used, ofMessages...), nil
 }
 
 // AttachmentKeysOfRoom returns the storage keys of the attachments of every

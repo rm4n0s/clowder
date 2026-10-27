@@ -21,7 +21,7 @@ type Conversation struct {
 	Name      string `gorm:"not null"`
 	CreatedBy uint64 `gorm:"not null"`
 	// DirectKey identifies a direct conversation: the two user IDs, the
-	// smaller first ("3-7"). It is unique, so a pair of users has one direct
+	// smaller first ("3:7"). It is unique, so a pair of users has one direct
 	// conversation. Nil for a group.
 	DirectKey *string `gorm:"uniqueIndex:uq_conversations_direct_key;check:chk_conversations_direct_key,(kind = 'direct') = (direct_key IS NOT NULL)"`
 

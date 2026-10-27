@@ -289,13 +289,20 @@ func (c PostsConfig) withDefaults() PostsConfig {
 }
 
 // checkUploads adds to fields, under FieldAttachments, the first problem of
-// the uploads of a call: more attachments than the limit (kept is the number
-// of attachments the post keeps besides the uploads), a negative size, a key
-// twice, a key with no file on disk (or a file of another size) and a key that an attachment already uses.
-// It returns an error only when the database or the disk fail.
+// the uploads of a call; see checkUploadFiles.
 func (p *Posts) checkUploads(ctx context.Context, tx *store.Store, fields map[string]string, uploads []Upload, kept int) error {
-	if kept+len(uploads) > p.cfg.MaxAttachments {
-		fields[FieldAttachments] = "Attach at most " + strconv.Itoa(p.cfg.MaxAttachments) + " files."
+	return checkUploadFiles(ctx, tx, p.files, p.cfg.MaxAttachments, fields, uploads, kept)
+}
+
+// checkUploadFiles adds to fields, under FieldAttachments, the first problem
+// of the uploads of a call: more attachments than limit (kept is the number of
+// attachments the post or message keeps besides the uploads), a negative size,
+// a key twice, a key with no file on disk (or a file of another size) and a
+// key that an attachment already uses. It returns an error only when the
+// database or the disk fail.
+func checkUploadFiles(ctx context.Context, tx *store.Store, fs *files.Store, limit int, fields map[string]string, uploads []Upload, kept int) error {
+	if kept+len(uploads) > limit {
+		fields[FieldAttachments] = "Attach at most " + strconv.Itoa(limit) + " files."
 	}
 	if len(uploads) == 0 {
 		return nil
@@ -309,7 +316,7 @@ func (p *Posts) checkUploads(ctx context.Context, tx *store.Store, fields map[st
 		}
 		seen[u.Key] = true
 		keys = append(keys, u.Key)
-		size, err := p.files.Size(u.Key)
+		size, err := fs.Size(u.Key)
 		if err != nil {
 			if appErr, ok := errors.FromError(err); ok && (appErr.Tag == files.TagBadKey || appErr.Tag == files.TagNotFound) {
 				addOnce(fields, FieldAttachments, messageUploadAgain)

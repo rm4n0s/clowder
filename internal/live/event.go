@@ -44,6 +44,31 @@ const (
 	// KindNotificationRead says a user marked notifications as read. It is
 	// published on UserTopic of that user; UserID is the user.
 	KindNotificationRead = "notification.read"
+	// KindMessageCreated says a message was sent in a conversation. It is
+	// published on ConversationTopic; MessageID is the message.
+	KindMessageCreated = "message.created"
+	// KindMessageUpdated says a message was edited. It is published on
+	// ConversationTopic; MessageID is the message.
+	KindMessageUpdated = "message.updated"
+	// KindMessageDeleted says a message was deleted and now shows as "message
+	// deleted". It is published on ConversationTopic; MessageID is the message.
+	KindMessageDeleted = "message.deleted"
+	// KindMessageReaction says a reaction was added to or removed from a
+	// message. It is published on ConversationTopic; MessageID is the message.
+	KindMessageReaction = "message.reaction"
+	// KindConversationUpdated says a conversation was renamed or its members
+	// changed. It is published on ConversationTopic.
+	KindConversationUpdated = "conversation.updated"
+	// KindConversationChanged says something changed in a conversation of a
+	// user that the list of conversations and the unread count show. It is
+	// published on UserTopic of every member (a member who left or was added
+	// included); UserID is that user and ConversationID the conversation.
+	KindConversationChanged = "conversation.changed"
+	// KindConversationRead says a member read a conversation up to a message.
+	// It is published on ConversationTopic, which drives "Seen" (UserID is the
+	// member, MessageID the message), and on UserTopic of the member, which
+	// drives the unread count.
+	KindConversationRead = "conversation.read"
 )
 
 // Event says that something changed. It is a small value and holds no
@@ -63,6 +88,11 @@ type Event struct {
 	// UserID is the ID of the user concerned (the member who joined or left);
 	// 0 when none.
 	UserID uint64
+	// ConversationID is the ID of the private conversation concerned; 0 when
+	// none.
+	ConversationID uint64
+	// MessageID is the ID of the private message concerned; 0 when none.
+	MessageID uint64
 }
 
 // RoomTopic is the topic of the feed and the membership of a room.
