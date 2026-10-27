@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -748,5 +749,50 @@ func TestGormLoggerOnlyLogsSlowQueries(t *testing.T) {
 	l.Trace(ctx, time.Now().Add(-time.Second), fc, nil)
 	if !strings.Contains(out.String(), "SELECT 1") {
 		t.Errorf("a one-second query was not logged: %q", out.String())
+	}
+}
+
+// TestOpenRestrictsTheDatabaseFile is finding S8: the database file, which
+// holds the password hashes, is readable by its owner only, whether it is made
+// by Open or was there before with wider permissions, and so are the files that
+// SQLite adds to it.
+func TestOpenRestrictsTheDatabaseFile(t *testing.T) {
+	tests := []struct {
+		name string
+		// before is the mode of a file that exists already; 0 for none.
+		before os.FileMode
+	}{
+		{"a new database", 0},
+		{"an old database readable by everyone", 0o644},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "x.db")
+			if tt.before != 0 {
+				if err := os.WriteFile(path, nil, tt.before); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(path, tt.before); err != nil {
+					t.Fatal(err)
+				}
+			}
+			s, err := Open(t.Context(), path, clock.NewFake(fakeStart), nil)
+			if err != nil {
+				t.Fatalf("Open: %+v", err)
+			}
+			defer func() { _ = s.Close() }()
+			for _, name := range []string{path, path + "-wal", path + "-shm"} {
+				info, err := os.Stat(name)
+				if err != nil {
+					if name == path {
+						t.Fatal(err)
+					}
+					continue // not made by this SQLite build
+				}
+				if info.Mode().Perm()&0o077 != 0 {
+					t.Errorf("%s has the mode %v, want no access for group and others", filepath.Base(name), info.Mode().Perm())
+				}
+			}
+		})
 	}
 }

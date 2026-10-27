@@ -494,7 +494,7 @@ func TestLogoutStoreErrorsPassUp(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	err := e.svc.Logout(ctx, "token")
-	_ = requireTag(t, err, store.TagQueryFailed, "Accounts.Logout->Store.DeleteSessionByTokenHash.QueryFailed")
+	_ = requireTag(t, err, store.TagQueryFailed, "Accounts.Logout->Store.SessionByTokenHash.QueryFailed")
 }
 
 func TestRateLimitedIsExported(t *testing.T) {

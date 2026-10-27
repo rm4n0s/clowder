@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/web/views"
@@ -77,7 +78,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 		pattern := r.Pattern
 		if pattern == "" {
-			pattern = r.URL.Path
+			pattern = pathForLog(r.URL.Path)
 		}
 		attrs := []any{
 			"method", r.Method,
@@ -90,6 +91,23 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		}
 		s.logger.Info("request", attrs...)
 	})
+}
+
+// maxLoggedPath is the longest path that a log entry holds.
+const maxLoggedPath = 200
+
+// pathForLog is the path of a request that no route matched (a 404, or a 405
+// for a method the route does not have), as it is logged. The token of an
+// invitation link is a secret and never reaches the log, and a path is cut at
+// 200 bytes, so that a request cannot fill the log.
+func pathForLog(path string) string {
+	if strings.HasPrefix(path, "/invite/") {
+		return "/invite/{token}"
+	}
+	if len(path) > maxLoggedPath {
+		return path[:maxLoggedPath]
+	}
+	return path
 }
 
 // recoverPanics turns a panic of a handler into a logged HandlerPanicked error

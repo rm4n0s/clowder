@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/auth"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -49,7 +50,7 @@ func (a *Accounts) Login(ctx context.Context, username, password, clientIP strin
 	}
 	match := false
 	if len(password) <= passwordMaxBytes {
-		match, err = a.hasher.Verify(password, hash)
+		match, err = a.verify(ctx, password, hash)
 		if err != nil {
 			return "", User{}, err
 		}
@@ -164,5 +165,18 @@ func (a *Accounts) Logout(ctx context.Context, token string) error {
 	if token == "" {
 		return nil
 	}
-	return a.st.DeleteSessionByTokenHash(ctx, auth.HashToken(token))
+	tokenHash := auth.HashToken(token)
+	sess, err := a.st.SessionByTokenHash(ctx, tokenHash)
+	if err != nil {
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == store.TagNotFound {
+			return nil
+		}
+		return err
+	}
+	if err := a.st.DeleteSessionByTokenHash(ctx, tokenHash); err != nil {
+		return err
+	}
+	// The other pages that are open with this session notice at once.
+	a.pub.Publish(live.Event{Topic: live.UserTopic(sess.UserID), Kind: live.KindUserChanged, UserID: sess.UserID})
+	return nil
 }

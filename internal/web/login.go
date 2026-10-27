@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/rm4n0s/clowder/internal/web/views"
@@ -43,6 +44,9 @@ func (s *Server) parseBodyForm(w http.ResponseWriter, r *http.Request) bool {
 // rejectForm logs a form that could not be read and answers with the 400 page.
 func (s *Server) rejectForm(w http.ResponseWriter, r *http.Request, appErr *errors.Error) {
 	s.logger.Info("form rejected", "pattern", r.Pattern, "err", appErr)
+	// A body that timed out has ended the request's context too; the answer is
+	// still made.
+	r = r.WithContext(context.WithoutCancel(r.Context()))
 	s.render(w, r, http.StatusBadRequest, views.ErrorPage(http.StatusBadRequest, messageBadRequest))
 }
 

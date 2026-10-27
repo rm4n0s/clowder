@@ -31,6 +31,22 @@ const (
 	shutdownTimeout = 10 * time.Second
 	// readHeaderTimeout bounds how long a client may take to send its headers.
 	readHeaderTimeout = 10 * time.Second
+	// idleTimeout closes a connection that waited this long for its next
+	// request.
+	idleTimeout = 2 * time.Minute
+	// maxHeaderBytes bounds the headers of a request (a session cookie, a
+	// Referer and the usual few are far below it).
+	maxHeaderBytes = 64 << 10
+	// formReadTimeout is how long a form (or any body that is not an upload)
+	// may take to arrive; uploadReadTimeout is the same for a multipart body.
+	// The deadline is lifted when the body has been read, so that it never
+	// cuts a request that is being answered. There is no ReadTimeout and no
+	// WriteTimeout of the whole server: they would cut the event streams.
+	formReadTimeout   = time.Minute
+	uploadReadTimeout = 15 * time.Minute
+	// streamWriteTimeout is how long one write to an event stream may take:
+	// a client that stops reading is dropped, not waited for.
+	streamWriteTimeout = 30 * time.Second
 	// staticPrefix is the path of the embedded static files.
 	staticPrefix = "/static/"
 )
@@ -76,6 +92,12 @@ type Server struct {
 	// pingInterval is how often an open stream writes a comment line, so that
 	// proxies keep the connection.
 	pingInterval time.Duration
+	// formTimeout, uploadTimeout and writeTimeout are formReadTimeout,
+	// uploadReadTimeout and streamWriteTimeout; the tests shorten them.
+	formTimeout, uploadTimeout, writeTimeout time.Duration
+	// patterns are the route patterns of the server (without the extra routes
+	// of the tests); a test goes through all of them.
+	patterns []string
 }
 
 // access says what a route needs from the session of the request.
@@ -114,7 +136,8 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 	if svc.Hub == nil {
 		svc.Hub = live.New()
 	}
-	s := &Server{cfg: cfg, logger: logger, svc: svc, md: markdown.New(), shutdownTimeout: shutdownTimeout, pingInterval: pingInterval}
+	s := &Server{cfg: cfg, logger: logger, svc: svc, md: markdown.New(), shutdownTimeout: shutdownTimeout, pingInterval: pingInterval,
+		formTimeout: formReadTimeout, uploadTimeout: uploadReadTimeout, writeTimeout: streamWriteTimeout}
 
 	notFound := http.HandlerFunc(s.notFound)
 	staticFiles, err := newStaticHandler(staticFS, staticPrefix, notFound)
@@ -197,21 +220,27 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
 	}
 	mux := http.NewServeMux()
+	for _, rt := range routes {
+		s.patterns = append(s.patterns, rt.pattern)
+	}
 	for _, rt := range append(routes, extra...) {
 		mux.Handle(rt.pattern, s.withAccess(rt.handler, rt.access))
 	}
 
-	// Outermost first: logging, panic recovery, cross-origin protection.
+	// Outermost first: the security headers, logging, the deadline of the
+	// body, panic recovery, cross-origin protection.
 	h := s.routeOrNotFound(mux)
 	h = http.NewCrossOriginProtection().Handler(h)
 	h = s.recoverPanics(h)
+	h = s.bodyDeadline(h)
 	h = s.logRequests(h)
+	h = s.secureHeaders(h)
 	s.handler = h
 	return s, nil
 }
 
-// Handler returns the whole handler stack: request logging, panic recovery,
-// cross-origin protection and the routes.
+// Handler returns the whole handler stack: the security headers, request
+// logging, panic recovery, cross-origin protection and the routes.
 func (s *Server) Handler() http.Handler {
 	return s.handler
 }
@@ -228,13 +257,23 @@ func (s *Server) Run(ctx context.Context) error {
 	return s.serve(ctx, ln)
 }
 
+// httpServer makes the http.Server that serves the handler. It has a timeout
+// for the headers and one for an idle connection; the bodies and the event
+// streams have their deadlines per request (bodyDeadline, liveStream.arm),
+// because a ReadTimeout or WriteTimeout of the server would end the streams.
+func (s *Server) httpServer() *http.Server {
+	return &http.Server{
+		Handler:           s.handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    maxHeaderBytes,
+	}
+}
+
 // serve answers requests on ln until ctx is done, then shuts the server down.
 // It owns the goroutine that runs http.Server.Serve and waits for it.
 func (s *Server) serve(ctx context.Context, ln net.Listener) error {
-	srv := &http.Server{
-		Handler:           s.handler,
-		ReadHeaderTimeout: readHeaderTimeout,
-	}
+	srv := s.httpServer()
 	// The open event streams never end by themselves: closing the hub ends
 	// them, so that Shutdown does not wait for them.
 	srv.RegisterOnShutdown(s.svc.Hub.Close)

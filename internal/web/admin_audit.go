@@ -203,7 +203,7 @@ func (s *Server) adminAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := url.URL{Path: "/admin/audit", RawQuery: d.Filter.Query(d.Page)}
-	if err := sse.ReplaceURL(u); err != nil {
+	if err := sseReplaceURL(sse, u); err != nil {
 		appErr := errors.NewErr(tagSSEWriteFailed, err).SetMetadata("event", "replace-url")
 		s.logger.Debug("sse write failed", "err", appErr)
 	}

@@ -194,7 +194,7 @@ func (s *Server) redirect(w http.ResponseWriter, r *http.Request, target string,
 		return
 	}
 	sse := datastar.NewSSE(w, r)
-	if err := sse.Redirect(target); err != nil {
+	if err := sseRedirect(sse, target); err != nil {
 		appErr := errors.NewErr(tagSSEWriteFailed, err).SetMetadata("event", "redirect")
 		s.logger.Debug("sse write failed", "err", appErr)
 	}

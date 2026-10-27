@@ -8,6 +8,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -82,6 +83,8 @@ type Accounts struct {
 	invitationLifetime time.Duration
 	sessionLifetime    time.Duration
 	limiter            *LoginLimiter
+	pub                Publisher
+	hashes             *gate
 }
 
 // AccountsConfig holds the settings and the injected parts of Accounts.
@@ -93,6 +96,15 @@ type AccountsConfig struct {
 	// Limiter limits the failed logins. Nil makes the default one of SPEC
 	// §7.1 (5 failures in 15 minutes), on the clock of the service.
 	Limiter *LoginLimiter
+	// Publisher receives the live events of the account changes: a user who
+	// is disabled, gets another role or logs out (live.KindUserChanged), so
+	// that the open streams of that user notice at once. Nil publishes
+	// nothing.
+	Publisher Publisher
+	// MaxConcurrentHashes bounds how many passwords are hashed or checked at
+	// the same time, each costing 64 MiB; the other requests wait. 0 means
+	// twice the number of CPUs, at least 2 and at most 8.
+	MaxConcurrentHashes int
 }
 
 // NewAccounts makes the service. Time is counted on clk; a nil clk is the real
@@ -112,6 +124,8 @@ func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg Accou
 		invitationLifetime: cfg.InvitationLifetime,
 		sessionLifetime:    cfg.SessionLifetime,
 		limiter:            limiter,
+		pub:                orNop(cfg.Publisher),
+		hashes:             newGate(hashSlots(cfg.MaxConcurrentHashes)),
 	}
 }
 
@@ -207,7 +221,7 @@ func (a *Accounts) SignUp(ctx context.Context, token, username, displayName, pas
 	if fields := signUpProblems(username, displayName, password); len(fields) > 0 {
 		return User{}, errors.New(TagInvalidInput, "the sign-up form has mistakes", "fields", fields)
 	}
-	hash, err := a.hasher.Hash(password)
+	hash, err := a.hash(ctx, password)
 	if err != nil {
 		return User{}, err
 	}
@@ -296,7 +310,9 @@ func (a *Accounts) SetRole(ctx context.Context, actor Actor, userID uint64, role
 		return errors.New(TagInvalidInput, "the role does not exist",
 			"fields", map[string]string{FieldRole: "Choose admin or member."})
 	}
-	return a.st.Tx(ctx, func(tx *store.Store) error {
+	changed := false
+	err := a.st.Tx(ctx, func(tx *store.Store) error {
+		changed = false
 		user, err := tx.UserByID(ctx, userID)
 		if err != nil {
 			return err
@@ -315,8 +331,16 @@ func (a *Accounts) SetRole(ctx context.Context, actor Actor, userID uint64, role
 					"userID", userID)
 			}
 		}
+		changed = true
 		return tx.SetUserRole(ctx, userID, role)
 	})
+	if err != nil {
+		return err
+	}
+	if changed {
+		a.pub.Publish(live.Event{Topic: live.UserTopic(userID), Kind: live.KindUserChanged, UserID: userID})
+	}
+	return nil
 }
 
 // SetDisabled disables or enables a user. Disabling also deletes the sessions
@@ -332,7 +356,9 @@ func (a *Accounts) SetDisabled(ctx context.Context, actor Actor, userID uint64, 
 		return errors.New(TagInvalidInput, "an admin cannot disable themselves",
 			"fields", map[string]string{FieldUser: "You cannot disable your own account."})
 	}
-	return a.st.Tx(ctx, func(tx *store.Store) error {
+	changed := false
+	err := a.st.Tx(ctx, func(tx *store.Store) error {
+		changed = false
 		user, err := tx.UserByID(ctx, userID)
 		if err != nil {
 			return err
@@ -356,8 +382,17 @@ func (a *Accounts) SetDisabled(ctx context.Context, actor Actor, userID uint64, 
 		if err := tx.SetUserDisabled(ctx, userID, true); err != nil {
 			return err
 		}
+		changed = true
 		return tx.DeleteSessionsOfUser(ctx, userID)
 	})
+	if err != nil {
+		return err
+	}
+	if changed {
+		// The streams of the user read the session again and end.
+		a.pub.Publish(live.Event{Topic: live.UserTopic(userID), Kind: live.KindUserChanged, UserID: userID})
+	}
+	return nil
 }
 
 // normalizeUsername lower-cases and trims a username as typed.

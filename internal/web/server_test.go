@@ -119,17 +119,18 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	if mutate != nil {
 		mutate(&cfg)
 	}
+	hub := live.New()
+	t.Cleanup(hub.Close)
 	accounts := app.NewAccounts(st, clk, auth.FastHasher(), app.AccountsConfig{
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
+		Publisher:          hub,
 	})
 	filesDir := filepath.Join(t.TempDir(), "files")
 	fileStore, err := files.New(filesDir)
 	if err != nil {
 		t.Fatalf("files.New: %+v", err)
 	}
-	hub := live.New()
-	t.Cleanup(hub.Close)
 	rooms := app.NewRooms(st, fileStore, logger, hub)
 	audit := app.NewAudit(st)
 	board := app.NewBoard(st, clk, hub)

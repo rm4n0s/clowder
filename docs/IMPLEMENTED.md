@@ -651,3 +651,46 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Memory peaks at about 200 MiB while 200 streams render a new post at once; this is recorded.
   - The tests now use file databases, and CLAUDE.md and SPEC §12 are updated to say so.
   - The bulk data makes no notifications, edits or deletions.
+
+## 13.2 Security review and README
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-13.2-security-readme
+- **Summary:** I reviewed every route and service method against access, streams, sessions, cross-origin rules, headers, uploads, output escaping, authentication, input limits and server settings. Eight findings were fixed, each with tests. `docs/SECURITY.md` has the full table.
+  - **S1 (high):** a crafted login `next` link could close the inline redirect script that the Datastar SDK writes, then inject HTML. `next` now refuses markup characters. Redirects and URL changes are now a `data-init` element holding one escaped JS string, so pages no longer need inline scripts.
+  - **S2:** every response now carries these headers, including errors, redirects and streams:
+    - a CSP: `script-src 'self' 'unsafe-eval'`, no inline scripts or styles;
+    - `nosniff`, `Referrer-Policy: same-origin`, `X-Frame-Options: DENY`;
+    - COOP and CORP set to same-origin;
+    - `Cache-Control: no-store`;
+    - HSTS when the base URL is https.
+  - **S3:** disabling a user, changing a role or logging out now publishes `user.changed`, and every stream re-checks its session at once. Before, a stream could last up to 25 s as the old actor.
+  - **S4:** password hashing runs at most 2×CPU (2–8) at a time, so parallel logins cannot exhaust memory. A waiting request whose client gives up fails with `HashWaitCanceled`.
+  - **S5:** `IdleTimeout`, `MaxHeaderBytes`, a deadline on reading each request body (lifted once the body has been read), and a write deadline on each stream write.
+  - **S6:** invitation tokens in unmatched paths are no longer logged.
+  - **S7:** search `page` is capped.
+  - **S8:** `clowder.db` is created with mode 0600.
+
+  New tests found no problem in these areas: private data on 45 routes, as a non-member and as the admin; admin routes; objects of another parent; body caps; cross-origin refusal on every POST route; and escaping of user text everywhere.
+
+  `README.md` is new. It covers what Clowder is, screenshots, building, the first admin, every configuration flag and variable, Caddy and nginx examples with SSE, online backups and restore, the demo, development and the license. SPEC D36 (CSP and headers) and D37 (hashing gate, timeouts) are added.
+- **Main files:** `internal/web/{security,session,middleware,server,stream,login,errors,search,admin_audit}.go`, `internal/app/{gate,accounts,sessions,search}.go`, `internal/live/event.go`, `internal/store/store.go`, `cmd/clowder/serve.go`, `README.md`, `docs/SECURITY.md`.
+- **Tests:**
+  - redirect injection and the JS string literal;
+  - the header table, including streams and downloads, and HSTS only on https;
+  - 15 cases of streams ending on account changes;
+  - the hashing gate;
+  - server timeouts and slow bodies;
+  - the log redaction;
+  - the search page bound;
+  - the database file mode;
+  - plus the review tables above. The route tables fail when a new POST route has no row.
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (both tag sets) · go test -race ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · browser tests ✅ (two full runs, under the new CSP) · perf.sh ✅ (max 25 ms, 109 MiB) · no process left ✅
+- **Proof:** method B: `docs/SECURITY.md` (findings table) and `README.md`.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Accepted risks, recorded in SECURITY.md:
+    - markdown may embed external `http:` and `https:` images (`img-src`);
+    - downloads keep `private, max-age=86400`;
+    - read-marking on GET (D33).
+  - `govulncheck` was not run, because it is not an allowed tool. Dependency versions are listed. The bundled SQLite (`modernc.org/sqlite v1.23.1`, SQLite 3.41) is the oldest part.

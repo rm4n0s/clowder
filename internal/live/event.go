@@ -64,6 +64,12 @@ const (
 	// published on UserTopic of every member (a member who left or was added
 	// included); UserID is that user and ConversationID the conversation.
 	KindConversationChanged = "conversation.changed"
+	// KindUserChanged says the account of a user changed in a way that open
+	// streams of the user must notice: the user was disabled, got another
+	// role, or a session of the user ended (a logout). It is published on
+	// UserTopic of that user; UserID is the user. The streams read the session
+	// again and end when it is gone or its role differs.
+	KindUserChanged = "user.changed"
 	// KindConversationRead says a member read a conversation up to a message.
 	// It is published on ConversationTopic, which drives "Seen" (UserID is the
 	// member, MessageID the message), and on UserTopic of the member, which

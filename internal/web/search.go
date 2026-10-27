@@ -62,7 +62,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	if path := views.SearchPath(q, page); path != "/search" {
 		u.RawQuery = path[len("/search?"):]
 	}
-	if err := sse.ReplaceURL(u); err != nil {
+	if err := sseReplaceURL(sse, u); err != nil {
 		appErr := errors.NewErr(tagSSEWriteFailed, err).SetMetadata("event", "replace-url")
 		s.logger.Debug("sse write failed", "err", appErr)
 	}

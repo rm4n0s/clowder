@@ -54,14 +54,15 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	if err != nil {
 		return err
 	}
-	accounts := app.NewAccounts(st, clock.Real(), auth.DefaultHasher(), app.AccountsConfig{
-		InvitationLifetime: cfg.InvitationLifetime,
-		SessionLifetime:    cfg.SessionLifetime,
-	})
 	// The hub is closed when serve returns, which is after the HTTP server
 	// stopped: the services publish to it while requests run.
 	hub := live.New()
 	defer hub.Close()
+	accounts := app.NewAccounts(st, clock.Real(), auth.DefaultHasher(), app.AccountsConfig{
+		InvitationLifetime: cfg.InvitationLifetime,
+		SessionLifetime:    cfg.SessionLifetime,
+		Publisher:          hub,
+	})
 	postsConfig := app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,

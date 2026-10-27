@@ -248,7 +248,7 @@ func TestMessagesNeedALogin(t *testing.T) {
 			asDatastar()(req)
 			rec = e.send(req)
 			requireSSE(t, rec)
-			requireBody(t, rec, []string{`window.location.href = "/login`})
+			requireBody(t, rec, []string{`window.location.href = &#34;/login`})
 		})
 	}
 }

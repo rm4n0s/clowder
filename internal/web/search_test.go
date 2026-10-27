@@ -394,7 +394,7 @@ func TestSearchDatastarPatchesThePanel(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`id="search-panel"`, `<mark>Friday</mark>`, `chip-label">#design`,
-		`window.history.replaceState({}, &#34;&#34;, &#34;/search?q=friday&#43;%23design&#34;)`,
+		`window.history.replaceState({}, &#34;&#34;, &#34;/search?q=friday+%23design&#34;)`,
 	} {
 		if !strings.Contains(body, want) && !strings.Contains(body, strings.NewReplacer("&#34;", `"`, "&amp;", "&", "&#43;", "+").Replace(want)) {
 			t.Errorf("body lacks %q:\n%s", want, body)
@@ -403,7 +403,7 @@ func TestSearchDatastarPatchesThePanel(t *testing.T) {
 	// An empty query empties the address.
 	rec = e.getAs("alice", "/search?q=", true)
 	requireSSE(t, rec)
-	requireBody(t, rec, []string{`id="search-panel"`, `replaceState({}, "", "/search")`}, "search-result")
+	requireBody(t, rec, []string{`id="search-panel"`, `replaceState({}, &#34;&#34;, &#34;/search&#34;)`}, "search-result")
 }
 
 func TestSearchNeverShowsAPrivateRoomToWhoIsNotAMember(t *testing.T) {

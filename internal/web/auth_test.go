@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	stdErrors "errors"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -145,9 +146,10 @@ func requireSSE(t *testing.T, rec *httptest.ResponseRecorder) {
 	}
 }
 
-// redirectScript is how the SDK redirects a Datastar client.
+// redirectScript is how the server redirects a Datastar client, as it sits in
+// the data-init attribute of the patch (see runInBrowser).
 func redirectScript(target string) string {
-	return `window.location.href = "` + target + `"`
+	return html.EscapeString("window.location.href = " + jsString(target))
 }
 
 func TestLoginPage(t *testing.T) {

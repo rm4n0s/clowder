@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -91,6 +92,14 @@ func open(ctx context.Context, path string, clk clock.Clock, logger *slog.Logger
 		logger = slog.New(slog.DiscardHandler)
 	}
 	dsn, memory := buildDSN(path)
+	if !memory && !strings.HasPrefix(path, "file:") {
+		// The file holds password hashes and sessions: only its owner reads
+		// it, whatever the directory allows. SQLite gives the -wal and -shm
+		// files the mode of the database file.
+		if err := restrictFile(path); err != nil {
+			return nil, errors.NewErr(tagOpenFailed, err).SetMetadata("path", path, "step", "permissions")
+		}
+	}
 	gdb, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		NowFunc:        func() time.Time { return clk.Now().UTC() },
 		TranslateError: true,
@@ -121,6 +130,23 @@ func open(ctx context.Context, path string, clk clock.Clock, logger *slog.Logger
 		return nil, err
 	}
 	return s, nil
+}
+
+// databaseMode is the mode of the database file: its owner reads and writes it.
+const databaseMode = 0o600
+
+// restrictFile creates the file when it is missing, with the mode 0600, and
+// takes the group and other permissions from one that exists.
+func restrictFile(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, databaseMode)
+	if err != nil {
+		return err
+	}
+	if err := f.Chmod(databaseMode); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // pingAndMigrate checks that the database answers and migrates it. A failed

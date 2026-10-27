@@ -61,6 +61,7 @@ func (s *Server) newStream(w http.ResponseWriter, r *http.Request, actor app.Act
 // on the client has the headers, which tells it, and the tests, that the
 // handler has subscribed and has read what it sends first.
 func (ls *liveStream) open() error {
+	ls.arm()
 	ls.sse = datastar.NewSSE(ls.w, ls.r)
 	if _, err := io.WriteString(ls.w, "id: "+streamEventID+"\n\n"); err != nil {
 		return errors.NewErr(tagSSEWriteFailed, err).SetMetadata("event", "id")
@@ -82,6 +83,7 @@ type start struct {
 // send writes what the stream starts with. It returns true when that was a
 // redirect, which ends the stream.
 func (ls *liveStream) send(st start) (end bool, err error) {
+	ls.arm()
 	for _, op := range st.ops {
 		var err error
 		if op.remove != "" {
@@ -118,7 +120,7 @@ func (ls *liveStream) remove(selector string) error {
 
 // redirect sends the browser to target.
 func (ls *liveStream) redirect(target string) error {
-	if err := ls.sse.Redirect(target); err != nil {
+	if err := sseRedirect(ls.sse, target); err != nil {
 		return errors.NewErr(tagSSEWriteFailed, err).SetMetadata("event", "redirect")
 	}
 	return nil
@@ -240,8 +242,16 @@ func (ls *liveStream) run(sub *live.Subscription, handle eventHandler) {
 				}
 				return
 			}
+			ls.arm()
+			if ev.Kind == live.KindUserChanged {
+				// The account changed: it was disabled, got another role, or
+				// a session ended. No page is rendered for the old actor.
+				end, err = ls.checkSession(ctx)
+				break
+			}
 			end, err = handle(ctx, ev)
 		case <-ticker.C:
+			ls.arm()
 			end, err = ls.keepAlive(ctx)
 		}
 		if err != nil {
@@ -260,17 +270,27 @@ func (ls *liveStream) keepAlive(ctx context.Context) (end bool, err error) {
 	if err := ls.ping(); err != nil {
 		return true, err
 	}
+	return ls.checkSession(ctx)
+}
+
+// checkSession reads the session of the request again. When it is gone (a
+// logout, a disabled user, an expired session) the person is sent to the login
+// page and the stream ends. When the role of the user changed since the stream
+// opened, the stream ends without a word: the page opens it again and the
+// stream starts over with the new role.
+func (ls *liveStream) checkSession(ctx context.Context) (end bool, err error) {
 	cookie, cookieErr := ls.r.Cookie(sessionCookieName)
 	if cookieErr != nil {
 		return true, ls.redirect("/login")
 	}
-	if _, err := ls.s.svc.Accounts.SessionActor(ctx, cookie.Value); err != nil {
+	sess, err := ls.s.svc.Accounts.SessionActor(ctx, cookie.Value)
+	if err != nil {
 		if isTag(err, app.TagUnauthenticated) {
 			return true, ls.redirect("/login")
 		}
 		return true, err
 	}
-	return false, nil
+	return sess.Actor.Role != ls.actor.Role, nil
 }
 
 // streamFailed logs the error that ended a stream. A failed write only means

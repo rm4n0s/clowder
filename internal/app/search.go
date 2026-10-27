@@ -16,6 +16,10 @@ import (
 const (
 	// searchPageSize is the number of results on a page.
 	searchPageSize = 20
+	// searchMaxPage is the last page of results that is looked up; a later one
+	// is empty. It keeps a request for page 9223372036854775807 from asking
+	// the index to skip that many rows (or the offset from overflowing).
+	searchMaxPage = 1000
 	// searchMaxQueryRunes is how much of a query counts; the rest is ignored.
 	searchMaxQueryRunes = 500
 	// searchMaxTerms is how many words and phrases of a query count; the rest
@@ -300,7 +304,7 @@ func NewSearch(st *store.Store) *Search {
 // no exception, D29), never a deleted one. q is parsed by ParseQuery, whose
 // TagInvalidInput error it returns untouched. A query with neither words nor
 // filters finds nothing and is no error. page starts at 1 (a smaller value
-// counts as 1); a page has 20 results.
+// counts as 1); a page has 20 results, and a page past the 1000th is empty.
 func (s *Search) Query(ctx context.Context, actor Actor, q string, page int) (SearchPage, error) {
 	parsed, err := ParseQuery(q)
 	if err != nil {
@@ -310,7 +314,7 @@ func (s *Search) Query(ctx context.Context, actor Actor, q string, page int) (Se
 		page = 1
 	}
 	out := SearchPage{Query: q, Parsed: parsed, Results: []SearchResult{}, Page: page}
-	if parsed.IsEmpty() {
+	if parsed.IsEmpty() || page > searchMaxPage {
 		return out, nil
 	}
 	terms := make([]store.SearchTerm, len(parsed.Terms))

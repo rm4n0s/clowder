@@ -151,10 +151,11 @@ func refererPath(r *http.Request) string {
 
 // safeNext returns next when it is a path on this site, and "/" otherwise
 // (an empty value, another site, a scheme, a protocol-relative "//host", a
-// backslash, a control character). It is what keeps the login from being an
-// open redirect.
+// backslash, a control character, a character of markup or a space). It is what
+// keeps the login from being an open redirect, and from writing markup into the
+// redirect it answers with.
 func safeNext(next string) string {
-	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.ContainsAny(next, `\`) {
+	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.ContainsAny(next, `\`) || hasUnsafeNextRune(next) {
 		return "/"
 	}
 	for _, c := range next {
