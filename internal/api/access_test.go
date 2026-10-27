@@ -87,6 +87,9 @@ func securedRoutes() []securedRoute {
 		{"admin rooms", http.MethodGet, "/api/v1/admin/rooms", http.StatusOK, nil},
 		{"admin room members", http.MethodGet, "/api/v1/admin/rooms" + missing + "/members", http.StatusNotFound, nil},
 		{"admin audit", http.MethodGet, "/api/v1/admin/audit", http.StatusOK, nil},
+		// A request that is no handshake: the token is checked first (401), then
+		// the upgrade is refused.
+		{"websocket", http.MethodGet, "/api/v1/ws", http.StatusUpgradeRequired, nil},
 	}
 }
 

@@ -296,7 +296,8 @@ func (s *Server) httpServer() *http.Server {
 func (s *Server) serve(ctx context.Context, ln net.Listener) error {
 	srv := s.httpServer()
 	// The open event streams never end by themselves: closing the hub ends
-	// them, so that Shutdown does not wait for them.
+	// them (the WebSockets of the API too), so that Shutdown does not wait for
+	// them.
 	srv.RegisterOnShutdown(s.svc.Hub.Close)
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
@@ -309,7 +310,14 @@ func (s *Server) serve(ctx context.Context, ln net.Listener) error {
 		s.logger.Info("server shutting down", "timeout", s.shutdownTimeout.String())
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.shutdownTimeout)
 		defer cancel()
-		if shutdownErr := srv.Shutdown(shutdownCtx); shutdownErr != nil {
+		shutdownErr := srv.Shutdown(shutdownCtx)
+		// The WebSockets of the API were hijacked, so Shutdown does not wait for
+		// them: closing the hub makes each close itself with 1001, and the
+		// process waits for that to be done.
+		if s.svc.API != nil && !s.svc.API.Drain(shutdownCtx) {
+			s.logger.Warn("websockets were still open when the shutdown timeout ended")
+		}
+		if shutdownErr != nil {
 			// The running requests did not end in time: drop them, and wait
 			// for Serve so that no goroutine is left.
 			if closeErr := srv.Close(); closeErr != nil {

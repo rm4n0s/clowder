@@ -377,6 +377,35 @@ func bodyProblems(v *validator, rec *httptest.ResponseRecorder, schema any, name
 	return problems
 }
 
+// schemaProblems validates the JSON text against the schema of the document's
+// components with the name, such as "WsServerMessage".
+func schemaProblems(name string, body []byte) []string {
+	schema := at(document(), "components", "schemas", name)
+	if schema == nil {
+		return []string{"the document has no schema " + name}
+	}
+	var value any
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&value); err != nil {
+		return []string{fmt.Sprintf("the text is not JSON: %v: %s", err, body)}
+	}
+	v := &validator{root: document()}
+	var problems []string
+	for _, p := range v.validate(schema, value, "$") {
+		problems = append(problems, fmt.Sprintf("%s does not match %s: %s: %s", describe(value), name, p, body))
+	}
+	return problems
+}
+
+// checkSchema fails the test unless the JSON text matches the schema of the
+// document's components with the name. The WebSocket tests check every message
+// they receive with checkSchema(t, "WsServerMessage", body) (SPEC D45).
+func checkSchema(t *testing.T, name string, body []byte) {
+	t.Helper()
+	for _, p := range schemaProblems(name, body) {
+		t.Error(p)
+	}
+}
+
 // keysOf returns the sorted keys of a map.
 func keysOf(m map[string]any) []string {
 	keys := make([]string, 0, len(m))

@@ -952,3 +952,30 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The audit filters of the API are 422 when they are not valid, where the page ignores them.
   - The admin scenario of apicheck runs by default; `-admin-username ""` leaves it out.
   - The manager stopped a `clowder serve` that a browser test killed by the system had left running under `.tmp/`.
+
+## 16.5 WebSocket
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-16.5-websocket
+- **Summary:**
+  - `GET /api/v1/ws` (coder/websocket v1.8.15, with the library's origin check) checks the bearer token before the upgrade. It speaks the protocol of SPEC §7.13: the client sends subscribe, unsubscribe and ping; the server sends ack, error, pong, event and resync.
+  - Each connection has one hub subscription whose topics are added and removed in place (`live.Subscription.AddTopics`/`RemoveTopics`). The user's own topic is subscribed from the start.
+  - Topics are checked like the pages' streams: all or nothing per request, and 404 for what the user may not read.
+  - Every event is checked again for the user and carries `data` built by the same code as the REST answers. A lost room or conversation drops its topics with an `error`.
+  - Session changes close the connection: 4001 when it ended, 4002 when the role changed. Overflow and a Redis reconnect send a `resync` (with the new `live.DropReason`) and close with 1013. Shutdown closes each socket with 1001, and `api.Server.Drain` waits for them.
+  - Each connection has three goroutines (the handler, which is the only writer, a reader and a pinger), all waited for.
+- **Main files:** `internal/api/{ws,ws_topics,ws_events,api,respond}.go`, `openapi.json` (the `GET /ws` operation and 12 `Ws*` schemas), `internal/live/hub.go`, `internal/web/server.go` (`Drain` after `Shutdown`), `cmd/clowder/serve.go`, `cmd/clowder-apicheck` (`-watch`, `-other-base-url`, `-event-timeout`), `go.mod`.
+- **Tests:**
+  - About 110 `TestWS*` cases in `internal/api`: the handshake and origin, the protocol and close codes, topic syntax and limits (including the exact 200 boundary), permissions, each event kind's `data` validated against `WsServerMessage` and compared with the matching GET answer, lost access, overflow and reconnect, sessions ending (4001) or changing (4002), and shutdown with no goroutine left.
+  - 8 cases in `internal/live`, 5 for apicheck's watch scenario, and 1 shutdown test in `internal/web`.
+  - Each of the 10 new tags has a route test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ (both run package by package because of the host's memory) · browser tests ✅ (`internal/web`, `internal/browsertest`, `cmd/clowder-proof`; they could not run in 16.3) · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [16.5 websocket](implemented-proof-images/16.5-websocket.txt)
+  - Part 1, one process on SQLite: alice watches while bob posts, comments, reacts, moves the card and sends her a message. Each write is followed by its events, such as `post.created`, `board.changed`, `comment.created` and `post.updated`, `reaction.changed`, `message.created` and `conversation.changed`, each with its `data`. Deleting the room sends `room.deleted`, and logging out closes the socket with 4001.
+  - Part 2, two processes on one PostgreSQL and one Redis: alice's socket is on the first process and bob's writes go to the second, and the same events arrive through Redis.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The choices this step made are recorded in SPEC §7.13 and D44: valid JSON with an unknown type gets an `error` and the connection stays open, a resync closes with 1013, and `post:<id>` must be a top-level post.
+  - A write timeout could not be tested reliably. A dead client is tested instead, and the `SocketWriteFailed` route is tested directly.
+  - `notification.created` sends one event for each notification newer than the newest the connection has seen.

@@ -66,7 +66,10 @@ type testEnv struct {
 	st       *store.Store
 	clk      *clock.Fake
 	rec      *live.Recorder
-	log      *syncBuffer
+	// hub is the hub the services publish to, which the WebSocket listens to;
+	// rec records the same events.
+	hub *live.Hub
+	log *syncBuffer
 	// noted are the user IDs the NoteUser hook received.
 	noted *noteLog
 }
@@ -98,24 +101,27 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 	clk := clock.NewFake(testStart)
 	st := storetest.Open(t, clk)
 	rec := &live.Recorder{}
+	hub := live.New()
+	t.Cleanup(hub.Close)
+	pub := fanout{rec, hub}
 	accounts := app.NewAccounts(st, clk, auth.FastHasher(), app.AccountsConfig{
 		InvitationLifetime: 7 * 24 * time.Hour,
 		SessionLifetime:    30 * 24 * time.Hour,
-		Publisher:          rec,
+		Publisher:          pub,
 	})
 	filesDir := filepath.Join(t.TempDir(), "files")
 	fileStore, err := files.New(filesDir)
 	if err != nil {
 		t.Fatalf("files.New: %+v", err)
 	}
-	msgs := app.NewMessages(st, clk, fileStore, app.MessagesConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4}, rec)
-	notifs := app.NewNotifications(st, rec)
-	rooms := app.NewRooms(st, fileStore, logger, rec)
-	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4, Logger: logger}, rec)
-	board := app.NewBoard(st, clk, rec)
+	msgs := app.NewMessages(st, clk, fileStore, app.MessagesConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4}, pub)
+	notifs := app.NewNotifications(st, pub)
+	rooms := app.NewRooms(st, fileStore, logger, pub)
+	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4, Logger: logger}, pub)
+	board := app.NewBoard(st, clk, pub)
 	noted := &noteLog{}
 	opts := Options{
-		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st)},
+		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Hub: hub},
 		Logger:        logger,
 		NoteUser:      func(_ *http.Request, id uint64) { noted.add(id) },
 		MaxUploadSize: 1 << 20,
@@ -131,7 +137,20 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 	for _, rt := range srv.Routes() {
 		mux.Handle(rt.Pattern, rt.Handler)
 	}
-	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, board: board, filesDir: filesDir, st: st, clk: clk, rec: rec, log: buf, noted: noted}
+	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, board: board, filesDir: filesDir, st: st, clk: clk, rec: rec, hub: hub, log: buf, noted: noted}
+}
+
+// fanout is the publisher of the tests: the recorder keeps every event, the
+// hub delivers it to the WebSockets.
+type fanout struct {
+	rec *live.Recorder
+	hub *live.Hub
+}
+
+// Publish records the event and delivers it.
+func (f fanout) Publish(ev live.Event) {
+	f.rec.Publish(ev)
+	f.hub.Publish(ev)
 }
 
 // addUser makes a user with the password testPassword.

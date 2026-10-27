@@ -3,6 +3,8 @@ package web
 import (
 	"bufio"
 	"context"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1176,4 +1178,80 @@ func TestPostStreamOpensForAComment(t *testing.T) {
 	got := c.patches(3)
 	requirePatch(t, got[0], "", "outer", []string{`id="post-content-` + idText(root.ID) + `"`}, nil)
 	requirePatch(t, got[2], "#post-"+idText(comment.ID), "after", []string{"an answer"}, nil)
+}
+
+// TestServerShutdownClosesWebSockets checks that stopping the server closes an
+// open WebSocket of the API with the close code 1001 and that serve returns
+// only after that: http.Server.Shutdown does not wait for upgraded connections.
+// The client is a raw connection (the WebSocket library is the API package's).
+func TestServerShutdownClosesWebSockets(t *testing.T) {
+	t.Parallel()
+	e := newRoomsEnv(t)
+	login, err := e.accounts.LoginClient(t.Context(), app.ClientLogin{
+		Username: "alice", Password: testPassword, ClientIP: "192.0.2.77", Kind: app.SessionAPI, ClientName: "shutdown test",
+	})
+	if err != nil {
+		t.Fatalf("LoginClient: %+v", err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+	served := make(chan error, 1)
+	go func() { served <- e.srv.serve(ctx, ln) }()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_, err = fmt.Fprintf(conn, "GET /api/v1/ws HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n"+
+		"Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nAuthorization: Bearer %s\r\n\r\n",
+		ln.Addr().String(), login.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("status = %d, want 101", resp.StatusCode)
+	}
+
+	stop()
+	// The close frame: FIN and the opcode 8, a length, the code 1001 and the
+	// reason, not masked (it comes from the server).
+	header := make([]byte, 4)
+	if _, err := io.ReadFull(br, header); err != nil {
+		t.Fatalf("reading the close frame: %v", err)
+	}
+	if header[0] != 0x88 || header[2] != 0x03 || header[3] != 0xE9 {
+		t.Errorf("the server sent %x, want a close frame with the code 1001", header)
+	}
+	// The server waits for the client's answer to the close before it ends.
+	select {
+	case <-served:
+		t.Fatal("serve returned before the WebSocket had ended")
+	case <-time.After(300 * time.Millisecond):
+	}
+	// The client answers the close, as the protocol asks, and the server ends.
+	if _, err := conn.Write([]byte{0x88, 0x82, 0, 0, 0, 0, 0x03, 0xE9}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Fatalf("serve: %+v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the server did not stop")
+	}
+	if !e.srv.svc.API.Drain(t.Context()) {
+		t.Error("a WebSocket was still open after the server stopped")
+	}
 }

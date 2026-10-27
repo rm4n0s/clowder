@@ -473,3 +473,87 @@ var (
 	_ interface{ Publish(live.Event) } = (*live.Hub)(nil)
 	_ interface{ Publish(live.Event) } = (*live.Recorder)(nil)
 )
+
+func TestDropReason(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// end drops or ends the subscription s of the hub h.
+		end  func(h *live.Hub, s *live.Subscription, cancel context.CancelFunc)
+		want string
+	}{
+		{"open", func(*live.Hub, *live.Subscription, context.CancelFunc) {}, ""},
+		{"overflow", func(h *live.Hub, _ *live.Subscription, _ context.CancelFunc) {
+			for range 65 {
+				h.Publish(live.Event{Topic: "room:1"})
+			}
+		}, live.DropOverflow},
+		{"DropAll", func(h *live.Hub, _ *live.Subscription, _ context.CancelFunc) { h.DropAll() }, live.DropReconnect},
+		{"Close of the subscription", func(_ *live.Hub, s *live.Subscription, _ context.CancelFunc) { s.Close() }, ""},
+		{"Close of the hub", func(h *live.Hub, _ *live.Subscription, _ context.CancelFunc) { h.Close() }, ""},
+		{"the context", func(_ *live.Hub, _ *live.Subscription, cancel context.CancelFunc) { cancel() }, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := live.New()
+			defer h.Close()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			s := h.Subscribe(ctx, "room:1")
+			tc.end(h, s, cancel)
+			if got := s.DropReason(); got != tc.want {
+				t.Errorf("DropReason() = %q, want %q", got, tc.want)
+			}
+			if s.Dropped() != (tc.want != "") {
+				t.Errorf("Dropped() = %v with the reason %q", s.Dropped(), tc.want)
+			}
+		})
+	}
+}
+
+func TestAddAndRemoveTopics(t *testing.T) {
+	t.Parallel()
+	h := live.New()
+	defer h.Close()
+	s := h.Subscribe(t.Context(), "user:1")
+	other := h.Subscribe(t.Context(), "room:1")
+
+	h.Publish(live.Event{Topic: "room:1", Kind: "a"})
+	requireNone(t, s)
+	s.AddTopics("room:1", "room:2", "room:1")
+	h.Publish(live.Event{Topic: "room:1", Kind: "b"})
+	h.Publish(live.Event{Topic: "room:2", Kind: "c"})
+	h.Publish(live.Event{Topic: "user:1", Kind: "d"})
+	for _, want := range []string{"b", "c", "d"} {
+		if got := next(t, s); got.Kind != want {
+			t.Fatalf("got %q, want %q", got.Kind, want)
+		}
+	}
+	// A topic added twice is delivered once.
+	requireNone(t, s)
+
+	s.RemoveTopics("room:1", "room:9")
+	h.Publish(live.Event{Topic: "room:1", Kind: "e"})
+	h.Publish(live.Event{Topic: "room:2", Kind: "f"})
+	if got := next(t, s); got.Kind != "f" {
+		t.Errorf("got %q after the removal of room:1, want f", got.Kind)
+	}
+	requireNone(t, s)
+	// The other subscription is not touched by either.
+	for _, want := range []string{"a", "b", "e"} {
+		if got := next(t, other); got.Kind != want {
+			t.Errorf("the other subscription got %q, want %q", got.Kind, want)
+		}
+	}
+
+	// Closing the subscription forgets every topic, the added ones too.
+	s.Close()
+	s.AddTopics("room:3") // does nothing on a closed subscription
+	s.RemoveTopics("room:2")
+	h.Publish(live.Event{Topic: "room:3"})
+	h.Publish(live.Event{Topic: "room:2"})
+	if _, ok := <-s.C(); ok {
+		t.Errorf("a closed subscription received an event")
+	}
+}

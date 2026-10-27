@@ -200,12 +200,13 @@ func TestOpenAPIOperations(t *testing.T) {
 		has := func(code string) bool { _, ok := responses[code]; return ok }
 		success := false
 		for code := range responses {
-			if strings.HasPrefix(code, "2") {
+			// The WebSocket answers 101, Switching Protocols.
+			if strings.HasPrefix(code, "2") || code == "101" {
 				success = true
 			}
 		}
 		if !success {
-			t.Errorf("%s has no 2xx response", name)
+			t.Errorf("%s has no 2xx response (or 101 for the WebSocket)", name)
 		}
 		if !has("500") {
 			t.Errorf("%s has no 500 response", name)

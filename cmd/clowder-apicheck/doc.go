@@ -25,6 +25,15 @@
 // empty -admin-username leaves the scenario out, for a server whose admin is
 // not known.
 //
+// The watch scenario (also -watch, which runs only it) opens the WebSocket
+// (SPEC §7.13), subscribes to a new room, its board and the conversation with
+// the other user, and prints each message that comes while the other user
+// writes a post with a task, a comment, a reaction, moves the card and sends a
+// message through REST. Each write must be followed by its events within
+// -event-timeout (5 seconds), or the run fails. -other-base-url sends the
+// other user's writes to another process of the same installation (SPEC
+// §8.1), so that the events cross from one process to the other.
+//
 // Each scenario is a named function of scenarios.go; -only runs just the named
 // ones, and -list prints their names. A later step adds its scenarios to the
 // list.

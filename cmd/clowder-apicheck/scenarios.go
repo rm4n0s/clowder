@@ -27,6 +27,20 @@ type runner struct {
 	// adminUsername and adminPassword are the admin of the admin scenario.
 	adminUsername string
 	adminPassword string
+	// otherBaseURL is the address the other user writes through in the watch
+	// scenario; empty means the address of the client.
+	otherBaseURL string
+	// eventWait is how long the watch scenario waits for the event of a write;
+	// 0 means defaultEventWait.
+	eventWait time.Duration
+}
+
+// otherBase returns the address the other user writes through.
+func (r *runner) otherBase() string {
+	if r.otherBaseURL != "" {
+		return r.otherBaseURL
+	}
+	return r.c.base
 }
 
 // scenario is a named list of steps against the API. A later step of the plan
@@ -45,6 +59,7 @@ func scenarios() []scenario {
 		{name: "board", summary: "upload files, post them with a task, work the board, download, search, and read the notifications as the assignee", run: boardScenario},
 		{name: "messages", summary: "start a conversation, send a file, reply as the other user, react, edit, delete, read, make a group, rename it and leave", run: messagesScenario},
 		{name: "admin", summary: "as an admin: list the users, make an invitation, list the rooms and read the audit log; as a member: refused", run: adminScenario},
+		{name: watchScenarioName, summary: "open the WebSocket, subscribe to a room, its board and a conversation, and see the events of the other user's writes", run: watchScenario},
 	}
 }
 
@@ -56,8 +71,14 @@ func (r *runner) login(ctx context.Context) (answer, error) {
 
 // loginAs logs in as the user and keeps the token for the next requests.
 func (r *runner) loginAs(ctx context.Context, username, password string) (answer, error) {
-	r.c.redac.add(password)
-	a, err := r.c.do(ctx, "POST", "/api/v1/auth/login", map[string]string{
+	return r.loginOn(ctx, r.c, username, password)
+}
+
+// loginOn logs in on the client, which may be another client than the
+// runner's, and keeps the token in it.
+func (r *runner) loginOn(ctx context.Context, c *client, username, password string) (answer, error) {
+	c.redac.add(password)
+	a, err := c.do(ctx, "POST", "/api/v1/auth/login", map[string]string{
 		"username": username, "password": password, "client_name": r.clientName,
 	}, 200)
 	if err != nil {
@@ -67,8 +88,8 @@ func (r *runner) loginAs(ctx context.Context, username, password string) (answer
 	if token == "" {
 		return a, errors.New(tagAnswerUnexpected, "the login answer has no token")
 	}
-	r.c.token = token
-	r.c.redac.add(token)
+	c.token = token
+	c.redac.add(token)
 	return a, nil
 }
 

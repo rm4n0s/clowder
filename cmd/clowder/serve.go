@@ -99,7 +99,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	apiServer, err := api.New(api.Options{
 		Services: api.Services{
 			Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts,
-			Board: board, Search: search, Audit: audit,
+			Board: board, Search: search, Audit: audit, Hub: hub,
 		},
 		Logger:        logger,
 		NoteUser:      web.NoteUser,

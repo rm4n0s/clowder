@@ -71,6 +71,10 @@
     {
       "name": "meta",
       "description": "The API itself."
+    },
+    {
+      "name": "websocket",
+      "description": "Live events over a WebSocket."
     }
   ],
   "paths": {
@@ -3403,6 +3407,63 @@
           }
         }
       }
+    },
+    "/ws": {
+      "get": {
+        "tags": [
+          "websocket"
+        ],
+        "summary": "Open the WebSocket",
+        "operationId": "openWebSocket",
+        "description": "Upgrades the connection to a WebSocket (RFC 6455, version 13) that pushes the live events the user would see in the pages. The bearer token is checked before the upgrade: a missing or wrong token is a plain 401 JSON answer. A browser on another site is refused (403) by the Origin check; a desktop client sends no Origin. After the upgrade every message is a JSON text message with a type. The client sends subscribe, unsubscribe and ping (WsClientMessage); the server sends ack, error, pong, event and resync (WsServerMessage). The topic user:<id> of the user is subscribed from the start and cannot be removed; at most 200 other topics per connection. subscribe is all or nothing: if any topic cannot be subscribed, one error message answers the request and nothing of it is subscribed (a room, thread, board or conversation the user may not read is not_found). Subscribe first, then load what is shown with the REST routes, so that no change falls in between. An event is sent only if the user may still see it, with data as the REST API returns the resource now; when the user loses a room or a conversation they subscribed to, one error message of not_found names the topic and the topic is dropped. A message over 16 KiB closes the connection with 1009, a text that is not JSON or a binary message with 1003. The server pings every 30 seconds and closes a connection that does not answer within 15. Close codes: 1001 the server stops; 4001 the session ended (a logout, a disabled user, an expired session); 4002 the role of the user changed (connect again); 1013 after a resync message, because the client was too slow or the server lost events from other processes (connect again and load again what is shown).",
+        "x-client-messages": {
+          "$ref": "#/components/schemas/WsClientMessage"
+        },
+        "x-server-messages": {
+          "$ref": "#/components/schemas/WsServerMessage"
+        },
+        "responses": {
+          "101": {
+            "description": "Switching Protocols: the connection is now a WebSocket."
+          },
+          "400": {
+            "description": "The handshake is not valid: a wrong Sec-WebSocket-Key or Sec-WebSocket-Version. The body is plain text.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "description": "The Origin of the request is another site than the server. The body is plain text.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "426": {
+            "description": "The request is not a WebSocket handshake. The body is plain text.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5555,6 +5616,365 @@
           "has_more"
         ],
         "additionalProperties": false
+      },
+      "WsSubscribe": {
+        "type": "object",
+        "description": "Client to server: listen to topics. The answer is an ack with the same id, or an error.",
+        "properties": {
+          "type": {
+            "const": "subscribe"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The client's own number for this request; the answer repeats it."
+          },
+          "topics": {
+            "type": "array",
+            "minItems": 1,
+            "description": "A topic: room:<id> (the feed and the members of a room), post:<id> (the thread of a top-level post), board:<id> (the board of a room), conversation:<id> (a private conversation) or user:<id> with the ID of the user of the token. IDs are written in decimal without a sign or leading zeros.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "topics"
+        ],
+        "additionalProperties": false
+      },
+      "WsUnsubscribe": {
+        "type": "object",
+        "description": "Client to server: stop listening to topics. A topic the connection does not have is ignored; user:<id> cannot be removed. The answer is an ack, or an error.",
+        "properties": {
+          "type": {
+            "const": "unsubscribe"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The client's own number for this request; the answer repeats it."
+          },
+          "topics": {
+            "type": "array",
+            "minItems": 1,
+            "description": "A topic: room:<id> (the feed and the members of a room), post:<id> (the thread of a top-level post), board:<id> (the board of a room), conversation:<id> (a private conversation) or user:<id> with the ID of the user of the token. IDs are written in decimal without a sign or leading zeros.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "topics"
+        ],
+        "additionalProperties": false
+      },
+      "WsPing": {
+        "type": "object",
+        "description": "Client to server: are you there? The answer is a pong with the same id.",
+        "properties": {
+          "type": {
+            "const": "ping"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The client's own number for this request; the pong repeats it."
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "WsClientMessage": {
+        "description": "A message of the client.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/WsSubscribe"
+          },
+          {
+            "$ref": "#/components/schemas/WsUnsubscribe"
+          },
+          {
+            "$ref": "#/components/schemas/WsPing"
+          }
+        ]
+      },
+      "WsAck": {
+        "type": "object",
+        "description": "Server to client: the request was done. topics are those of the request, without repeats.",
+        "properties": {
+          "type": {
+            "const": "ack"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The id of the request."
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "topics"
+        ],
+        "additionalProperties": false
+      },
+      "WsError": {
+        "type": "object",
+        "description": "Server to client: a request failed, or a topic was dropped. With id, it answers the request with that id and nothing of the request was done; for a subscribe, topic names the first topic that failed (a room, thread, board or conversation the user may not read is not_found). Without id, the user lost a topic they had subscribed to (they left or were removed from the room or conversation, or it was deleted): error.code is not_found, topic names it, and it is not subscribed any more.",
+        "properties": {
+          "type": {
+            "const": "error"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The id of the request that failed; absent when the error is about a dropped topic."
+          },
+          "topic": {
+            "type": "string",
+            "description": "The topic the error is about, when it is about one."
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorObject"
+          }
+        },
+        "required": [
+          "type",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "WsPong": {
+        "type": "object",
+        "description": "Server to client: the answer to a ping.",
+        "properties": {
+          "type": {
+            "const": "pong"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The id of the ping."
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "WsUnreadCounts": {
+        "type": "object",
+        "description": "The data of notification.read and of conversation.read on user:<id>: the unread counts of the user, as GET /me returns them.",
+        "properties": {
+          "unread_notifications": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of unread notifications."
+          },
+          "unread_conversations": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of conversations with unread messages."
+          }
+        },
+        "required": [
+          "unread_notifications",
+          "unread_conversations"
+        ],
+        "additionalProperties": false
+      },
+      "WsConversationRead": {
+        "type": "object",
+        "description": "The data of conversation.read on conversation:<id>: a member read the conversation up to a message.",
+        "properties": {
+          "conversation_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "user_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The member who read."
+          },
+          "up_to_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The newest message they read."
+          }
+        },
+        "required": [
+          "conversation_id",
+          "user_id",
+          "up_to_id"
+        ],
+        "additionalProperties": false
+      },
+      "WsEvent": {
+        "type": "object",
+        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each.",
+        "properties": {
+          "type": {
+            "const": "event"
+          },
+          "topic": {
+            "type": "string",
+            "description": "A topic: room:<id> (the feed and the members of a room), post:<id> (the thread of a top-level post), board:<id> (the board of a room), conversation:<id> (a private conversation) or user:<id> with the ID of the user of the token. IDs are written in decimal without a sign or leading zeros."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "post.created",
+              "post.updated",
+              "post.deleted",
+              "comment.created",
+              "comment.updated",
+              "comment.deleted",
+              "reaction.changed",
+              "board.changed",
+              "room.updated",
+              "room.deleted",
+              "member.joined",
+              "member.left",
+              "notification.created",
+              "notification.read",
+              "message.created",
+              "message.updated",
+              "message.deleted",
+              "message.reaction",
+              "conversation.updated",
+              "conversation.changed",
+              "conversation.read"
+            ],
+            "description": "What happened."
+          },
+          "room_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The room concerned."
+          },
+          "post_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The post or comment concerned."
+          },
+          "root_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The top-level post of the thread of a comment."
+          },
+          "user_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The user concerned (the member who joined or left, the reader of a conversation)."
+          },
+          "conversation_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The conversation concerned."
+          },
+          "message_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The message concerned."
+          },
+          "data": {
+            "description": "The resource, absent for a deletion.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Post"
+              },
+              {
+                "$ref": "#/components/schemas/ReactionList"
+              },
+              {
+                "$ref": "#/components/schemas/Board"
+              },
+              {
+                "$ref": "#/components/schemas/Room"
+              },
+              {
+                "$ref": "#/components/schemas/Member"
+              },
+              {
+                "$ref": "#/components/schemas/Notification"
+              },
+              {
+                "$ref": "#/components/schemas/WsUnreadCounts"
+              },
+              {
+                "$ref": "#/components/schemas/Message"
+              },
+              {
+                "$ref": "#/components/schemas/Conversation"
+              },
+              {
+                "$ref": "#/components/schemas/WsConversationRead"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "topic",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "WsResync": {
+        "type": "object",
+        "description": "Server to client, the last message before the server closes the connection with 1013: events were or may have been lost (the client did not read fast enough: overflow; the server lost the connection that carries the events of the other processes: reconnect). The client connects again and loads again what it shows.",
+        "properties": {
+          "type": {
+            "const": "resync"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "overflow",
+              "reconnect"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "WsServerMessage": {
+        "description": "A message of the server.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/WsAck"
+          },
+          {
+            "$ref": "#/components/schemas/WsError"
+          },
+          {
+            "$ref": "#/components/schemas/WsPong"
+          },
+          {
+            "$ref": "#/components/schemas/WsEvent"
+          },
+          {
+            "$ref": "#/components/schemas/WsResync"
+          }
+        ]
       }
     },
     "responses": {

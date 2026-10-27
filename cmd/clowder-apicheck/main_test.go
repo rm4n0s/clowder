@@ -16,6 +16,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/files"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/store/storetest"
@@ -28,10 +29,26 @@ const testPassword = "demo-password-1234"
 // (members) and root (admin), and returns its address.
 func startAPI(t *testing.T) string {
 	t.Helper()
+	first, _ := startAPIWith(t, nil)
+	return first
+}
+
+// startAPIWith is startAPI with the hub the WebSocket listens to: nil makes the
+// hub the services publish to, another one is a hub that hears nothing. It
+// returns the address of a second server over the same services, standing for
+// a second process of the same installation.
+func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
+	t.Helper()
+	hub := live.New()
+	t.Cleanup(hub.Close)
+	if listen == nil {
+		listen = hub
+	}
 	clk := clock.NewFake(time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC))
 	st := storetest.Open(t, clk)
 	accounts := app.NewAccounts(st, clk, auth.FastHasher(), app.AccountsConfig{
 		InvitationLifetime: 7 * 24 * time.Hour, SessionLifetime: 30 * 24 * time.Hour,
+		Publisher: hub,
 	})
 	for _, u := range []struct {
 		name string
@@ -49,7 +66,7 @@ func startAPI(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rooms := app.NewRooms(st, fileStore, nil, nil)
+	rooms := app.NewRooms(st, fileStore, nil, hub)
 	root, err := st.UserByUsername(t.Context(), "root")
 	if err != nil {
 		t.Fatal(err)
@@ -61,15 +78,16 @@ func startAPI(t *testing.T) string {
 	}
 	srv, err := api.New(api.Options{Services: api.Services{
 		Accounts:      accounts,
-		Notifications: app.NewNotifications(st, nil),
-		Messages:      app.NewMessages(st, clk, fileStore, app.MessagesConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 2}, nil),
+		Notifications: app.NewNotifications(st, hub),
+		Messages:      app.NewMessages(st, clk, fileStore, app.MessagesConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 2}, hub),
 		Rooms:         rooms,
 		Posts: app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
 			MaxAttachmentSize: 1 << 20, MaxAttachments: 2,
-		}, nil),
-		Board:  app.NewBoard(st, clk, nil),
+		}, hub),
+		Board:  app.NewBoard(st, clk, hub),
 		Search: app.NewSearch(st),
 		Audit:  app.NewAudit(st),
+		Hub:    listen,
 	}, MaxUploadSize: 1 << 20, BaseURL: "http://clowder.example.com"})
 	if err != nil {
 		t.Fatal(err)
@@ -78,9 +96,10 @@ func startAPI(t *testing.T) string {
 	for _, rt := range srv.Routes() {
 		mux.Handle(rt.Pattern, rt.Handler)
 	}
-	ts := httptest.NewServer(mux)
+	ts, other := httptest.NewServer(mux), httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
-	return ts.URL
+	t.Cleanup(other.Close)
+	return ts.URL, other.URL
 }
 
 func TestRunAgainstTheRealAPI(t *testing.T) {
@@ -111,7 +130,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 				`"unread_notifications": 0`, "> GET /api/v1/me/sessions", `"current": true`, `"kind": "api"`,
 				"> GET /api/v1/users?q=al", `"username": "alice"`, "> POST /api/v1/auth/logout", "< 204 No Content",
 				"< 401 Unauthorized", "< WWW-Authenticate: Bearer", `"code": "unauthenticated"`,
-				"ok session", "== rooms:", "ok rooms", "== messages:", "ok messages", "== admin:", "ok admin", "all scenarios passed (",
+				"ok session", "== rooms:", "ok rooms", "== messages:", "ok messages", "== admin:", "ok admin", "== watch:", "ok watch", "all scenarios passed (",
 			},
 			notWantOut: []string{testPassword},
 		},
@@ -241,6 +260,27 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 			wantCode: 2, wantErr: "the admin scenario needs -admin-username",
 		},
 		{
+			name:      "the watch scenario",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-watch"},
+			ownServer: true,
+			wantCode:  0,
+			wantOut: []string{
+				"== watch:", "> GET /api/v1/ws", "> Upgrade: websocket", "< 101 Switching Protocols",
+				`> ws {"id":1,"topics":["room:`, "< ws {\"id\":1,\"topics\":[", `"type":"ack"`,
+				"> POST /api/v1/rooms/", "/posts",
+				"< ws event room:", " post.created ", "board:", " board.changed ", "board of room", "To do(1)", "In progress(1)", "Watch this card",
+				"comment.created", "reaction.changed", "reactions: ", "message.created", "conversation.changed",
+				"room.deleted", "error not_found topic=room:", "error not_found topic=board:", "error not_found topic=post:",
+				"> POST /api/v1/auth/logout", "closed by the server: code 4001", "ok watch", "all scenarios passed",
+			},
+			notWantOut: []string{testPassword, "== session"},
+		},
+		{
+			name:     "the watch scenario and -only",
+			args:     []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-watch", "-only", "session"},
+			wantCode: 2, wantErr: "-watch and -only cannot be used together",
+		},
+		{
 			name:      "the board scenario with another user that is not there",
 			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "board", "-other-username", "nobody"},
 			ownServer: true,
@@ -294,7 +334,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 		{
 			name:     "the list",
 			args:     []string{"-list"},
-			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "admin\t"},
+			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "admin\t", "watch\t"},
 		},
 		{
 			name:     "a server that is not there",
@@ -370,7 +410,10 @@ func TestTheTokenIsNeverPrinted(t *testing.T) {
 	}))
 	t.Cleanup(spy.Close)
 	var out, errOut bytes.Buffer
-	code := run(t.Context(), []string{"-base-url", spy.URL, "-username", "alice", "-password", testPassword, "-admin-username", "root"}, func(string) string { return "" }, &out, &errOut)
+	// The spy forwards plain requests, not a WebSocket, so the watch scenario
+	// is left out.
+	code := run(t.Context(), []string{"-base-url", spy.URL, "-username", "alice", "-password", testPassword, "-admin-username", "root",
+		"-only", "session,rooms,board,messages,admin"}, func(string) string { return "" }, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d\n%s\n%s", code, out.String(), errOut.String())
 	}
@@ -702,4 +745,58 @@ func isMemberOfLobby(t *testing.T, base, username string) bool {
 	}
 	t.Fatal("no lobby")
 	return false
+}
+
+// TestWatchAcrossTwoServers has the other user write through a second server
+// over the same services, the way a second process of an installation does.
+func TestWatchAcrossTwoServers(t *testing.T) {
+	t.Parallel()
+	first, second := startAPIWith(t, nil)
+	var out, errOut bytes.Buffer
+	args := []string{"-base-url", first, "-other-base-url", second + "/", "-username", "alice", "-password", testPassword, "-watch"}
+	code := run(t.Context(), args, func(string) string { return "" }, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d\nstdout:\n%s\nstderr:\n%s", code, out.String(), errOut.String())
+	}
+	for _, want := range []string{"# bob writes through " + second, "ok watch", "message.created", "room.deleted"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stdout does not contain %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// TestWatchMissedEvent runs the scenario against a server whose WebSocket
+// hears nothing: the first write has no event, and the run fails.
+func TestWatchMissedEvent(t *testing.T) {
+	t.Parallel()
+	deaf := live.New()
+	t.Cleanup(deaf.Close)
+	base, _ := startAPIWith(t, deaf)
+	var out, errOut bytes.Buffer
+	args := []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-watch", "-event-timeout", "300ms"}
+	code := run(t.Context(), args, func(string) string { return "" }, &out, &errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\nstdout:\n%s", code, out.String())
+	}
+	for _, want := range []string{"FAILED watch", "EventMissed", "event room:", "post.created", "board.changed"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stdout does not contain %q:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "ok watch") {
+		t.Error("the scenario passed")
+	}
+}
+
+// TestWatchNeedsTheWebSocket runs the scenario against a server that has no
+// WebSocket route behind its token: the handshake is refused.
+func TestWatchWithAWrongBaseURL(t *testing.T) {
+	t.Parallel()
+	base := startAPI(t)
+	var out, errOut bytes.Buffer
+	args := []string{"-base-url", base, "-other-base-url", "http://127.0.0.1:1", "-username", "alice", "-password", testPassword, "-watch"}
+	code := run(t.Context(), args, func(string) string { return "" }, &out, &errOut)
+	if code != 1 || !strings.Contains(out.String(), "FAILED watch") || !strings.Contains(out.String(), "RequestFailed") {
+		t.Fatalf("exit code = %d\nstdout:\n%s", code, out.String())
+	}
 }

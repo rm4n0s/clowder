@@ -5,6 +5,7 @@ go 1.27
 require (
 	github.com/a-h/templ v0.3.1100
 	github.com/chromedp/chromedp v0.21.0
+	github.com/coder/websocket v1.8.15
 	github.com/glebarez/sqlite v1.11.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/redis/go-redis/v9 v9.23.0

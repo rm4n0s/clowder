@@ -58,7 +58,10 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	thirdUsername := fs.String("third-username", "carol", "the third user, whom the messages scenario puts in a group with the other user")
 	adminUsername := fs.String("admin-username", "admin", "the admin of the admin scenario; empty leaves the scenario out")
 	adminPassword := fs.String("admin-password", "", "password of the admin ("+adminPasswordEnv+" when empty; the demo password if that is empty too)")
+	otherBaseURL := fs.String("other-base-url", "", "address the other user writes through in the "+watchScenarioName+" scenario, another process of the same installation (the same as -base-url when empty)")
+	eventTimeout := fs.Duration("event-timeout", defaultEventWait, "how long the "+watchScenarioName+" scenario waits for the event of each write")
 	only := fs.String("only", "", "run only these scenarios, separated by commas")
+	watch := fs.Bool("watch", false, "run only the "+watchScenarioName+" scenario (the same as -only "+watchScenarioName+")")
 	list := fs.Bool("list", false, "print the names of the scenarios and stop")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -92,6 +95,13 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	if *adminPassword == "" {
 		*adminPassword = demoPassword
 	}
+	if *watch {
+		if strings.TrimSpace(*only) != "" {
+			_, _ = fmt.Fprintf(stderr, "clowder-apicheck: -watch and -only cannot be used together\n")
+			return 2
+		}
+		*only = watchScenarioName
+	}
 	all := scenarios()
 	if *adminUsername == "" {
 		if strings.TrimSpace(*only) != "" && slices.Contains(strings.Split(strings.ReplaceAll(*only, " ", ""), ","), adminScenarioName) {
@@ -114,7 +124,8 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	}
 	r := &runner{c: c, username: *username, password: *password, clientName: *clientName,
 		otherUsername: *otherUsername, otherPassword: *otherPassword, thirdUsername: *thirdUsername,
-		adminUsername: *adminUsername, adminPassword: *adminPassword}
+		adminUsername: *adminUsername, adminPassword: *adminPassword,
+		otherBaseURL: strings.TrimRight(*otherBaseURL, "/"), eventWait: *eventTimeout}
 	for _, s := range chosen {
 		_, _ = fmt.Fprintf(stdout, "== %s: %s\n\n", s.name, s.summary)
 		if err := s.run(ctx, r); err != nil {

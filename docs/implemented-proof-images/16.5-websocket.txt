@@ -1,0 +1,301 @@
+# Step 16.5: clowder-apicheck -watch (SPEC §7.13). Each write of the other user (bob) is followed by the
+# WebSocket messages it causes, which alice receives ("< ws ..."). Lines starting with "#" say who does what.
+#
+# Part 1: one process on SQLite and demo data.
+# commands that ran (data directory: a temporary one):
+#   clowder demo -data <tmp>
+#   clowder serve -data <tmp> -addr 127.0.0.1:18085 -base-url http://127.0.0.1:18085
+#   clowder-apicheck -base-url http://127.0.0.1:18085 -username alice -password demo-password-1234 -other-username bob -watch
+#   (the password of bob is the demo password by default)
+
+== watch: open the WebSocket, subscribe to a room, its board and a conversation, and see the events of the other user's writes
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {"client_name":"clowder-apicheck","password":"<password>","username":"alice"}
+< 200 OK
+
+# bob logs in, to write while alice watches
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {"client_name":"clowder-apicheck","password":"<password>","username":"bob"}
+< 200 OK
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 200 OK
+
+# alice makes a room, adds bob to it and opens the conversation with bob
+
+> POST /api/v1/rooms
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"description":"Made by clowder-apicheck -watch","name":"watch-1793127281982499993","visibility":"private"}
+< 201 Created
+
+> POST /api/v1/rooms/4/members
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"user_id":3}
+< 204 No Content
+
+> POST /api/v1/conversations
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"usernames":["bob"]}
+< 200 OK
+
+# alice opens the WebSocket and subscribes to the room, its board and the conversation
+
+> GET /api/v1/ws
+> Upgrade: websocket
+> Authorization: Bearer <token>
+< 101 Switching Protocols
+
+> ws {"id":1,"topics":["room:4","board:4","conversation:1"],"type":"subscribe"}
+< ws {"id":1,"topics":["room:4","board:4","conversation:1"],"type":"ack"}
+
+# bob writes a post with a task
+
+> POST /api/v1/rooms/4/posts
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"body":"Hello from bob, written while you watch.","tasks":[{"title":"Watch this card"}]}
+< 201 Created
+
+< ws event room:4 post.created room_id=4 post_id=18  post 18 by bob: "Hello from bob, written while you watch." (0 comments)
+< ws event board:4 board.changed room_id=4 post_id=18  board of room 4: To do(1) In progress(0) Done(0)
+
+# alice subscribes to the thread of the post too
+
+> ws {"id":2,"topics":["post:18"],"type":"subscribe"}
+< ws {"id":2,"topics":["post:18"],"type":"ack"}
+
+# bob comments on the post
+
+> POST /api/v1/posts/18/comments
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"body":"A comment, in the thread you watch."}
+< 201 Created
+
+< ws event post:18 comment.created room_id=4 post_id=19 root_id=18  comment 19 by bob: "A comment, in the thread you watch." (0 comments)
+< ws event room:4 post.updated room_id=4 post_id=18 root_id=18  post 18 by bob: "Hello from bob, written while you watch." (1 comments)
+
+# bob reacts to the post
+
+> PUT /api/v1/posts/18/reactions/%F0%9F%91%8D
+> Authorization: Bearer <token>
+< 200 OK
+
+< ws event room:4 reaction.changed room_id=4 post_id=18  reactions: 👍 x1
+< ws event post:18 reaction.changed room_id=4 post_id=18  reactions: 👍 x1
+
+# bob moves the card to the next column
+
+> GET /api/v1/rooms/4/board
+> Authorization: Bearer <token>
+< 200 OK
+
+> POST /api/v1/tasks/10/move
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"column_id":11,"position":0}
+< 204 No Content
+
+< ws event board:4 board.changed room_id=4 post_id=18  board of room 4: To do(0) In progress(1) Done(0)
+< ws event room:4 post.updated room_id=4 post_id=18  post 18 by bob: "Hello from bob, written while you watch." (1 comments)
+< ws event post:18 post.updated room_id=4 post_id=18  post 18 by bob: "Hello from bob, written while you watch." (1 comments)
+
+# bob sends a message to alice
+
+> POST /api/v1/conversations/1/messages
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"body":"Hello alice, this message is for you."}
+< 201 Created
+
+< ws event conversation:1 message.created conversation_id=1 message_id=7  message 7 by bob: "Hello alice, this message is for you."
+< ws event user:2 conversation.changed user_id=2 conversation_id=1  conversation 1 direct "Bob" unread=true
+
+# alice deletes the room
+
+> DELETE /api/v1/rooms/4
+> Authorization: Bearer <token>
+< 204 No Content
+
+< ws event room:4 room.deleted room_id=4  (no data)
+< ws error not_found topic=board:4
+< ws error not_found topic=post:18
+< ws error not_found topic=room:4
+< ws event user:2 room.deleted room_id=4 user_id=2  (no data)
+
+# alice logs out, which ends the session of the WebSocket
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+< ws closed by the server: code 4001 "session ended"
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+ok watch
+
+all scenarios passed (16 requests)
+
+
+################################################################################
+# Part 2: two processes of one installation (SPEC §8.1): PostgreSQL 18 and Redis 8 in containers,
+# both processes on the same data directory and database, bob's writes go to the second process.
+# commands that ran (data directory: a temporary one; the containers were removed after the run):
+#   docker run postgres:18 and redis:8 on free local ports
+#   clowder demo -data <tmp> -database-url <postgres>
+#   clowder serve -data <tmp> -database-url <postgres> -redis-url <redis> -addr 127.0.0.1:18086 -base-url http://127.0.0.1:18086
+#   clowder serve -data <tmp> -database-url <postgres> -redis-url <redis> -addr 127.0.0.1:18087 -base-url http://127.0.0.1:18087
+#   clowder-apicheck -base-url http://127.0.0.1:18086 -other-base-url http://127.0.0.1:18087 -username alice -password demo-password-1234 -other-username bob -watch
+#   (alice's WebSocket is on :18086, bob's requests go to :18087: every event crosses through Redis)
+
+== watch: open the WebSocket, subscribe to a room, its board and a conversation, and see the events of the other user's writes
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {"client_name":"clowder-apicheck","password":"<password>","username":"alice"}
+< 200 OK
+
+# bob writes through http://127.0.0.1:18087
+
+# bob logs in, to write while alice watches
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {"client_name":"clowder-apicheck","password":"<password>","username":"bob"}
+< 200 OK
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 200 OK
+
+# alice makes a room, adds bob to it and opens the conversation with bob
+
+> POST /api/v1/rooms
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"description":"Made by clowder-apicheck -watch","name":"watch-1793127445247670767","visibility":"private"}
+< 201 Created
+
+> POST /api/v1/rooms/4/members
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"user_id":3}
+< 204 No Content
+
+> POST /api/v1/conversations
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"usernames":["bob"]}
+< 200 OK
+
+# alice opens the WebSocket and subscribes to the room, its board and the conversation
+
+> GET /api/v1/ws
+> Upgrade: websocket
+> Authorization: Bearer <token>
+< 101 Switching Protocols
+
+> ws {"id":1,"topics":["room:4","board:4","conversation:1"],"type":"subscribe"}
+< ws {"id":1,"topics":["room:4","board:4","conversation:1"],"type":"ack"}
+
+# bob writes a post with a task
+
+> POST /api/v1/rooms/4/posts
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"body":"Hello from bob, written while you watch.","tasks":[{"title":"Watch this card"}]}
+< 201 Created
+
+< ws event room:4 post.created room_id=4 post_id=18  post 18 by bob: "Hello from bob, written while you watch." (0 comments)
+< ws event board:4 board.changed room_id=4 post_id=18  board of room 4: To do(1) In progress(0) Done(0)
+
+# alice subscribes to the thread of the post too
+
+> ws {"id":2,"topics":["post:18"],"type":"subscribe"}
+< ws {"id":2,"topics":["post:18"],"type":"ack"}
+
+# bob comments on the post
+
+> POST /api/v1/posts/18/comments
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"body":"A comment, in the thread you watch."}
+< 201 Created
+
+< ws event post:18 comment.created room_id=4 post_id=19 root_id=18  comment 19 by bob: "A comment, in the thread you watch." (0 comments)
+< ws event room:4 post.updated room_id=4 post_id=18 root_id=18  post 18 by bob: "Hello from bob, written while you watch." (1 comments)
+
+# bob reacts to the post
+
+> PUT /api/v1/posts/18/reactions/%F0%9F%91%8D
+> Authorization: Bearer <token>
+< 200 OK
+
+< ws event room:4 reaction.changed room_id=4 post_id=18  reactions: 👍 x1
+< ws event post:18 reaction.changed room_id=4 post_id=18  reactions: 👍 x1
+
+# bob moves the card to the next column
+
+> GET /api/v1/rooms/4/board
+> Authorization: Bearer <token>
+< 200 OK
+
+> POST /api/v1/tasks/10/move
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"column_id":11,"position":0}
+< 204 No Content
+
+< ws event board:4 board.changed room_id=4 post_id=18  board of room 4: To do(0) In progress(1) Done(0)
+< ws event room:4 post.updated room_id=4 post_id=18  post 18 by bob: "Hello from bob, written while you watch." (1 comments)
+< ws event post:18 post.updated room_id=4 post_id=18  post 18 by bob: "Hello from bob, written while you watch." (1 comments)
+
+# bob sends a message to alice
+
+> POST /api/v1/conversations/1/messages
+> Authorization: Bearer <token>
+> Content-Type: application/json
+> {"body":"Hello alice, this message is for you."}
+< 201 Created
+
+< ws event conversation:1 message.created conversation_id=1 message_id=7  message 7 by bob: "Hello alice, this message is for you."
+< ws event user:2 conversation.changed user_id=2 conversation_id=1  conversation 1 direct "Bob" unread=true
+
+# alice deletes the room
+
+> DELETE /api/v1/rooms/4
+> Authorization: Bearer <token>
+< 204 No Content
+
+< ws event room:4 room.deleted room_id=4  (no data)
+< ws error not_found topic=board:4
+< ws error not_found topic=post:18
+< ws error not_found topic=room:4
+< ws event user:2 room.deleted room_id=4 user_id=2  (no data)
+
+# alice logs out, which ends the session of the WebSocket
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+< ws closed by the server: code 4001 "session ended"
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+ok watch
+
+all scenarios passed (16 requests)

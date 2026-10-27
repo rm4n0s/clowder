@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/errors"
 )
@@ -40,6 +43,11 @@ type Services struct {
 	Search *app.Search
 	// Audit is the service that reads the audit log.
 	Audit *app.Audit
+	// Hub is the hub the services publish to; the WebSocket (SPEC §7.13)
+	// subscribes to it. It must be the hub of the server of internal/web,
+	// which closes it when the server stops. Nil makes a hub that nothing
+	// publishes to, so that a WebSocket never gets an event.
+	Hub *live.Hub
 }
 
 // Options are the parts a Server is made of.
@@ -95,6 +103,15 @@ type Server struct {
 	// baseURL is the start of the link of an invitation.
 	baseURL string
 	routes  []Route
+	// pingInterval and pingTimeout are how often a WebSocket is pinged and how
+	// long the client has to answer; writeTimeout bounds a write to it. The
+	// tests shorten them.
+	pingInterval, pingTimeout, writeTimeout time.Duration
+	// wsMu guards wsActive, the number of open WebSockets, and wsChanged, a
+	// channel that is closed and replaced whenever it changes (Drain).
+	wsMu      sync.Mutex
+	wsActive  int
+	wsChanged chan struct{}
 	// lookup holds the routes without the catch-all, to find the methods a
 	// path has.
 	lookup *http.ServeMux
@@ -109,7 +126,11 @@ func New(opts Options) (*Server, error) {
 		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications, messages, rooms, posts, board, search and audit services")
 	}
 	s := &Server{svc: opts.Services, logger: opts.Logger, noteUser: opts.NoteUser, clientIP: opts.ClientIP,
-		md: opts.Markdown, baseURL: strings.TrimRight(opts.BaseURL, "/")}
+		md: opts.Markdown, baseURL: strings.TrimRight(opts.BaseURL, "/"),
+		pingInterval: wsPingInterval, pingTimeout: wsPingTimeout, writeTimeout: wsWriteTimeout, wsChanged: make(chan struct{})}
+	if s.svc.Hub == nil {
+		s.svc.Hub = live.New()
+	}
 	if s.md == nil {
 		s.md = markdown.New()
 	}
@@ -168,6 +189,7 @@ func (s *Server) defineRoutes() []Route {
 	routes = append(routes, s.conversationRoutes()...)
 	routes = append(routes, s.messageRoutes()...)
 	routes = append(routes, s.adminRoutes()...)
+	routes = append(routes, s.wsRoutes()...)
 	routes = append(routes, s.documentRoutes()...)
 	return routes
 }

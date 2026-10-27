@@ -99,6 +99,21 @@ func (r *redactor) printable(body []byte) string {
 	return r.text(strings.TrimSpace(pretty.String()))
 }
 
+// compact is the JSON body on one line, with its secrets replaced.
+func (r *redactor) compact(body []byte) string {
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return r.text(strings.TrimSpace(string(body)))
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(redactJSON(v)); err != nil {
+		return r.text(strings.TrimSpace(string(body)))
+	}
+	return r.text(strings.TrimSpace(b.String()))
+}
+
 // client sends requests to the API and prints them.
 type client struct {
 	base  string
@@ -109,6 +124,9 @@ type client struct {
 	token string
 	// requests counts the requests made.
 	requests int
+	// brief prints a JSON body of a request on one line and no body of an
+	// answer, only its status: for the scenarios whose point is elsewhere.
+	brief bool
 }
 
 // answer is what a request got.
@@ -164,7 +182,11 @@ func (c *client) do(ctx context.Context, method, path string, body any, wants ..
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintln(c.out, "> Content-Type: application/json")
-		_, _ = fmt.Fprintln(c.out, indent(c.redac.printable(payload), "> "))
+		if c.brief {
+			_, _ = fmt.Fprintln(c.out, "> "+c.redac.compact(payload))
+		} else {
+			_, _ = fmt.Fprintln(c.out, indent(c.redac.printable(payload), "> "))
+		}
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -181,7 +203,7 @@ func (c *client) do(ctx context.Context, method, path string, body any, wants ..
 			_, _ = fmt.Fprintf(c.out, "< %s: %s\n", h, v)
 		}
 	}
-	if text := c.redac.printable(raw); text != "" {
+	if text := c.redac.printable(raw); text != "" && (!c.brief || resp.StatusCode >= 400) {
 		_, _ = fmt.Fprintln(c.out, indent(text, "< "))
 	}
 	_, _ = fmt.Fprintln(c.out)
