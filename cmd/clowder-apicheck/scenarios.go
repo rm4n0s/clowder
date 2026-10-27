@@ -21,6 +21,12 @@ type runner struct {
 	// scenario.
 	otherUsername string
 	otherPassword string
+	// thirdUsername is the third member of the group of the messages
+	// scenario, who only has to exist.
+	thirdUsername string
+	// adminUsername and adminPassword are the admin of the admin scenario.
+	adminUsername string
+	adminPassword string
 }
 
 // scenario is a named list of steps against the API. A later step of the plan
@@ -37,6 +43,8 @@ func scenarios() []scenario {
 		{name: "session", summary: "log in, read who I am and my sessions, find users, log out", run: sessionScenario},
 		{name: "rooms", summary: "list the rooms, leave and join one, make a room with a member, post, comment, react, edit, read the thread, delete", run: roomsScenario},
 		{name: "board", summary: "upload files, post them with a task, work the board, download, search, and read the notifications as the assignee", run: boardScenario},
+		{name: "messages", summary: "start a conversation, send a file, reply as the other user, react, edit, delete, read, make a group, rename it and leave", run: messagesScenario},
+		{name: "admin", summary: "as an admin: list the users, make an invitation, list the rooms and read the audit log; as a member: refused", run: adminScenario},
 	}
 }
 

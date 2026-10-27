@@ -61,6 +61,14 @@
       "description": "Mentions, replies, assignments and additions to rooms."
     },
     {
+      "name": "messages",
+      "description": "Private conversations and messages."
+    },
+    {
+      "name": "admin",
+      "description": "Users, invitations, rooms and the audit log, for admins."
+    },
+    {
       "name": "meta",
       "description": "The API itself."
     }
@@ -1448,7 +1456,7 @@
         ],
         "summary": "Upload a file",
         "operationId": "uploadFile",
-        "description": "Stores one file, to be attached to a post or comment that is written or edited next: put the ID of the answer in its upload_ids. The body is multipart/form-data with exactly one file in the field file and nothing else (422 on file otherwise; 415 for another Content-Type). The file is at most the attachment limit of the installation, 25 MB by default (413 too_large), and the request body is cut early when it is much larger. Any logged-in user may upload. The upload is for the user who made it: nobody else can attach it. An upload that no post takes stays on the server until an administrator removes it, so attach what you upload.",
+        "description": "Stores one file, to be attached to a post, a comment or a private message that is written or edited next: put the ID of the answer in its upload_ids. The body is multipart/form-data with exactly one file in the field file and nothing else (422 on file otherwise; 415 for another Content-Type). The file is at most the attachment limit of the installation, 25 MB by default (413 too_large), and the request body is cut early when it is much larger. Any logged-in user may upload. The upload is for the user who made it: nobody else can attach it. An upload that nothing takes is removed 24 hours later, so attach what you upload; an upload is used once, by a post, a comment or a message.",
         "requestBody": {
           "required": true,
           "description": "A form with the file.",
@@ -2210,6 +2218,1191 @@
           }
         }
       }
+    },
+    "/conversations": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "List the conversations",
+        "operationId": "listConversations",
+        "description": "Lists the conversations the user is a member of, the most recent activity first, each with its last message, whether it is unread and, in a direct conversation, how far the other user has read.",
+        "responses": {
+          "200": {
+            "description": "The conversations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Start a conversation",
+        "operationId": "startConversation",
+        "description": "Starts a conversation with other users, named by user_ids or by usernames (exactly one of the two lists; both, or neither, is 422). With one other user it opens the direct conversation with them, making it when there is none: 201 when it is new, 200 when it existed. Several users make a group, 201: at least two others besides the user (the user's own name in the list is not counted), at most 50 members in all, none disabled; name is optional (trimmed, at most 80 characters). A direct conversation has no name (422 on name). The answer is the conversation.",
+        "requestBody": {
+          "required": true,
+          "description": "The other people and, for a group, its name.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The direct conversation that existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The new conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "The path of the conversation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Read a conversation",
+        "operationId": "getConversation",
+        "description": "Returns a conversation the user is a member of. A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Rename a group",
+        "operationId": "renameConversation",
+        "description": "Sets the name of a group; any member may. An empty name takes it away. A direct conversation has no name (422 on name). A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404. The answer is the conversation.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new name.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationRenameRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/members": {
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Add people to a group",
+        "operationId": "addConversationMembers",
+        "description": "Adds users to a group; any member may. The users are named by user_ids or by usernames (exactly one of the two lists, as when a conversation is started). A user who is a member already is left alone; one who left comes back and sees the whole history. A direct conversation has nobody added (422), a user who does not exist or is disabled is 422, and a group has at most 50 members. A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404. The answer is the conversation.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The people to add.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationMembersRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/leave": {
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Leave a group",
+        "operationId": "leaveConversation",
+        "description": "Takes the user out of a group; it stays for the others and the user no longer reads it. Nobody leaves a direct conversation (422). A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The user is no longer a member."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/messages": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Read the messages of a conversation",
+        "operationId": "listMessages",
+        "description": "Returns a page of the messages of a conversation, oldest first within the page. Without before it is the newest page; with before it returns the messages older than that ID. limit is 50 by default and at most 100 (422 above, and for anything that is not a positive number). next_before is the before of the next, older page and null on the last. A deleted message is in the page as deleted. A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "The ID of the first message of the previous page (its next_before).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The size of the page, 1 to 100; 50 when left out.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of the messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Send a message",
+        "operationId": "sendMessage",
+        "description": "Writes a message in a conversation as the user and marks the conversation read up to it. The body is trimmed and at most 4,000 characters; it may be empty when there are upload_ids. reply_to_id must be a message of the same conversation that is not deleted. upload_ids are the IDs of POST /uploads, as for a post (the same limits). In a direct conversation whose other user is disabled nothing can be sent (422 on body). A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The message.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/read": {
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Mark a conversation read",
+        "operationId": "readConversation",
+        "description": "Marks the conversation read up to the message up_to_id, which must be a message of this conversation (422 on up_to_id otherwise). The last read message never moves back: marking an earlier one is not an error. In a direct conversation the other user then sees \"Seen\". A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The newest message to mark.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationsReadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The conversation is read."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/messages/{id}": {
+      "patch": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Edit a message",
+        "operationId": "editMessage",
+        "description": "Changes the text of a message; only its author may (403 forbidden for another member). The body is trimmed, at most 4,000 characters, and empty only when the message has attachments. A deleted message, and a message of a conversation the user is no member of, is 404. The answer is the message.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the message.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new text.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageEditRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Delete a message",
+        "operationId": "deleteMessage",
+        "description": "Deletes a message; only its author may (403 forbidden for another member). It stays in its place as deleted, with no body, files or reactions; its files are removed. A message that is deleted already is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the message.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The message is deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/messages/{id}/reactions/{emoji}": {
+      "put": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "React to a message",
+        "operationId": "putMessageReaction",
+        "description": "Puts the emoji on the message as the user. Putting an emoji that is already there is not an error. A deleted message is 404. The answer is the reactions of the message as the user sees them.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the message.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "required": true,
+            "description": "The emoji, URL-escaped (UTF-8 percent-encoded). Exactly one emoji: a flag, a keycap or a joined sequence such as a family counts as one; several emoji, letters and anything else are 422 with the field emoji.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reactions of the message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Take a reaction off a message",
+        "operationId": "deleteMessageReaction",
+        "description": "Takes the user's emoji off the message. Taking off one that is not there is not an error. The answer is the reactions of the message as the user sees them.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the message.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "required": true,
+            "description": "The emoji, URL-escaped (UTF-8 percent-encoded). Exactly one emoji: a flag, a keycap or a joined sequence such as a family counts as one; several emoji, letters and anything else are 422 with the field emoji.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reactions of the message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReactionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/messages/attachments/{id}": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Download the file of a message",
+        "operationId": "downloadMessageAttachment",
+        "description": "Sends the file of an attachment of a message of a conversation the user is a member of, with the checks and the headers of the download of a post's attachment. Only an image of the types PNG, JPEG, GIF and WebP is served inline with its own Content-Type; every other file is application/octet-stream with Content-Disposition: attachment, whatever its name says. Ranges and If-Modified-Since work. 404 for anyone who is no member of the conversation (admins included) or who left, for a deleted message and for an attachment that does not exist.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the attachment (the id of an attachment of a message).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "description": "inline for an image of the types PNG, JPEG, GIF and WebP; attachment with the file name for every other file.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "description": "Always nosniff.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "description": "A policy that sandboxes the file and lets nothing load or run.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "private, max-age=86400.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "When the file was attached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "The part of the file that the Range header asked for.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "description": "inline for an image of the types PNG, JPEG, GIF and WebP; attachment with the file name for every other file.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "description": "Always nosniff.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Security-Policy": {
+                "description": "A policy that sandboxes the file and lets nothing load or run.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "private, max-age=86400.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "When the file was attached.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The file has not changed since If-Modified-Since."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "416": {
+            "description": "The Range header asks for bytes the file does not have.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List the users",
+        "operationId": "adminListUsers",
+        "description": "Lists every user by username, the disabled ones included. Admins only: 403 forbidden for a member.",
+        "responses": {
+          "200": {
+            "description": "The users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/users/{id}": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Change a user",
+        "operationId": "adminPatchUser",
+        "description": "Gives a user a role and/or disables or enables the account, and returns the user. Admins only: 403 forbidden for a member. The role is changed first; if the second change is refused the first stays. Sending neither role nor disabled is 422. The last active admin keeps the admin role and stays enabled (409 conflict); an admin cannot disable themselves (422 on disabled). Disabling ends all sessions of the user, API tokens included, so their next request is 401. An unknown user is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the user.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "What to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUserPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The user as changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/invitations": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Make an invitation",
+        "operationId": "adminCreateInvitation",
+        "description": "Makes an invitation for a new user with the role and returns its link, once; it is never stored or shown again. The link is <base URL>/invite/<token>, where the base URL is the one the installation is set up with. Admins only: 403 forbidden for a member. A role that does not exist is 422 on role.",
+        "requestBody": {
+          "required": true,
+          "description": "The role of the new user.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminInvitationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new invitation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminInvitation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/rooms": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List every room",
+        "operationId": "adminListRooms",
+        "description": "Lists every room by name, the private ones included, with the number of members. Admins only: 403 forbidden for a member.",
+        "responses": {
+          "200": {
+            "description": "The rooms.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/rooms/{id}/members": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List the members of any room",
+        "operationId": "adminListRoomMembers",
+        "description": "Lists the members of any room, a private one too, by display name; an admin needs no membership. Admins only: 403 forbidden for a member. A room that does not exist is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The members.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/audit": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Read the audit log",
+        "operationId": "adminAudit",
+        "description": "Returns a page of the audit log, newest first, 50 to a page, for every room including private rooms and rooms that are gone. The filters all have to match: room_id, actor_id, entity_type, action, and the days from and to (UTC, YYYY-MM-DD, both days included). A filter that is not valid is 422 with its name in fields. page starts at 1; a page past the last one is empty. Admins only: 403 forbidden for a member.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "The number of the page, from 1; 1 when left out.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "room_id",
+            "in": "query",
+            "required": false,
+            "description": "Only the events of this room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "actor_id",
+            "in": "query",
+            "required": false,
+            "description": "Only the events made by this user.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "description": "Only the events about this kind of entity.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "room",
+                "post",
+                "comment",
+                "task",
+                "column",
+                "member"
+              ]
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "description": "Only the events with this action.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "post.created",
+                "post.edited",
+                "post.deleted",
+                "task.created",
+                "task.edited",
+                "task.moved",
+                "task.deleted",
+                "column.created",
+                "column.renamed",
+                "column.moved",
+                "column.deleted",
+                "member.joined",
+                "member.added",
+                "member.left",
+                "member.removed",
+                "room.created",
+                "room.renamed",
+                "room.deleted"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Only the events on or after this day (UTC).",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Only the events on or before this day (UTC).",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of the audit log.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2798,7 +3991,7 @@
       },
       "Attachment": {
         "type": "object",
-        "description": "A file attached to a post or comment.",
+        "description": "A file attached to a post, a comment or a private message.",
         "properties": {
           "id": {
             "type": "integer",
@@ -3241,11 +4434,11 @@
       },
       "UploadResult": {
         "type": "object",
-        "description": "A file uploaded and waiting to be attached to a post.",
+        "description": "A file uploaded and waiting to be attached to a post, a comment or a private message.",
         "properties": {
           "id": {
             "type": "string",
-            "description": "The upload ID, for upload_ids of a post or comment. Unguessable; it works for the user who uploaded the file."
+            "description": "The upload ID, for upload_ids of a post, a comment or a message. Unguessable; it works for the user who uploaded the file."
           },
           "file_name": {
             "type": "string",
@@ -3719,6 +4912,647 @@
         },
         "required": [
           "up_to_id"
+        ],
+        "additionalProperties": false
+      },
+      "MessageSummary": {
+        "type": "object",
+        "description": "The newest message of a conversation, for the list.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the message."
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "preview": {
+            "type": "string",
+            "description": "The start of the text in one line (about 100 characters), the names of the files when there is no text, or \"message deleted\"."
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "True when the message was deleted."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the message was sent."
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "preview",
+          "deleted",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "Conversation": {
+        "type": "object",
+        "description": "A private conversation between two users or in a group, as the user who asks sees it.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the conversation."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "group"
+            ],
+            "description": "direct: two users, one conversation for each pair; group: up to 50 users."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of a group as set; null for none and for a direct conversation."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "What a list shows: the name of a group, the other user's display name in a direct conversation, or the display names of the other members of a group with no name."
+          },
+          "members": {
+            "type": "array",
+            "description": "The current members, the user who asks included, in the order they joined. A member who left is not in the list.",
+            "items": {
+              "$ref": "#/components/schemas/UserRef"
+            }
+          },
+          "last_message": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest message; null when there is none."
+          },
+          "last_activity": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the newest message was sent, or when the conversation was started if it has none."
+          },
+          "unread": {
+            "type": "boolean",
+            "description": "True when the conversation has a message of someone else, not deleted, after the last one the user has read."
+          },
+          "can_send": {
+            "type": "boolean",
+            "description": "False in a direct conversation whose other user is disabled: its messages can be read but no new ones sent (422 on a new message)."
+          },
+          "seen_up_to_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "In a direct conversation, the ID of the last message the other user has read: the user's own messages up to it are seen. Null in a group and when the other user has read none."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "display_name",
+          "members",
+          "last_message",
+          "last_activity",
+          "unread",
+          "can_send",
+          "seen_up_to_id"
+        ],
+        "additionalProperties": false
+      },
+      "ConversationList": {
+        "type": "object",
+        "description": "The conversations of the user.",
+        "properties": {
+          "conversations": {
+            "type": "array",
+            "description": "The conversations, the most recent activity first.",
+            "items": {
+              "$ref": "#/components/schemas/Conversation"
+            }
+          }
+        },
+        "required": [
+          "conversations"
+        ],
+        "additionalProperties": false
+      },
+      "ConversationStartRequest": {
+        "type": "object",
+        "description": "The people to talk to, by ID or by username, and the name of a group.",
+        "properties": {
+          "user_ids": {
+            "type": "array",
+            "description": "The IDs of the other users. Exactly one of user_ids and usernames must name someone.",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "usernames": {
+            "type": "array",
+            "description": "The usernames of the other users, in any case. Exactly one of user_ids and usernames must name someone.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of a group, trimmed, at most 80 characters; an empty one means no name. A direct conversation has none (422)."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "ConversationMembersRequest": {
+        "type": "object",
+        "description": "The people to add to a group, by ID or by username.",
+        "properties": {
+          "user_ids": {
+            "type": "array",
+            "description": "The IDs of the users to add. Exactly one of user_ids and usernames must name someone.",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "usernames": {
+            "type": "array",
+            "description": "The usernames of the users to add. Exactly one of user_ids and usernames must name someone.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "ConversationRenameRequest": {
+        "type": "object",
+        "description": "The new name of a group.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name, trimmed, at most 80 characters; an empty one takes the name away."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "MessageRequest": {
+        "type": "object",
+        "description": "A new message.",
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "The text, trimmed, at most 4,000 characters; it may be empty when there are uploads."
+          },
+          "reply_to_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of an earlier message of the same conversation, not deleted, that this one answers."
+          },
+          "upload_ids": {
+            "type": "array",
+            "description": "The upload IDs of POST /uploads to attach, as for a post; each can be used once and only by the user who uploaded it.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "MessageEditRequest": {
+        "type": "object",
+        "description": "The new text of a message.",
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "The text, trimmed, at most 4,000 characters; it may be empty only when the message has attachments."
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "MessageQuote": {
+        "type": "object",
+        "description": "The message that a message replies to.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the quoted message."
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "The start of its text in one line, the names of its files when it has no text, or \"message deleted\"."
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "True when the quoted message was deleted."
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "excerpt",
+          "deleted"
+        ],
+        "additionalProperties": false
+      },
+      "Message": {
+        "type": "object",
+        "description": "A private message.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the message. Newer messages have larger IDs."
+          },
+          "conversation_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the conversation."
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The text as written; null for a deleted message."
+          },
+          "html": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The text rendered safely for display, as for a post of the format text: escaped, line breaks kept, links made, emoji as typed; null for a deleted message. A client needs no renderer."
+          },
+          "reply_to": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageQuote"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The quoted message; null when the message is no reply."
+          },
+          "attachments": {
+            "type": "array",
+            "description": "The files of the message, in the order they were attached; empty for a deleted message. Their url is under /messages/attachments.",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            }
+          },
+          "reactions": {
+            "type": "array",
+            "description": "The reactions, in the order each emoji was first used; the user's own are marked; empty for a deleted message.",
+            "items": {
+              "$ref": "#/components/schemas/Reaction"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the message was sent."
+          },
+          "edited_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the author last edited the message; null if never and for a deleted message.",
+            "format": "date-time"
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "True for a deleted message, which stays in its place with its author and time and no body, html, files or reactions."
+          },
+          "can_edit": {
+            "type": "boolean",
+            "description": "True when the user may edit the message: its author, if it is not deleted."
+          },
+          "can_delete": {
+            "type": "boolean",
+            "description": "True when the user may delete the message: its author, if it is not deleted."
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "author",
+          "body",
+          "html",
+          "reply_to",
+          "attachments",
+          "reactions",
+          "created_at",
+          "edited_at",
+          "deleted",
+          "can_edit",
+          "can_delete"
+        ],
+        "additionalProperties": false
+      },
+      "MessageHistory": {
+        "type": "object",
+        "description": "A page of the messages of a conversation.",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "description": "The messages, oldest first within the page.",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "next_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The before of the next, older page; null when this is the last."
+          }
+        },
+        "required": [
+          "messages",
+          "next_before"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUser": {
+        "type": "object",
+        "description": "A user as an admin sees them.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the user."
+          },
+          "username": {
+            "type": "string",
+            "description": "The unique, lower-case username."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "The name shown to other people."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "description": "What the user may do."
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "True when an admin disabled the account: the user cannot log in and has no sessions."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the user signed up."
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "disabled",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUserList": {
+        "type": "object",
+        "description": "Every user.",
+        "properties": {
+          "users": {
+            "type": "array",
+            "description": "The users, by username, the disabled ones included.",
+            "items": {
+              "$ref": "#/components/schemas/AdminUser"
+            }
+          }
+        },
+        "required": [
+          "users"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUserPatch": {
+        "type": "object",
+        "description": "What to change of a user. A field that is left out (or null) stays as it is; at least one is needed.",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "description": "The new role. The last active admin cannot lose the admin role (409)."
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "True disables the account and ends all sessions of the user, API tokens included; false enables it. An admin cannot disable themselves (422); the last active admin cannot be disabled (409)."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "AdminInvitationRequest": {
+        "type": "object",
+        "description": "The role of the user who will sign up.",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "description": "The role of the user who signs up with the invitation."
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "additionalProperties": false
+      },
+      "AdminInvitation": {
+        "type": "object",
+        "description": "A new invitation. The link is shown once and never stored.",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The link to give to the person: <base URL>/invite/<token>."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "member"
+            ],
+            "description": "The role of the user who signs up with it."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the invitation stops working."
+          }
+        },
+        "required": [
+          "url",
+          "role",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "AuditEvent": {
+        "type": "object",
+        "description": "An event of the audit log.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the event. Newer events have larger IDs."
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The user who made the change; null when no user did."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "post.created",
+              "post.edited",
+              "post.deleted",
+              "task.created",
+              "task.edited",
+              "task.moved",
+              "task.deleted",
+              "column.created",
+              "column.renamed",
+              "column.moved",
+              "column.deleted",
+              "member.joined",
+              "member.added",
+              "member.left",
+              "member.removed",
+              "room.created",
+              "room.renamed",
+              "room.deleted"
+            ],
+            "description": "What happened."
+          },
+          "room_id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The room of the change. The room may be gone."
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "room",
+              "post",
+              "comment",
+              "task",
+              "column",
+              "member"
+            ],
+            "description": "The kind of the entity that changed."
+          },
+          "entity_id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The ID of the entity that changed. The entity may be gone."
+          },
+          "summary": {
+            "type": "string",
+            "description": "A sentence that reads on its own after the entity is gone, such as \"Alice added Bob to #design\"."
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The changed fields as {\"old\": ..., \"new\": ...}, or other facts of the event; free-form JSON that depends on the action. The text of a post is never in it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the change was made."
+          }
+        },
+        "required": [
+          "id",
+          "actor",
+          "action",
+          "room_id",
+          "entity_type",
+          "entity_id",
+          "summary",
+          "details",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "AuditPage": {
+        "type": "object",
+        "description": "A page of the audit log.",
+        "properties": {
+          "events": {
+            "type": "array",
+            "description": "The events of the page, newest first, at most 50.",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The number of the page, starting at 1."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "True when an older page exists."
+          }
+        },
+        "required": [
+          "events",
+          "page",
+          "has_more"
         ],
         "additionalProperties": false
       }

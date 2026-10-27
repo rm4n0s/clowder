@@ -246,6 +246,55 @@ func (m *Messages) React(ctx context.Context, actor Actor, msgID uint64, emoji s
 	return Reactions(reactionCounts(messageReactionRows(rows[msgID]), actor.UserID)), nil
 }
 
+// SetReaction puts the emoji on the message as the actor (present true) or
+// takes it off (present false) and returns the reactions of the message as the
+// actor sees them. Unlike React it is idempotent: putting an emoji that is
+// there, or taking off one that is not, changes nothing, and nothing is
+// published then. The permissions and the errors are those of React.
+func (m *Messages) SetReaction(ctx context.Context, actor Actor, msgID uint64, emoji string, present bool) (Reactions, error) {
+	var events []live.Event
+	err := m.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
+		msg, err := tx.MessageByID(ctx, msgID)
+		if err != nil {
+			return err
+		}
+		if _, _, err := loadConversation(ctx, tx, actor, msg.ConversationID); err != nil {
+			return err
+		}
+		if msg.DeletedAt != nil {
+			return errors.New(TagNotFound, "the message is deleted", "reason", "deleted", "messageID", msgID)
+		}
+		clean, ok := cleanEmoji(emoji)
+		if !ok {
+			return errors.New(TagInvalidInput, "the reaction is not an emoji",
+				"fields", map[string]string{FieldEmoji: messageEmojiInvalid})
+		}
+		var changed bool
+		if present {
+			changed, err = tx.PutMessageReaction(ctx, msgID, actor.UserID, clean)
+		} else {
+			changed, err = tx.DeleteMessageReaction(ctx, msgID, actor.UserID, clean)
+		}
+		if err != nil {
+			return err
+		}
+		if changed {
+			events = []live.Event{messageEvent(live.KindMessageReaction, msg.ConversationID, msgID)}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	publishAll(m.pub, events)
+	rows, err := m.st.ReactionsOfMessages(ctx, []uint64{msgID})
+	if err != nil {
+		return nil, err
+	}
+	return Reactions(reactionCounts(messageReactionRows(rows[msgID]), actor.UserID)), nil
+}
+
 // History returns a page of the messages of a conversation, oldest first
 // within the page. before 0 starts from the newest message; another value
 // returns the messages older than that ID. limit is the page size: 50 when it

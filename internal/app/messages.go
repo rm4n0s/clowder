@@ -178,6 +178,13 @@ type ConversationSummary struct {
 	// Unread is true when the conversation has a message of someone else,
 	// not deleted, after the last one the actor has read.
 	Unread bool
+	// CanSend is false in a direct conversation whose other user is disabled
+	// (D32), as ConversationHeader.CanSend.
+	CanSend bool
+	// SeenUpToID is the last message the other member of a direct
+	// conversation has read; 0 for a group and when they have read none. It
+	// drives "Seen" for a client that shows the list.
+	SeenUpToID uint64
 }
 
 // ConversationMemberView is a member of a conversation.
@@ -246,20 +253,32 @@ func NewMessages(st *store.Store, clk clock.Clock, fs *files.Store, cfg Messages
 }
 
 // StartDirect returns the ID of the direct conversation between the actor and
-// the user, and makes it when there is none (SPEC D28: one for each pair).
+// the user, and makes it when there is none (SPEC D28: one for each pair). It
+// is OpenDirect without the answer whether the conversation is new, and fails
+// as OpenDirect does.
+func (m *Messages) StartDirect(ctx context.Context, actor Actor, userID uint64) (uint64, error) {
+	id, _, err := m.OpenDirect(ctx, actor, userID)
+	return id, err
+}
+
+// OpenDirect returns the ID of the direct conversation between the actor and
+// the user, and makes it when there is none (SPEC D28: one for each pair), and
+// says whether this call made it: created is false when the conversation
+// existed, also when another call made it at the same time.
 // Called at the same time for the same pair it still gives one conversation.
 // It fails with TagInvalidInput, with the message under FieldUser, when the
 // user is the actor, does not exist or is disabled. Both users hear of a new
 // conversation as conversation.changed.
-func (m *Messages) StartDirect(ctx context.Context, actor Actor, userID uint64) (uint64, error) {
+func (m *Messages) OpenDirect(ctx context.Context, actor Actor, userID uint64) (uint64, bool, error) {
 	if actor.UserID == 0 {
-		return 0, errors.New(TagUnauthenticated, "messages need a login", "reason", "none")
+		return 0, false, errors.New(TagUnauthenticated, "messages need a login", "reason", "none")
 	}
 	key := store.DirectKeyOf(actor.UserID, userID)
 	var convID uint64
+	var created bool
 	var events []live.Event
 	err := m.st.Tx(ctx, func(tx *store.Store) error {
-		convID = 0
+		convID, created = 0, false
 		events = nil
 		if userID == actor.UserID {
 			return errors.New(TagInvalidInput, "a conversation needs another user",
@@ -292,24 +311,24 @@ func (m *Messages) StartDirect(ctx context.Context, actor Actor, userID uint64) 
 		}); err != nil {
 			return err
 		}
-		convID = conv.ID
+		convID, created = conv.ID, true
 		events = changedEvents(conv.ID, actor.UserID, userID)
 		return nil
 	})
 	if err != nil {
 		appErr, ok := errors.FromError(err)
 		if !ok || appErr.Tag != store.TagConflict {
-			return 0, err
+			return 0, false, err
 		}
 		// Another call made the conversation of the pair first.
 		existing, err := m.st.DirectConversation(ctx, key)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
-		return existing.ID, nil
+		return existing.ID, false, nil
 	}
 	publishAll(m.pub, events)
-	return convID, nil
+	return convID, created, nil
 }
 
 // StartGroup makes a group of the actor and the users and returns its ID. At
@@ -560,9 +579,16 @@ func (m *Messages) Conversations(ctx context.Context, actor Actor) ([]Conversati
 			Members:      make([]UserRef, len(it.Members)),
 			LastActivity: conv.CreatedAt,
 			Unread:       it.Unread,
+			CanSend:      true,
 		}
 		for j, mem := range it.Members {
 			s.Members[j] = UserRef{ID: mem.UserID, Username: mem.Username, DisplayName: mem.DisplayName}
+			if conv.Kind == ConversationDirect && mem.UserID != actor.UserID {
+				s.SeenUpToID = derefID(mem.LastReadMessageID)
+				if mem.DisabledAt != nil {
+					s.CanSend = false
+				}
+			}
 		}
 		if last := it.LastMessage; last != nil {
 			s.LastMessage = &LastMessage{
@@ -630,6 +656,29 @@ func (m *Messages) Conversation(ctx context.Context, actor Actor, convID uint64)
 		}
 	}
 	return h, nil
+}
+
+// Summary returns one conversation as the list shows it to the actor: the
+// member list, the last message, whether it is unread, whether the actor can
+// send and, in a direct conversation, how far the other user has read. It
+// fails with TagNotFound unless the actor is a member (admins included, and a
+// member who left).
+func (m *Messages) Summary(ctx context.Context, actor Actor, convID uint64) (ConversationSummary, error) {
+	if _, _, err := loadConversation(ctx, m.st, actor, convID); err != nil {
+		return ConversationSummary{}, err
+	}
+	list, err := m.Conversations(ctx, actor)
+	if err != nil {
+		return ConversationSummary{}, err
+	}
+	for _, s := range list {
+		if s.ID == convID {
+			return s, nil
+		}
+	}
+	// The actor left between the two reads.
+	return ConversationSummary{}, errors.New(TagNotFound, "no such conversation",
+		"reason", "left", "conversationID", convID, "userID", actor.UserID)
 }
 
 // ResolveUsernames returns the IDs of the users with these usernames, in the
@@ -916,4 +965,23 @@ func (m *Messages) DiscardUploads(ctx context.Context, actor Actor, uploads []Up
 		return
 	}
 	m.cleaner.discard(ctx, m.st, uploads)
+}
+
+// StagedUploads turns the IDs that POST /uploads returned (Posts.UploadStaged)
+// into the uploads that Send takes: a file is the same kind of thing for a
+// post and a message, and one staged upload is attached to one of them. The
+// permissions and the errors are those of Posts.StagedUploads: only the
+// person who uploaded a file gets it back, and an ID that is not theirs fails
+// the whole call with TagInvalidInput and the message under FieldAttachments.
+// An actor with no ID fails with TagUnauthenticated. The call changes
+// nothing; ForgetStaged ends the notes after Send.
+func (m *Messages) StagedUploads(ctx context.Context, actor Actor, ids []string) ([]Upload, error) {
+	return stagedUploads(m.files, actor, ids)
+}
+
+// ForgetStaged ends the notes of uploads that StagedUploads returned and that
+// Send took or refused, as Posts.ForgetStaged does. Failures are logged,
+// never returned. An actor with no ID does nothing.
+func (m *Messages) ForgetStaged(ctx context.Context, actor Actor, uploads []Upload) {
+	forgetStaged(ctx, m.files, m.cleaner, actor, uploads)
 }

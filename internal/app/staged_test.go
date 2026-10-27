@@ -126,7 +126,7 @@ func TestPostsStagedUploads(t *testing.T) {
 				}
 				return
 			}
-			appErr := requireTag(t, err, app.TagInvalidInput, "Posts.StagedUploads.InvalidInput")
+			appErr := requireTag(t, err, app.TagInvalidInput, "Posts.StagedUploads->stagedUploads.InvalidInput")
 			if got := fieldsOf(t, appErr)[app.FieldAttachments]; got != "Upload the files again." {
 				t.Errorf("fields = %v", appErr.Metadata["fields"])
 			}
@@ -150,7 +150,7 @@ func TestPostsStagedUploads(t *testing.T) {
 	})
 	t.Run("nobody", func(t *testing.T) {
 		_, err := e.posts.StagedUploads(t.Context(), app.Actor{}, []string{mine.ID})
-		_ = requireTag(t, err, app.TagUnauthenticated, "Posts.StagedUploads.Unauthenticated")
+		_ = requireTag(t, err, app.TagUnauthenticated, "Posts.StagedUploads->stagedUploads.Unauthenticated")
 	})
 	t.Run("the disk fails", func(t *testing.T) {
 		e := newPostsEnv(t)
@@ -163,7 +163,7 @@ func TestPostsStagedUploads(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := e.posts.StagedUploads(t.Context(), e.as("bob"), []string{s.ID})
-		_ = requireTag(t, err, "FileNoteReadFailed", "Posts.StagedUploads->Store.Note.FileNoteReadFailed")
+		_ = requireTag(t, err, "FileNoteReadFailed", "Posts.StagedUploads->stagedUploads->Store.Note.FileNoteReadFailed")
 	})
 }
 
@@ -192,7 +192,7 @@ func TestPostsStagedUploadsBecomeAttachments(t *testing.T) {
 		}
 	}
 	_, err = e.posts.StagedUploads(t.Context(), e.as("bob"), []string{first.ID})
-	_ = requireTag(t, err, app.TagInvalidInput, "Posts.StagedUploads.InvalidInput")
+	_ = requireTag(t, err, app.TagInvalidInput, "Posts.StagedUploads->stagedUploads.InvalidInput")
 	e.requireOnDisk(first.Upload, second.Upload)
 }
 
@@ -252,7 +252,7 @@ func TestPostsSweepStaged(t *testing.T) {
 			t.Errorf("the fresh upload is gone: %+v", err)
 		}
 		_, err = e.posts.StagedUploads(t.Context(), e.as("bob"), []string{old.ID})
-		_ = requireTag(t, err, app.TagInvalidInput, "Posts.StagedUploads.InvalidInput")
+		_ = requireTag(t, err, app.TagInvalidInput, "Posts.StagedUploads->stagedUploads.InvalidInput")
 		// Nothing is left to do, and a second sweep says so.
 		if n, err := e.posts.SweepStaged(t.Context(), day); err != nil || n != 0 {
 			t.Errorf("second sweep = %d, %v", n, err)

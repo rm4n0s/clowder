@@ -248,7 +248,7 @@ func TestStartDirect(t *testing.T) {
 			}
 			id, err := e.msgs.StartDirect(t.Context(), e.as(tt.from), tt.to(e))
 			if tt.fail != "" {
-				requireInvalid(t, err, own("StartDirect", "InvalidInput"), tt.fail)
+				requireInvalid(t, err, own("OpenDirect", "InvalidInput"), tt.fail)
 				if got := e.rec.Events(); len(got) != 0 {
 					t.Errorf("a refused call published %+v", got)
 				}
@@ -272,7 +272,7 @@ func TestStartDirectNeedsALogin(t *testing.T) {
 	t.Parallel()
 	e := newMsgEnv(t)
 	_, err := e.msgs.StartDirect(t.Context(), app.Actor{}, e.uid("bob"))
-	_ = requireTag(t, err, app.TagUnauthenticated, "Messages.StartDirect.Unauthenticated")
+	_ = requireTag(t, err, app.TagUnauthenticated, "Messages.StartDirect->Messages.OpenDirect.Unauthenticated")
 	_, err = e.msgs.StartGroup(t.Context(), app.Actor{}, e.uids("bob", "carol"), "")
 	_ = requireTag(t, err, app.TagUnauthenticated, "Messages.StartGroup.Unauthenticated")
 	_, err = e.msgs.Conversations(t.Context(), app.Actor{})
@@ -853,6 +853,18 @@ func TestMessagesPermissions(t *testing.T) {
 		}, everyoneElse("", "")},
 		{"React", via("React", notMember), func(e *permEnv, a app.Actor) error {
 			_, err := e.msgs.React(t.Context(), a, e.msg.ID, "\U0001F44D")
+			return err
+		}, everyoneElse("", "")},
+		{"Summary", "Messages.Summary->" + notMember, func(e *permEnv, a app.Actor) error {
+			_, err := e.msgs.Summary(t.Context(), a, e.conv)
+			return err
+		}, everyoneElse("", "")},
+		{"SetReaction", via("SetReaction", notMember), func(e *permEnv, a app.Actor) error {
+			_, err := e.msgs.SetReaction(t.Context(), a, e.msg.ID, "\U0001F44D", true)
+			return err
+		}, everyoneElse("", "")},
+		{"SetReaction off", via("SetReaction", notMember), func(e *permEnv, a app.Actor) error {
+			_, err := e.msgs.SetReaction(t.Context(), a, e.msg.ID, "\U0001F44D", false)
 			return err
 		}, everyoneElse("", "")},
 		{"Message", "Messages.Message->" + notMember, func(e *permEnv, a app.Actor) error {

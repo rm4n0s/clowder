@@ -31,8 +31,9 @@ func (s *Server) uploadRoutes() []Route {
 }
 
 // upload answers POST /uploads: one file in the field "file" of a
-// multipart/form-data body is stored, and its ID answers the request; a post
-// or comment that is written or edited next takes it in upload_ids. See
+// multipart/form-data body is stored, and its ID answers the request; a post,
+// a comment or a message that is written or edited next takes it in
+// upload_ids. See
 // readUpload for what the form may hold.
 func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	c, _ := callerFrom(r.Context())

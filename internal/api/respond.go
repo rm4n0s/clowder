@@ -91,7 +91,10 @@ type problem struct {
 //     that cannot be read, a query before or limit that is wrong, a due date
 //     that is not a day, a field that must be there and is not, a wrong page,
 //     a form of an upload that is not one file in the field "file" and
-//     attachment_ids on a new post 422 invalid_input, a Content-Type that is not JSON
+//     attachment_ids on a new post, the people of a conversation named in
+//     both lists, in neither or as no one but the caller, a name for a direct
+//     conversation, a filter of the audit log that is not valid, and a change
+//     of a user that changes nothing 422 invalid_input, a Content-Type that is not JSON
 //     415 unsupported_media_type, an unknown path 404 not_found, a wrong
 //     method 405 method_not_allowed with Allow;
 //   - anything else, and an error that is not tagged, 500 internal, whose
@@ -113,7 +116,8 @@ func problemOf(err error) (problem, bool) {
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, apiFieldName)}}, false
 	case tagBodyInvalid, tagBeforeInvalid, tagLimitInvalid, tagDueDateInvalid, tagKeepOnCreate,
-		tagUploadInvalid, tagFieldMissing, tagPageInvalid, tagTaskDueInvalid:
+		tagUploadInvalid, tagFieldMissing, tagPageInvalid, tagTaskDueInvalid, tagListsInvalid, tagNoOthers, tagDirectName,
+		tagFilterInvalid, tagAdminUserInvalid:
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, snakeCase)}}, false

@@ -914,3 +914,41 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - On this run the host was short of memory: a QEMU VM of 11 GB, full swap and a RAM-backed `/tmp`. Test processes were killed by the system, never failed. The suites were therefore run package by package (`-p 1`), on SQLite and through `scripts/test-docker.sh`, retrying a package only when it was killed from outside. Every package passed on both databases.
   - The browser tests, which this step does not list, were killed each time. They are run again in a later step.
   - `.gitignore` now has `/.tmp/` (a `TMPDIR` on disk for local test runs).
+
+## 16.4 Messages and admin
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-16.4-api-messages-admin
+- **Summary:**
+  - The API gets private messages: conversations listed, started and read, renamed, members added, left. Messages are paged oldest first and can be sent with uploads and a reply, edited, deleted, reacted to and marked read, and message attachments are downloaded.
+  - Starting with one other user opens the direct conversation: 201 when it is new, 200 when it already existed.
+  - A conversation carries `can_send` and `seen_up_to_id`. A deleted message keeps its author and place.
+  - One `POST /uploads` serves posts and messages: a staged id is used once, by the user who uploaded it.
+  - Admin routes (403 for members): users with role and disable changes, invitations (the link built from the base URL), every room with its members, and the audit log with validated filters.
+  - Disabling a user ends their API tokens too.
+- **Main files:**
+  - The API: `internal/api/{handlers_messages,handlers_admin,types_messages,types_admin,api,fields,respond,handlers_uploads}.go`, `openapi.json` (20 operations, 18 schemas).
+  - The services and the store: `internal/app/{messages,messages_send,staged}.go` (`OpenDirect`, `SetReaction`, `Summary`, `Messages.StagedUploads`/`ForgetStaged`), `internal/store/messages_queries.go`.
+  - The client: `cmd/clowder-apicheck` (the `messages` and `admin` scenarios, `-third-username`, `-admin-username`/`-admin-password`).
+  - SPEC §7.12.
+- **Tests:**
+  - `internal/api` has 133 top-level tests, among them:
+    - a 42-case privacy table (non-members, admins and members who left all get 404)
+    - the start rules, sending, replying, editing and deleting, history paging, reactions, uploads and downloads, read state and `can_send`
+    - admin 403 for members, the role and disable rules with the last admin, `user.changed`, a disabled user's token turning 401, invitation links, the audit filters and paging, and the check that the enums equal the document
+  - The new service methods have permission tables.
+  - Each of the 5 new tags has a route test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅. The tests ran package by package because of the host's memory (see 16.3). No page changed, so no browser tests are needed.
+- **Proof:**
+  [16.4 apicheck](implemented-proof-images/16.4-apicheck.txt)
+  All five scenarios of `clowder-apicheck` run on demo data, 102 requests with their expected statuses:
+  - the session
+  - rooms
+  - the board
+  - messages: a direct conversation with a file, bob's reply, a reaction, an edit, a delete and the read state; then a group that is renamed and left
+  - admin: the users, an invitation shown as `.../invite/<token>`, the rooms and the audit log, and a member refused with 403
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The audit filters of the API are 422 when they are not valid, where the page ignores them.
+  - The admin scenario of apicheck runs by default; `-admin-username ""` leaves it out.
+  - The manager stopped a `clowder serve` that a browser test killed by the system had left running under `.tmp/`.

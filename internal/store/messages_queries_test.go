@@ -342,6 +342,38 @@ func TestMessageQueries(t *testing.T) {
 			t.Errorf("ReactionsOfMessages(nil) = %v, %v", got, err)
 		}
 	})
+
+	t.Run("PutMessageReaction and DeleteMessageReaction are idempotent", func(t *testing.T) {
+		steps := []struct {
+			name string
+			put  bool
+			want bool
+			rows int
+		}{
+			{"put adds", true, true, 1},
+			{"put again changes nothing", true, false, 1},
+			{"delete removes", false, true, 0},
+			{"delete again changes nothing", false, false, 0},
+		}
+		for _, st := range steps {
+			var changed bool
+			var err error
+			if st.put {
+				changed, err = f.s.PutMessageReaction(f.ctx, ms[1].ID, alice.ID, "\U0001F525")
+			} else {
+				changed, err = f.s.DeleteMessageReaction(f.ctx, ms[1].ID, alice.ID, "\U0001F525")
+			}
+			if err != nil || changed != st.want {
+				t.Fatalf("%s = %v, %v, want %v", st.name, changed, err, st.want)
+			}
+			rows, err := f.s.ReactionsOfMessages(f.ctx, []uint64{ms[1].ID})
+			if err != nil || len(rows[ms[1].ID]) != st.rows {
+				t.Fatalf("%s: %d rows, %v, want %d", st.name, len(rows[ms[1].ID]), err, st.rows)
+			}
+		}
+		_, err := f.s.PutMessageReaction(f.ctx, 99999, alice.ID, "x")
+		requireTagged(t, err, TagQueryFailed, "Store.PutMessageReaction.QueryFailed", "putMessageReaction")
+	})
 }
 
 func TestListConversationsRunsAFewQueries(t *testing.T) {

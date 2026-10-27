@@ -67,7 +67,39 @@ func securedRoutes() []securedRoute {
 		{"search", http.MethodGet, "/api/v1/search?q=a", http.StatusOK, nil},
 		{"notifications", http.MethodGet, "/api/v1/notifications", http.StatusOK, nil},
 		{"read notifications", http.MethodPost, "/api/v1/notifications/read", http.StatusNoContent, map[string]any{"up_to_id": 1}},
+		{"conversations", http.MethodGet, "/api/v1/conversations", http.StatusOK, nil},
+		{"start a conversation", http.MethodPost, "/api/v1/conversations", http.StatusUnprocessableEntity, map[string]any{}},
+		{"get a conversation", http.MethodGet, "/api/v1/conversations" + missing, http.StatusNotFound, nil},
+		{"rename a conversation", http.MethodPatch, "/api/v1/conversations" + missing, http.StatusNotFound, map[string]any{"name": "x"}},
+		{"add to a conversation", http.MethodPost, "/api/v1/conversations" + missing + "/members", http.StatusNotFound, map[string]any{"user_ids": []int{1}}},
+		{"leave a conversation", http.MethodPost, "/api/v1/conversations" + missing + "/leave", http.StatusNotFound, nil},
+		{"history", http.MethodGet, "/api/v1/conversations" + missing + "/messages", http.StatusNotFound, nil},
+		{"send a message", http.MethodPost, "/api/v1/conversations" + missing + "/messages", http.StatusNotFound, map[string]any{"body": "hello"}},
+		{"read a conversation", http.MethodPost, "/api/v1/conversations" + missing + "/read", http.StatusNotFound, map[string]any{"up_to_id": 1}},
+		{"edit a message", http.MethodPatch, "/api/v1/messages" + missing, http.StatusNotFound, map[string]any{"body": "hello"}},
+		{"delete a message", http.MethodDelete, "/api/v1/messages" + missing, http.StatusNotFound, nil},
+		{"react to a message", http.MethodPut, "/api/v1/messages" + missing + "/reactions/%F0%9F%91%8D", http.StatusNotFound, nil},
+		{"unreact to a message", http.MethodDelete, "/api/v1/messages" + missing + "/reactions/%F0%9F%91%8D", http.StatusNotFound, nil},
+		{"download a message file", http.MethodGet, "/api/v1/messages/attachments" + missing, http.StatusNotFound, nil},
+		{"admin users", http.MethodGet, "/api/v1/admin/users", http.StatusOK, nil},
+		{"admin change a user", http.MethodPatch, "/api/v1/admin/users" + missing, http.StatusNotFound, map[string]any{"disabled": false}},
+		{"admin invitation", http.MethodPost, "/api/v1/admin/invitations", http.StatusCreated, map[string]any{"role": "member"}},
+		{"admin rooms", http.MethodGet, "/api/v1/admin/rooms", http.StatusOK, nil},
+		{"admin room members", http.MethodGet, "/api/v1/admin/rooms" + missing + "/members", http.StatusNotFound, nil},
+		{"admin audit", http.MethodGet, "/api/v1/admin/audit", http.StatusOK, nil},
 	}
+}
+
+// memberStatuses are the routes whose answer to a member is not the status of
+// securedRoutes, which is the answer to an admin: the admin routes are 403 for
+// a member (SPEC D42), before anything about the resource is looked at.
+var memberStatuses = map[string]int{
+	"admin users":         http.StatusForbidden,
+	"admin change a user": http.StatusForbidden,
+	"admin invitation":    http.StatusForbidden,
+	"admin rooms":         http.StatusForbidden,
+	"admin room members":  http.StatusForbidden,
+	"admin audit":         http.StatusForbidden,
 }
 
 // TestEverySecuredRouteIsListed checks that the table above holds every route
@@ -119,6 +151,8 @@ func TestWhoMayCall(t *testing.T) {
 			name string
 			opts func(e *testEnv) []reqOpt
 			want int // 0: the status of the route
+			// member is true for a caller who is a member, not an admin.
+			member bool
 		}
 		callers := []caller{
 			{name: "no header", opts: func(*testEnv) []reqOpt { return nil }, want: http.StatusUnauthorized},
@@ -156,9 +190,9 @@ func TestWhoMayCall(t *testing.T) {
 				}
 				return []reqOpt{bearer(token)}
 			}, want: http.StatusUnauthorized},
-			{name: "a member", opts: func(e *testEnv) []reqOpt { return []reqOpt{bearer(e.token("alice"))} }},
+			{name: "a member", member: true, opts: func(e *testEnv) []reqOpt { return []reqOpt{bearer(e.token("alice"))} }},
 			{name: "an admin", opts: func(e *testEnv) []reqOpt { return []reqOpt{bearer(e.token("admin"))} }},
-			{name: "the scheme in capitals", opts: func(e *testEnv) []reqOpt {
+			{name: "the scheme in capitals", member: true, opts: func(e *testEnv) []reqOpt {
 				return []reqOpt{header("Authorization", "BEARER "+e.token("alice"))}
 			}},
 		}
@@ -173,6 +207,9 @@ func TestWhoMayCall(t *testing.T) {
 				want := c.want
 				if want == 0 {
 					want = rt.status
+					if memberWant, ok := memberStatuses[rt.name]; ok && c.member {
+						want = memberWant
+					}
 				}
 				requireStatus(t, rec, want)
 				if want == http.StatusUnauthorized {

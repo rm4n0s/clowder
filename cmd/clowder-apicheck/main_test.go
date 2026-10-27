@@ -36,7 +36,7 @@ func startAPI(t *testing.T) string {
 	for _, u := range []struct {
 		name string
 		role store.Role
-	}{{"alice", store.RoleMember}, {"bob", store.RoleMember}, {"root", store.RoleAdmin}} {
+	}{{"alice", store.RoleMember}, {"bob", store.RoleMember}, {"carol", store.RoleMember}, {"root", store.RoleAdmin}} {
 		inv, err := accounts.CreateSystemInvitation(t.Context(), u.role)
 		if err != nil {
 			t.Fatal(err)
@@ -69,7 +69,8 @@ func startAPI(t *testing.T) string {
 		}, nil),
 		Board:  app.NewBoard(st, clk, nil),
 		Search: app.NewSearch(st),
-	}, MaxUploadSize: 1 << 20})
+		Audit:  app.NewAudit(st),
+	}, MaxUploadSize: 1 << 20, BaseURL: "http://clowder.example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +102,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 	}{
 		{
 			name:      "the session scenario",
-			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword},
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-admin-username", "root"},
 			ownServer: true,
 			wantCode:  0,
 			wantOut: []string{
@@ -110,13 +111,13 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 				`"unread_notifications": 0`, "> GET /api/v1/me/sessions", `"current": true`, `"kind": "api"`,
 				"> GET /api/v1/users?q=al", `"username": "alice"`, "> POST /api/v1/auth/logout", "< 204 No Content",
 				"< 401 Unauthorized", "< WWW-Authenticate: Bearer", `"code": "unauthenticated"`,
-				"ok session", "== rooms:", "ok rooms", "all scenarios passed (",
+				"ok session", "== rooms:", "ok rooms", "== messages:", "ok messages", "== admin:", "ok admin", "all scenarios passed (",
 			},
 			notWantOut: []string{testPassword},
 		},
 		{
 			name:      "the password from the environment and another client name",
-			args:      []string{"-base-url", base + "/", "-username", "root", "-client-name", "Clowder Desktop"},
+			args:      []string{"-base-url", base + "/", "-username", "root", "-client-name", "Clowder Desktop", "-admin-username", "root"},
 			ownServer: true,
 			env:       map[string]string{passwordEnv: testPassword},
 			wantCode:  0,
@@ -167,6 +168,77 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 				`"unread_notifications": 0`, "ok board", "all scenarios passed",
 			},
 			notWantOut: []string{testPassword, "Board check: a small text"},
+		},
+		{
+			name:      "the messages scenario",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "messages"},
+			ownServer: true,
+			wantCode:  0,
+			wantOut: []string{
+				"== messages:", "> POST /api/v1/conversations", `"usernames": [`, "< 201 Created", `"kind": "direct"`,
+				"> (the field file: note.txt, 59 bytes)", "> POST /api/v1/conversations/", "/messages", `"upload_ids"`,
+				"&lt;bob&gt;", "/api/v1/messages/attachments/", "< Content-Disposition: attachment; filename=\"note.txt\"",
+				"< (59 bytes)", `"unread": true`, `"reply_to_id"`, `"excerpt"`, "/read", "< 204 No Content",
+				`"unread_conversations": 1`, "/reactions/%F0%9F%91%8D", "> PUT ", "> PATCH /api/v1/messages/",
+				"< 403 Forbidden", "> DELETE /api/v1/messages/", `"deleted": true`, `"seen_up_to_id"`,
+				`"kind": "group"`, "-renamed", "/leave", "< 422 Unprocessable Entity", "< 404 Not Found", "ok messages", "all scenarios passed",
+			},
+			notWantOut: []string{testPassword, "Message check: a small text"},
+		},
+		{
+			name:      "the messages scenario twice finds the conversation again",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "messages,messages"},
+			ownServer: true,
+			wantCode:  0,
+			wantOut:   []string{"ok messages"},
+		},
+		{
+			name:      "the messages scenario with a third user that is not there",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "messages", "-third-username", "nobody"},
+			ownServer: true,
+			wantCode:  1, wantOut: []string{"FAILED messages", "got=422"},
+		},
+		{
+			name:      "the admin scenario",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "admin", "-admin-username", "root"},
+			ownServer: true,
+			wantCode:  0,
+			wantOut: []string{
+				"== admin:", "> GET /api/v1/admin/users", `"disabled": false`, "> POST /api/v1/admin/invitations", "< 201 Created",
+				`"url": "http://clowder.example.com/invite/<token>"`, "> GET /api/v1/auth/invitations/<secret>", "> GET /api/v1/admin/rooms",
+				"/members", "> GET /api/v1/admin/audit?action=room.created&page=1", `"action": "room.created"`, "has_more",
+				"audit?from=yesterday", "< 422 Unprocessable Entity", "< 403 Forbidden", "ok admin", "all scenarios passed",
+			},
+			notWantOut: []string{testPassword},
+		},
+		{
+			name:      "the admin scenario with the password from the environment",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "admin", "-admin-username", "root"},
+			ownServer: true,
+			env:       map[string]string{adminPasswordEnv: "a wrong password!"},
+			wantCode:  1, wantOut: []string{"FAILED admin", "got=401"}, notWantOut: []string{"a wrong password!"},
+		},
+		{
+			name:      "the admin scenario with a member as the admin",
+			args:      []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "admin", "-admin-username", "bob"},
+			ownServer: true,
+			wantCode:  1, wantOut: []string{"FAILED admin", "the admin user is not an admin"},
+		},
+		{
+			name:      "the admin scenario as the admin who runs it",
+			args:      []string{"-base-url", base, "-username", "root", "-password", testPassword, "-only", "admin", "-admin-username", "root"},
+			ownServer: true,
+			wantCode:  0, wantOut: []string{"ok admin"},
+		},
+		{
+			name:     "no admin leaves the admin scenario out",
+			args:     []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "session", "-admin-username", ""},
+			wantCode: 0, wantOut: []string{"ok session"}, notWantOut: []string{"== admin"},
+		},
+		{
+			name:     "the admin scenario asked for without an admin",
+			args:     []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "session, admin", "-admin-username", ""},
+			wantCode: 2, wantErr: "the admin scenario needs -admin-username",
 		},
 		{
 			name:      "the board scenario with another user that is not there",
@@ -222,7 +294,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 		{
 			name:     "the list",
 			args:     []string{"-list"},
-			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t"},
+			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "admin\t"},
 		},
 		{
 			name:     "a server that is not there",
@@ -298,7 +370,7 @@ func TestTheTokenIsNeverPrinted(t *testing.T) {
 	}))
 	t.Cleanup(spy.Close)
 	var out, errOut bytes.Buffer
-	code := run(t.Context(), []string{"-base-url", spy.URL, "-username", "alice", "-password", testPassword}, func(string) string { return "" }, &out, &errOut)
+	code := run(t.Context(), []string{"-base-url", spy.URL, "-username", "alice", "-password", testPassword, "-admin-username", "root"}, func(string) string { return "" }, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("exit code = %d\n%s\n%s", code, out.String(), errOut.String())
 	}
@@ -392,6 +464,10 @@ func TestRedaction(t *testing.T) {
 		{"an invitation token", `{"invitation_token":"abc"}`, "\"invitation_token\": \"<token>\""},
 		{"a password", `{"password":"abc"}`, "\"password\": \"<password>\""},
 		{"nested", `{"a":{"b":[{"token":"x"}]}}`, "\"token\": \"<token>\""},
+		{"the link of an invitation", `{"url":"https://c.example/invite/abc"}`, `"url": "https://c.example/invite/<token>"`},
+		{"another url", `{"url":"https://c.example/other"}`, `"url": "https://c.example/other"`},
+		{"a url that is not text", `{"url":5}`, `"url": 5`},
+		{"the path of a request", "GET /api/v1/auth/invitations/hunter2-long-secret", "GET /api/v1/auth/invitations/<secret>"},
 		{"a known secret in a message", `{"error":{"message":"bad hunter2-long-secret here"}}`, "bad <secret> here"},
 		{"a known secret in text", "plain hunter2-long-secret text", "plain <secret> text"},
 		{"a short secret is left", `{"m":"short"}`, `"m": "short"`},

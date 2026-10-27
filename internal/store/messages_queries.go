@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"gorm.io/gorm/clause"
 )
 
 // DirectKeyOf makes the DirectKey of the direct conversation between two
@@ -560,6 +561,28 @@ func (s *Store) ToggleMessageReaction(ctx context.Context, messageID, userID uin
 		}
 	}
 	return true, nil
+}
+
+// PutMessageReaction adds the reaction (message, user, emoji) when it is not
+// there and leaves it when it is. It returns true when it was added. It fails
+// with TagQueryFailed when the message or the user does not exist.
+func (s *Store) PutMessageReaction(ctx context.Context, messageID, userID uint64, emoji string) (bool, error) {
+	r := MessageReaction{MessageID: messageID, UserID: userID, Emoji: emoji}
+	res := s.db(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&r)
+	if res.Error != nil {
+		return false, errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "putMessageReaction", "messageID", messageID)
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// DeleteMessageReaction removes the reaction (message, user, emoji) when it is
+// there and does nothing when it is not. It returns true when it was removed.
+func (s *Store) DeleteMessageReaction(ctx context.Context, messageID, userID uint64, emoji string) (bool, error) {
+	res := s.db(ctx).Where("message_id = ? AND user_id = ? AND emoji = ?", messageID, userID, emoji).Delete(&MessageReaction{})
+	if res.Error != nil {
+		return false, errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "deleteMessageReaction", "messageID", messageID)
+	}
+	return res.RowsAffected > 0, nil
 }
 
 // ReactionsOfMessages returns the reactions of each of the messages, oldest

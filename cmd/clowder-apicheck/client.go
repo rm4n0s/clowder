@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/rm4n0s/errors"
@@ -40,7 +41,8 @@ func (r *redactor) text(s string) string {
 
 // redactJSON returns v (a decoded JSON value) with the fields that hold a
 // secret replaced: token and invitation_token by <token>, password by
-// <password>. It copies the maps and slices it changes.
+// <password>, and the token at the end of the link of an invitation (the
+// field url) by <token>. It copies the maps and slices it changes.
 func redactJSON(v any) any {
 	switch x := v.(type) {
 	case map[string]any:
@@ -51,6 +53,15 @@ func redactJSON(v any) any {
 				out[k] = "<token>"
 			case "password":
 				out[k] = "<password>"
+			case "url":
+				// The link of an invitation holds its token.
+				if link, ok := child.(string); ok {
+					if i := strings.Index(link, "/invite/"); i >= 0 {
+						out[k] = link[:i+len("/invite/")] + "<token>"
+						continue
+					}
+				}
+				out[k] = child
 			default:
 				out[k] = redactJSON(child)
 			}
@@ -126,7 +137,12 @@ func (a answer) field(keys ...string) any {
 // do sends the request, prints it and the answer, and fails with tagStatusUnexpected
 // when the status is not want. A body that is not nil is sent as JSON. When the
 // client has a token it is sent as the bearer.
-func (c *client) do(ctx context.Context, method, path string, body any, want int) (answer, error) {
+//
+// A request that may be answered with more than one status passes them all:
+// do then fails unless the status is one of wants (the first is named in the
+// error).
+func (c *client) do(ctx context.Context, method, path string, body any, wants ...int) (answer, error) {
+	want := wants[0]
 	var payload []byte
 	if body != nil {
 		var err error
@@ -140,7 +156,7 @@ func (c *client) do(ctx context.Context, method, path string, body any, want int
 		return answer{}, errors.NewErr(tagRequestFailed, err).SetMetadata("method", method, "path", path)
 	}
 	c.requests++
-	_, _ = fmt.Fprintf(c.out, "> %s %s\n", method, path)
+	_, _ = fmt.Fprintf(c.out, "> %s %s\n", method, c.redac.text(path))
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		_, _ = fmt.Fprintln(c.out, "> Authorization: Bearer <token>")
@@ -176,9 +192,9 @@ func (c *client) do(ctx context.Context, method, path string, body any, want int
 			a.json = v
 		}
 	}
-	if resp.StatusCode != want {
+	if !slices.Contains(wants, resp.StatusCode) {
 		return a, errors.New(tagStatusUnexpected, "the server answered with another status",
-			"method", method, "path", path, "want", want, "got", resp.StatusCode)
+			"method", method, "path", c.redac.text(path), "want", want, "got", resp.StatusCode)
 	}
 	return a, nil
 }

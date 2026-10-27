@@ -86,7 +86,8 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	notifications := app.NewNotifications(st, pub)
 	messages := app.NewMessages(st, clock.Real(), fileStore, postsConfig, pub)
 	rooms := app.NewRooms(st, fileStore, logger, pub)
-	posts := app.NewPosts(st, clock.Real(), markdown.New(), fileStore, postsConfig, pub)
+	md := markdown.New()
+	posts := app.NewPosts(st, clock.Real(), md, fileStore, postsConfig, pub)
 	// Uploads of the API that no post takes are removed after a day. The
 	// sweeper stops before the store is closed (the deferred calls run in
 	// reverse order).
@@ -94,15 +95,18 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	defer stopSweeper()
 	board := app.NewBoard(st, clock.Real(), pub)
 	search := app.NewSearch(st)
+	audit := app.NewAudit(st)
 	apiServer, err := api.New(api.Options{
 		Services: api.Services{
 			Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts,
-			Board: board, Search: search,
+			Board: board, Search: search, Audit: audit,
 		},
 		Logger:        logger,
 		NoteUser:      web.NoteUser,
 		ClientIP:      web.ClientIPFunc(cfg.TrustProxyHeaders),
 		MaxUploadSize: cfg.MaxAttachmentSize,
+		Markdown:      md,
+		BaseURL:       cfg.BaseURL,
 	})
 	if err != nil {
 		return err
@@ -111,7 +115,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		API:           apiServer,
 		Accounts:      accounts,
 		Rooms:         rooms,
-		Audit:         app.NewAudit(st),
+		Audit:         audit,
 		Board:         board,
 		Search:        search,
 		Health:        app.NewHealth(st),

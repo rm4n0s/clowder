@@ -29,6 +29,10 @@ const otherPasswordEnv = "CLOWDER_APICHECK_OTHER_PASSWORD"
 // user has unless it is told otherwise.
 const demoPassword = "demo-password-1234"
 
+// adminPasswordEnv is the environment variable that holds the password of the
+// admin when -admin-password is not given.
+const adminPasswordEnv = "CLOWDER_APICHECK_ADMIN_PASSWORD"
+
 // requestTimeout bounds each request.
 const requestTimeout = 30 * time.Second
 
@@ -51,6 +55,9 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	clientName := fs.String("client-name", "clowder-apicheck", "name of this client in the user's sessions")
 	otherUsername := fs.String("other-username", "bob", "the other user, whom the board scenario assigns a task to and who reads the notifications")
 	otherPassword := fs.String("other-password", "", "password of the other user ("+otherPasswordEnv+" when empty; the demo password if that is empty too)")
+	thirdUsername := fs.String("third-username", "carol", "the third user, whom the messages scenario puts in a group with the other user")
+	adminUsername := fs.String("admin-username", "admin", "the admin of the admin scenario; empty leaves the scenario out")
+	adminPassword := fs.String("admin-password", "", "password of the admin ("+adminPasswordEnv+" when empty; the demo password if that is empty too)")
 	only := fs.String("only", "", "run only these scenarios, separated by commas")
 	list := fs.Bool("list", false, "print the names of the scenarios and stop")
 	if err := fs.Parse(args); err != nil {
@@ -79,7 +86,21 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	if *otherPassword == "" {
 		*otherPassword = demoPassword
 	}
-	chosen, err := choose(scenarios(), *only)
+	if *adminPassword == "" {
+		*adminPassword = env(adminPasswordEnv)
+	}
+	if *adminPassword == "" {
+		*adminPassword = demoPassword
+	}
+	all := scenarios()
+	if *adminUsername == "" {
+		if strings.TrimSpace(*only) != "" && slices.Contains(strings.Split(strings.ReplaceAll(*only, " ", ""), ","), adminScenarioName) {
+			_, _ = fmt.Fprintf(stderr, "clowder-apicheck: the %s scenario needs -admin-username\n", adminScenarioName)
+			return 2
+		}
+		all = slices.DeleteFunc(all, func(s scenario) bool { return s.name == adminScenarioName })
+	}
+	chosen, err := choose(all, *only)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "clowder-apicheck: %s\n", err.Error())
 		return 2
@@ -92,7 +113,8 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		redac: &redactor{},
 	}
 	r := &runner{c: c, username: *username, password: *password, clientName: *clientName,
-		otherUsername: *otherUsername, otherPassword: *otherPassword}
+		otherUsername: *otherUsername, otherPassword: *otherPassword, thirdUsername: *thirdUsername,
+		adminUsername: *adminUsername, adminPassword: *adminPassword}
 	for _, s := range chosen {
 		_, _ = fmt.Fprintf(stdout, "== %s: %s\n\n", s.name, s.summary)
 		if err := s.run(ctx, r); err != nil {

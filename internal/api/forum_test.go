@@ -30,7 +30,14 @@ type forum struct {
 // newForum makes a forum on a fresh database.
 func newForum(t *testing.T) *forum {
 	t.Helper()
-	f := &forum{testEnv: newTestEnv(t, nil), tokens: map[string]string{}}
+	return forumWith(t, nil)
+}
+
+// forumWith makes a forum whose server is made with the options that mutate
+// changes.
+func forumWith(t *testing.T, mutate func(*Options)) *forum {
+	t.Helper()
+	f := &forum{testEnv: newTestEnv(t, mutate), tokens: map[string]string{}}
 	for _, u := range []struct {
 		name string
 		role store.Role

@@ -9,6 +9,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/errors"
 )
 
@@ -37,6 +38,8 @@ type Services struct {
 	Board *app.Board
 	// Search is the service of search.
 	Search *app.Search
+	// Audit is the service that reads the audit log.
+	Audit *app.Audit
 }
 
 // Options are the parts a Server is made of.
@@ -60,6 +63,13 @@ type Options struct {
 	// (config.DefaultMaxAttachmentSize). The body of an upload request may be
 	// a megabyte more, for the framing of the form.
 	MaxUploadSize int64
+	// Markdown renders the text of a private message to the "html" of the
+	// answers, as the pages do (SPEC D33). Nil makes the default renderer.
+	Markdown *markdown.Renderer
+	// BaseURL is the public address of the installation, without a trailing
+	// slash (config.Config.BaseURL): the link of an invitation is
+	// <BaseURL>/invite/<token>. Empty makes the link a path.
+	BaseURL string
 }
 
 // Route is a pattern of http.ServeMux, with the method and the whole path
@@ -80,7 +90,11 @@ type Server struct {
 	clientIP func(r *http.Request) string
 	// maxUploadBody is the cap on the body of an upload request.
 	maxUploadBody int64
-	routes        []Route
+	// md renders the text of messages.
+	md *markdown.Renderer
+	// baseURL is the start of the link of an invitation.
+	baseURL string
+	routes  []Route
 	// lookup holds the routes without the catch-all, to find the methods a
 	// path has.
 	lookup *http.ServeMux
@@ -91,10 +105,14 @@ type Server struct {
 func New(opts Options) (*Server, error) {
 	svc := opts.Services
 	if svc.Accounts == nil || svc.Notifications == nil || svc.Messages == nil || svc.Rooms == nil || svc.Posts == nil ||
-		svc.Board == nil || svc.Search == nil {
-		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications, messages, rooms, posts, board and search services")
+		svc.Board == nil || svc.Search == nil || svc.Audit == nil {
+		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications, messages, rooms, posts, board, search and audit services")
 	}
-	s := &Server{svc: opts.Services, logger: opts.Logger, noteUser: opts.NoteUser, clientIP: opts.ClientIP}
+	s := &Server{svc: opts.Services, logger: opts.Logger, noteUser: opts.NoteUser, clientIP: opts.ClientIP,
+		md: opts.Markdown, baseURL: strings.TrimRight(opts.BaseURL, "/")}
+	if s.md == nil {
+		s.md = markdown.New()
+	}
 	maxUpload := opts.MaxUploadSize
 	if maxUpload <= 0 {
 		maxUpload = config.DefaultMaxAttachmentSize
@@ -147,6 +165,9 @@ func (s *Server) defineRoutes() []Route {
 	routes = append(routes, s.boardRoutes()...)
 	routes = append(routes, s.searchRoutes()...)
 	routes = append(routes, s.notificationRoutes()...)
+	routes = append(routes, s.conversationRoutes()...)
+	routes = append(routes, s.messageRoutes()...)
+	routes = append(routes, s.adminRoutes()...)
 	routes = append(routes, s.documentRoutes()...)
 	return routes
 }

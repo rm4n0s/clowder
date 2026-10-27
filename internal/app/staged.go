@@ -80,13 +80,19 @@ func (p *Posts) UploadStaged(ctx context.Context, actor Actor, name string, r io
 // the post that takes the uploads checks the files (Create), and ForgetStaged
 // ends the notes.
 func (p *Posts) StagedUploads(ctx context.Context, actor Actor, ids []string) ([]Upload, error) {
+	return stagedUploads(p.files, actor, ids)
+}
+
+// stagedUploads is StagedUploads of Posts and Messages: both keep their files
+// in the same store and take the same staged uploads.
+func stagedUploads(fs *files.Store, actor Actor, ids []string) ([]Upload, error) {
 	if actor.UserID == 0 {
 		return nil, errors.New(TagUnauthenticated, "uploads need a login", "reason", "none")
 	}
 	uploads := make([]Upload, 0, len(ids))
 	bad := 0
 	for _, id := range ids {
-		data, err := p.files.Note(id)
+		data, err := fs.Note(id)
 		if err != nil {
 			if appErr, ok := errors.FromError(err); ok && (appErr.Tag == files.TagBadKey || appErr.Tag == files.TagNotFound) {
 				bad++
@@ -113,12 +119,17 @@ func (p *Posts) StagedUploads(ctx context.Context, actor Actor, ids []string) ([
 // another post. Failures are logged, never returned. An actor with no ID does
 // nothing.
 func (p *Posts) ForgetStaged(ctx context.Context, actor Actor, uploads []Upload) {
+	forgetStaged(ctx, p.files, p.cleaner, actor, uploads)
+}
+
+// forgetStaged is ForgetStaged of Posts and Messages.
+func forgetStaged(ctx context.Context, fs *files.Store, cleaner fileCleaner, actor Actor, uploads []Upload) {
 	if actor.UserID == 0 {
 		return
 	}
 	for _, u := range uploads {
-		if err := p.files.RemoveNote(u.Key); err != nil {
-			p.cleaner.logger.ErrorContext(ctx, "removing the note of an upload failed", "err", err)
+		if err := fs.RemoveNote(u.Key); err != nil {
+			cleaner.logger.ErrorContext(ctx, "removing the note of an upload failed", "err", err)
 		}
 	}
 }
