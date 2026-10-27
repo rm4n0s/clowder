@@ -130,6 +130,8 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /posts/{id}/edit", handler: http.HandlerFunc(s.postEditSave)},
 		{pattern: "GET /posts/{id}/view", handler: http.HandlerFunc(s.postView)},
 		{pattern: "POST /posts/{id}/delete", handler: http.HandlerFunc(s.postDelete)},
+		{pattern: "GET /posts/{id}/reply", handler: http.HandlerFunc(s.postReplyForm)},
+		{pattern: "POST /posts/{id}/replies", handler: http.HandlerFunc(s.postReply)},
 		{pattern: "POST /preview", handler: http.HandlerFunc(s.postPreview)},
 		{pattern: "GET /tags/suggest", handler: http.HandlerFunc(s.tagSuggest)},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},

@@ -554,4 +554,52 @@ a.tag:hover { border-color: var(--accent); }
 
 .post-room { margin: 0 0 0.75rem; }
 
+/* The thread of a post: the comments one after the other, each indented one
+   step per level of depth (the class depth-N; the page stops at 6). A guide
+   line per level runs down the left of a comment, through the gaps of the list,
+   so that the lines of a branch join. */
+.thread { --step: 1.25rem; }
+
 .comments { margin-top: 2rem; }
+
+.comment-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.comment { position: relative; margin-left: calc(var(--level) * var(--step)); }
+
+.comment::before {
+  content: "";
+  position: absolute;
+  top: -0.75rem;
+  bottom: -0.75rem;
+  left: calc(var(--level) * var(--step) * -1);
+  width: calc(var(--level) * var(--step));
+  background: repeating-linear-gradient(to right, var(--border) 0 2px, transparent 2px var(--step));
+  pointer-events: none;
+}
+
+.depth-1 { --level: 1; }
+.depth-2 { --level: 2; }
+.depth-3 { --level: 3; }
+.depth-4 { --level: 4; }
+.depth-5 { --level: 5; }
+.depth-6 { --level: 6; }
+
+@media (max-width: 40rem) {
+  .thread { --step: 0.625rem; }
+}
+
+.comment.post-deleted { border-style: dashed; }
+
+.comment-replying { margin: 0 0 0.5rem; font-size: 0.875rem; font-style: italic; color: var(--fg-muted); }
+
+/* The comment the page was opened for, or the one a link points to. */
+.post-focus, .post:target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
+/* The place under an item where the reply editor opens. */
+.reply-slot:empty { display: none; }
+
+.reply-slot .post-editor { margin: 0.75rem 0 0.25rem; }

@@ -45,6 +45,12 @@ func TestParseFlags(t *testing.T) {
 			args: []string{"-o", "x.png", "-as", "alice", "-page", "{room:secret}"},
 			want: options{page: "{room:secret}", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond},
 		},
+		{
+			name: "post placeholder",
+			args: []string{"-o", "x.png", "-as", "alice", "-page", "{post:Quick question}"},
+			want: options{page: "{post:Quick question}", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond},
+		},
+		{name: "post placeholder without a user", args: []string{"-o", "x.png", "-page", "{post:Quick question}"}, wantTag: tagFlagsInvalid},
 		{name: "room placeholder without a user", args: []string{"-o", "x.png", "-page", "{room:secret}"}, wantTag: tagFlagsInvalid},
 		{name: "invite without the placeholder", args: []string{"-o", "x.png", "-invite", "-page", "/invite/x"}, wantTag: tagFlagsInvalid},
 		{name: "placeholder without invite", args: []string{"-o", "x.png", "-page", "/invite/{invite}"}, wantTag: tagFlagsInvalid},

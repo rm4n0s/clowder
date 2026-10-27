@@ -16,8 +16,12 @@ const (
 	FromPost = "post"
 )
 
+// MaxVisualDepth is the deepest level a comment is indented to. A comment
+// deeper than that stays at this level and says whom it replies to (SPEC §7.3).
+const MaxVisualDepth = 6
+
 // PostEditorData is what the post editor shows. The room page uses it for the
-// new post, the feed for the edit in place; the comments of step 5.2 and the
+// new post, the post page for the edit in place and for the replies; the
 // attachments and tasks of M6 and M9 add their fields here.
 type PostEditorData struct {
 	// ID tells the editors of a page apart: "new" for the new post, "edit-12"
@@ -42,6 +46,10 @@ type PostEditorData struct {
 	CancelPath string
 	// CancelHref is where the Cancel link goes without JavaScript.
 	CancelHref string
+	// CancelClose makes the Cancel link close the reply slot the editor is in,
+	// in the browser, without asking the server (CancelHref is its target
+	// without JavaScript).
+	CancelClose bool
 	// From says where the post is shown (FromPost), for an edit in place.
 	From string
 }
@@ -73,6 +81,19 @@ func EditPostEditorData(p app.Post, from string) PostEditorData {
 	return d
 }
 
+// ReplyEditorData is the empty editor that writes a comment under the post or
+// comment parentID. It opens in the reply slot under that item.
+func ReplyEditorData(parentID uint64) PostEditorData {
+	return PostEditorData{
+		ID:          "reply-" + strconv.FormatUint(parentID, 10),
+		Action:      PostPath(parentID) + "/replies",
+		Format:      string(app.FormatMarkdown),
+		SubmitLabel: "Reply",
+		CancelHref:  PostPath(parentID),
+		CancelClose: true,
+	}
+}
+
 // postActionPath returns the path of an action on a post, with the query that
 // says where the post is shown when it is on its own page.
 func postActionPath(id uint64, action, from string) string {
@@ -83,9 +104,9 @@ func postActionPath(id uint64, action, from string) string {
 	return p
 }
 
-// PostCardData is what one post shows.
+// PostCardData is what one post or comment shows.
 type PostCardData struct {
-	// Post is the post.
+	// Post is the post or comment.
 	Post app.Post
 	// From says where the post is shown (FromPost or empty): the delete form
 	// takes the person to the room when the post page itself is gone.
@@ -93,6 +114,22 @@ type PostCardData struct {
 	// Message is the problem of the last action on the post (edit, delete),
 	// shown above it; empty shows none.
 	Message string
+	// Depth is how deep a comment is in its thread (1 for a reply to the post);
+	// 0 for a post.
+	Depth int
+	// ParentAuthor is the author of the item a comment replies to; the zero
+	// value when that is deleted. It is shown for a comment deeper than
+	// MaxVisualDepth.
+	ParentAuthor app.UserRef
+	// Focus marks the comment that the page was opened for: highlighted and
+	// scrolled into view.
+	Focus bool
+	// CanReply shows the Reply button (and holds the reply slot): the post is
+	// shown on its own page to a member of its room.
+	CanReply bool
+	// Reply is the editor open in the reply slot under the item; nil for an
+	// empty slot.
+	Reply *PostEditorData
 }
 
 // PostEditData is the post replaced by its editor.
@@ -101,6 +138,8 @@ type PostEditData struct {
 	Post app.Post
 	// Editor is the editor, filled for this post.
 	Editor PostEditorData
+	// Depth is how deep the post is, when it is a comment (see PostCardData).
+	Depth int
 }
 
 // FeedData is a page of the feed of a room.
@@ -117,14 +156,61 @@ type FeedData struct {
 type PostPageData struct {
 	// Sidebar is the sidebar of the page; the room of the post is highlighted.
 	Sidebar SidebarData
-	// Post is the post.
+	// Post is the top-level post of the thread.
 	Post app.Post
-	// Message is the problem of the last action on the post, shown above it.
+	// Comments are the comments of the thread, depth first.
+	Comments []app.Comment
+	// Focus is the ID of the comment the page was opened for; 0 for the post.
+	Focus uint64
+	// CanReply is true for a member of the room: the items have Reply buttons.
+	// Anyone else is told to join the room.
+	CanReply bool
+	// ActiveID is the ID of the post or comment that Message, Editing and
+	// Replying are about; 0 is the top-level post.
+	ActiveID uint64
+	// Message is the problem of the last action on the active item, shown above
+	// it.
 	Message string
-	// Editing is true when the post is replaced by its editor.
+	// Editing is true when the active item is replaced by its editor.
 	Editing bool
-	// Editor is the editor, used when Editing is true.
+	// Replying is true when the active item has the editor in Editor open in
+	// its reply slot.
+	Replying bool
+	// Editor is the editor, used when Editing or Replying is true.
 	Editor PostEditorData
+}
+
+// activeID is the ID of the item that Message, Editing and Replying are about.
+func (d PostPageData) activeID() uint64 {
+	if d.ActiveID == 0 {
+		return d.Post.ID
+	}
+	return d.ActiveID
+}
+
+// card makes the data of the card of an item of the thread.
+func (d PostPageData) card(c PostCardData) PostCardData {
+	c.From = FromPost
+	c.CanReply = d.CanReply
+	c.Focus = d.Focus != 0 && d.Focus == c.Post.ID
+	if c.Post.ID == d.activeID() {
+		c.Message = d.Message
+		if d.Replying {
+			editor := d.Editor
+			c.Reply = &editor
+		}
+	}
+	return c
+}
+
+// rootCard is the card of the top-level post of the page.
+func (d PostPageData) rootCard() PostCardData {
+	return d.card(PostCardData{Post: d.Post})
+}
+
+// commentCard is the card of a comment of the thread.
+func (d PostPageData) commentCard(c app.Comment) PostCardData {
+	return d.card(PostCardData{Post: c.Post, Depth: c.Depth, ParentAuthor: c.ParentAuthor})
 }
 
 // PostPath returns the path of the page of a post, /posts/<id>. Its actions
@@ -132,6 +218,107 @@ type PostPageData struct {
 func PostPath(id uint64) string {
 	return "/posts/" + strconv.FormatUint(id, 10)
 }
+
+// PostCommentsPath returns the path of the comments of a post, the page of the
+// post at its thread: /posts/<id>#comments.
+func PostCommentsPath(id uint64) string {
+	return PostPath(id) + "#comments"
+}
+
+// CommentPath returns the path that shows a comment in its thread, on the page
+// of the top-level post: /posts/<root>#post-<id>.
+func CommentPath(rootID, id uint64) string {
+	return PostPath(rootID) + "#" + postElementID(id)
+}
+
+// timePath is where the time of a post links to: its page, or for a comment
+// its place in the thread.
+func timePath(p app.Post) string {
+	if p.IsComment && p.RootID != 0 {
+		return CommentPath(p.RootID, p.ID)
+	}
+	return PostPath(p.ID)
+}
+
+// replyPath is the path that opens the reply editor under a post or comment.
+func replyPath(id uint64) string {
+	return PostPath(id) + "/reply"
+}
+
+// visualDepth is the level a comment is indented to: its depth, at most
+// MaxVisualDepth.
+func visualDepth(depth int) int {
+	return min(depth, MaxVisualDepth)
+}
+
+// cardClasses are the classes of the article of a post or comment.
+func cardClasses(d PostCardData) string {
+	classes := "post"
+	if d.Post.IsComment {
+		classes += " comment " + depthClass(d.Depth)
+	}
+	if d.Post.Deleted {
+		classes += " post-deleted"
+	}
+	if d.Focus {
+		classes += " post-focus"
+	}
+	return classes
+}
+
+// depthClass is the class of the indentation of a comment of the depth.
+func depthClass(depth int) string {
+	return "depth-" + strconv.Itoa(max(visualDepth(depth), 1))
+}
+
+// editClasses are the classes of the article of a post or comment replaced by
+// its editor.
+func editClasses(d PostEditData) string {
+	classes := "post post-editing"
+	if d.Post.IsComment {
+		classes += " comment " + depthClass(d.Depth)
+	}
+	return classes
+}
+
+// replyingToCapped reports whether the card says whom the comment replies to:
+// it is deeper than MaxVisualDepth, so the indentation does not show it.
+func replyingToCapped(d PostCardData) bool {
+	return d.Post.IsComment && !d.Post.Deleted && d.Depth > MaxVisualDepth
+}
+
+// deletedNote is the text of the placeholder of a deleted post or comment.
+func deletedNote(p app.Post) string {
+	if p.IsComment {
+		return "This comment was deleted."
+	}
+	return "This post was deleted."
+}
+
+// deleteConfirm is the question asked before a post or comment is deleted.
+func deleteConfirm(p app.Post) string {
+	if p.IsComment {
+		return "Delete this comment? This cannot be undone."
+	}
+	return "Delete this post? This cannot be undone."
+}
+
+// cancelAction is the Datastar expression of the Cancel link of an editor: it
+// asks the server for what the editor replaced, or closes the reply slot.
+func cancelAction(d PostEditorData) string {
+	if d.CancelClose {
+		return closeReplyAction
+	}
+	return "@get('" + escapeQuote(d.CancelPath) + "')"
+}
+
+// scrollIntoViewAction is the Datastar expression that scrolls the focused
+// comment into view when the page opens.
+const scrollIntoViewAction = "el.scrollIntoView({block: 'center'})"
+
+// closeReplyAction is the Datastar expression that closes the reply editor it
+// is in.
+const closeReplyAction = "el.closest('.reply-slot').replaceChildren()"
 
 // FeedPath returns the path that loads the posts older than before, in the
 // feed of the room, as a Datastar patch.

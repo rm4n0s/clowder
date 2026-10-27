@@ -50,6 +50,17 @@ func TestPostEditor(t *testing.T) {
 			notWant: []string{"<b>old</b>", `name="from"`},
 		},
 		{
+			name: "the editor of a reply closes its slot and posts to the replies",
+			data: views.ReplyEditorData(12),
+			want: []string{
+				`<form id="post-editor-reply-12" class="post-editor" method="post" action="/posts/12/replies"`, "@post(&#39;/posts/12/replies&#39;, {contentType: &#39;form&#39;})",
+				`name="editor" value="reply-12"`, `name="format" value="markdown" checked`, `>Reply</button>`,
+				`<a class="button-link" href="/posts/12" data-on:click__prevent="el.closest(&#39;.reply-slot&#39;).replaceChildren()">Cancel</a>`,
+				`id="post-tag-suggest-reply-12"`, `id="post-preview-reply-12"`,
+			},
+			notWant: []string{"/view", `name="from"`},
+		},
+		{
 			name: "an edit on the page of the post",
 			data: views.EditPostEditorData(edited, views.FromPost),
 			want: []string{`<input type="hidden" name="from" value="post">`, "@get(&#39;/posts/12/view?from=post&#39;)"},
@@ -169,7 +180,7 @@ func TestPostCard(t *testing.T) {
 				`<time datetime="2026-10-26T06:05:00Z" title="2026-10-26T06:05:00Z">2026-10-26 06:05</time>`, `href="/posts/5"`,
 				"<p>Hello <strong>you</strong></p>",
 				`href="/search?q=%23design"`, `>#design</a>`, `href="/search?q=%23%C3%BCn%C3%AF"`,
-				`<a class="post-comments" href="/posts/5">3 comments</a>`,
+				`<a class="post-comments" href="/posts/5#comments">3 comments</a>`,
 				`class="post-edit" href="/posts/5/edit"`, "@get(&#39;/posts/5/edit&#39;)",
 				`action="/posts/5/delete"`, "confirm(&#39;Delete this post? This cannot be undone.&#39;)",
 			},
@@ -199,7 +210,7 @@ func TestPostCard(t *testing.T) {
 		{
 			name:    "the placeholder of a deleted post",
 			data:    views.PostCardData{Post: deleted},
-			want:    []string{`class="post post-deleted"`, "This post was deleted.", `<a class="post-comments" href="/posts/6">1 comment</a>`},
+			want:    []string{`class="post post-deleted"`, "This post was deleted.", `<a class="post-comments" href="/posts/6#comments">1 comment</a>`},
 			notWant: []string{"post-author", "post-meta", "post-body", "tags", "post-edit", "/delete"},
 		},
 		{
@@ -330,9 +341,17 @@ func TestPostPageView(t *testing.T) {
 			want: []string{
 				"<title>Post by Alice in general &lt;x&gt; · Clowder</title>", `<aside>`, `aria-current="page"`,
 				`<a href="/rooms/2">general &lt;x&gt;</a>`, `id="post-5"`, "<p>hello</p>",
-				`name="from" value="post"`, `<section id="comments" class="comments">`, "No comments yet.",
+				`name="from" value="post"`, `<div id="thread" class="thread">`, `<section id="comments" class="comments">`, "No comments yet.",
+				// A person who has not joined the room is told to.
+				`id="join-to-reply"`, "Join this room to reply",
 			},
-			notWant: []string{"<textarea"},
+			notWant: []string{"<textarea", "post-reply", "reply-slot"},
+		},
+		{
+			name:    "a member has the Reply button and its slot",
+			data:    views.PostPageData{Sidebar: sidebar, Post: post, CanReply: true},
+			want:    []string{`class="post-reply" href="/posts/5/reply"`, "@get(&#39;/posts/5/reply&#39;)", `<div id="reply-slot-5" class="reply-slot"></div>`},
+			notWant: []string{"Join this room to reply"},
 		},
 		{
 			name: "the comment count is shown",
@@ -375,6 +394,259 @@ func TestPostPaths(t *testing.T) {
 		{"tag", views.TagSearchPath("design"), "/search?q=%23design"},
 		{"tag with unicode", views.TagSearchPath("ünï"), "/search?q=%23%C3%BCn%C3%AF"},
 		{"tag with a dash", views.TagSearchPath("a-b_c"), "/search?q=%23a-b_c"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("got %q, want %q", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// commentOf makes a comment of the thread of post 5.
+func commentOf(id uint64, depth int, mutate func(*app.Comment)) app.Comment {
+	c := app.Comment{
+		Post: app.Post{
+			ID: id, RoomID: 2, RoomName: "general", RootID: 5, ParentID: 5, IsComment: true,
+			Author: app.UserRef{ID: 3, Username: "bob", DisplayName: "Bob"}, Format: app.FormatText, Body: "x",
+			HTML: template.HTML("<p>a comment</p>"), Tags: []string{"mine"}, CreatedAt: time.Date(2026, 10, 26, 9, 5, 0, 0, time.UTC),
+			CanEdit: true, CanDelete: true,
+		},
+		Depth: depth, ParentID: 5, ParentAuthor: app.UserRef{ID: 2, Username: "alice", DisplayName: "Alice"},
+	}
+	if mutate != nil {
+		mutate(&c)
+	}
+	return c
+}
+
+func TestCommentCard(t *testing.T) {
+	card := func(c app.Comment, mutate func(*views.PostCardData)) views.PostCardData {
+		d := views.PostCardData{Post: c.Post, Depth: c.Depth, ParentAuthor: c.ParentAuthor, From: views.FromPost, CanReply: true}
+		if mutate != nil {
+			mutate(&d)
+		}
+		return d
+	}
+	deleted := commentOf(11, 2, func(c *app.Comment) {
+		c.Deleted, c.Author, c.HTML, c.Body, c.Tags, c.CanEdit, c.CanDelete = true, app.UserRef{}, "", "", []string{}, false, false
+	})
+	tests := []struct {
+		name    string
+		data    views.PostCardData
+		want    []string
+		notWant []string
+	}{
+		{
+			name: "a comment is indented to its depth and has Reply, Edit and Delete",
+			data: card(commentOf(9, 3, nil), nil),
+			want: []string{
+				`<article id="post-9" class="post comment depth-3" data-post="9">`, `<span class="post-author">Bob</span>`, "<p>a comment</p>", `href="/search?q=%23mine"`,
+				// The time links to the comment in its thread.
+				`<a class="post-time" href="/posts/5#post-9">`,
+				`class="post-reply" href="/posts/9/reply"`, "@get(&#39;/posts/9/reply&#39;)",
+				`class="post-edit" href="/posts/9/edit?from=post"`, `action="/posts/9/delete"`, "Delete this comment? This cannot be undone.", `name="from" value="post"`,
+				`<div id="reply-slot-9" class="reply-slot"></div>`,
+			},
+			notWant: []string{"post-comments", "comment-replying", "post-focus", "data-init", "Delete this post"},
+		},
+		{
+			name: "the first level",
+			data: card(commentOf(9, 1, nil), nil),
+			want: []string{`class="post comment depth-1"`},
+		},
+		{
+			name:    "the deepest level that is drawn",
+			data:    card(commentOf(9, 6, nil), nil),
+			want:    []string{`class="post comment depth-6"`},
+			notWant: []string{"comment-replying"},
+		},
+		{
+			name:    "deeper than the cap stays at the cap and says whom it replies to",
+			data:    card(commentOf(9, 8, nil), nil),
+			want:    []string{`class="post comment depth-6"`, `<p class="comment-replying">replying to @alice</p>`},
+			notWant: []string{"depth-7", "depth-8"},
+		},
+		{
+			name: "deeper than the cap under a deleted comment",
+			data: card(commentOf(9, 7, func(c *app.Comment) { c.ParentAuthor = app.UserRef{} }), nil),
+			want: []string{`class="post comment depth-6"`, `<p class="comment-replying">replying to a deleted comment</p>`},
+		},
+		{
+			name: "the placeholder of a deleted comment",
+			data: card(deleted, nil),
+			want: []string{`class="post comment depth-2 post-deleted"`, "This comment was deleted."},
+			notWant: []string{
+				"post-author", "post-meta", "post-body", "tags", "post-edit", "/delete", "post-reply", "reply-slot", "comment-replying", "post-comments", "This post was deleted",
+			},
+		},
+		{
+			name:    "the placeholder of a deleted comment past the cap says nothing of its parent",
+			data:    card(commentOf(11, 9, func(c *app.Comment) { c.Deleted, c.HTML = true, "" }), nil),
+			want:    []string{"depth-6", "This comment was deleted."},
+			notWant: []string{"comment-replying", "@alice"},
+		},
+		{
+			name: "the comment in focus is highlighted and scrolled into view",
+			data: card(commentOf(9, 2, nil), func(d *views.PostCardData) { d.Focus = true }),
+			want: []string{`class="post comment depth-2 post-focus"`, `data-init="el.scrollIntoView({block: &#39;center&#39;})"`},
+		},
+		{
+			name:    "someone who has not joined has no Reply",
+			data:    card(commentOf(9, 2, nil), func(d *views.PostCardData) { d.CanReply = false }),
+			want:    []string{`class="post-edit"`},
+			notWant: []string{"post-reply", "reply-slot"},
+		},
+		{
+			name: "the reply editor is open in the slot",
+			data: card(commentOf(9, 2, nil), func(d *views.PostCardData) {
+				editor := views.ReplyEditorData(9)
+				d.Reply = &editor
+			}),
+			want: []string{`<div id="reply-slot-9" class="reply-slot"><form id="post-editor-reply-9"`, `action="/posts/9/replies"`},
+		},
+		{
+			name: "a message above the comment",
+			data: card(commentOf(9, 2, nil), func(d *views.PostCardData) { d.Message = "You are not allowed to do that" }),
+			want: []string{`<p class="form-error" role="alert">You are not allowed to do that</p>`},
+		},
+		{
+			name:    "someone else's comment has neither Edit nor Delete",
+			data:    card(commentOf(9, 2, func(c *app.Comment) { c.CanEdit, c.CanDelete = false, false }), nil),
+			want:    []string{"post-reply"},
+			notWant: []string{"post-edit", "/delete"},
+		},
+		{
+			name: "an edited comment says so",
+			data: card(commentOf(9, 2, func(c *app.Comment) {
+				at := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
+				c.EditedAt = &at
+			}), nil),
+			want: []string{`class="post-edited"`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireContains(t, render(t, views.PostCard(tt.data)), tt.want, tt.notWant)
+		})
+	}
+}
+
+func TestCommentEditView(t *testing.T) {
+	c := commentOf(9, 8, nil)
+	editor := views.EditPostEditorData(c.Post, views.FromPost)
+	tests := []struct {
+		name string
+		data views.PostEditData
+		want []string
+	}{
+		{"a comment being edited keeps its indentation", views.PostEditData{Post: c.Post, Editor: editor, Depth: c.Depth}, []string{`class="post post-editing comment depth-6"`, `id="post-editor-edit-9"`}},
+		{"a post being edited", views.PostEditData{Post: app.Post{ID: 5}, Editor: editor}, []string{`class="post post-editing"`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			html := render(t, views.PostEdit(tt.data))
+			requireContains(t, html, tt.want, nil)
+		})
+	}
+}
+
+func TestThreadView(t *testing.T) {
+	user := app.User{ID: 2, DisplayName: "Alice", Username: "alice", Role: app.RoleMember}
+	sidebar := views.SidebarData{User: user, Rooms: []app.Room{{ID: 2, Name: "general"}}, CurrentRoomID: 2}
+	root := app.Post{
+		ID: 5, RoomID: 2, RoomName: "general", Author: app.UserRef{ID: 2, Username: "alice", DisplayName: "Alice"},
+		Format: app.FormatText, Body: "root", HTML: "<p>root body</p>", CommentCount: 2, CreatedAt: time.Date(2026, 10, 26, 9, 30, 0, 0, time.UTC),
+	}
+	comments := []app.Comment{
+		commentOf(6, 1, func(c *app.Comment) { c.HTML = "<p>first</p>" }),
+		commentOf(7, 2, func(c *app.Comment) { c.HTML = "<p>second</p>"; c.ParentID = 6 }),
+	}
+	data := views.PostPageData{Sidebar: sidebar, Post: root, Comments: comments, CanReply: true}
+	tests := []struct {
+		name    string
+		data    views.PostPageData
+		want    []string
+		notWant []string
+	}{
+		{
+			name:    "the root, then the comments in order",
+			data:    data,
+			want:    []string{`id="thread"`, "root body", "<p>first</p>", "<p>second</p>", `class="comment-list"`, "2 comments"},
+			notWant: []string{"No comments yet", "Join this room to reply", "post-focus"},
+		},
+		{
+			name: "the focus is one comment",
+			data: func() views.PostPageData { d := data; d.Focus = 7; return d }(),
+			want: []string{`class="post comment depth-2 post-focus"`},
+		},
+		{
+			name:    "a visitor is told to join and has no Reply",
+			data:    func() views.PostPageData { d := data; d.CanReply = false; return d }(),
+			want:    []string{"Join this room to reply", "<p>first</p>"},
+			notWant: []string{"post-reply", "reply-slot"},
+		},
+		{
+			name: "the reply editor opens under the active comment only",
+			data: func() views.PostPageData {
+				d := data
+				d.ActiveID, d.Replying, d.Editor = 6, true, views.ReplyEditorData(6)
+				return d
+			}(),
+			want: []string{`<div id="reply-slot-6" class="reply-slot"><form id="post-editor-reply-6"`, `<div id="reply-slot-7" class="reply-slot"></div>`, `<div id="reply-slot-5" class="reply-slot"></div>`},
+		},
+		{
+			name: "the active comment is replaced by its editor",
+			data: func() views.PostPageData {
+				d := data
+				d.ActiveID, d.Editing, d.Editor = 7, true, views.EditPostEditorData(comments[1].Post, views.FromPost)
+				return d
+			}(),
+			want:    []string{`class="post post-editing comment depth-2"`, `id="post-editor-edit-7"`, "<p>first</p>"},
+			notWant: []string{"<p>second</p>"},
+		},
+		{
+			name: "a message above the active comment",
+			data: func() views.PostPageData {
+				d := data
+				d.ActiveID, d.Message = 7, "You are not allowed to do that"
+				return d
+			}(),
+			want: []string{"You are not allowed to do that"},
+		},
+		{
+			name: "a message without an active item is above the post",
+			data: func() views.PostPageData { d := data; d.Message = "Try again"; return d }(),
+			want: []string{"Try again"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			html := render(t, views.Thread(tt.data))
+			requireContains(t, html, tt.want, tt.notWant)
+		})
+	}
+	t.Run("the message of the root stays above the root", func(t *testing.T) {
+		d := data
+		d.Message = "Try again"
+		html := render(t, views.Thread(d))
+		if strings.Index(html, "Try again") > strings.Index(html, `id="comments"`) {
+			t.Error("the message is below the comments")
+		}
+	})
+}
+
+func TestThreadPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"comments of a post", views.PostCommentsPath(12), "/posts/12#comments"},
+		{"a comment in its thread", views.CommentPath(12, 30), "/posts/12#post-30"},
+		{"the reply editor", views.ReplyEditorData(30).Action, "/posts/30/replies"},
+		{"the reply editor id", views.ReplyEditorData(30).ID, "reply-30"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

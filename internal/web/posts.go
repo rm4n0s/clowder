@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -218,24 +219,96 @@ func (s *Server) postCreateFailed(w http.ResponseWriter, r *http.Request, err er
 	})
 }
 
-// postPageData reads a post for the actor and makes the data of its page. When
-// a read fails it has answered (see postFail) and returns false.
+// threadData reads the thread that the post or comment id belongs to, for the
+// actor, and makes the data of the thread (the page without its sidebar). A
+// comment's thread is opened with that comment in focus.
+func (s *Server) threadData(ctx context.Context, actor app.Actor, id uint64) (views.PostPageData, error) {
+	thread, err := s.svc.Posts.Thread(ctx, actor, id)
+	if err != nil {
+		return views.PostPageData{}, err
+	}
+	room, err := s.svc.Rooms.Get(ctx, actor, thread.Root.RoomID)
+	if err != nil {
+		return views.PostPageData{}, err
+	}
+	return views.PostPageData{
+		Post: thread.Root, Comments: thread.Comments, Focus: thread.Focus, CanReply: room.IsMember,
+	}, nil
+}
+
+// postPageData reads the thread of a post or comment for the actor and makes
+// the data of its page. When a read fails it has answered (see postFail) and
+// returns false.
 func (s *Server) postPageData(w http.ResponseWriter, r *http.Request, id uint64) (views.PostPageData, bool) {
 	actor, _ := actorFrom(r.Context())
-	post, err := s.svc.Posts.Get(r.Context(), actor, id)
+	d, err := s.threadData(r.Context(), actor, id)
 	if err != nil {
 		s.postFail(w, r, err, id)
 		return views.PostPageData{}, false
 	}
-	sb, ok := s.sidebarFor(w, r, post.RoomID)
+	sb, ok := s.sidebarFor(w, r, d.Post.RoomID)
 	if !ok {
 		return views.PostPageData{}, false
 	}
-	return views.PostPageData{Sidebar: sb, Post: post}, true
+	d.Sidebar = sb
+	return d, true
 }
 
-// postPage answers GET /posts/{id}: the page of the post, for a person who may
-// read its room, else the 404 page.
+// cardFor makes the data of the card of a post or comment for the actor. A
+// comment is always shown on a post page, so it gets its place in the thread
+// (depth, whom it replies to) and the Reply button of a member; so does a post
+// shown there (from is views.FromPost). When a read fails it has answered (see
+// postFail) and returns false.
+func (s *Server) cardFor(w http.ResponseWriter, r *http.Request, post app.Post, from, message string) (views.PostCardData, bool) {
+	d := views.PostCardData{Post: post, From: from, Message: message}
+	if post.IsComment {
+		d.From = views.FromPost
+	}
+	if d.From != views.FromPost {
+		return d, true
+	}
+	actor, _ := actorFrom(r.Context())
+	room, err := s.svc.Rooms.Get(r.Context(), actor, post.RoomID)
+	if err != nil {
+		s.postFail(w, r, err, post.ID)
+		return views.PostCardData{}, false
+	}
+	d.CanReply = room.IsMember
+	if !post.IsComment {
+		return d, true
+	}
+	thread, err := s.svc.Posts.Thread(r.Context(), actor, post.ID)
+	if err != nil {
+		s.postFail(w, r, err, post.ID)
+		return views.PostCardData{}, false
+	}
+	for _, c := range thread.Comments {
+		if c.ID == post.ID {
+			d.Depth, d.ParentAuthor = c.Depth, c.ParentAuthor
+		}
+	}
+	return d, true
+}
+
+// patchThread answers a Datastar request with the thread of the top-level post
+// rootID, which replaces the one on the page. When the post is gone (a deleted
+// comment took its last placeholder with it) the person is sent to the room.
+func (s *Server) patchThread(w http.ResponseWriter, r *http.Request, rootID, roomID uint64) {
+	actor, _ := actorFrom(r.Context())
+	d, err := s.threadData(r.Context(), actor, rootID)
+	switch {
+	case err == nil:
+		s.patch(w, r, views.Thread(d))
+	case isTag(err, app.TagNotFound):
+		s.redirect(w, r, views.RoomPath(roomID), http.StatusSeeOther)
+	default:
+		s.fail(w, r, err)
+	}
+}
+
+// postPage answers GET /posts/{id}: the page of the post with its thread, for a
+// person who may read its room, else the 404 page. The ID of a comment shows the
+// thread of its post with that comment highlighted.
 func (s *Server) postPage(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.postID(w, r)
 	if !ok {
@@ -248,8 +321,8 @@ func (s *Server) postPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, views.PostPage(d))
 }
 
-// postEditForm answers GET /posts/{id}/edit: the post replaced by its editor,
-// filled with its body, format and tags. A browser without JavaScript gets the
+// postEditForm answers GET /posts/{id}/edit: the post or comment replaced by its
+// editor, filled with its body, format and tags. A browser without JavaScript gets the
 // page of the post with the editor in it.
 func (s *Server) postEditForm(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.postID(w, r)
@@ -268,16 +341,20 @@ func (s *Server) postEditForm(w http.ResponseWriter, r *http.Request) {
 		s.postActionFailed(w, r, err, id)
 		return
 	}
-	editor := views.EditPostEditorData(post, fromOf(r))
+	card, ok := s.cardFor(w, r, post, fromOf(r), "")
+	if !ok {
+		return
+	}
+	editor := views.EditPostEditorData(post, card.From)
 	if isDatastar(r) {
-		s.patch(w, r, views.PostEdit(views.PostEditData{Post: post, Editor: editor}))
+		s.patch(w, r, views.PostEdit(views.PostEditData{Post: post, Editor: editor, Depth: card.Depth}))
 		return
 	}
 	d, ok := s.postPageData(w, r, id)
 	if !ok {
 		return
 	}
-	d.Editing, d.Editor = true, editor
+	d.ActiveID, d.Editing, d.Editor = id, true, editor
 	s.render(w, r, http.StatusOK, views.PostPage(d))
 }
 
@@ -298,7 +375,11 @@ func (s *Server) postView(w http.ResponseWriter, r *http.Request) {
 		s.postFail(w, r, err, id)
 		return
 	}
-	s.patch(w, r, views.PostCard(views.PostCardData{Post: post, From: fromOf(r)}))
+	card, ok := s.cardFor(w, r, post, fromOf(r), "")
+	if !ok {
+		return
+	}
+	s.patch(w, r, views.PostCard(card))
 }
 
 // postEditSave answers POST /posts/{id}/edit with the form values "body",
@@ -317,39 +398,69 @@ func (s *Server) postEditSave(w http.ResponseWriter, r *http.Request) {
 	post, err := s.svc.Posts.Edit(r.Context(), actor, id, postInputFrom(r))
 	if err == nil {
 		if !isDatastar(r) {
-			http.Redirect(w, r, views.PostPath(id), http.StatusSeeOther)
+			http.Redirect(w, r, afterEditPath(post), http.StatusSeeOther)
 			return
 		}
-		s.patch(w, r, views.PostCard(views.PostCardData{Post: post, From: from}))
+		card, ok := s.cardFor(w, r, post, from, "")
+		if !ok {
+			return
+		}
+		s.patch(w, r, views.PostCard(card))
 		return
 	}
 	if isTag(err, app.TagNotFound) {
 		s.postFail(w, r, err, id)
 		return
 	}
-	// A plain post gets the whole page back.
+	// The editor goes back where the post was: a plain post gets the whole page,
+	// a Datastar request the editor in the article of the post or comment.
+	shown := app.Post{ID: id}
 	var page views.PostPageData
-	if !isDatastar(r) && !isTag(err, app.TagUnauthenticated) {
-		if page, ok = s.postPageData(w, r, id); !ok {
+	var depth int
+	if !isTag(err, app.TagUnauthenticated) {
+		if isDatastar(r) {
+			current, getErr := s.svc.Posts.Get(r.Context(), actor, id)
+			if getErr != nil {
+				s.postFail(w, r, getErr, id)
+				return
+			}
+			card, ok := s.cardFor(w, r, current, from, "")
+			if !ok {
+				return
+			}
+			shown, from, depth = current, card.From, card.Depth
+		} else if page, ok = s.postPageData(w, r, id); !ok {
 			return
 		}
 	}
 	s.formFailed(w, r, err, func(problems views.FormErrors) formView {
-		editor := typedInto(views.EditPostEditorData(app.Post{ID: id}, from), r)
+		editor := typedInto(views.EditPostEditorData(shown, from), r)
 		editor.Errors = problems
 		d := page
-		d.Editing, d.Editor = true, editor
+		d.ActiveID, d.Editing, d.Editor = id, true, editor
 		return formView{
-			fragment: views.PostEdit(views.PostEditData{Post: app.Post{ID: id}, Editor: editor}),
+			fragment: views.PostEdit(views.PostEditData{Post: shown, Editor: editor, Depth: depth}),
 			page:     views.PostPage(d),
 		}
 	})
 }
 
+// afterEditPath is where a plain form goes after a post or comment was saved:
+// the page of the post, at the comment for a comment.
+func afterEditPath(post app.Post) string {
+	if post.IsComment {
+		return views.CommentPath(post.RootID, post.ID)
+	}
+	return views.PostPath(post.ID)
+}
+
 // postDelete answers POST /posts/{id}/delete. A post without replies is gone:
 // the feed drops it, and its own page sends the person to the room. A post with
 // replies stays as the placeholder "This post was deleted." that replaces it. A
-// plain post is sent to the room.
+// comment is deleted from the thread of its page: the thread is shown again,
+// with a placeholder where the comment had replies, and without the
+// placeholders that had no other replies. A plain post is sent to the room, or
+// to the thread for a comment.
 func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.postID(w, r)
 	if !ok {
@@ -370,6 +481,14 @@ func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
 		s.postActionFailed(w, r, err, id)
 		return
 	}
+	if before.IsComment {
+		if !isDatastar(r) {
+			http.Redirect(w, r, views.PostPath(before.RootID), http.StatusSeeOther)
+			return
+		}
+		s.patchThread(w, r, before.RootID, before.RoomID)
+		return
+	}
 	if !isDatastar(r) {
 		http.Redirect(w, r, views.RoomPath(before.RoomID), http.StatusSeeOther)
 		return
@@ -378,7 +497,11 @@ func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
 	kept, err := s.svc.Posts.Get(r.Context(), actor, id)
 	switch {
 	case err == nil:
-		s.patch(w, r, views.PostCard(views.PostCardData{Post: kept, From: from}))
+		card, ok := s.cardFor(w, r, kept, from, "")
+		if !ok {
+			return
+		}
+		s.patch(w, r, views.PostCard(card))
 	case !isTag(err, app.TagNotFound):
 		s.fail(w, r, err)
 	case from == views.FromPost:
@@ -388,10 +511,11 @@ func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// postActionFailed shows the problem of a failed action on a post (edit,
-// delete): a post that is gone or hidden is the 404 page, any other problem is
-// a message above the post, patched in place for a Datastar request (status
-// 200) and in the whole page, with the status of statusOf, for a plain one.
+// postActionFailed shows the problem of a failed action on a post or comment
+// (edit, delete, reply): one that is gone or hidden is the 404 page, any other
+// problem is a message above the item, patched in place for a Datastar request
+// (status 200) and in the whole page, with the status of statusOf, for a plain
+// one.
 func (s *Server) postActionFailed(w http.ResponseWriter, r *http.Request, err error, id uint64) {
 	status := statusOf(err)
 	if status == http.StatusFound {
@@ -414,16 +538,114 @@ func (s *Server) postActionFailed(w http.ResponseWriter, r *http.Request, err er
 		s.logFailure(r, err)
 		message = messageTryAgain
 	}
+	if isDatastar(r) {
+		actor, _ := actorFrom(r.Context())
+		post, getErr := s.svc.Posts.Get(r.Context(), actor, id)
+		if getErr != nil {
+			s.postFail(w, r, getErr, id)
+			return
+		}
+		card, ok := s.cardFor(w, r, post, fromOf(r), message)
+		if !ok {
+			return
+		}
+		s.patch(w, r, views.PostCard(card))
+		return
+	}
 	d, ok := s.postPageData(w, r, id)
 	if !ok {
 		return
 	}
-	d.Message = message
-	if isDatastar(r) {
-		s.patch(w, r, views.PostCard(views.PostCardData{Post: d.Post, From: fromOf(r), Message: message}))
+	d.ActiveID, d.Message = id, message
+	s.render(w, r, status, views.PostPage(d))
+}
+
+// postReplyForm answers GET /posts/{id}/reply: the empty editor in the reply
+// slot under the post or comment. A browser without JavaScript gets the page of
+// the thread with the editor in it.
+func (s *Server) postReplyForm(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.postID(w, r)
+	if !ok {
 		return
 	}
-	s.render(w, r, status, views.PostPage(d))
+	actor, _ := actorFrom(r.Context())
+	parent, err := s.svc.Posts.Get(r.Context(), actor, id)
+	var room app.Room
+	if err == nil {
+		room, err = s.svc.Rooms.Get(r.Context(), actor, parent.RoomID)
+	}
+	if err == nil && parent.Deleted {
+		err = errors.New(app.TagNotFound, "the post is deleted", "reason", "deleted", "postID", id)
+	}
+	if err == nil && !room.IsMember {
+		err = errors.New(app.TagForbidden, "only members comment", "userID", actor.UserID, "roomID", room.ID)
+	}
+	if err != nil {
+		s.postActionFailed(w, r, err, id)
+		return
+	}
+	editor := views.ReplyEditorData(id)
+	if isDatastar(r) {
+		s.patch(w, r, views.ReplySlot(id, &editor))
+		return
+	}
+	d, ok := s.postPageData(w, r, id)
+	if !ok {
+		return
+	}
+	d.ActiveID, d.Replying, d.Editor = id, true, editor
+	s.render(w, r, http.StatusOK, views.PostPage(d))
+}
+
+// postReply answers POST /posts/{id}/replies with the form values "body",
+// "format" and "tags": a comment under that post or comment. A Datastar request
+// gets the thread again, with the new comment at its place and the editor
+// closed; a plain post is sent to the comment in its thread. A mistake shows the
+// problems in the editor and keeps what was typed.
+func (s *Server) postReply(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.postID(w, r)
+	if !ok {
+		return
+	}
+	if !s.parseBodyForm(w, r) {
+		return
+	}
+	actor, _ := actorFrom(r.Context())
+	comment, err := s.svc.Posts.Reply(r.Context(), actor, id, postInputFrom(r))
+	if err != nil {
+		s.postReplyFailed(w, r, err, id)
+		return
+	}
+	if !isDatastar(r) {
+		http.Redirect(w, r, views.CommentPath(comment.RootID, comment.ID), http.StatusSeeOther)
+		return
+	}
+	s.patchThread(w, r, comment.RootID, comment.RoomID)
+}
+
+// postReplyFailed shows the problems of a comment that was not written. A post
+// that is gone or hidden is the 404 page, and a person who has not joined the
+// room gets the message above the post.
+func (s *Server) postReplyFailed(w http.ResponseWriter, r *http.Request, err error, id uint64) {
+	if isTag(err, app.TagNotFound) || isTag(err, app.TagForbidden) {
+		s.postActionFailed(w, r, err, id)
+		return
+	}
+	// A plain post gets the whole page back, so it needs the thread.
+	var page views.PostPageData
+	if !isDatastar(r) && !isTag(err, app.TagUnauthenticated) {
+		var ok bool
+		if page, ok = s.postPageData(w, r, id); !ok {
+			return
+		}
+	}
+	s.formFailed(w, r, err, func(problems views.FormErrors) formView {
+		editor := typedInto(views.ReplyEditorData(id), r)
+		editor.Errors = problems
+		d := page
+		d.ActiveID, d.Replying, d.Editor = id, true, editor
+		return formView{fragment: views.PostEditor(editor), page: views.PostPage(d)}
+	})
 }
 
 // postPreview answers POST /preview with the form values "editor", "format" and

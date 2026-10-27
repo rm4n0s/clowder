@@ -52,6 +52,14 @@ const invitePlaceholder = "{invite}"
 // demo rooms.
 var roomPlaceholder = regexp.MustCompile(`\{room:([^{}]+)\}`)
 
+// postPlaceholder in -page stands for the path of the post whose text contains
+// the given text: -page {post:Quick question} opens /posts/<id>. It needs -as.
+// The tool looks for the post in the feed of every room in the sidebar of that
+// user (the posts the feed shows first, newest first) and follows the comment
+// count link of the first one that matches, without its #comments, so the page
+// opens at the top. The proof does not depend on the IDs of the demo posts.
+var postPlaceholder = regexp.MustCompile(`\{post:([^{}]+)\}`)
+
 // fill is one -fill flag: type value into the first element that matches
 // selector.
 type fill struct {
@@ -166,7 +174,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	var o options
 	fs := flag.NewFlagSet("clowder-proof", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1; {room:name} is the path of the room of that name in the sidebar of the -as user")
+	fs.StringVar(&o.page, "page", "/", "path of the page to open, such as /rooms/1; {room:name} is the path of the room of that name in the sidebar of the -as user; {post:text} is the path of the first post in those rooms whose text contains text")
 	fs.StringVar(&o.out, "o", "", "path of the PNG to write (required)")
 	fs.StringVar(&o.as, "as", "", "demo user to log in as through /login before the page is opened, such as admin or alice")
 	fs.IntVar(&o.width, "width", 1280, "viewport width in pixels")
@@ -183,8 +191,8 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "unexpected arguments", "args", fs.Args())
 	case o.out == "":
 		return options{}, errors.New(tagFlagsInvalid, "-o is required", "flag", "o")
-	case !strings.HasPrefix(o.page, "/") && !strings.HasPrefix(o.page, "{room:"):
-		return options{}, errors.New(tagFlagsInvalid, "-page must start with / or {room:name}", "page", o.page)
+	case !strings.HasPrefix(o.page, "/") && !strings.HasPrefix(o.page, "{room:") && !strings.HasPrefix(o.page, "{post:"):
+		return options{}, errors.New(tagFlagsInvalid, "-page must start with /, {room:name} or {post:text}", "page", o.page)
 	case o.width <= 0 || o.height <= 0:
 		return options{}, errors.New(tagFlagsInvalid, "-width and -height must be positive",
 			"width", o.width, "height", o.height)
@@ -192,6 +200,9 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "-wait must not be negative", "wait", o.wait.String())
 	case o.as == "" && roomPlaceholder.MatchString(o.page):
 		return options{}, errors.New(tagFlagsInvalid, "{room:name} in -page needs -as: the room is found in the sidebar of a user",
+			"page", o.page)
+	case o.as == "" && postPlaceholder.MatchString(o.page):
+		return options{}, errors.New(tagFlagsInvalid, "{post:text} in -page needs -as: the post is found in the rooms of a user",
 			"page", o.page)
 	case o.invite != strings.Contains(o.page, invitePlaceholder):
 		return options{}, errors.New(tagFlagsInvalid, "-invite and "+invitePlaceholder+" in -page go together",
@@ -220,6 +231,10 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 		}
 	}
 	page, err := resolveRooms(pageCtx, o.page)
+	if err != nil {
+		return nil, err
+	}
+	page, err = resolvePosts(pageCtx, srv.URL, page)
 	if err != nil {
 		return nil, err
 	}
@@ -297,6 +312,62 @@ func roomHref(ctx context.Context, name string) (string, error) {
 	return href, nil
 }
 
+// resolvePosts replaces every {post:text} in page with the path of the first
+// post that contains the text, found in the feeds of the rooms in the sidebar
+// of the page the browser shows (the home page, right after the login). It
+// fails with a PostNotFound error when no feed has such a post. It leaves the
+// browser on the last page it opened, so call it after resolveRooms.
+func resolvePosts(ctx context.Context, baseURL, page string) (string, error) {
+	matches := postPlaceholder.FindAllStringSubmatchIndex(page, -1)
+	if len(matches) == 0 {
+		return page, nil
+	}
+	rooms, err := chromedp.Run(ctx, chromedp.Evaluate[[]string](
+		`[...document.querySelectorAll('aside a[data-room]')].map(a => a.getAttribute('href'))`))
+	if err != nil {
+		return "", errors.NewErr(tagPostNotFound, err)
+	}
+	var out strings.Builder
+	last := 0
+	for _, m := range matches {
+		href, err := postHref(ctx, baseURL, rooms, page[m[2]:m[3]])
+		if err != nil {
+			return "", err
+		}
+		out.WriteString(page[last:m[0]])
+		out.WriteString(href)
+		last = m[1]
+	}
+	out.WriteString(page[last:])
+	return out.String(), nil
+}
+
+// postHref opens the feed of each room (the paths in rooms) in turn and
+// returns the path of the first post whose text contains text, from the
+// comment count link of the post, without its fragment. It fails with a
+// PostNotFound error when there is none.
+func postHref(ctx context.Context, baseURL string, rooms []string, text string) (string, error) {
+	quoted, err := json.Marshal(text)
+	if err != nil {
+		return "", errors.NewErr(tagPostNotFound, err).SetMetadata("text", text)
+	}
+	js := `(() => { for (const a of document.querySelectorAll('#feed-posts article.post')) { const body = a.querySelector('.post-body'); const link = a.querySelector('a.post-comments'); if (body && link && body.textContent.includes(` + string(quoted) + `)) { return link.getAttribute('href').split('#')[0]; } } return ""; })()`
+	for _, room := range rooms {
+		err := chromedp.Do(ctx, chromedp.Navigate(baseURL+room), chromedp.WaitReady("body"))
+		if err != nil {
+			return "", errors.NewErr(tagPostNotFound, err).SetMetadata("text", text, "room", room)
+		}
+		href, err := chromedp.Run(ctx, chromedp.Evaluate[string](js))
+		if err != nil {
+			return "", errors.NewErr(tagPostNotFound, err).SetMetadata("text", text, "room", room)
+		}
+		if href != "" {
+			return href, nil
+		}
+	}
+	return "", errors.New(tagPostNotFound, "no post in the rooms of the sidebar contains this text", "text", text)
+}
+
 // pageTimeout bounds loading the page and taking the screenshot.
 const pageTimeout = time.Minute
 
@@ -308,4 +379,5 @@ const (
 	tagClickFailed       = "ClickFailed"
 	tagScreenshotFailed  = "ScreenshotFailed"
 	tagRoomNotFound      = "RoomNotFound"
+	tagPostNotFound      = "PostNotFound"
 )

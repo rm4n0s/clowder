@@ -69,8 +69,8 @@ templ PostEditor(d PostEditorData) {
 		<div class="post-editor-actions">
 			<button type="submit">{ d.SubmitLabel }</button>
 			<button type="button" class="secondary" data-on:click={ previewAction }>Preview</button>
-			if d.CancelPath != "" {
-				<a class="button-link" href={ templ.SafeURL(d.CancelHref) } data-on:click__prevent={ "@get('" + escapeQuote(d.CancelPath) + "')" }>Cancel</a>
+			if d.CancelPath != "" || d.CancelClose {
+				<a class="button-link" href={ templ.SafeURL(d.CancelHref) } data-on:click__prevent={ cancelAction(d) }>Cancel</a>
 			}
 		</div>
 	</form>
@@ -130,27 +130,44 @@ func postElementID(id uint64) string {
 	return "post-" + roomIDText(id)
 }
 
-// PostCard is a post: author, time, "edited", the body, the tags as links to
-// their search, the comment count that links to the post page, and Edit and
-// Delete for the person who may. A post that was deleted but stays because it
-// has replies is the placeholder "This post was deleted." The server sends it
-// alone as a Datastar patch after an edit, a cancel or a failed action.
+// PostCard is a post or a comment: author, time, "edited", the body, the tags
+// as links to their search, the comment count of a post that links to its
+// thread, and Reply, Edit and Delete for the person who may. A comment is
+// indented to its depth (at most MaxVisualDepth) and, below that depth, says
+// whom it replies to. A post or comment that was deleted but stays because it
+// has replies is the placeholder "This post was deleted." or "This comment was
+// deleted." The server sends it alone as a Datastar patch after an edit, a
+// cancel or a failed action.
 templ PostCard(d PostCardData) {
-	<article id={ postElementID(d.Post.ID) } class={ "post", templ.KV("post-deleted", d.Post.Deleted) } data-post={ roomIDText(d.Post.ID) }>
+	<article
+		id={ postElementID(d.Post.ID) }
+		class={ cardClasses(d) }
+		data-post={ roomIDText(d.Post.ID) }
+		if d.Focus {
+			data-init={ scrollIntoViewAction }
+		}
+	>
 		@formProblem(d.Message)
 		if d.Post.Deleted {
-			<p class="post-deleted-note">This post was deleted.</p>
+			<p class="post-deleted-note">{ deletedNote(d.Post) }</p>
 		} else {
 			<header class="post-meta">
 				<span class="post-author">{ d.Post.Author.DisplayName }</span>
 				<span class="post-username">{ "@" + d.Post.Author.Username }</span>
-				<a class="post-time" href={ templ.SafeURL(PostPath(d.Post.ID)) }>
+				<a class="post-time" href={ templ.SafeURL(timePath(d.Post)) }>
 					<time datetime={ postTimeStamp(d.Post.CreatedAt) } title={ postTimeStamp(d.Post.CreatedAt) }>{ postTimeText(d.Post.CreatedAt) }</time>
 				</a>
 				if d.Post.EditedAt != nil {
 					<span class="post-edited" title={ postTimeStamp(*d.Post.EditedAt) }>edited</span>
 				}
 			</header>
+			if replyingToCapped(d) {
+				if d.ParentAuthor.Username != "" {
+					<p class="comment-replying">{ "replying to @" + d.ParentAuthor.Username }</p>
+				} else {
+					<p class="comment-replying">replying to a deleted comment</p>
+				}
+			}
 			<div class="post-body">
 				@templ.Raw(string(d.Post.HTML))
 			</div>
@@ -163,12 +180,17 @@ templ PostCard(d PostCardData) {
 			}
 		}
 		<footer class="post-footer">
-			<a class="post-comments" href={ templ.SafeURL(PostPath(d.Post.ID)) }>{ commentCountText(d.Post.CommentCount) }</a>
+			if !d.Post.IsComment {
+				<a class="post-comments" href={ templ.SafeURL(PostCommentsPath(d.Post.ID)) }>{ commentCountText(d.Post.CommentCount) }</a>
+			}
+			if d.CanReply && !d.Post.Deleted {
+				<a class="post-reply" href={ templ.SafeURL(replyPath(d.Post.ID)) } data-on:click__prevent={ "@get('" + escapeQuote(replyPath(d.Post.ID)) + "')" }>Reply</a>
+			}
 			if d.Post.CanEdit {
 				<a class="post-edit" href={ templ.SafeURL(postActionPath(d.Post.ID, "edit", d.From)) } data-on:click__prevent={ "@get('" + escapeQuote(postActionPath(d.Post.ID, "edit", d.From)) + "')" }>Edit</a>
 			}
 			if d.Post.CanDelete {
-				<form class="action post-delete" method="post" action={ templ.SafeURL(PostPath(d.Post.ID) + "/delete") } data-on:submit={ FormPostConfirm(PostPath(d.Post.ID)+"/delete", "Delete this post? This cannot be undone.") }>
+				<form class="action post-delete" method="post" action={ templ.SafeURL(PostPath(d.Post.ID) + "/delete") } data-on:submit={ FormPostConfirm(PostPath(d.Post.ID)+"/delete", deleteConfirm(d.Post)) }>
 					if d.From != "" {
 						<input type="hidden" name="from" value={ d.From }/>
 					}
@@ -176,12 +198,26 @@ templ PostCard(d PostCardData) {
 				</form>
 			}
 		</footer>
+		if d.CanReply && !d.Post.Deleted {
+			@ReplySlot(d.Post.ID, d.Reply)
+		}
 	</article>
 }
 
-// PostEdit is a post replaced by its editor, for the edit in place.
+// ReplySlot is the place under a post or comment where the reply editor opens,
+// empty until then. The server sends it alone as a Datastar patch to open the
+// editor.
+templ ReplySlot(parentID uint64, editor *PostEditorData) {
+	<div id={ "reply-slot-" + roomIDText(parentID) } class="reply-slot">
+		if editor != nil {
+			@PostEditor(*editor)
+		}
+	</div>
+}
+
+// PostEdit is a post or comment replaced by its editor, for the edit in place.
 templ PostEdit(d PostEditData) {
-	<article id={ postElementID(d.Post.ID) } class="post post-editing" data-post={ roomIDText(d.Post.ID) }>
+	<article id={ postElementID(d.Post.ID) } class={ editClasses(d) } data-post={ roomIDText(d.Post.ID) }>
 		@PostEditor(d.Editor)
 	</article>
 }
@@ -231,24 +267,47 @@ func postTitle(d PostPageData) string {
 	return "Post by " + d.Post.Author.DisplayName + " in " + d.Post.RoomName
 }
 
-// PostPage is the page of a post, in the layout with the sidebar: the room it
-// was written in, the post and the place of its comments.
-// TODO(step 5.2): the thread
-templ PostPage(d PostPageData) {
-	@Layout(postTitle(d), Sidebar(d.Sidebar)) {
-		<p class="post-room hint">in <a href={ templ.SafeURL(RoomPath(d.Post.RoomID)) }>{ d.Post.RoomName }</a></p>
-		if d.Editing {
-			@PostEdit(PostEditData{Post: d.Post, Editor: d.Editor})
-		} else {
-			@PostCard(PostCardData{Post: d.Post, From: FromPost, Message: d.Message})
+// Thread is the post of the page and its comments, one after the other in
+// reading order, each indented to its depth. The server sends it alone as a
+// Datastar patch when a comment is written or deleted: the new thread replaces
+// the old one.
+templ Thread(d PostPageData) {
+	<div id="thread" class="thread">
+		@threadItem(d, d.rootCard())
+		if !d.CanReply {
+			<p id="join-to-reply" class="hint join-note">Join this room to reply</p>
 		}
 		<section id="comments" class="comments">
 			<h2>Comments</h2>
-			if d.Post.CommentCount == 0 {
+			if len(d.Comments) == 0 {
 				<p class="empty">No comments yet.</p>
 			} else {
-				<p class="empty">{ commentCountText(d.Post.CommentCount) }; they are not shown here yet.</p>
+				<div class="comment-list">
+					for _, c := range d.Comments {
+						@threadItem(d, d.commentCard(c))
+					}
+				</div>
 			}
 		</section>
+	</div>
+}
+
+// threadItem is one post or comment of the thread: its card, or its editor
+// when it is being edited.
+templ threadItem(d PostPageData, c PostCardData) {
+	if d.Editing && c.Post.ID == d.activeID() {
+		@PostEdit(PostEditData{Post: c.Post, Editor: d.Editor, Depth: c.Depth})
+	} else {
+		@PostCard(c)
+	}
+}
+
+// PostPage is the page of a post, in the layout with the sidebar: the room it
+// was written in, the post and its thread of comments. The page of a comment is
+// the page of its post with that comment in focus.
+templ PostPage(d PostPageData) {
+	@Layout(postTitle(d), Sidebar(d.Sidebar)) {
+		<p class="post-room hint">in <a href={ templ.SafeURL(RoomPath(d.Post.RoomID)) }>{ d.Post.RoomName }</a></p>
+		@Thread(d)
 	}
 }

@@ -403,7 +403,7 @@ func TestFeedContent(t *testing.T) {
 			// Tags link to the search.
 			`href="/search?q=%23design"`, ">#design<", ">#ünï<", `href="/search?q=%23%C3%BCn%C3%AF"`,
 			// The comment count links to the post.
-			`<a class="post-comments" href="/posts/` + idText(plain.ID) + `">1 comment</a>`, `<a class="post-comments" href="/posts/` + idText(md.ID) + `">0 comments</a>`,
+			`<a class="post-comments" href="/posts/` + idText(plain.ID) + `#comments">1 comment</a>`, `<a class="post-comments" href="/posts/` + idText(md.ID) + `#comments">0 comments</a>`,
 		}, "<b>team</b>")
 		// Newest first: bob's markdown post is above alice's.
 		if strings.Index(body, post(md)) > strings.Index(body, post(plain)) {
@@ -666,7 +666,7 @@ func TestPostDelete(t *testing.T) {
 func TestPostPage(t *testing.T) {
 	e := newRoomsEnv(t)
 	p := e.writeMarkdown("alice", "general", "Page **body**", "page-tag")
-	e.reply(p, "bob")
+	e.reply(p, "alice")
 
 	t.Run("a reader sees the post in the layout", func(t *testing.T) {
 		for _, user := range []string{"alice", "bob", "carol", "admin"} {
@@ -722,6 +722,7 @@ func TestPostPage(t *testing.T) {
 func TestPrivateRoomPostsAreNotFound(t *testing.T) {
 	e := newRoomsEnv(t)
 	p := e.writePost("alice", "secret", "private words", "private-tag")
+	comment := e.commentOn(p, "bob", "private reply")
 	secret := "/rooms/" + idText(e.secret.ID)
 	requests := []struct {
 		name   string
@@ -740,6 +741,11 @@ func TestPrivateRoomPostsAreNotFound(t *testing.T) {
 		{"edit save", http.MethodPost, postPathOf(p, "edit"), editorForm("text", "x", ""), postPathOf(p, "")},
 		{"cancel", http.MethodGet, postPathOf(p, "view"), nil, postPathOf(p, "")},
 		{"delete", http.MethodPost, postPathOf(p, "delete"), url.Values{}, postPathOf(p, "")},
+		{"reply form", http.MethodGet, postPathOf(p, "reply"), nil, postPathOf(p, "")},
+		{"reply", http.MethodPost, postPathOf(p, "replies"), editorForm("text", "x", ""), postPathOf(p, "")},
+		{"comment page", http.MethodGet, postPathOf(comment, ""), nil, postPathOf(comment, "")},
+		{"comment edit form", http.MethodGet, postPathOf(comment, "edit"), nil, postPathOf(comment, "")},
+		{"comment delete", http.MethodPost, postPathOf(comment, "delete"), url.Values{}, postPathOf(comment, "")},
 	}
 	for _, user := range []string{"carol", "admin"} {
 		for _, rq := range requests {
@@ -755,13 +761,13 @@ func TestPrivateRoomPostsAreNotFound(t *testing.T) {
 				}
 				if datastar {
 					requireSSE(t, rec)
-					requireBody(t, rec, []string{redirectScript(rq.redirectTo)}, "private words", "private-tag")
+					requireBody(t, rec, []string{redirectScript(rq.redirectTo)}, "private words", "private-tag", "private reply")
 					return
 				}
 				if rec.Code != http.StatusNotFound {
 					t.Fatalf("%s %s %s: status = %d, want 404 (not 403)", user, rq.method, rq.path, rec.Code)
 				}
-				requireBody(t, rec, []string{"Page not found"}, "private words", "private-tag", "not allowed")
+				requireBody(t, rec, []string{"Page not found"}, "private words", "private-tag", "private reply", "not allowed")
 			})
 		}
 	}
@@ -788,6 +794,7 @@ func TestPostRoutesNeedASession(t *testing.T) {
 		{http.MethodGet, "/rooms/1/feed?before=3"}, {http.MethodPost, "/rooms/1/posts"},
 		{http.MethodGet, postPathOf(p, "")}, {http.MethodGet, postPathOf(p, "edit")}, {http.MethodPost, postPathOf(p, "edit")},
 		{http.MethodGet, postPathOf(p, "view")}, {http.MethodPost, postPathOf(p, "delete")},
+		{http.MethodGet, postPathOf(p, "reply")}, {http.MethodPost, postPathOf(p, "replies")},
 		{http.MethodPost, "/preview"}, {http.MethodGet, "/tags/suggest?q=a"},
 	}
 	for _, tt := range paths {
