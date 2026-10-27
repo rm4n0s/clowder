@@ -209,14 +209,14 @@ func TestStartServerErrors(t *testing.T) {
 			ctx:       context.Background(),
 			opts:      Options{ModuleRoot: noGoMod},
 			wantTag:   tagServerBuildFailed,
-			wantRoute: "StartServer->startServer.ServerBuildFailed",
+			wantRoute: "StartServer->startServer->buildBinary.ServerBuildFailed",
 		},
 		{
 			name:      "demo fails",
 			ctx:       context.Background(),
 			opts:      Options{Binary: badDemo},
 			wantTag:   tagDemoFailed,
-			wantRoute: "StartServer->startServer.DemoFailed",
+			wantRoute: "StartServer->startServer->prepare.DemoFailed",
 			metaKey:   "output",
 			wantMeta:  "no demo",
 		},
@@ -243,14 +243,14 @@ func TestStartServerErrors(t *testing.T) {
 			ctx:       canceled,
 			opts:      Options{Binary: fakeBinary(t, "exec sleep 60")},
 			wantTag:   tagDemoFailed, // the canceled context stops the demo command first
-			wantRoute: "StartServer->startServer.DemoFailed",
+			wantRoute: "StartServer->startServer->prepare.DemoFailed",
 		},
 		{
 			name:      "binary that is not executable",
 			ctx:       context.Background(),
 			opts:      Options{Binary: filepath.Join(t.TempDir(), "missing")},
 			wantTag:   tagDemoFailed,
-			wantRoute: "StartServer->startServer.DemoFailed",
+			wantRoute: "StartServer->startServer->prepare.DemoFailed",
 		},
 	}
 	for _, tt := range tests {
@@ -432,7 +432,7 @@ func TestStartServerInviteMember(t *testing.T) {
 				}
 				return Options{Binary: path, InviteMember: true}
 			},
-			wantTag: tagInviteFailed, wantRoute: "StartServer->startServer->inviteMember.InviteFailed", wantMeta: "bad flags",
+			wantTag: tagInviteFailed, wantRoute: "StartServer->startServer->prepare->inviteMember.InviteFailed", wantMeta: "bad flags",
 		},
 		{
 			name: "invite prints no link",
@@ -444,7 +444,7 @@ func TestStartServerInviteMember(t *testing.T) {
 				}
 				return Options{Binary: path, InviteMember: true}
 			},
-			wantTag: tagInviteOutputInvalid, wantRoute: "StartServer->startServer->inviteMember.InviteOutputInvalid", wantMeta: "nothing useful",
+			wantTag: tagInviteOutputInvalid, wantRoute: "StartServer->startServer->prepare->inviteMember.InviteOutputInvalid", wantMeta: "nothing useful",
 		},
 	}
 	for _, tt := range tests {

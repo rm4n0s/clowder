@@ -143,6 +143,27 @@ func (s *Store) SetUserDisabled(ctx context.Context, id uint64, disabled bool) e
 	return nil
 }
 
+// adminLockKey is the key of the PostgreSQL advisory lock that LockAdmins
+// takes.
+const adminLockKey int64 = 0x61646d696e73
+
+// LockAdmins makes the rest of the transaction the only one that changes the
+// admins: another transaction that calls it waits until this one ends. A
+// change that must leave one active admin (SPEC §7.1) calls it first and then
+// reads the admins, so that two of them, in one process or in two, cannot each
+// see the other admin and both remove an admin. Call it inside Tx. On SQLite
+// it does nothing, because a write transaction is already alone (BEGIN
+// IMMEDIATE).
+func (s *Store) LockAdmins(ctx context.Context) error {
+	if s.dialect != dialectPostgres {
+		return nil
+	}
+	if err := s.db(ctx).Exec("SELECT pg_advisory_xact_lock(?)", adminLockKey).Error; err != nil {
+		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "lockAdmins")
+	}
+	return nil
+}
+
 // CountActiveAdmins returns the number of users with the admin role who are
 // not disabled.
 func (s *Store) CountActiveAdmins(ctx context.Context) (int64, error) {

@@ -66,9 +66,15 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		return err
 	}
 	defer closeBridge()
+	limiter, closeLimiter, err := newLimiter(ctx, cfg.RedisURL, clock.Real(), logger, openCounter)
+	if err != nil {
+		return err
+	}
+	defer closeLimiter()
 	accounts := app.NewAccounts(st, clock.Real(), auth.DefaultHasher(), app.AccountsConfig{
 		InvitationLifetime: cfg.InvitationLifetime,
 		SessionLifetime:    cfg.SessionLifetime,
+		Limiter:            limiter,
 		Publisher:          pub,
 	})
 	postsConfig := app.PostsConfig{
@@ -131,6 +137,46 @@ func newPublisher(ctx context.Context, redisURL string, hub *live.Hub, logger *s
 	return bridge, func() {
 		if closeErr := bridge.Close(); closeErr != nil {
 			logger.Error("closing the Redis bridge failed", "err", closeErr)
+		}
+	}, nil
+}
+
+// counterCloser is the FailureCounter of the login limiter when it counts in
+// Redis: it also has to be closed. *cluster.LoginCounter is one.
+type counterCloser interface {
+	app.FailureCounter
+	Close() error
+}
+
+// counterOpener opens the counter of the login limiter in Redis; openCounter
+// is the real one and tests pass a fake.
+type counterOpener func(ctx context.Context, redisURL string) (counterCloser, error)
+
+// openCounter opens a cluster.LoginCounter.
+func openCounter(ctx context.Context, redisURL string) (counterCloser, error) {
+	c, err := cluster.NewLoginCounter(ctx, redisURL)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// newLimiter makes the login limiter of the services: it counts in memory when
+// redisURL is empty, else in Redis, so that the limit of SPEC §7.1 holds across
+// the processes (SPEC D41, §8.1). The returned function closes the counter, and
+// does nothing for the in-memory one.
+func newLimiter(ctx context.Context, redisURL string, clk clock.Clock, logger *slog.Logger, open counterOpener) (*app.LoginLimiter, func(), error) {
+	if redisURL == "" {
+		return app.NewLoginLimiter(clk), func() {}, nil
+	}
+	counter, err := open(ctx, redisURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	logger.Info("the login limiter counts in Redis", "redis", config.RedactURL(redisURL))
+	return app.NewLoginLimiterOn(clk, counter, logger), func() {
+		if closeErr := counter.Close(); closeErr != nil {
+			logger.Error("closing the login counter failed", "err", closeErr)
 		}
 	}, nil
 }

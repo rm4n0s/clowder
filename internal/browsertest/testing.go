@@ -44,6 +44,31 @@ func StartWith(t testing.TB, opts Options) *Server {
 	return srv
 }
 
+// StartClusterWith starts n servers that share the database, the Redis and the
+// data directory of opts (see StartCluster) for the test and stops them when
+// the test ends, even if it fails. Like StartWith it skips the test when
+// Chromium is not installed, fails it when the cluster cannot start, and sends
+// the log of the servers to the log of the test.
+func StartClusterWith(t testing.TB, opts Options, n int) *Cluster {
+	t.Helper()
+	if _, err := FindChromium(); err != nil {
+		t.Skipf("browser test skipped: %v (install chromium-browser, chromium or google-chrome)", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
+	defer cancel()
+	opts.Stderr = testLogWriter{t}
+	c, err := StartCluster(ctx, opts, n)
+	if err != nil {
+		t.Fatalf("start the cluster: %+v", err)
+	}
+	t.Cleanup(func() {
+		if err := c.Stop(); err != nil {
+			t.Errorf("stop the cluster: %v", err)
+		}
+	})
+	return c
+}
+
 // Browser starts headless Chromium for the test and closes it when the test
 // ends. The session is not logged in yet: call LogIn for that.
 func Browser(t testing.TB, _ *Server) context.Context {

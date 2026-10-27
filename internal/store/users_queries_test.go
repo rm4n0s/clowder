@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/rm4n0s/clowder/internal/clock"
 )
 
 // canceled returns a context that is already canceled, which makes any query
@@ -538,4 +540,57 @@ func TestDeleteExpiredSessionsOfUser(t *testing.T) {
 	if err := f.s.DeleteExpiredSessionsOfUser(f.ctx, u.ID, now); err != nil {
 		t.Errorf("deleting none: %+v", err)
 	}
+}
+
+func TestLockAdmins(t *testing.T) {
+	t.Parallel()
+	t.Run("inside a transaction", func(t *testing.T) {
+		t.Parallel()
+		s, _, _ := testStore(t, nil)
+		err := s.Tx(t.Context(), func(tx *Store) error { return tx.LockAdmins(t.Context()) })
+		if err != nil {
+			t.Fatalf("LockAdmins: %+v", err)
+		}
+	})
+	t.Run("a second transaction waits for the first", func(t *testing.T) {
+		t.Parallel()
+		skipUnlessPostgres(t)
+		s := openPostgresCopy(t, clock.NewFake(fakeStart))
+		locked, release, first := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+		go func() {
+			first <- s.Tx(t.Context(), func(tx *Store) error {
+				if err := tx.LockAdmins(t.Context()); err != nil {
+					return err
+				}
+				close(locked)
+				<-release
+				return nil
+			})
+		}()
+		<-locked
+		second := make(chan error, 1)
+		go func() {
+			second <- s.Tx(t.Context(), func(tx *Store) error { return tx.LockAdmins(t.Context()) })
+		}()
+		select {
+		case err := <-second:
+			t.Fatalf("the second transaction did not wait: %v", err)
+		case <-time.After(300 * time.Millisecond):
+		}
+		close(release)
+		for _, ch := range []chan error{first, second} {
+			if err := <-ch; err != nil {
+				t.Errorf("transaction: %+v", err)
+			}
+		}
+	})
+	t.Run("the query fails", func(t *testing.T) {
+		t.Parallel()
+		skipUnlessPostgres(t)
+		s := openPostgresCopy(t, clock.NewFake(fakeStart))
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		err := s.LockAdmins(ctx)
+		_ = requireRoute(t, err, "Store.LockAdmins.QueryFailed")
+	})
 }

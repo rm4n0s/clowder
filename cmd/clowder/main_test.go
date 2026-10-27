@@ -1604,6 +1604,119 @@ func TestOpenBridgeWithoutAServer(t *testing.T) {
 	}
 }
 
+// fakeCounter is a counterCloser that records the failures it is told.
+type fakeCounter struct {
+	adds     []string
+	closed   int
+	closeErr error
+}
+
+func (f *fakeCounter) Count(context.Context, string, string, time.Time, time.Duration) (int, error) {
+	return len(f.adds), nil
+}
+
+func (f *fakeCounter) Add(_ context.Context, ns, key string, _ time.Time, _ time.Duration, _ int) error {
+	f.adds = append(f.adds, ns+":"+key)
+	return nil
+}
+
+func (f *fakeCounter) Clear(context.Context, string, string) error { return nil }
+
+func (f *fakeCounter) Close() error {
+	f.closed++
+	return f.closeErr
+}
+
+func TestNewLimiter(t *testing.T) {
+	t.Run("without a Redis URL it counts in memory", func(t *testing.T) {
+		opened := false
+		limiter, closeLimiter, err := newLimiter(t.Context(), "", clock.Real(), newLogger("info", &syncBuffer{}),
+			func(context.Context, string) (counterCloser, error) {
+				opened = true
+				return nil, nil
+			})
+		if err != nil || limiter == nil {
+			t.Fatalf("limiter = %v, err = %v", limiter, err)
+		}
+		if opened {
+			t.Error("the counter was opened without a Redis URL")
+		}
+		for range 5 {
+			limiter.Fail(t.Context(), "ana", "10.0.0.1")
+		}
+		if limiter.Allow(t.Context(), "ana", "10.0.0.1") {
+			t.Error("the in-memory limiter does not block after 5 failures")
+		}
+		closeLimiter() // does nothing
+	})
+	t.Run("with a Redis URL it counts in the counter", func(t *testing.T) {
+		counter := &fakeCounter{}
+		var logs syncBuffer
+		var gotURL string
+		limiter, closeLimiter, err := newLimiter(t.Context(), "redis://:hunter2@redis:6379/0", clock.Real(), newLogger("info", &logs),
+			func(_ context.Context, url string) (counterCloser, error) {
+				gotURL = url
+				return counter, nil
+			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotURL != "redis://:hunter2@redis:6379/0" {
+			t.Errorf("the counter was opened with %q", gotURL)
+		}
+		limiter.Fail(t.Context(), "ana", "10.0.0.1")
+		if len(counter.adds) != 2 || counter.adds[0] != "user:ana" || counter.adds[1] != "ip:10.0.0.1" {
+			t.Errorf("the counter got %v, want the username and the address", counter.adds)
+		}
+		out := logs.String()
+		if !strings.Contains(out, "login limiter counts in Redis") || !strings.Contains(out, "redis://:xxxxx@redis:6379/0") || strings.Contains(out, "hunter2") {
+			t.Errorf("log line with the redacted URL missing:\n%s", out)
+		}
+		closeLimiter()
+		if counter.closed != 1 {
+			t.Errorf("Close was called %d times, want 1", counter.closed)
+		}
+	})
+	t.Run("a failure to close the counter is logged", func(t *testing.T) {
+		var logs syncBuffer
+		counter := &fakeCounter{closeErr: errors.New("RedisCloseFailed", "boom")}
+		_, closeLimiter, err := newLimiter(t.Context(), "redis://redis", clock.Real(), newLogger("info", &logs),
+			func(context.Context, string) (counterCloser, error) { return counter, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		closeLimiter()
+		if !strings.Contains(logs.String(), "closing the login counter failed") {
+			t.Errorf("not logged:\n%s", logs.String())
+		}
+	})
+	t.Run("the error of the opener is returned as it is", func(t *testing.T) {
+		_, _, err := newLimiter(t.Context(), "redis://redis", clock.Real(), newLogger("info", &syncBuffer{}),
+			func(context.Context, string) (counterCloser, error) {
+				return nil, errors.New("RedisPingFailed", "no server")
+			})
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != "RedisPingFailed" || !appErr.HasRoute("newLimiter") {
+			t.Errorf("err = %v", err)
+		}
+	})
+}
+
+func TestOpenCounterWithoutAServer(t *testing.T) {
+	// Nothing listens on port 1.
+	c, err := openCounter(t.Context(), "redis://:hunter2@127.0.0.1:1/0")
+	if c != nil {
+		t.Errorf("counter = %v, want nil", c)
+	}
+	appErr, ok := errors.FromError(err)
+	if !ok || !appErr.HasRoute("openCounter->NewLoginCounter->openRedis.RedisPingFailed") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(appErr.Error(), "hunter2") || strings.Contains(fmt.Sprint(appErr.Metadata), "hunter2") {
+		t.Errorf("the error holds the password: %v", appErr)
+	}
+}
+
 func TestServeWithRedisURLNeedsPostgres(t *testing.T) {
 	var stderr syncBuffer
 	err := runServe(t.Context(), []string{"-data", t.TempDir(), "-addr", "127.0.0.1:0", "-redis-url", "redis://localhost:6379"},

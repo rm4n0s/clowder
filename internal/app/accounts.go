@@ -313,6 +313,11 @@ func (a *Accounts) SetRole(ctx context.Context, actor Actor, userID uint64, role
 	changed := false
 	err := a.st.Tx(ctx, func(tx *store.Store) error {
 		changed = false
+		// Two admins who change each other at once must not both see the
+		// other as the remaining admin.
+		if err := tx.LockAdmins(ctx); err != nil {
+			return err
+		}
 		user, err := tx.UserByID(ctx, userID)
 		if err != nil {
 			return err
@@ -359,6 +364,9 @@ func (a *Accounts) SetDisabled(ctx context.Context, actor Actor, userID uint64, 
 	changed := false
 	err := a.st.Tx(ctx, func(tx *store.Store) error {
 		changed = false
+		if err := tx.LockAdmins(ctx); err != nil {
+			return err
+		}
 		user, err := tx.UserByID(ctx, userID)
 		if err != nil {
 			return err

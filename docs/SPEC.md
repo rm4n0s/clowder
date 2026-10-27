@@ -166,7 +166,7 @@ SQLite file or PostgreSQL + attachment files in the data directory
 | Package | Holds |
 |---|---|
 | `cmd/clowder` | the binary: the subcommands `serve`, `invite`, `demo` (§11), flag and environment parsing, wiring |
-| `cmd/clowder-proof` | the proof tool (D22): starts a server on demo data, logs in with chromedp, saves a screenshot of a page; built only with the `clowder_browser` tag |
+| `cmd/clowder-proof` | the proof tool (D22): starts a server on demo data, logs in with chromedp, saves a screenshot of a page; with `-cluster` it starts two servers on one PostgreSQL database and one Redis (D41) and takes the screenshot on the second after the `-other` user acted on the first; built only with the `clowder_browser` tag |
 | `internal/browsertest` | the harness of the browser tests (D23): a server on a temporary data directory, Chromium sessions logged in as given users; `clowder_browser` tag only |
 | `internal/config` | the configuration (§11) and its validation |
 | `internal/store` | GORM models (§6.3), queries, migrations, the FTS5 index |
@@ -184,7 +184,7 @@ SQLite file or PostgreSQL + attachment files in the data directory
 | `internal/clock` | the clock interface and its fake for tests |
 | `docs/` | this spec, the plan, the log of finished steps, proofs |
 | `scripts/` | helper scripts (`test-docker.sh`, D39) |
-| `Dockerfile`, `compose.yaml`, `compose.cluster.yaml`, `.env.example` | the container image and the compositions (D40) |
+| `Dockerfile`, `compose.yaml`, `compose.cluster.yaml`, `.env.example`, `deploy/Caddyfile.cluster` | the container image, the compositions and the Caddy configuration of the cluster composition (D40) |
 
 ### 6.3 Data model
 
@@ -220,7 +220,7 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 
 - `clowder invite -admin` prints a one-time link that makes an admin. Admins make invitation links (member or admin) in the admin page. A link expires after 7 days (configurable) and is used once.
 - Opening a valid link shows a form for username (3–32 characters of `a-z`, `0-9`, `_`, `-`), display name and password (at least 12 characters). Submitting it creates the user, uses up the invitation and logs the user in.
-- Login is username and password. A failed login does not say whether the username exists. After 5 failed attempts for one username or one IP address in 15 minutes, further attempts wait (in-memory limiter).
+- Login is username and password. A failed login does not say whether the username exists. After 5 failed attempts for one username or one IP address in 15 minutes, further attempts wait (a limiter in memory, or in Redis when several processes share a database, §8.1).
 - A session lasts 30 days from its last use (configurable). Logout deletes it. Disabling a user deletes their sessions.
 - Admins see the users, disable and enable them, and change their role. The last admin cannot lose the role.
 
@@ -349,6 +349,18 @@ The API is for desktop clients that act as one logged-in user (D42, D43). It is 
 - When the connection to Redis breaks, the processes keep serving; their pages may miss the events of the others until it comes back. When it is back, every subscription of the process is closed as if it were slow, so every page and client reloads (§7.13 `resync`).
 - The login limiter counts failures in Redis with keys that expire after the window of §7.1, so 5 failures in all the processes block the username or address.
 - The cleanups that each process runs (expired sessions, unused uploads) are safe to run in several processes at once.
+- **When Redis fails during a login, the limiter fails open** (decided by the manager, 2026-10-27; the owner may revise): the attempt goes on, the failure is counted nowhere, and a warning with the tagged error is logged; the password is still checked. A Redis outage must not lock everybody out, and the limit is a defense against guessing, not the only one (passwords are hashed with Argon2id, D37). Each call to Redis for the limiter is bounded by 2 seconds. The keys are `clowder:login:user:<hash>` and `clowder:login:ip:<hash>`, sorted sets of the failure times (from the limiter's clock) of which only the latest five are kept, updated atomically (MULTI/EXEC); the hash (SHA-256) keeps a username or an address from injecting a key pattern.
+- **Migrations.** On PostgreSQL a process takes the advisory lock `pg_advisory_lock` (the key is the bytes of "clowder") on a connection of its own while it migrates, so that processes that start together on an empty database migrate one after the other and the later ones find the schema current.
+- **The state of a process, one by one** (the review of step 15.2):
+  - sessions, invitations, notifications, unread counts, audit events: in the database, shared;
+  - the live hub and its subscriptions: per process by design (D18, D41); the events cross through Redis;
+  - the login limiter: in Redis when it is set (above), else in memory;
+  - the password-hashing slots (D37): per process by design, because they bound the memory of that process;
+  - the cache of the embedded static files: immutable and the same in every process (same binary);
+  - the cleanups of expired sessions, of unused uploads and of the files of a deleted post: idempotent statements and removals that ignore a missing file, safe in any number of processes (the one run by a sign-in deletes expired rows of that user only);
+  - the staging directory of uploads (`files/tmp`): a process that starts removes only the leftovers that were not written to for an hour, not the upload another process is writing now (this was wrong with two processes; fixed in 15.2); an upload is written and renamed to its key within one request, so what one process stored the other reads at once from the shared directory;
+  - "the last admin cannot lose the role" and "cannot be disabled": the check and the change run under a PostgreSQL advisory lock (`Store.LockAdmins`), because two admins who changed each other at the same moment could both see the other as the remaining admin (this was wrong on PostgreSQL even with one process; SQLite serializes write transactions); fixed in 15.2;
+  - the configuration, including the base URL, is read at start and must be the same in every process.
 
 ## 9. Errors and diagnostics
 
@@ -414,7 +426,7 @@ From 1.1 the same targets are measured on PostgreSQL too (step 17.1), and the fa
 - The default tests need no network and no browser.
 - From 1.1 every store, service and handler test also runs on PostgreSQL, and the Redis tests run, through `scripts/test-docker.sh` (D39). A test that depends on the database writes the same assertion for both; where the results may differ (the order of rows with equal keys, the snippet's exact cut), the test orders or compares what §7 promises, not what one engine happens to return.
 - API tests (`internal/api`) run the real handlers with `httptest` and a bearer token, check the status, the JSON and its schema in the OpenAPI document (D45), and, for the WebSocket, connect with `coder/websocket`'s client to an `httptest` server. Every API route has a test of who may call it, as the service methods do.
-- Browser tests (D23) carry the build tag `clowder_browser` and use `internal/browsertest`: drag and drop on the board, live updates seen in two sessions at once, the editor's tag and task fields. Each test starts its own server and Chromium on temporary directories and stops them in `t.Cleanup`. Run with `go test -tags clowder_browser ./...`.
+- Browser tests (D23) carry the build tag `clowder_browser` and use `internal/browsertest`: drag and drop on the board, live updates seen in two sessions at once, the editor's tag and task fields, and, with `CLOWDER_TEST_POSTGRES` and `CLOWDER_TEST_REDIS`, two servers on one database where a post written on one appears live in a page served by the other (D41). Each test starts its own server and Chromium on temporary directories and stops them in `t.Cleanup`. Run with `go test -tags clowder_browser ./...`.
 
 ## 13. Milestones
 

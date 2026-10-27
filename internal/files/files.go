@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/rm4n0s/errors"
 )
@@ -25,6 +26,13 @@ const (
 	// files directory. A file is renamed out of it when it is complete, so
 	// that a key in the files directory is always a whole file.
 	tmpDirName = "tmp"
+	// staleTmpAge is how long a file or directory in the tmp directory must
+	// have gone untouched before New takes it for the leftover of a process that
+	// died. Several processes share the directory (SPEC §8.1), and one that
+	// starts must not remove what another is writing: an upload is refused
+	// when it takes longer than 15 minutes to arrive (SPEC D37), and every
+	// chunk written moves the modification time.
+	staleTmpAge = time.Hour
 	// keyBytes is the number of random bytes in a key.
 	keyBytes = 32
 	// keyLength is the length of a key: keyBytes in hex.
@@ -77,8 +85,9 @@ type Saved struct {
 
 // New makes the store in the directory dir, and dir/tmp, creating them with
 // the permissions 0750 when they are missing. It removes what an earlier run
-// left in dir/tmp, files that were being written when the process died. It
-// fails with TagDirCreateFailed when a directory cannot be made and with
+// left in dir/tmp, files that were being written when the process died: those
+// not modified for an hour (staleTmpAge), because another process that shares
+// the directory may be writing one just now. It fails with TagDirCreateFailed when a directory cannot be made and with
 // TagTmpCleanFailed when dir/tmp cannot be emptied.
 func New(dir string) (*Store, error) {
 	tmp := filepath.Join(dir, tmpDirName)
@@ -89,7 +98,18 @@ func New(dir string) (*Store, error) {
 	if err != nil {
 		return nil, errors.NewErr(tagTmpCleanFailed, err).SetMetadata("dir", tmp)
 	}
+	cutoff := time.Now().Add(-staleTmpAge)
 	for _, e := range entries {
+		info, err := e.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // another process removed it
+		}
+		if err != nil {
+			return nil, errors.NewErr(tagTmpCleanFailed, err).SetMetadata("dir", tmp, "name", e.Name())
+		}
+		if info.ModTime().After(cutoff) {
+			continue
+		}
 		if err := os.RemoveAll(filepath.Join(tmp, e.Name())); err != nil {
 			return nil, errors.NewErr(tagTmpCleanFailed, err).SetMetadata("dir", tmp, "name", e.Name())
 		}
@@ -132,7 +152,8 @@ func (s *Store) Save(ctx context.Context, r io.Reader, limit int64) (Saved, erro
 			return
 		}
 		// Best effort: the error that made Save fail is the one that is
-		// returned. What cannot be removed here is removed by the next New.
+		// returned. What cannot be removed here is removed by a New that runs an hour
+		// later.
 		if !closed {
 			_ = tmp.Close()
 		}

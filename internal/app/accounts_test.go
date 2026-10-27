@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1109,6 +1110,56 @@ func TestUserIsAdmin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.user.IsAdmin(); got != tt.want {
 				t.Errorf("IsAdmin = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLastAdminSurvivesChangesAtTheSameTime has two admins who demote or
+// disable each other at the same moment, as requests on two processes can: one
+// of the changes wins, the other is refused, and an active admin is left. It
+// is a race, so it repeats; on PostgreSQL it fails without the lock of
+// Store.LockAdmins.
+func TestLastAdminSurvivesChangesAtTheSameTime(t *testing.T) {
+	t.Parallel()
+	changes := []struct {
+		name string
+		do   func(e *env, by app.Actor, target uint64) error
+	}{
+		{"demote", func(e *env, by app.Actor, target uint64) error {
+			return e.svc.SetRole(e.t.Context(), by, target, store.RoleMember)
+		}},
+		{"disable", func(e *env, by app.Actor, target uint64) error {
+			return e.svc.SetDisabled(e.t.Context(), by, target, true)
+		}},
+	}
+	for _, c := range changes {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			for round := range 10 {
+				e := newEnv(t)
+				a := e.signUp("anna", store.RoleAdmin)
+				b := e.signUp("boris", store.RoleAdmin)
+				errs := make([]error, 2)
+				var wg sync.WaitGroup
+				wg.Go(func() { errs[0] = c.do(e, actor(a), b.ID) })
+				wg.Go(func() { errs[1] = c.do(e, actor(b), a.ID) })
+				wg.Wait()
+				n, err := e.st.CountActiveAdmins(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n < 1 {
+					t.Fatalf("round %d: no active admin is left (errors: %v, %v)", round, errs[0], errs[1])
+				}
+				for _, err := range errs {
+					if err == nil {
+						continue
+					}
+					if appErr, ok := errors.FromError(err); !ok || appErr.Tag != app.TagConflict {
+						t.Errorf("round %d: the refused change failed with %v, want TagConflict", round, err)
+					}
+				}
 			}
 		})
 	}

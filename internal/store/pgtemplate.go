@@ -160,6 +160,51 @@ func (t *PostgresTemplate) Open(ctx context.Context, clk clock.Clock, logger *sl
 	return s, release, nil
 }
 
+// NewPostgresDatabase makes a new, empty database on the server at serverURL
+// (postgres:// or postgresql://, any database name: it is only the door) and
+// returns its URL, with the password the caller gave in serverURL, and the
+// function that drops it, ending the sessions that still use it, and closes
+// the connection used to make it. It is for tests and tools that start more
+// than one process on one database, such as the browser tests of the
+// processes of a cluster (SPEC D41); it needs a user that may create and drop
+// databases. The name starts like the copies of a PostgresTemplate, so that
+// the next NewPostgresTemplate drops it if a crash left it behind. The URL
+// holds the password: never log it. It fails with TemplateURLInvalid when
+// serverURL is not one of PostgreSQL, TemplateServerFailed when the server
+// does not answer and TemplateCreateFailed when the database cannot be made;
+// the function fails with TemplateDropFailed.
+func NewPostgresDatabase(ctx context.Context, serverURL string) (string, func() error, error) {
+	base, urlErr := url.Parse(serverURL)
+	connConfig, cfgErr := pgx.ParseConfig(serverURL)
+	if urlErr != nil || cfgErr != nil || (base.Scheme != "postgres" && base.Scheme != "postgresql") {
+		// The messages of url and pgx can quote the URL: keep them out.
+		return "", nil, errors.New(tagTemplateURLInvalid, "the URL is not a PostgreSQL URL",
+			"databaseURL", config.RedactURL(serverURL))
+	}
+	admin := stdlib.OpenDB(*connConfig)
+	admin.SetMaxOpenConns(pgAdminConns)
+	t := &PostgresTemplate{admin: admin, base: base}
+	if err := admin.PingContext(ctx); err != nil {
+		_ = admin.Close()
+		return "", nil, errors.NewErr(tagTemplateServerFailed, err).SetMetadata("databaseURL", config.RedactURL(serverURL))
+	}
+	name := newDatabaseName(pgCopyPrefix)
+	if err := t.createDatabase(ctx, name, ""); err != nil {
+		_ = admin.Close()
+		return "", nil, err
+	}
+	drop := func() error {
+		dropCtx, cancel := context.WithTimeout(context.Background(), pgDropTimeout)
+		defer cancel()
+		dropErr := t.dropDatabase(dropCtx, name)
+		if closeErr := admin.Close(); closeErr != nil && dropErr == nil {
+			return errors.NewErr(tagTemplateDropFailed, closeErr).SetMetadata("database", name)
+		}
+		return dropErr
+	}
+	return t.databaseURL(name), drop, nil
+}
+
 // databaseURL returns the URL of the database name on the server of the
 // template, with the password the caller gave. It is never logged.
 func (t *PostgresTemplate) databaseURL(name string) string {

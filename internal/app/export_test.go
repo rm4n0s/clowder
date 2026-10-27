@@ -2,12 +2,24 @@ package app
 
 import "context"
 
-// Len gives the tests the number of keys the limiter holds in memory.
+// Len gives the tests the number of keys the limiter holds in memory, 0 when
+// its counter is not the one in memory.
 func (l *LoginLimiter) Len() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return len(l.byUser) + len(l.byIP)
+	c, ok := l.counter.(*memoryCounter)
+	if !ok {
+		return 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, m := range c.byNS {
+		n += len(m)
+	}
+	return n
 }
+
+// LimiterKey gives the tests limiterKey.
+var LimiterKey = limiterKey
 
 // AuditEntry gives the tests the unexported entry of recordAudit.
 type AuditEntry = auditEntry

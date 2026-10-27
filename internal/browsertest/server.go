@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/errors"
 )
 
@@ -45,6 +46,8 @@ const (
 	bindFailureText = "address already in use"
 	// listenHost is the address the servers listen on.
 	listenHost = "127.0.0.1"
+	// dataDirMode is the permission of a data directory that SkipDemo makes.
+	dataDirMode = 0o750
 	// startAttempts is how many ports StartServer tries: the port is chosen
 	// before the server starts, so another process can take it in between.
 	startAttempts = 2
@@ -71,6 +74,22 @@ type Options struct {
 	// token in Server.InviteToken. A test or proof that needs the sign-up page
 	// of a real invitation sets it.
 	InviteMember bool
+	// DatabaseURL makes the server (and the demo and the invitation) use this
+	// PostgreSQL database instead of SQLite in the data directory. The URL
+	// holds a password: it is passed to the processes as a flag and never
+	// logged by this package.
+	DatabaseURL string
+	// RedisURL makes the server carry its live events and count its failed
+	// logins through this Redis (it needs DatabaseURL).
+	RedisURL string
+	// DataDir is the data directory to use instead of a temporary one, made
+	// when it is missing. The caller owns it: Stop does not remove it. It
+	// must be empty when the demo data is made.
+	DataDir string
+	// SkipDemo starts the server without running "clowder demo" first, for a
+	// database and a data directory that already hold the demo data or that a
+	// test fills itself.
+	SkipDemo bool
 }
 
 // Server is a running clowder server on a temporary data directory. Make it
@@ -79,7 +98,9 @@ type Server struct {
 	// URL is the base URL of the server, such as http://127.0.0.1:43211, with no
 	// trailing slash.
 	URL string
-	// DataDir is the data directory the server runs on. Stop removes it.
+	// DataDir is the data directory the server runs on. Stop removes it,
+	// unless it was given in Options.DataDir or the server belongs to a
+	// Cluster, which share one.
 	DataDir string
 	// InviteToken is the token of the invitation made by Options.InviteMember,
 	// the last part of the link /invite/<token>. It is empty without the option.
@@ -116,36 +137,18 @@ func StartServer(ctx context.Context, opts Options) (*Server, error) {
 
 // startServer is StartServer on the temporary directory tmpDir.
 func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, error) {
-	bin := opts.Binary
-	if bin == "" {
-		root := opts.ModuleRoot
-		if root == "" {
-			var err error
-			root, err = ModuleRoot()
-			if err != nil {
-				return nil, err
-			}
-		}
-		bin = filepath.Join(tmpDir, "clowder")
-		build := exec.CommandContext(ctx, "go", "build", "-o", bin, "./cmd/clowder")
-		build.Dir = root
-		if out, err := build.CombinedOutput(); err != nil {
-			return nil, errors.NewErr(tagServerBuildFailed, err).SetMetadata("dir", root, "output", string(out))
-		}
+	bin, err := buildBinary(ctx, opts, tmpDir)
+	if err != nil {
+		return nil, err
 	}
 
-	dataDir := filepath.Join(tmpDir, "data")
-	demo := exec.CommandContext(ctx, bin, "demo", "-data", dataDir)
-	if out, err := demo.CombinedOutput(); err != nil {
-		return nil, errors.NewErr(tagDemoFailed, err).SetMetadata("data", dataDir, "output", string(out))
+	dataDir := opts.DataDir
+	if dataDir == "" {
+		dataDir = filepath.Join(tmpDir, "data")
 	}
-
-	inviteToken := ""
-	if opts.InviteMember {
-		var err error
-		if inviteToken, err = inviteMember(ctx, bin, dataDir); err != nil {
-			return nil, err
-		}
+	inviteToken, err := prepare(ctx, opts, bin, dataDir)
+	if err != nil {
+		return nil, err
 	}
 
 	var srv *Server
@@ -166,6 +169,59 @@ func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, err
 	return srv, nil
 }
 
+// buildBinary returns opts.Binary, or builds ./cmd/clowder of the module into
+// tmpDir and returns its path.
+func buildBinary(ctx context.Context, opts Options, tmpDir string) (string, error) {
+	if opts.Binary != "" {
+		return opts.Binary, nil
+	}
+	root := opts.ModuleRoot
+	if root == "" {
+		var err error
+		root, err = ModuleRoot()
+		if err != nil {
+			return "", err
+		}
+	}
+	bin := filepath.Join(tmpDir, "clowder")
+	build := exec.CommandContext(ctx, "go", "build", "-o", bin, "./cmd/clowder")
+	build.Dir = root
+	if out, err := build.CombinedOutput(); err != nil {
+		return "", errors.NewErr(tagServerBuildFailed, err).SetMetadata("dir", root, "output", string(out))
+	}
+	return bin, nil
+}
+
+// prepare makes the demo data in dataDir (and in the database of
+// opts.DatabaseURL), unless opts.SkipDemo, and the invitation of
+// opts.InviteMember. It returns the token of the invitation, or "".
+func prepare(ctx context.Context, opts Options, bin, dataDir string) (string, error) {
+	if !opts.SkipDemo {
+		args := []string{"demo", "-data", dataDir}
+		if opts.DatabaseURL != "" {
+			args = append(args, "-database-url", opts.DatabaseURL)
+		}
+		if out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
+			return "", errors.NewErr(tagDemoFailed, err).SetMetadata("data", dataDir, "output", redactOutput(string(out), opts.DatabaseURL))
+		}
+	} else if err := os.MkdirAll(dataDir, dataDirMode); err != nil {
+		return "", errors.NewErr(tagTempDirFailed, err).SetMetadata("dir", dataDir)
+	}
+	if !opts.InviteMember {
+		return "", nil
+	}
+	return inviteMember(ctx, opts, bin, dataDir)
+}
+
+// redactOutput removes the database URL, which holds a password, from the
+// output of a command before it goes into an error.
+func redactOutput(out, databaseURL string) string {
+	if databaseURL == "" {
+		return out
+	}
+	return strings.ReplaceAll(out, databaseURL, config.RedactURL(databaseURL))
+}
+
 // launch starts "clowder serve" on a free port and waits until it logs that it
 // listens there. The port is chosen first, by listening on port 0 and closing
 // again, and the server is told its base URL with that port. bindFailed is true
@@ -179,7 +235,14 @@ func launch(ctx context.Context, opts Options, bin, dataDir string) (srv *Server
 	}
 	addr := net.JoinHostPort(listenHost, strconv.Itoa(port))
 	w := newListenWatcher(opts.Stderr)
-	cmd := exec.Command(bin, "serve", "-addr", addr, "-data", dataDir, "-base-url", "http://"+addr)
+	args := []string{"serve", "-addr", addr, "-data", dataDir, "-base-url", "http://" + addr}
+	if opts.DatabaseURL != "" {
+		args = append(args, "-database-url", opts.DatabaseURL)
+	}
+	if opts.RedisURL != "" {
+		args = append(args, "-redis-url", opts.RedisURL)
+	}
+	cmd := exec.Command(bin, args...)
 	cmd.Stderr = w
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = waitDelay
@@ -265,13 +328,17 @@ func isBindFailure(stderr string) bool {
 
 // inviteMember runs "clowder invite -member" on the data directory and returns
 // the token of the invitation it prints.
-func inviteMember(ctx context.Context, bin, dataDir string) (string, error) {
+func inviteMember(ctx context.Context, opts Options, bin, dataDir string) (string, error) {
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, bin, "invite", "-member", "-data", dataDir, "-base-url", inviteBaseURL)
+	args := []string{"invite", "-member", "-data", dataDir, "-base-url", inviteBaseURL}
+	if opts.DatabaseURL != "" {
+		args = append(args, "-database-url", opts.DatabaseURL)
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", errors.NewErr(tagInviteFailed, err).SetMetadata("data", dataDir, "stderr", stderr.String())
+		return "", errors.NewErr(tagInviteFailed, err).SetMetadata("data", dataDir, "stderr", redactOutput(stderr.String(), opts.DatabaseURL))
 	}
 	token, ok := ParseInviteToken(stdout.String())
 	if !ok {
@@ -306,6 +373,9 @@ func (s *Server) Stop() error {
 // stop is the work of the first Stop.
 func (s *Server) stop() {
 	s.stopErr = s.stopProcess()
+	if s.tmpDir == "" {
+		return
+	}
 	if err := os.RemoveAll(s.tmpDir); err != nil && s.stopErr == nil {
 		s.stopErr = errors.NewErr(tagTempDirFailed, err).SetMetadata("dir", s.tmpDir)
 	}

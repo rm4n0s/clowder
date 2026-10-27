@@ -4,10 +4,14 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/browsertest"
 	"github.com/rm4n0s/errors"
 )
 
@@ -91,6 +95,22 @@ func TestParseFlags(t *testing.T) {
 			args: []string{"-o", "x.png", "-as", "bob", "-other", "alice"},
 			want: options{page: "/", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond, other: script{user: "alice", page: "/"}},
 		},
+		{
+			name: "a cluster of two servers",
+			args: []string{
+				"-o", "x.png", "-as", "bob", "-page", "{room:general}", "-cluster", "-postgres-url", "postgres://u:p@db:5432/postgres",
+				"-redis-url", "redis://redis:6379/0", "-other", "alice", "-other-page", "{room:general}",
+			},
+			want: options{
+				page: "{room:general}", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond,
+				cluster: true, postgresURL: "postgres://u:p@db:5432/postgres", redisURL: "redis://redis:6379/0",
+				other: script{user: "alice", page: "{room:general}"},
+			},
+		},
+		{name: "cluster without other", args: []string{"-o", "x.png", "-as", "bob", "-cluster"}, wantTag: tagFlagsInvalid},
+		{name: "cluster with invite", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-invite", "-page", "/invite/{invite}"}, wantTag: tagFlagsInvalid},
+		{name: "postgres-url without cluster", args: []string{"-o", "x.png", "-postgres-url", "postgres://db"}, wantTag: tagFlagsInvalid},
+		{name: "redis-url without cluster", args: []string{"-o", "x.png", "-redis-url", "redis://redis"}, wantTag: tagFlagsInvalid},
 		{name: "other-page without other", args: []string{"-o", "x.png", "-other-page", "/rooms"}, wantTag: tagFlagsInvalid},
 		{name: "other-fill without other", args: []string{"-o", "x.png", "-other-fill", "#a=b"}, wantTag: tagFlagsInvalid},
 		{name: "other-click without other", args: []string{"-o", "x.png", "-other-click", "button"}, wantTag: tagFlagsInvalid},
@@ -170,5 +190,55 @@ func TestFillsString(t *testing.T) {
 	f := fills{{"#a", "1"}, {"#b", "2"}}
 	if got := f.String(); got != "#a=1 #b=2" {
 		t.Errorf("String = %q", got)
+	}
+}
+
+// TestStartClusterNeedsServers has no PostgreSQL or Redis URL: the run fails
+// with FlagsInvalid before it starts anything.
+func TestStartClusterNeedsServers(t *testing.T) {
+	t.Setenv(postgresURLEnv, "")
+	t.Setenv(redisURLEnv, "")
+	var stdout bytes.Buffer
+	_, _, err := startCluster(t.Context(), options{cluster: true, postgresURL: "postgres://u:secret@db/postgres"}, &stdout)
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != tagFlagsInvalid || !appErr.HasRoute("startCluster.FlagsInvalid") {
+		t.Fatalf("err = %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want nothing", stdout.String())
+	}
+}
+
+// TestRunCluster takes a screenshot with -cluster: two servers, the other user
+// posts on the first, and the PNG is made on the second. It needs both servers
+// of the tests and Chromium.
+func TestRunCluster(t *testing.T) {
+	if os.Getenv(postgresURLEnv) == "" || os.Getenv(redisURLEnv) == "" {
+		t.Skipf("set %s and %s (scripts/test-docker.sh does) to run the proof tool with two servers", postgresURLEnv, redisURLEnv)
+	}
+	if _, err := browsertest.FindChromium(); err != nil {
+		t.Skipf("browser test skipped: %v", err)
+	}
+	out := filepath.Join(t.TempDir(), "cluster.png")
+	var stdout, stderr bytes.Buffer
+	err := run(t.Context(), []string{
+		"-o", out, "-as", "bob", "-page", "{room:general}", "-cluster", "-other", "alice", "-other-page", "{room:general}",
+		"-other-fill", "#post-body-new=Written on process A", "-other-click", `#post-editor-new button[type="submit"]`,
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %+v\nstderr: %s", err, stderr.String())
+	}
+	info, statErr := os.Stat(out)
+	if statErr != nil || info.Size() == 0 {
+		t.Fatalf("no PNG written: %v", statErr)
+	}
+	lines := strings.Split(stdout.String(), "\n")
+	if len(lines) < 4 || !strings.HasPrefix(lines[0], "server A, where -other acts: http://127.0.0.1:") ||
+		!strings.HasPrefix(lines[1], "server B, where the screenshot is taken: http://127.0.0.1:") ||
+		!strings.HasPrefix(lines[3], "saved ") {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "clowder:clowder@") {
+		t.Errorf("stdout holds a password: %q", stdout.String())
 	}
 }

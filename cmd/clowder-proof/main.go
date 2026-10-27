@@ -19,6 +19,8 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/rm4n0s/clowder/internal/browsertest"
+	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
 
@@ -179,6 +181,15 @@ type options struct {
 	// other is a second user who acts in a second browser after the page of
 	// the first one has loaded and its live stream is open.
 	other script
+	// cluster starts two servers on one new PostgreSQL database, one Redis and
+	// one data directory (SPEC D41): the -other user acts on the first, and the
+	// screenshot is taken on the second.
+	cluster bool
+	// postgresURL is the PostgreSQL server where -cluster makes its database
+	// (the user may create databases); empty: CLOWDER_TEST_POSTGRES.
+	postgresURL string
+	// redisURL is the Redis server of -cluster; empty: CLOWDER_TEST_REDIS.
+	redisURL string
 }
 
 // script is what a user does in a browser: log in, open a page, type into
@@ -197,22 +208,43 @@ type script struct {
 	clicks clicks
 }
 
-// run takes one screenshot. It stops the server and the browser it started
+// Environment variables that -postgres-url and -redis-url fall back to; they
+// are those of the tests (SPEC D39), which scripts/test-docker.sh sets.
+const (
+	postgresURLEnv = "CLOWDER_TEST_POSTGRES"
+	redisURLEnv    = "CLOWDER_TEST_REDIS"
+)
+
+// servers are the servers of a run: where the screenshot is taken and where
+// the -other user acts. They are the same server unless -cluster is set.
+type servers struct {
+	shot, other *browsertest.Server
+}
+
+// run takes one screenshot. It stops the servers and the browsers it started
 // before it returns, also when ctx is canceled (Ctrl-C) or something fails.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	opts, err := parseFlags(args, stderr)
 	if err != nil {
 		return err
 	}
-	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite})
+	var (
+		srvs servers
+		stop func() error
+	)
+	if opts.cluster {
+		srvs, stop, err = startCluster(ctx, opts, stdout)
+	} else {
+		srvs, stop, err = startOne(ctx, opts)
+	}
 	if err != nil {
 		return err
 	}
 	if opts.invite {
-		opts.page = strings.ReplaceAll(opts.page, invitePlaceholder, srv.InviteToken)
+		opts.page = strings.ReplaceAll(opts.page, invitePlaceholder, srvs.shot.InviteToken)
 	}
-	shot, runErr := screenshot(ctx, srv, opts)
-	if stopErr := srv.Stop(); stopErr != nil {
+	shot, runErr := screenshot(ctx, srvs, opts)
+	if stopErr := stop(); stopErr != nil {
 		_, _ = fmt.Fprintln(stderr, "clowder-proof: stopping the server:", stopErr)
 	}
 	if runErr != nil {
@@ -228,6 +260,62 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	_, _ = fmt.Fprintf(stdout, "saved %s (%d bytes)\n", opts.out, len(shot))
 	return nil
 }
+
+// startOne starts the one server of a run and returns the function that stops
+// it.
+func startOne(ctx context.Context, opts options) (servers, func() error, error) {
+	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite})
+	if err != nil {
+		return servers{}, nil, err
+	}
+	return servers{shot: srv, other: srv}, srv.Stop, nil
+}
+
+// startCluster makes a new PostgreSQL database and starts two servers on it,
+// with one Redis and one data directory: the first is where the -other user
+// acts, the second where the screenshot is taken. It prints both addresses to
+// stdout, so that the output says which server each user used. The returned
+// function stops the servers and drops the database.
+func startCluster(ctx context.Context, opts options, stdout io.Writer) (servers, func() error, error) {
+	pgURL, redisURL := opts.postgresURL, opts.redisURL
+	if pgURL == "" {
+		pgURL = os.Getenv(postgresURLEnv)
+	}
+	if redisURL == "" {
+		redisURL = os.Getenv(redisURLEnv)
+	}
+	if pgURL == "" || redisURL == "" {
+		return servers{}, nil, errors.New(tagFlagsInvalid,
+			"-cluster needs a PostgreSQL server and a Redis server: -postgres-url and -redis-url, or "+postgresURLEnv+" and "+redisURLEnv,
+			"postgres", pgURL != "", "redis", redisURL != "")
+	}
+	dbURL, drop, err := store.NewPostgresDatabase(ctx, pgURL)
+	if err != nil {
+		return servers{}, nil, err
+	}
+	cluster, err := browsertest.StartCluster(ctx, browsertest.Options{DatabaseURL: dbURL, RedisURL: redisURL}, clusterServers)
+	if err != nil {
+		if dropErr := drop(); dropErr != nil {
+			return servers{}, nil, errors.NewErr(tagClusterFailed, err).SetMetadata("drop", dropErr.Error())
+		}
+		return servers{}, nil, err
+	}
+	a, b := cluster.Servers[0], cluster.Servers[1]
+	_, _ = fmt.Fprintf(stdout, "server A, where -other acts: %s\nserver B, where the screenshot is taken: %s\n", a.URL, b.URL)
+	_, _ = fmt.Fprintf(stdout, "both on the PostgreSQL database %s and the Redis %s, with the data directory %s\n",
+		config.RedactURL(dbURL), config.RedactURL(redisURL), a.DataDir)
+	stop := func() error {
+		stopErr := cluster.Stop()
+		if dropErr := drop(); dropErr != nil && stopErr == nil {
+			return dropErr
+		}
+		return stopErr
+	}
+	return servers{shot: b, other: a}, stop, nil
+}
+
+// clusterServers is the number of servers of -cluster.
+const clusterServers = 2
 
 // parseFlags reads and checks the flags.
 func parseFlags(args []string, stderr io.Writer) (options, error) {
@@ -246,6 +334,9 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.StringVar(&o.other.user, "other", "", "a second demo user who acts in a second browser once the page has loaded and its live stream is open, before the screenshot of the first one; see -other-page, -other-fill and -other-click")
 	fs.StringVar(&o.other.page, "other-page", "", "path of the page the -other user opens (default /); {room:name}, {board:name} and {post:text} are looked up for that user")
 	fs.Var(&o.other.fills, "other-fill", "type text into an element of the -other user's page before the click, as selector=value (repeatable)")
+	fs.BoolVar(&o.cluster, "cluster", false, "start two servers on one new PostgreSQL database, one Redis and one data directory (as compose.cluster.yaml runs them); the -other user acts on the first one and the screenshot is taken on the second one, so it shows a change that came through Redis; needs -other, a PostgreSQL server (-postgres-url or CLOWDER_TEST_POSTGRES) and a Redis (-redis-url or CLOWDER_TEST_REDIS), and prints both addresses")
+	fs.StringVar(&o.postgresURL, "postgres-url", "", "with -cluster: the PostgreSQL server where the new database is made, postgres://user:password@host:port/postgres; the user may create and drop databases (default: CLOWDER_TEST_POSTGRES)")
+	fs.StringVar(&o.redisURL, "redis-url", "", "with -cluster: the Redis server, redis://host:port/0 (default: CLOWDER_TEST_REDIS)")
 	fs.Var(&o.other.clicks, "other-click", "CSS selector of an element the -other user clicks after the -other-fill flags (repeatable, in order)")
 	if err := fs.Parse(args); err != nil {
 		return options{}, errors.NewErr(tagFlagsInvalid, err)
@@ -277,6 +368,12 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "-other needs -as: the second user acts while the first one watches", "flag", "other")
 	case o.other.user != "" && o.other.page != "" && !validPage(o.other.page):
 		return options{}, errors.New(tagFlagsInvalid, "-other-page must start with /, {room:name}, {board:name}, {post:text} or {conversation:members}", "page", o.other.page)
+	case o.cluster && o.other.user == "":
+		return options{}, errors.New(tagFlagsInvalid, "-cluster needs -other: the second user acts on the other server while the first one watches", "flag", "cluster")
+	case o.cluster && o.invite:
+		return options{}, errors.New(tagFlagsInvalid, "-cluster and -invite cannot be used together", "flag", "cluster")
+	case !o.cluster && (o.postgresURL != "" || o.redisURL != ""):
+		return options{}, errors.New(tagFlagsInvalid, "-postgres-url and -redis-url need -cluster", "flag", "cluster")
 	case o.invite != strings.Contains(o.page, invitePlaceholder):
 		return options{}, errors.New(tagFlagsInvalid, "-invite and "+invitePlaceholder+" in -page go together",
 			"invite", o.invite, "page", o.page)
@@ -291,8 +388,9 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 // settle and returns the PNG of the viewport. When -other is set, a second user
 // acts in a second browser after the page has loaded and before the fills and
 // the click of the first one, so that the screenshot shows what the first user
-// sees of it. The browsers are closed before it returns.
-func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte, error) {
+// sees of it. The first user is on srvs.shot and the second on srvs.other. The
+// browsers are closed before it returns.
+func screenshot(ctx context.Context, srvs servers, o options) ([]byte, error) {
 	browser, cancel, err := browsertest.NewBrowser(ctx, chromedp.WindowSize(o.width, o.height))
 	if err != nil {
 		return nil, err
@@ -304,12 +402,12 @@ func screenshot(ctx context.Context, srv *browsertest.Server, o options) ([]byte
 	pageCtx, cancelPage := context.WithTimeout(browser, pageTimeout)
 	defer cancelPage()
 	first := script{user: o.as, page: o.page, fills: o.fills, clicks: o.clicks}
-	url, err := first.open(pageCtx, srv, o)
+	url, err := first.open(pageCtx, srvs.shot, o)
 	if err != nil {
 		return nil, err
 	}
 	if o.other.user != "" {
-		if err := actAs(ctx, srv, o); err != nil {
+		if err := actAs(ctx, srvs.other, o); err != nil {
 			return nil, err
 		}
 		// The live update takes a moment to reach the page.
@@ -561,6 +659,7 @@ const pageTimeout = time.Minute
 
 const (
 	tagFlagsInvalid      = "FlagsInvalid"
+	tagClusterFailed     = "ClusterFailed"
 	tagOutputWriteFailed = "OutputWriteFailed"
 	tagPageLoadFailed    = "PageLoadFailed"
 	tagFillFailed        = "FillFailed"

@@ -1,0 +1,4 @@
+server A, where -other acts: http://127.0.0.1:34431
+server B, where the screenshot is taken: http://127.0.0.1:36053
+both on the PostgreSQL database postgres://clowder:xxxxx@127.0.0.1:32792/clowder_t_1793112757_de5aed80?sslmode=disable and the Redis redis://127.0.0.1:32791/0, with the data directory /tmp/clowder-browsertest-3269409791/data
+saved docs/implemented-proof-images/15.2-cluster-live.png (119526 bytes)

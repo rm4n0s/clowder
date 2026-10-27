@@ -67,6 +67,30 @@ func TestPostgresTemplateFailures(t *testing.T) {
 			route: "NewPostgresTemplate.TemplateServerFailed",
 		},
 		{
+			name: "NewPostgresDatabase: the URL is not one of PostgreSQL",
+			run: func(t *testing.T) error {
+				_, _, err := NewPostgresDatabase(t.Context(), "mysql://clowder:"+password+"@127.0.0.1:3306/clowder")
+				return err
+			},
+			route: "NewPostgresDatabase.TemplateURLInvalid",
+		},
+		{
+			name: "NewPostgresDatabase: the URL cannot be parsed",
+			run: func(t *testing.T) error {
+				_, _, err := NewPostgresDatabase(t.Context(), "postgres://clowder:"+password+"@127.0.0.1:5432/clowder?connect_timeout=x")
+				return err
+			},
+			route: "NewPostgresDatabase.TemplateURLInvalid",
+		},
+		{
+			name: "NewPostgresDatabase: the server cannot be reached",
+			run: func(t *testing.T) error {
+				_, _, err := NewPostgresDatabase(t.Context(), "postgres://clowder:"+password+"@127.0.0.1:1/postgres?sslmode=disable&connect_timeout=2")
+				return err
+			},
+			route: "NewPostgresDatabase.TemplateServerFailed",
+		},
+		{
 			name: "the copy cannot be made",
 			run: func(t *testing.T) error {
 				_, _, err := unreachableTemplate(t).Open(t.Context(), clock.NewFake(fakeStart), nil)
@@ -278,4 +302,43 @@ func TestPostgresTemplateOnAServer(t *testing.T) {
 			t.Error("the sweep dropped a recent database, which another run may use")
 		}
 	})
+}
+
+// TestNewPostgresDatabase shows, on a real server, that the database is new
+// and empty, that its URL opens it, and that the drop function removes it.
+func TestNewPostgresDatabase(t *testing.T) {
+	skipUnlessPostgres(t)
+	ctx := t.Context()
+	dbURL, drop, err := NewPostgresDatabase(ctx, os.Getenv(PostgresTestEnv))
+	if err != nil {
+		t.Fatalf("NewPostgresDatabase: %+v", err)
+	}
+	dropped := false
+	t.Cleanup(func() {
+		if !dropped {
+			_ = drop()
+		}
+	})
+	u, err := url.Parse(dbURL)
+	if err != nil || !strings.HasPrefix(strings.TrimPrefix(u.Path, "/"), pgCopyPrefix) {
+		t.Fatalf("database URL path = %q, %v; want a name with the prefix %q", u.Path, err, pgCopyPrefix)
+	}
+	s, err := OpenPostgres(ctx, dbURL, clock.NewFake(fakeStart), nil)
+	if err != nil {
+		t.Fatalf("OpenPostgres on the new database: %+v", err)
+	}
+	var tables int
+	if err := s.db(ctx).Raw("SELECT count(*) FROM information_schema.tables WHERE table_name = 'schema_migrations'").Scan(&tables).Error; err != nil || tables != 1 {
+		t.Errorf("schema_migrations tables = %d, %v", tables, err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := drop(); err != nil {
+		t.Fatalf("drop: %+v", err)
+	}
+	dropped = true
+	if _, err := OpenPostgres(ctx, dbURL, clock.NewFake(fakeStart), nil); err == nil {
+		t.Error("the database still opens after the drop")
+	}
 }

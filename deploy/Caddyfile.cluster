@@ -1,0 +1,35 @@
+# Caddy in front of the Clowder processes of compose.cluster.yaml (SPEC D40,
+# D41). It listens on port 8080 inside its container (compose publishes it on
+# CLOWDER_PORT) and speaks plain HTTP: for TLS, put your own proxy in front of
+# it, or change the site address below to your domain and publish ports 80
+# and 443 (Caddy then gets a certificate by itself).
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	reverse_proxy clowder:8080 clowder2:8080 {
+		# No sticky sessions: every request carries its session, which every
+		# process reads from the shared database, and every process delivers
+		# every live event (SPEC §8.1).
+		lb_policy round_robin
+		# A request that finds an upstream down tries the others for up to 5 s.
+		lb_try_duration 5s
+		lb_try_interval 250ms
+
+		# A process that fails /healthz leaves the rotation until it answers
+		# again.
+		health_uri /healthz
+		health_interval 5s
+		health_timeout 2s
+		health_status 200
+
+		# The live streams are server-sent events: send every write at once.
+		flush_interval -1
+
+		# Caddy sets X-Forwarded-For to the address of the client (and does not
+		# trust a value that the client sent), which is what
+		# CLOWDER_TRUST_PROXY=true makes the login limiter count.
+	}
+}

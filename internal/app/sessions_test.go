@@ -254,7 +254,7 @@ func TestLoginUsesTheInjectedLimiter(t *testing.T) {
 		InvitationLifetime: lifetime, SessionLifetime: sessionLifetime, Limiter: limiter,
 	})
 	for range 5 {
-		limiter.Fail("ghost", "")
+		limiter.Fail(t.Context(), "ghost", "")
 	}
 	_, _, err := svc.Login(t.Context(), "ghost", goodPassword, "")
 	_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login.RateLimited")

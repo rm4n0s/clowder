@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -28,9 +30,20 @@ func (schemaMigration) TableName() string {
 	return "schema_migrations"
 }
 
+// migrationLockKey is the key of the PostgreSQL advisory lock that one process
+// holds while it migrates: the bytes of "clowder".
+const migrationLockKey int64 = 0x636c6f77646572
+
+// unlockTimeout bounds the release of the migration lock, which must not
+// depend on a context that was canceled.
+const unlockTimeout = 10 * time.Second
+
 // migrate brings the schema up to date: first GORM's AutoMigrate for the
 // models, then the raw migrations that have not run yet. Running it again on
-// an up-to-date database changes nothing.
+// an up-to-date database changes nothing. On PostgreSQL it holds an advisory
+// lock meanwhile, so that several processes that start together on one
+// database migrate one after the other, and the later ones find the schema
+// current (SPEC §8.1).
 func (s *Store) migrate(ctx context.Context, models []any, migrations []migration) error {
 	seen := make(map[string]bool, len(migrations))
 	for _, m := range migrations {
@@ -40,6 +53,77 @@ func (s *Store) migrate(ctx context.Context, models []any, migrations []migratio
 		}
 		seen[m.ID] = true
 	}
+	if s.dialect != dialectPostgres {
+		return s.migrateSchema(ctx, models, migrations)
+	}
+	conn, err := s.lockMigrations(ctx)
+	if err != nil {
+		return err
+	}
+	err = s.migrateSchema(ctx, models, migrations)
+	if unlockErr := s.unlockMigrations(conn); unlockErr != nil {
+		if err == nil {
+			return unlockErr
+		}
+		s.logger.Error("releasing the migration lock failed", "err", unlockErr)
+	}
+	return err
+}
+
+// lockMigrations takes the advisory lock of the migrations on a connection of
+// its own, waiting as long as another process holds it or until ctx ends. The
+// lock belongs to the session, so the connection is kept (and returned to
+// unlockMigrations) while the migration runs on the other connections of the
+// pool.
+func (s *Store) lockMigrations(ctx context.Context) (*sql.Conn, error) {
+	sqlDB, err := s.gdb.DB()
+	if err != nil {
+		return nil, errors.NewErr(tagMigrationLockFailed, err).SetMetadata("step", "pool")
+	}
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return nil, errors.NewErr(tagMigrationLockFailed, err).SetMetadata("step", "connection")
+	}
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey); err != nil {
+		// A canceled lock request may still be granted: close the session
+		// instead of returning it to the pool with the lock.
+		discardConn(conn)
+		return nil, errors.NewErr(tagMigrationLockFailed, err).SetMetadata("step", "lock")
+	}
+	return conn, nil
+}
+
+// unlockMigrations releases the lock that lockMigrations took and returns the
+// connection to the pool. When the release fails the connection is closed
+// instead, which ends the session and with it the lock.
+func (s *Store) unlockMigrations(conn *sql.Conn) error {
+	ctx, cancel := context.WithTimeout(context.Background(), unlockTimeout)
+	defer cancel()
+	var released bool
+	err := conn.QueryRowContext(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey).Scan(&released)
+	if err != nil || !released {
+		discardConn(conn)
+		if err != nil {
+			return errors.NewErr(tagMigrationUnlockFailed, err)
+		}
+		return errors.New(tagMigrationUnlockFailed, "the migration lock was not held by the session")
+	}
+	if err := conn.Close(); err != nil {
+		return errors.NewErr(tagMigrationUnlockFailed, err).SetMetadata("step", "close")
+	}
+	return nil
+}
+
+// discardConn closes the underlying connection of conn instead of returning it
+// to the pool, and gives the pool's slot back.
+func discardConn(conn *sql.Conn) {
+	// Returning ErrBadConn from Raw makes database/sql drop the connection.
+	_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+	_ = conn.Close()
+}
+
+// migrateSchema is the work of migrate, without the lock.
+func (s *Store) migrateSchema(ctx context.Context, models []any, migrations []migration) error {
 	if s.dialect == dialectPostgres {
 		if err := s.db(ctx).Exec(postgresPrelude).Error; err != nil {
 			return errors.NewErr(tagMigrationFailed, err).SetMetadata("migration", "prelude")
@@ -100,6 +184,8 @@ LANGUAGE sql IMMUTABLE STRICT AS $$ SELECT pg_input_is_valid($1, 'jsonb') $$;
 `
 
 const (
-	tagMigrationInvalid = "MigrationInvalid"
-	tagMigrationFailed  = "MigrationFailed"
+	tagMigrationInvalid      = "MigrationInvalid"
+	tagMigrationFailed       = "MigrationFailed"
+	tagMigrationLockFailed   = "MigrationLockFailed"
+	tagMigrationUnlockFailed = "MigrationUnlockFailed"
 )

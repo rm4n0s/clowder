@@ -1,0 +1,157 @@
+project clowder-smoke-3615810, image clowder-smoke:3615810, base URL http://localhost:20533, cluster: true
+
+==> docker compose build (the last 15 lines)
+#18 exporting manifest sha256:3c2fc0a1e6226716f4892aee6edbd692db541dad7bb710eba849148c1d77c871 0.0s done
+#18 exporting config sha256:a3227b8b04c1421e310ce550276fd9492f819498c5874934ce234abe69bdaf85 0.0s done
+#18 exporting attestation manifest sha256:d11fe5106b5ce42f70932de96c0099734c8c4df27f82afd95880cefb0b8ab9e3 0.0s done
+#18 exporting manifest list sha256:a0f4acb5656d86b8faf59d0be654a09047ade8f8c0285f4b4eb1144c1eb8a719 done
+#18 naming to docker.io/library/clowder-smoke:3615810 done
+#18 unpacking to docker.io/library/clowder-smoke:3615810 0.1s done
+#18 DONE 0.9s
+
+#19 [clowder] resolving provenance for metadata file
+#19 DONE 0.0s
+
+#20 [clowder2] resolving provenance for metadata file
+#20 DONE 0.0s
+ Image clowder-smoke:3615810 Built 
+ Image clowder-smoke:3615810 Built 
+
+==> docker compose up -d --wait
+ Network clowder-smoke-3615810_default Creating 
+ Network clowder-smoke-3615810_default Creating 
+ Volume clowder-smoke-3615810_pgdata Creating 
+ Volume clowder-smoke-3615810_pgdata Creating 
+ Volume clowder-smoke-3615810_clowderdata Creating 
+ Volume clowder-smoke-3615810_clowderdata Creating 
+ Volume clowder-smoke-3615810_pgdata Created 
+ Volume clowder-smoke-3615810_pgdata Created 
+ Volume clowder-smoke-3615810_clowderdata Created 
+ Volume clowder-smoke-3615810_clowderdata Created 
+ Network clowder-smoke-3615810_default Created 
+ Network clowder-smoke-3615810_default Created 
+ Container clowder-smoke-3615810-redis-1 Creating 
+ Container clowder-smoke-3615810-postgres-1 Creating 
+ Container clowder-smoke-3615810-redis-1 Created 
+ Container clowder-smoke-3615810-postgres-1 Created 
+ Container clowder-smoke-3615810-clowder-1 Creating 
+ Container clowder-smoke-3615810-clowder2-1 Creating 
+ Container clowder-smoke-3615810-clowder-1 Created 
+ Container clowder-smoke-3615810-clowder2-1 Created 
+ Container clowder-smoke-3615810-caddy-1 Creating 
+ Container clowder-smoke-3615810-caddy-1 Created 
+ Container clowder-smoke-3615810-redis-1 Starting 
+ Container clowder-smoke-3615810-postgres-1 Starting 
+ Container clowder-smoke-3615810-redis-1 Started 
+ Container clowder-smoke-3615810-postgres-1 Started 
+ Container clowder-smoke-3615810-postgres-1 Waiting 
+ Container clowder-smoke-3615810-redis-1 Waiting 
+ Container clowder-smoke-3615810-redis-1 Waiting 
+ Container clowder-smoke-3615810-postgres-1 Waiting 
+ Container clowder-smoke-3615810-redis-1 Healthy 
+ Container clowder-smoke-3615810-redis-1 Healthy 
+ Container clowder-smoke-3615810-postgres-1 Healthy 
+ Container clowder-smoke-3615810-clowder2-1 Starting 
+ Container clowder-smoke-3615810-postgres-1 Healthy 
+ Container clowder-smoke-3615810-clowder-1 Starting 
+ Container clowder-smoke-3615810-clowder2-1 Started 
+ Container clowder-smoke-3615810-clowder-1 Started 
+ Container clowder-smoke-3615810-clowder-1 Waiting 
+ Container clowder-smoke-3615810-clowder2-1 Waiting 
+ Container clowder-smoke-3615810-clowder2-1 Healthy 
+ Container clowder-smoke-3615810-clowder-1 Healthy 
+ Container clowder-smoke-3615810-caddy-1 Starting 
+ Container clowder-smoke-3615810-caddy-1 Started 
+ Container clowder-smoke-3615810-postgres-1 Waiting 
+ Container clowder-smoke-3615810-clowder-1 Waiting 
+ Container clowder-smoke-3615810-redis-1 Waiting 
+ Container clowder-smoke-3615810-clowder2-1 Waiting 
+ Container clowder-smoke-3615810-caddy-1 Waiting 
+ Container clowder-smoke-3615810-postgres-1 Healthy 
+ Container clowder-smoke-3615810-clowder-1 Healthy 
+ Container clowder-smoke-3615810-clowder2-1 Healthy 
+ Container clowder-smoke-3615810-redis-1 Healthy 
+ Container clowder-smoke-3615810-caddy-1 Healthy 
+
+==> docker compose ps
+NAME                               IMAGE                   COMMAND                  SERVICE    CREATED          STATUS                    PORTS
+clowder-smoke-3615810-caddy-1      caddy:2                 "caddy run --config …"   caddy      18 seconds ago   Up 5 seconds (healthy)    80/tcp, 443/tcp, 2019/tcp, 443/udp, 0.0.0.0:20533->8080/tcp, [::]:20533->8080/tcp
+clowder-smoke-3615810-clowder-1    clowder-smoke:3615810   "/clowder serve"         clowder    18 seconds ago   Up 11 seconds (healthy)   8080/tcp
+clowder-smoke-3615810-clowder2-1   clowder-smoke:3615810   "/clowder serve"         clowder2   18 seconds ago   Up 11 seconds (healthy)   8080/tcp
+clowder-smoke-3615810-postgres-1   postgres:18             "docker-entrypoint.s…"   postgres   18 seconds ago   Up 16 seconds (healthy)   5432/tcp
+clowder-smoke-3615810-redis-1      redis:8                 "docker-entrypoint.s…"   redis      18 seconds ago   Up 17 seconds (healthy)   6379/tcp
+
+==> docker compose run --rm clowder invite -admin
+http://localhost:20533/invite/k8j5JJRRPjjcUZYDe7eKcDB_T5fNjTBDMz1YkVOvn0Y
+expires 2026-11-03T14:53:20Z
+
+==> GET /invite/k8j5JJRRPjjcUZYDe7eKcDB_T5fNjTBDMz1YkVOvn0Y (the sign-up form)
+status 200
+
+==> POST /invite/k8j5JJRRPjjcUZYDe7eKcDB_T5fNjTBDMz1YkVOvn0Y (sign up as smokeadmin, "Smoke Admin")
+status 303 -> http://127.0.0.1:20533/
+
+==> GET / (logged in)
+status 200
+<title>Home · Clowder</title>
+<p class="sidebar-user" id="sidebar-user">Smoke Admin</p>
+
+==> GET /healthz
+HTTP/1.1 200 OK
+Cache-Control: no-store
+Content-Type: text/plain; charset=utf-8
+ok
+
+==> GET /healthz and GET / on each Clowder process, with the session made through Caddy
+clowder /healthz: ok
+clowder /: logged in as <p class="sidebar-user" id="sidebar-user">Smoke Admin</p>
+clowder2 /healthz: ok
+clowder2 /: logged in as <p class="sidebar-user" id="sidebar-user">Smoke Admin</p>
+
+==> Caddy gives the requests to both processes (12 requests of GET /login)
+clowder logged 6 requests of GET /login
+clowder2 logged 6 requests of GET /login
+
+==> a post written on clowder arrives live in a stream served by clowder2
+room: /rooms/1
+posted "Written on process A" on clowder
+the stream of clowder2 received the post:
+data: elements <article id="post-1" class="post" data-post="1"><div id="post-content-1" class="post-content"><header class="post-meta"><span class="post-author"
+
+==> docker compose ps (after the requests)
+NAME                               IMAGE                   COMMAND                  SERVICE    CREATED          STATUS                    PORTS
+clowder-smoke-3615810-caddy-1      caddy:2                 "caddy run --config …"   caddy      20 seconds ago   Up 7 seconds (healthy)    80/tcp, 443/tcp, 2019/tcp, 443/udp, 0.0.0.0:20533->8080/tcp, [::]:20533->8080/tcp
+clowder-smoke-3615810-clowder-1    clowder-smoke:3615810   "/clowder serve"         clowder    20 seconds ago   Up 13 seconds (healthy)   8080/tcp
+clowder-smoke-3615810-clowder2-1   clowder-smoke:3615810   "/clowder serve"         clowder2   20 seconds ago   Up 13 seconds (healthy)   8080/tcp
+clowder-smoke-3615810-postgres-1   postgres:18             "docker-entrypoint.s…"   postgres   20 seconds ago   Up 19 seconds (healthy)   5432/tcp
+clowder-smoke-3615810-redis-1      redis:8                 "docker-entrypoint.s…"   redis      20 seconds ago   Up 19 seconds (healthy)   6379/tcp
+
+compose-smoke: OK
+
+==> docker compose down -v --remove-orphans
+ Container clowder-smoke-3615810-caddy-1 Stopping 
+ Container clowder-smoke-3615810-caddy-1 Stopped 
+ Container clowder-smoke-3615810-caddy-1 Removing 
+ Container clowder-smoke-3615810-caddy-1 Removed 
+ Container clowder-smoke-3615810-clowder-1 Stopping 
+ Container clowder-smoke-3615810-clowder2-1 Stopping 
+ Container clowder-smoke-3615810-clowder-1 Stopped 
+ Container clowder-smoke-3615810-clowder-1 Removing 
+ Container clowder-smoke-3615810-clowder-1 Removed 
+ Container clowder-smoke-3615810-clowder2-1 Stopped 
+ Container clowder-smoke-3615810-clowder2-1 Removing 
+ Container clowder-smoke-3615810-clowder2-1 Removed 
+ Container clowder-smoke-3615810-redis-1 Stopping 
+ Container clowder-smoke-3615810-postgres-1 Stopping 
+ Container clowder-smoke-3615810-redis-1 Stopped 
+ Container clowder-smoke-3615810-redis-1 Removing 
+ Container clowder-smoke-3615810-redis-1 Removed 
+ Container clowder-smoke-3615810-postgres-1 Stopped 
+ Container clowder-smoke-3615810-postgres-1 Removing 
+ Container clowder-smoke-3615810-postgres-1 Removed 
+ Network clowder-smoke-3615810_default Removing 
+ Volume clowder-smoke-3615810_pgdata Removing 
+ Volume clowder-smoke-3615810_clowderdata Removing 
+ Volume clowder-smoke-3615810_pgdata Removed 
+ Volume clowder-smoke-3615810_clowderdata Removed 
+ Network clowder-smoke-3615810_default Removed 

@@ -804,3 +804,41 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Only `serve` takes `-redis-url`, because `invite` and `demo` publish no events.
   - go-redis writes its own "failed to dial" lines to stderr through its package-level logger. Replacing that logger would be global mutable state, so it is left as it is. The lines name the address, not the password.
   - A half-open TCP connection is noticed only through the kernel keepalive that go-redis sets.
+
+## 15.2 Shared state and the cluster composition
+
+- **Date:** 2026-10-27
+- **Branch:** feat/step-15.2-cluster
+- **Summary:**
+  - Two Clowder processes on one PostgreSQL, one Redis and one data volume behave as one Clowder.
+  - With Redis set, the login limiter counts failures in Redis (`cluster.LoginCounter`: one sorted set per hashed key, written atomically, with times from the limiter's clock). When Redis fails during a login, the limiter fails open with a warning.
+  - On PostgreSQL the migrations run under an advisory lock, so processes that start together do not race.
+  - `compose.cluster.yaml` adds Redis, a second process and Caddy, which balances between the two by round robin with health checks.
+  - A browser test and `clowder-proof -cluster` show a post made on one process appearing live on the other.
+- **Main files:** `internal/app/limiter.go` (`FailureCounter`; `Allow`, `Fail` and `Reset` now take `ctx`), `internal/cluster/{counter,redis}.go`, `internal/store/{migrate,pgtemplate,users_queries}.go`, `internal/app/accounts.go`, `internal/files/files.go`, `cmd/clowder/serve.go`, `compose.cluster.yaml`, `deploy/Caddyfile.cluster`, `scripts/compose-smoke.sh` (`-cluster`), `internal/browsertest/server.go` (`DatabaseURL`, `RedisURL`, `DataDir`, `SkipDemo`, `StartCluster`), `internal/web/browser_cluster_test.go`, `cmd/clowder-proof` (`-cluster`), `README.md`, SPEC §8.1.
+- **Tests:** about 100 cases:
+  - the limiter's table on the memory counter and on real Redis, two limiters sharing one Redis, and the fail-open case
+  - `LoginCounter` on a fake backend and on real Redis (40 concurrent adds among them)
+  - the migration lock (4 concurrent opens on an empty database; this fails without the lock)
+  - `LockAdmins`, with a concurrent last-admin race
+  - `files.New` keeping fresh tmp files
+  - the wiring in `cmd/clowder`
+  - `StartCluster`
+  - the cross-process browser test (both directions, and one session on both processes)
+
+  Every new tag has a route test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · cluster browser test on PostgreSQL+Redis ✅ · browser tests ✅ · compose-smoke (both modes) ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  ![15.2 cluster-live](implemented-proof-images/15.2-cluster-live.png)
+  Bob's room page on server B shows "Written on process A", which alice posted on server A, at the top of the feed. [15.2 cluster-live.txt](implemented-proof-images/15.2-cluster-live.txt) names both servers and their shared database and Redis.
+  [15.2 compose-cluster](implemented-proof-images/15.2-compose-cluster.txt)
+  All five containers are healthy, one login works on both processes, Caddy spreads 12 requests 6 to each, and a post written on `clowder` arrives in the stream of `clowder2`.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The review of in-memory state found two bugs, both fixed with tests:
+    - `files.New` emptied `files/tmp` at start, so a starting process would delete another process's uploads in progress. It now removes only entries untouched for an hour.
+    - The last-admin check was a check-then-write race on PostgreSQL. `SetRole` and `SetDisabled` now lock the admin rows first.
+  - The fail-open limiter and the other findings are recorded in SPEC §8.1.
+  - The limiter's counter uses its own Redis client, separate from the bridge's.
+  - The cluster screenshot is taken with `-height 1500` so that the post is in view.
+  - Each process holds up to 32 PostgreSQL connections; the README says to raise `max_connections` to match.

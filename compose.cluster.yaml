@@ -1,0 +1,74 @@
+# Several Clowder processes behind one address (SPEC D40, D41, §8.1). Use it
+# together with compose.yaml:
+#
+#   docker compose -f compose.yaml -f compose.cluster.yaml up -d --build
+#
+# It adds Redis, a second Clowder process (clowder2) that shares the database
+# and the data volume of the first, and Caddy, which publishes CLOWDER_PORT and
+# balances the requests round-robin between the two. The processes are not
+# published any more: people reach Clowder through Caddy only.
+#
+# The first admin: docker compose -f compose.yaml -f compose.cluster.yaml run --rm clowder invite -admin
+
+# What both Clowder processes get besides the settings of compose.yaml: the
+# Redis that carries their live events and their login counters, and the proxy
+# headers of Caddy, which is always in front of them here.
+x-cluster-environment: &cluster-environment
+  CLOWDER_REDIS_URL: redis://redis:6379/0
+  CLOWDER_TRUST_PROXY: "true"
+
+services:
+  redis:
+    image: redis:8
+    # Redis carries only pub/sub messages and the counters of the failed
+    # logins, which expire after 15 minutes. Nothing in it has to survive a
+    # restart, so it keeps nothing on disk and has no volume (the tmpfs stops
+    # the image from making an anonymous one for /data).
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  clowder:
+    environment: *cluster-environment
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports: !reset []
+
+  # The second process: the service clowder of compose.yaml (same image,
+  # database, base URL and data volume), with the settings above.
+  clowder2:
+    extends:
+      file: compose.yaml
+      service: clowder
+    environment: *cluster-environment
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports: !reset []
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      clowder:
+        condition: service_healthy
+      clowder2:
+        condition: service_healthy
+    volumes:
+      - ./deploy/Caddyfile.cluster:/etc/caddy/Caddyfile:ro
+    ports:
+      - "${CLOWDER_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

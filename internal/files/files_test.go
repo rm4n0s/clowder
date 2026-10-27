@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/errors"
@@ -126,6 +127,18 @@ func webpVP8X(w, h int) []byte {
 	return webp("VP8X", p)
 }
 
+// makeOld sets the modification time of the paths two hours back, so that New
+// takes them for the leftovers of a crash.
+func makeOld(t *testing.T, paths ...string) {
+	t.Helper()
+	old := time.Now().Add(-2 * time.Hour)
+	for _, p := range paths {
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestNew(t *testing.T) {
 	t.Run("creates the directories", func(t *testing.T) {
 		_, dir := newStore(t)
@@ -149,6 +162,7 @@ func TestNew(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		makeOld(t, filepath.Join(tmp, "upload-1"), filepath.Join(tmp, "sub"))
 		if _, err := files.New(dir); err != nil {
 			t.Fatalf("New: %+v", err)
 		}
@@ -158,6 +172,42 @@ func TestNew(t *testing.T) {
 		if _, err := os.Stat(keep); err != nil {
 			t.Errorf("a stored file was removed: %v", err)
 		}
+	})
+
+	t.Run("keeps what another process is writing", func(t *testing.T) {
+		// Several processes share the directory (SPEC §8.1): one that starts
+		// must leave the upload of another alone, and the upload still ends
+		// as a stored file.
+		dir := filepath.Join(t.TempDir(), "files")
+		first, err := files.New(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tmp := filepath.Join(dir, "tmp")
+		writing := filepath.Join(tmp, "upload-writing")
+		stale := filepath.Join(tmp, "upload-stale")
+		for _, f := range []string{writing, stale} {
+			if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		makeOld(t, stale)
+		second, err := files.New(dir)
+		if err != nil {
+			t.Fatalf("New: %+v", err)
+		}
+		if got := names(t, tmp); len(got) != 1 || got[0] != "upload-writing" {
+			t.Errorf("tmp holds %v, want only upload-writing", got)
+		}
+		saved, err := first.Save(context.Background(), strings.NewReader("whole"), 100)
+		if err != nil {
+			t.Fatalf("Save on the first store after the second started: %+v", err)
+		}
+		f, err := second.Open(saved.Key)
+		if err != nil {
+			t.Fatalf("the second store cannot open the file the first saved: %+v", err)
+		}
+		_ = f.Close()
 	})
 
 	t.Run("a directory that cannot be made", func(t *testing.T) {
@@ -198,6 +248,7 @@ func TestNew(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(sub, "x"), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		makeOld(t, sub)
 		if err := os.Chmod(sub, 0o500); err != nil {
 			t.Fatal(err)
 		}

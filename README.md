@@ -57,7 +57,7 @@ From then on admins make invitation links for members and other admins in the Ad
 
 The data directory holds `clowder.db` (the database) and `files/` (the attachments). The program makes the directory when it is missing, with access for its owner and group only, and keeps the database file readable by its owner only. Keep the directory private: it holds password hashes and every attachment. Stop the server with SIGINT or SIGTERM: it stops accepting requests, closes the open streams, waits up to 10 seconds for running requests and closes the database.
 
-Clowder runs as one process per database. It speaks plain HTTP, so put a reverse proxy with TLS in front of it (see below).
+Clowder runs as one process per database, unless it runs on PostgreSQL with Redis: then several processes can serve one database (see "Several processes" below). It speaks plain HTTP, so put a reverse proxy with TLS in front of it (see below).
 
 ## Running with Docker
 
@@ -93,6 +93,32 @@ The second command prints the link of the first admin (see "The first admin"); i
 
 `scripts/compose-smoke.sh` checks the whole composition on a throw-away project: it builds the image, starts both services, makes an admin invitation, signs up through the form, opens a page and removes everything.
 
+### Several processes
+
+One Clowder process is enough for a team. When you want more than one, for example to restart one process without a pause for the users, or to use more than one machine's CPUs, `compose.cluster.yaml` runs two Clowder processes behind a load balancer, and they behave as one Clowder:
+
+```sh
+docker compose -f compose.yaml -f compose.cluster.yaml up -d --build
+docker compose -f compose.yaml -f compose.cluster.yaml run --rm clowder invite -admin
+```
+
+It adds, to the services of `compose.yaml`:
+
+- **`redis`** (`redis:8`), which carries the live events between the processes (a post written on one appears at once in the pages served by the other) and counts the failed logins, so that "5 failures in 15 minutes" holds across the processes. It keeps nothing on disk and has no volume: restart it whenever you like. While it is down the processes keep serving, their pages may miss each other's live updates, and the login limit is not enforced (a login still checks the password); when it is back the open pages reload what they missed.
+- **`clowder2`**, a second process of the same image, with the same database and the same `clowderdata` volume (the attachments). Both processes need the same configuration, which they get from the same `.env`.
+- **`caddy`** (`caddy:2`, configured by `deploy/Caddyfile.cluster`), which publishes `CLOWDER_PORT` and gives the requests to the two processes in turn. A process that fails `/healthz` is left out until it answers again. The processes are no longer published themselves.
+
+Notes:
+
+- **Requirements.** Several processes need PostgreSQL and Redis; with SQLite `-redis-url` is refused. All the processes must use the same data directory (one volume, or a network file system) for the attachments, and the same database.
+- **No sticky sessions.** A session lives in the database and every process delivers every live event, so the load balancer may send any request to any process. Any proxy with round-robin works; the Caddyfile is an example. It sends each write of a live stream at once (`flush_interval -1`) and passes the client's address in `X-Forwarded-For`, which is why the composition sets `CLOWDER_TRUST_PROXY=true`.
+- **Starting together.** The processes may start at the same moment on an empty database: the first one migrates it while the others wait.
+- **Connections.** Each process keeps up to 32 connections to PostgreSQL (two per CPU, at least 8), so `max_connections` of the server must be above that times the number of processes.
+- **Without Docker.** Give every process the same `-database-url`, the same `-redis-url` (`redis://host:6379/0`, or `rediss://` for TLS) and the same `-data`.
+- **Upgrades.** As with one process: `docker compose -f compose.yaml -f compose.cluster.yaml up -d --build` recreates both; the first to start migrates the database and the other waits for it.
+
+`scripts/compose-smoke.sh -cluster` checks it on a throw-away project: every container healthy, the login made through Caddy working on each process directly, both processes receiving requests, and a post written on one process arriving live in a stream of the other.
+
 ### PostgreSQL without Docker
 
 `clowder serve` uses PostgreSQL instead of SQLite when it is given a database URL, with `-database-url` or `CLOWDER_DATABASE_URL`, for example `postgres://clowder:secret@db.example.org:5432/clowder?sslmode=require`. `clowder invite` and `clowder demo` read the same setting. The server needs PostgreSQL 16 or later (18 is the tested version) with ICU and the `unaccent` extension, which the official images and the usual packages (`postgresql-contrib`) have. The database user must be allowed to create the extension, a collation and functions in the database, because Clowder migrates the database when it starts. The URL is never written to a log with its password. The attachments stay in `files/` of the data directory.
@@ -106,6 +132,7 @@ Each setting is a flag of `clowder serve` or a `CLOWDER_*` environment variable.
 | `-addr` | `CLOWDER_ADDR` | `:8080` | Address to listen on, as `host:port`. |
 | `-data` | `CLOWDER_DATA` | `./data` | Data directory, with `clowder.db` and `files/`. |
 | `-database-url` | `CLOWDER_DATABASE_URL` | empty | A `postgres://` URL. Empty: SQLite in `clowder.db` of the data directory. |
+| `-redis-url` | `CLOWDER_REDIS_URL` | empty | A `redis://` or `rediss://` URL. Set it to run several processes on one database: it carries the live events between them and counts the failed logins. Needs `-database-url`. Empty: one process, with the events and the limiter in memory. |
 | `-base-url` | `CLOWDER_BASE_URL` | `http://localhost:8080` | The public URL, an absolute `http` or `https` URL. Invitation links are made from it. Cookies get the `Secure` attribute unless it starts with `http://`. |
 | `-max-attachment-size` | `CLOWDER_MAX_ATTACHMENT_SIZE` | `26214400` | Largest attachment in bytes (25 MiB). |
 | `-max-attachments` | `CLOWDER_MAX_ATTACHMENTS` | `10` | Most attachments on one post, comment or message. |

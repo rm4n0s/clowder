@@ -32,7 +32,7 @@ const dummyPasswordHash = "$argon2id$v=19$m=65536,t=3,p=2$a+cndfTcWEFz1DFlJ6Mwfw
 // window has passed. A successful login clears the failures of the username.
 func (a *Accounts) Login(ctx context.Context, username, password, clientIP string) (string, User, error) {
 	username = normalizeUsername(username)
-	if !a.limiter.Allow(username, clientIP) {
+	if !a.limiter.Allow(ctx, username, clientIP) {
 		return "", User{}, errors.New(TagRateLimited, "too many failed login attempts",
 			"username", limiterKey(username), "ip", clientIP)
 	}
@@ -56,7 +56,7 @@ func (a *Accounts) Login(ctx context.Context, username, password, clientIP strin
 		}
 	}
 	if !known || !match || user.DisabledAt != nil {
-		a.limiter.Fail(username, clientIP)
+		a.limiter.Fail(ctx, username, clientIP)
 		return "", User{}, errors.New(TagInvalidInput, "wrong username or password",
 			"fields", map[string]string{FieldForm: "Wrong username or password."})
 	}
@@ -83,7 +83,7 @@ func (a *Accounts) Login(ctx context.Context, username, password, clientIP strin
 	if err != nil {
 		return "", User{}, err
 	}
-	a.limiter.Reset(username)
+	a.limiter.Reset(ctx, username)
 	return token, viewOf(user), nil
 }
 
