@@ -43,6 +43,12 @@ func openUserMenu() chromedp.Action[chromedp.Void] {
 	return chromedp.Steps(chromedp.Click("#user-menu summary"), chromedp.WaitVisible("#user-menu[open] #logout-form button"))
 }
 
+// openPostMenu opens the "more" menu of the post or comment (a details element
+// with no script) that the selector finds, where Follow, Edit and Delete are.
+func openPostMenu(article string) chromedp.Action[chromedp.Void] {
+	return chromedp.Steps(chromedp.Click(article+" .post-menu > summary"), chromedp.WaitVisible(article+" .post-menu[open] .post-menu-panel"))
+}
+
 // valueOf returns the value of the input.
 func valueOf(t *testing.T, ctx context.Context, sel string) string {
 	t.Helper()

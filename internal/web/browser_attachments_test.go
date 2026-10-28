@@ -142,7 +142,7 @@ func TestAliceAttachesFiles(t *testing.T) {
 			}
 			return of(url, opts);
 		}; true`)
-	if err := chromedp.Do(ctx, chromedp.Click(`#post-editor-new .post-editor-actions button[type="button"]`)); err != nil {
+	if err := chromedp.Do(ctx, chromedp.Click(`#post-editor-new .preview-button`)); err != nil {
 		t.Fatalf("ask for the preview: %v", err)
 	}
 	if err := waitFor(ctx, `document.querySelector('#post-preview-new strong') !== null`); err != nil {
@@ -184,7 +184,7 @@ func TestAliceAttachesFiles(t *testing.T) {
 	// The text file is a link with its size, and the preview is gone with the
 	// fresh editor.
 	link, err := chromedp.Run(ctx, chromedp.Evaluate[string](
-		`(() => { const a = document.querySelector('`+first+` .attachment-files a'); return a.textContent + ' ' + a.getAttribute('href') + ' ' + a.parentElement.textContent; })()`))
+		`(() => { const a = document.querySelector('`+first+` .attachment-files a'); return a.textContent + ' ' + a.getAttribute('href') + ' ' + a.parentElement.textContent.trim().replace(/\s+/g, ' '); })()`))
 	if err != nil {
 		t.Fatalf("read the file link: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestAliceAttachesFiles(t *testing.T) {
 
 	// Edit: the files are listed with Remove boxes; removing the text file
 	// leaves the image.
-	err = chromedp.Do(ctx, chromedp.Click(first+" .post-edit"), chromedp.WaitVisible(first+" .attachment-edit"))
+	err = chromedp.Do(ctx, openPostMenu(first), chromedp.Click(first+" .post-edit"), chromedp.WaitVisible(first+" .attachment-edit"))
 	if err != nil {
 		t.Fatalf("open the editor of the post: %v", err)
 	}

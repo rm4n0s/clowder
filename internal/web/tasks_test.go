@@ -545,7 +545,7 @@ func TestPostShowsItsTasks(t *testing.T) {
 				`<time class="task-due" datetime="` + futureDue + `" title="Due date">` + futureDue + `</time>`,
 				`<span class="task-column">In progress</span>`,
 				`<span class="task-column task-column-done">Done</span>`,
-				`<li class="post-task post-task-done"><span class="task-title">Finished late</span>`,
+				`<li class="post-task post-task-done"><svg class="icon"`, `<span class="task-title">Finished late</span>`,
 				`<time class="task-due" datetime="` + pastDue + `" title="Due date">`,
 				`href="/rooms/` + idText(e.general.ID) + `/board#task-` + idText(p.Tasks[0].ID) + `"`,
 			} {

@@ -1495,3 +1495,29 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The mockup's "+ Find or make a room" is two links, Browse rooms and New room, because they are separate pages. The sidebar has rooms only, as before; Home is the logo.
   - The mockup's input borders have a contrast of about 1.3:1 against the ground; the labels carry the meaning (recorded in the SPEC).
   - Changing the theme from the menu while the settings page is open leaves its Appearance radios as they were until the page is loaded again.
+
+## 21.2 Rooms, feed and threads in the new look
+- **Date:** 2026-10-28
+- **Branch:** feat/step-21.2-feed
+- **Summary:** markup and CSS only. No handler, route, form field, Datastar expression or ID that a stream patches changed.
+  - `/rooms` is a grid of room cards (name, description, the private or visible pill, the member count, Join or Open). The new-room page is one form card in the shell.
+  - The room header has the name, the pill, the description and member count, Posts/Board as a segmented pill, and the room's actions as quiet pills. The members panel is a card beside the feed from 75 rem, and under it on narrower screens.
+  - The composer is one card with one row of controls: Markdown/Text on the existing radios, tags, the attach button on the existing file input (the chosen names stay visible), Add task, Preview and Post. Comments and edits use it smaller.
+  - The post card has the avatar, `@user · time · edited`, and a "more" menu (`<details>`, no script; Follow, Edit, Delete).
+    - The body has the markdown styles, code blocks with their toolbar, tag pills, task chips and attachment rows.
+    - The foot has the reactions (the reader's own in the accent) and the comments link or Reply. Deleted posts are a quiet card.
+  - The thread is smaller cards indented per level with a guide line; the comment a link opens has the accent ring.
+- **Main files:** `internal/web/views/{posts,rooms,board,icons}.templ`, `internal/web/views/posts.go`, `internal/web/static/app.css`, `internal/web/static/static_test.go`, `internal/web/browser_look_test.go`, `docs/SPEC.md`.
+- **Tests:**
+  - browser: `TestPostMenuOpensAndItsActionsWork` (the menu opens, Follow works, the menu stays open through the patch, a click outside closes it) and `TestFeedAndPostFitAPhone` (390×844: rooms, the feed with a reaction picker open, the post page and the reply editor no wider than the screen);
+  - the contrast pairs of the new uses of the tokens;
+  - view, handler and browser tests updated where the markup moved, none weakened.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [feed light](implemented-proof-images/21.2-feed-light.png) · [feed dark](implemented-proof-images/21.2-feed-dark.png) · [feed 390](implemented-proof-images/21.2-feed-390.png) · [post light](implemented-proof-images/21.2-post-light.png) · [post dark](implemented-proof-images/21.2-post-dark.png) · [post 390](implemented-proof-images/21.2-post-390.png) · [rooms](implemented-proof-images/21.2-rooms-light.png)
+  - alice on `general` with code, tags, tasks, an attachment and reactions; carol's checklist with its thread of five comments; the room list.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The members panel moves under the feed below 75 rem, not about 1100 px, so that the feed keeps its width beside the sidebar.
+  - The reader's own mentions are not highlighted: a body is rendered once for everyone (D9), and a per-reader style would be inline, which D36 refuses. The manager decided so.
+  - The reply editor still opens under the item answered, not at the end of the thread, so that the page does what it did. The manager decided so.

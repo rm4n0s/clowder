@@ -26,10 +26,10 @@ func TestPostEditor(t *testing.T) {
 				`<form id="post-editor-new" class="post-editor" method="post" enctype="multipart/form-data" action="/rooms/7/posts"`,
 				"@post(&#39;/rooms/7/posts&#39;, {contentType: &#39;form&#39;})",
 				`<input type="hidden" name="editor" value="new">`,
-				`<label for="post-body-new">Message</label>`, `<textarea id="post-body-new" name="body" rows="5"></textarea>`,
+				`<label for="post-body-new">Share something with the clowder</label>`, "<textarea id=\"post-body-new\" name=\"body\" rows=\"3\" placeholder=\"Markdown welcome. ```go for code, - [ ] for a task\"></textarea>",
 				// Markdown is the default.
-				`name="format" value="markdown" checked`, `name="format" value="text"> Text`,
-				`<label for="post-tags-new">Tags</label>`, `id="post-tags-new" name="tags" type="text" value=""`,
+				`name="format" value="markdown" checked`, `name="format" value="text"> <span>Text</span>`,
+				`<label class="visually-hidden" for="post-tags-new">Tags</label>`, `id="post-tags-new" name="tags" type="text" value=""`,
 				"data-on:input__debounce.200ms=", "/tags/suggest?editor=new&amp;q=", "encodeURIComponent",
 				`<ul id="post-tag-suggest-new" class="tag-suggest"`,
 				`id="post-preview-new" class="post-preview" hidden`,
@@ -37,7 +37,8 @@ func TestPostEditor(t *testing.T) {
 				// The preview leaves the files out: the input is switched off.
 				"elements.files; f.disabled = true;",
 				// The file input: several files, no list of current ones.
-				`<label for="post-files-new">Attach files</label>`, `<input id="post-files-new" name="files" type="file" multiple>`,
+				`<label class="attach-button" for="post-files-new" title="Attach files">`, `<span class="visually-hidden">Attach files</span>`, `<input id="post-files-new" class="attach-input" name="files" type="file" multiple`,
+				`class="attach-names" aria-live="polite" data-ignore-morph`,
 			},
 			notWant: []string{"Cancel", `name="from"`, "field-error", "form-error", "aria-invalid", "required", `name="keep"`, `name="remove"`},
 		},

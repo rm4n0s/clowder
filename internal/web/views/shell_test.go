@@ -39,7 +39,7 @@ func TestIcons(t *testing.T) {
 		"more": views.IconMore(), "settings": views.IconSettings(), "logout": views.IconLogout(), "sun": views.IconSun(),
 		"moon": views.IconMoon(), "monitor": views.IconMonitor(), "plus": views.IconPlus(), "check": views.IconCheck(),
 		"close": views.IconClose(), "menu": views.IconMenu(), "board": views.IconBoard(), "feed": views.IconFeed(),
-		"tag": views.IconTag(), "calendar": views.IconCalendar(),
+		"tag": views.IconTag(), "calendar": views.IconCalendar(), "file": views.IconFile(), "task": views.IconTask(), "task-done": views.IconTaskDone(),
 	}
 	for name, c := range icons {
 		t.Run(name, func(t *testing.T) {

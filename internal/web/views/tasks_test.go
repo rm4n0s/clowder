@@ -125,10 +125,10 @@ func TestPostTasksList(t *testing.T) {
 	html := render(t, views.PostTasks(6, tasks))
 	requireContains(t, html, []string{
 		`<ul class="post-tasks" aria-label="Tasks">`,
-		`<li class="post-task"><span class="task-title">Late &lt;one&gt;</span> <span class="task-column">To do</span> <span class="task-assignees" title="Assigned to">Alice, Bob &lt;B&gt;</span> <time class="task-due overdue" datetime="2026-10-20" title="Overdue">2026-10-20</time> <a class="task-link" href="/rooms/6/board#task-1">On the board</a></li>`,
+		`<li class="post-task"><svg class="icon"`, `<span class="task-title">Late &lt;one&gt;</span> <span class="task-column">To do</span> <span class="task-assignees" title="Assigned to">Alice, Bob &lt;B&gt;</span> <time class="task-due overdue" datetime="2026-10-20" title="Overdue">2026-10-20</time> <a class="task-link" href="/rooms/6/board#task-1">On the board</a></li>`,
 		`<time class="task-due" datetime="2026-11-05" title="Due date">2026-11-05</time>`,
 		`<span class="task-column">In progress</span>`,
-		`<li class="post-task post-task-done"><span class="task-title">Finished</span> <span class="task-column task-column-done">Done</span>`,
+		`<li class="post-task post-task-done"><svg class="icon"`, `<span class="task-title">Finished</span> <span class="task-column task-column-done">Done</span>`,
 		`href="/rooms/6/board#task-4"`,
 	}, []string{"Late <one>"})
 	// Only the overdue one is red; the others show no assignee or date.

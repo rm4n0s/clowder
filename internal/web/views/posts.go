@@ -773,3 +773,34 @@ func loadMoreAction(roomID, before uint64) string {
 // closePreviewAction is the Datastar expression that hides the preview box it
 // is in.
 const closePreviewAction = "el.closest('.post-preview').hidden = true"
+
+// bodyLabel is the label of the body field: the question of the composer of a
+// new post, "Message" for a reply and an edit.
+func (d PostEditorData) bodyLabel() string {
+	if d.ID == "new" {
+		return "Share something with the clowder"
+	}
+	return "Message"
+}
+
+// attachNamesAction is the Datastar expression of the file input of an editor:
+// it writes the names of the chosen files next to the attach button.
+const attachNamesAction = "el.closest('.attach-control').querySelector('.attach-names').textContent = Array.from(el.files).map(f => f.name).join(', ')"
+
+// postAvatarSize is the size of the avatar of the author of a post (42 px) or
+// of a comment (36 px).
+func postAvatarSize(d PostCardData) string {
+	if d.Post.IsComment {
+		return "md"
+	}
+	return "xl"
+}
+
+// postHasMenu reports whether the "more" menu of a post or comment offers any
+// action: Follow (posts that are not deleted), Edit or Delete.
+func postHasMenu(d PostCardData) bool {
+	return (!d.Post.IsComment && !d.Post.Deleted) || d.Post.CanEdit || d.Post.CanDelete
+}
+
+// bodyPlaceholder is the hint in the empty body of the composer of a new post.
+const bodyPlaceholder = "Markdown welcome. ```go for code, - [ ] for a task"

@@ -50,7 +50,7 @@ func firstUpper(s string) string {
 }
 
 // avatarClass is the class of the avatar of the user with the ID and the size
-// ("sm", "md" or "lg").
+// ("sm", "md", "xl" or "lg").
 func avatarClass(id uint64, size string) string {
 	return "avatar avatar-" + size + " avatar-c" + strconv.Itoa(AvatarColourIndex(id))
 }
@@ -61,6 +61,8 @@ func avatarPixels(size string) string {
 	switch size {
 	case "lg":
 		return "96"
+	case "xl":
+		return "42"
 	case "md":
 		return "36"
 	default:
@@ -96,8 +98,8 @@ func Avatar(id uint64, displayName, url string) templ.Component {
 	})
 }
 
-// AvatarSized is Avatar in one of the sizes "sm" (24 px), "md" (36 px) and
-// "lg" (96 px).
+// AvatarSized is Avatar in one of the sizes "sm" (24 px), "md" (36 px), "xl"
+// (42 px, the author of a post) and "lg" (96 px).
 func AvatarSized(id uint64, displayName, url, size string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -145,7 +147,7 @@ func AvatarSized(id uint64, displayName, url, size string) templ.Component {
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templruntime.NewAttributeExpression(url).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `avatar.templ`, Line: 73, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `avatar.templ`, Line: 75, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
@@ -158,7 +160,7 @@ func AvatarSized(id uint64, displayName, url, size string) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templruntime.NewAttributeExpression(avatarPixels(size)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `avatar.templ`, Line: 73, Col: 86}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `avatar.templ`, Line: 75, Col: 86}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -171,7 +173,7 @@ func AvatarSized(id uint64, displayName, url, size string) templ.Component {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templruntime.NewAttributeExpression(avatarPixels(size)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `avatar.templ`, Line: 73, Col: 116}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `avatar.templ`, Line: 75, Col: 116}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 				if templ_7745c5c3_Err != nil {
@@ -239,7 +241,7 @@ func AvatarSized(id uint64, displayName, url, size string) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(Initials(displayName))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `avatar.templ`, Line: 75, Col: 82}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `avatar.templ`, Line: 77, Col: 82}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {

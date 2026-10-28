@@ -309,8 +309,8 @@ func TestReactionBarOnThePages(t *testing.T) {
 		body := e.getAs("carol", "/rooms/"+idText(e.general.ID), false).Body.String()
 		card := article(t, body, p)
 		requireContains(t, card, []string{`<ul class="reaction-chips"`, `title="Alice"`, partyEmoji, `<span class="reaction-count">1</span>`},
-			[]string{"<details", "reaction-add", "reaction-grid", `name="emoji"`, "reaction-chip mine"})
-		requireContains(t, article(t, body, other), nil, []string{"<details", "reaction-add", "reaction-chips"})
+			[]string{`<details class="reaction-add"`, "reaction-add", "reaction-grid", `name="emoji"`, "reaction-chip mine"})
+		requireContains(t, article(t, body, other), nil, []string{`<details class="reaction-add"`, "reaction-add", "reaction-chips"})
 	})
 	t.Run("post page: the bars of the post and the comment, with from", func(t *testing.T) {
 		body := e.getAs("bob", postPathOf(p, ""), false).Body.String()

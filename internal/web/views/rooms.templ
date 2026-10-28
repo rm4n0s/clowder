@@ -43,7 +43,10 @@ templ RoomsPanel(d RoomsBrowseData) {
 						if room.Description != "" {
 							<p class="room-description">{ room.Description }</p>
 						}
-						<p class="hint room-members-count">{ memberCountText(room.MemberCount) }</p>
+						<p class="hint room-members-count">
+							@roomVisibilityBadge(room.Visibility)
+							{ memberCountText(room.MemberCount) }
+						</p>
 					</div>
 					<div class="room-card-actions">
 						if room.IsMember {
@@ -57,6 +60,16 @@ templ RoomsPanel(d RoomsBrowseData) {
 			}
 		</ul>
 	</section>
+}
+
+// roomVisibilityBadge is the small pill that says whether a room is private
+// (with the lock) or visible.
+templ roomVisibilityBadge(v app.Visibility) {
+	if v == app.VisibilityPrivate {
+		<span class="badge badge-private">@lockIcon() Private</span>
+	} else {
+		<span class="badge badge-visible">Visible</span>
+	}
 }
 
 // roomJoinForm is the one-button form that joins a room. from says which page
@@ -103,7 +116,7 @@ templ RoomNewPage(d RoomNewData) {
 // RoomNewForm is the form that makes a room. The server sends it alone as a
 // Datastar patch to show the problems of a failed submit.
 templ RoomNewForm(d RoomNewData) {
-	<form id="room-new-form" class="room-form" method="post" action="/rooms" data-on:submit={ FormPost("/rooms") }>
+	<form id="room-new-form" class="room-form form-card" method="post" action="/rooms" data-on:submit={ FormPost("/rooms") }>
 		@formProblem(d.Errors.Form)
 		@inputField(formField{ID: "room-name", Name: "name", Label: "Name", Type: "text", Value: d.Name, Error: d.Errors.Fields["name"], Autofocus: true, Hint: "1 to 64 characters."})
 		@textareaField("room-description", "description", "Description", d.Description, d.Errors.Fields["description"])
@@ -205,7 +218,7 @@ templ RoomPage(d RoomData) {
 		@PlacePrefsDialog(d.Prefs)
 		<div class="room-body">
 			<section id="room-feed" class="room-feed">
-				<h2>Posts</h2>
+				<h2 class="visually-hidden">Posts</h2>
 				@RoomComposer(d)
 				@Feed(d.Feed)
 			</section>
@@ -239,19 +252,19 @@ templ RoomMemberCount(d RoomData) {
 // when an action on the room fails.
 templ RoomHeader(d RoomData) {
 	<header id="room-header" class="room-header">
-		<div class="room-title">
-			<h1>{ d.Room.Name }</h1>
-			if d.Room.Visibility == app.VisibilityPrivate {
-				<span class="badge badge-private">@lockIcon() Private</span>
-			} else {
-				<span class="badge badge-visible">Visible</span>
-			}
+		<div class="room-headline">
+			<div class="room-title">
+				<h1>{ d.Room.Name }</h1>
+				@roomVisibilityBadge(d.Room.Visibility)
+			</div>
+			<div class="room-about">
+				if d.Room.Description != "" {
+					<p class="room-description">{ d.Room.Description }</p>
+				}
+				@RoomMemberCount(d)
+			</div>
+			@RoomNav(d.Room.ID, NavPosts)
 		</div>
-		@RoomNav(d.Room.ID, NavPosts)
-		if d.Room.Description != "" {
-			<p class="room-description">{ d.Room.Description }</p>
-		}
-		@RoomMemberCount(d)
 		@formProblem(d.Message)
 		<div class="room-actions">
 			if d.Room.IsMember {

@@ -31,7 +31,7 @@ func TestAliceWritesAPostWithTasks(t *testing.T) {
 	if err := waitFor(ctx, `document.querySelectorAll('#post-task-rows-new .task-row').length === 0`); err != nil {
 		t.Fatalf("the new editor has rows: %v", err)
 	}
-	add := `#post-editor-new .tasks-field > button`
+	add := `#post-editor-new .add-task`
 	if err := chromedp.Do(ctx, chromedp.Click(add)); err != nil {
 		t.Fatalf("add the first row: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestAliceWritesAPostWithTasks(t *testing.T) {
 	}
 
 	// Edit: the rows come filled; remove the second, rename the first.
-	err = chromedp.Do(ctx, chromedp.Click(first+" .post-edit"), chromedp.WaitVisible(first+" textarea"))
+	err = chromedp.Do(ctx, openPostMenu(first), chromedp.Click(first+" .post-edit"), chromedp.WaitVisible(first+" textarea"))
 	if err != nil {
 		t.Fatalf("open the editor of the post: %v", err)
 	}

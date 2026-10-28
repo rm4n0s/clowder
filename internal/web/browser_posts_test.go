@@ -72,7 +72,7 @@ func TestAliceWritesAndEditsAPost(t *testing.T) {
 	// The preview renders the markdown on the server and can be closed.
 	err = chromedp.Do(ctx,
 		browsertest.Fill("#post-body-new", "Hello **browser** world"),
-		chromedp.Click(`#post-editor-new .post-editor-actions button[type="button"]`),
+		chromedp.Click(`#post-editor-new .preview-button`),
 	)
 	if err != nil {
 		t.Fatalf("ask for the preview: %v", err)
@@ -146,7 +146,7 @@ func TestAliceWritesAndEditsAPost(t *testing.T) {
 	}
 
 	// Edit in place: the editor comes filled; Cancel restores the post.
-	err = chromedp.Do(ctx, chromedp.Click(first+" .post-edit"), chromedp.WaitVisible(first+" textarea"))
+	err = chromedp.Do(ctx, openPostMenu(first), chromedp.Click(first+" .post-edit"), chromedp.WaitVisible(first+" textarea"))
 	if err != nil {
 		t.Fatalf("open the editor of the post: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestAliceWritesAndEditsAPost(t *testing.T) {
 
 	// Edit and save: the post comes back changed and says "edited".
 	err = chromedp.Do(ctx,
-		chromedp.Click(first+" .post-edit"), chromedp.WaitVisible(first+" textarea"),
+		openPostMenu(first), chromedp.Click(first+" .post-edit"), chromedp.WaitVisible(first+" textarea"),
 		browsertest.Fill(first+" textarea", "Hello **edited** world"),
 		chromedp.Click(first+` button[type="submit"]`),
 	)
@@ -184,7 +184,7 @@ func TestAliceWritesAndEditsAPost(t *testing.T) {
 
 	// Delete (the confirm dialog is answered yes): the post is gone.
 	runJS(t, ctx, `window.confirm = () => true; true`)
-	if err := chromedp.Do(ctx, chromedp.Click(first+` .post-delete button`)); err != nil {
+	if err := chromedp.Do(ctx, openPostMenu(first), chromedp.Click(first+` .post-delete button`)); err != nil {
 		t.Fatalf("delete the post: %v", err)
 	}
 	if err := waitFor(ctx, `document.querySelectorAll('#feed-posts article.post').length === 5 && ![...document.querySelectorAll('#feed-posts strong')].some(s => s.textContent === 'edited')`); err != nil {

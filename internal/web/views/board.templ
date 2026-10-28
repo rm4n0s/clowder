@@ -61,16 +61,14 @@ templ BoardPage(d BoardData) {
 // when the room is renamed.
 templ BoardHeader(d BoardData) {
 	<header id="board-header" class="room-header board-header">
-		<div class="room-title">
-			<h1>{ d.Board.Room.Name }</h1>
-			if d.Board.Room.Visibility == app.VisibilityPrivate {
-				<span class="badge badge-private">@lockIcon() Private</span>
-			} else {
-				<span class="badge badge-visible">Visible</span>
-			}
-			<span class="board-title">Board</span>
+		<div class="room-headline">
+			<div class="room-title">
+				<h1>{ d.Board.Room.Name }</h1>
+				@roomVisibilityBadge(d.Board.Room.Visibility)
+				<span class="board-title">Board</span>
+			</div>
+			@RoomNav(d.Board.Room.ID, NavBoard)
 		</div>
-		@RoomNav(d.Board.Room.ID, NavBoard)
 	</header>
 }
 

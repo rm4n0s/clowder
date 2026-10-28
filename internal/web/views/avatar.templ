@@ -41,7 +41,7 @@ func firstUpper(s string) string {
 }
 
 // avatarClass is the class of the avatar of the user with the ID and the size
-// ("sm", "md" or "lg").
+// ("sm", "md", "xl" or "lg").
 func avatarClass(id uint64, size string) string {
 	return "avatar avatar-" + size + " avatar-c" + strconv.Itoa(AvatarColourIndex(id))
 }
@@ -52,6 +52,8 @@ func avatarPixels(size string) string {
 	switch size {
 	case "lg":
 		return "96"
+	case "xl":
+		return "42"
 	case "md":
 		return "36"
 	default:
@@ -66,8 +68,8 @@ templ Avatar(id uint64, displayName, url string) {
 	@AvatarSized(id, displayName, url, "sm")
 }
 
-// AvatarSized is Avatar in one of the sizes "sm" (24 px), "md" (36 px) and
-// "lg" (96 px).
+// AvatarSized is Avatar in one of the sizes "sm" (24 px), "md" (36 px), "xl"
+// (42 px, the author of a post) and "lg" (96 px).
 templ AvatarSized(id uint64, displayName, url, size string) {
 	if url != "" {
 		<img class={ "avatar avatar-" + size } src={ url } alt="" width={ avatarPixels(size) } height={ avatarPixels(size) } loading="lazy" decoding="async"/>

@@ -7,11 +7,12 @@ import (
 	"github.com/rm4n0s/clowder/internal/app"
 )
 
-// PostEditor is the editor of a post: the body with the Text / Markdown
-// switch, the tags field with its suggestions, the preview, and the submit
-// button. The server sends it alone as a Datastar patch to show the problems of
-// a failed submit; what the person typed is kept. The comments, attachments
-// and tasks of later steps reuse it.
+// PostEditor is the composer of a post: a card with the body, then one row of
+// controls (the Text / Markdown switch, the tags field with its suggestions,
+// the attach button, Add task, Preview and the submit button), the tasks being
+// added, the preview and the problems. The server sends it alone as a Datastar
+// patch to show the problems of a failed submit; what the person typed is
+// kept. The comments and the edit in place reuse it.
 templ PostEditor(d PostEditorData) {
 	<form id={ "post-editor-" + d.ID } class="post-editor" method="post" enctype="multipart/form-data" action={ templ.SafeURL(d.Action) } data-on:submit={ FormPost(d.Action) }>
 		@formProblem(d.Errors.Form)
@@ -19,12 +20,15 @@ templ PostEditor(d PostEditorData) {
 		if d.From != "" {
 			<input type="hidden" name="from" value={ d.From }/>
 		}
-		<div class="field">
-			<label for={ "post-body-" + d.ID }>Message</label>
+		<div class="field composer-body">
+			<label for={ "post-body-" + d.ID }>{ d.bodyLabel() }</label>
 			<textarea
 				id={ "post-body-" + d.ID }
 				name="body"
-				rows="5"
+				rows="3"
+				if d.ID == "new" {
+					placeholder={ bodyPlaceholder }
+				}
 				if d.Errors.Fields["body"] != "" {
 					aria-invalid="true"
 					aria-describedby={ "post-body-" + d.ID + "-error" }
@@ -34,73 +38,88 @@ templ PostEditor(d PostEditorData) {
 				<p class="field-error" id={ "post-body-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["body"] }</p>
 			}
 		</div>
-		<fieldset class="format-switch">
-			<legend>Format</legend>
-			<label class="choice">
-				<input type="radio" name="format" value="markdown" checked?={ d.Format != "text" }/>
-				Markdown
-			</label>
-			<label class="choice">
-				<input type="radio" name="format" value="text" checked?={ d.Format == "text" }/>
-				Text
-			</label>
-			if d.Errors.Fields["format"] != "" {
-				<p class="field-error" id={ "post-format-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["format"] }</p>
-			}
-		</fieldset>
-		<div class="field">
-			<label for={ "post-tags-" + d.ID }>Tags</label>
-			<input
-				id={ "post-tags-" + d.ID }
-				name="tags"
-				type="text"
-				value={ d.Tags }
-				autocomplete="off"
-				placeholder="design release"
-				data-on:input__debounce.200ms={ suggestAction(d.ID) }
-				if d.Errors.Fields["tags"] != "" {
-					aria-invalid="true"
-					aria-describedby={ "post-tags-" + d.ID + "-error" }
-				}
-			/>
-			@TagSuggestions(d.ID, nil)
-			if d.Errors.Fields["tags"] != "" {
-				<p class="field-error" id={ "post-tags-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["tags"] }</p>
-			} else {
-				<p class="hint">Separate tags with spaces or commas: up to 10 of letters, digits, - and _.</p>
-			}
-		</div>
-		<div class="field attachments-field">
-			<label for={ "post-files-" + d.ID }>Attach files</label>
-			if len(d.Attachments) > 0 {
-				<ul class="attachment-edit" aria-label="Current files">
-					for _, a := range d.Attachments {
-						<li>
-							<input type="hidden" name="keep" value={ roomIDText(a.ID) }/>
-							<span class="attachment-name">{ a.FileName }</span>
-							<span class="hint">{ SizeText(a.Size) }</span>
-							<label class="choice">
-								<input type="checkbox" name="remove" value={ roomIDText(a.ID) } checked?={ d.Removing[a.ID] }/>
-								Remove
-							</label>
-						</li>
+		<div class="post-editor-actions">
+			<fieldset class="format-switch">
+				<legend class="visually-hidden">Format</legend>
+				<label class="choice">
+					<input type="radio" name="format" value="markdown" checked?={ d.Format != "text" }/>
+					<span>Markdown</span>
+				</label>
+				<label class="choice">
+					<input type="radio" name="format" value="text" checked?={ d.Format == "text" }/>
+					<span>Text</span>
+				</label>
+			</fieldset>
+			<div class="field tags-field">
+				<label class="visually-hidden" for={ "post-tags-" + d.ID }>Tags</label>
+				<input
+					id={ "post-tags-" + d.ID }
+					name="tags"
+					type="text"
+					value={ d.Tags }
+					autocomplete="off"
+					placeholder="Tags"
+					data-on:input__debounce.200ms={ suggestAction(d.ID) }
+					if d.Errors.Fields["tags"] != "" {
+						aria-invalid="true"
+						aria-describedby={ "post-tags-" + d.ID + "-error" }
 					}
-				</ul>
+				/>
+			</div>
+			<div class="attach-control">
+				<input
+					id={ "post-files-" + d.ID }
+					class="attach-input"
+					name="files"
+					type="file"
+					multiple
+					data-on:change={ attachNamesAction }
+					if d.Errors.Fields["attachments"] != "" {
+						aria-invalid="true"
+						aria-describedby={ "post-files-" + d.ID + "-error" }
+					}
+				/>
+				<label class="attach-button" for={ "post-files-" + d.ID } title="Attach files">
+					@IconAttach()
+					<span class="visually-hidden">Attach files</span>
+				</label>
+				<span class="attach-names" aria-live="polite" data-ignore-morph></span>
+			</div>
+			<button type="button" class="secondary add-task" data-on:click={ addTaskAction(d) }>Add task</button>
+			<button type="button" class="secondary preview-button" data-on:click={ previewAction }>Preview</button>
+			if d.CancelPath != "" || d.CancelClose {
+				<a class="button-link" href={ templ.SafeURL(d.CancelHref) } data-on:click__prevent={ cancelAction(d) }>Cancel</a>
 			}
-			<input
-				id={ "post-files-" + d.ID }
-				name="files"
-				type="file"
-				multiple
-				if d.Errors.Fields["attachments"] != "" {
-					aria-invalid="true"
-					aria-describedby={ "post-files-" + d.ID + "-error" }
-				}
-			/>
-			if d.Errors.Fields["attachments"] != "" {
-				<p class="field-error" id={ "post-files-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["attachments"] }</p>
-			}
+			<button type="submit" class="post-submit">{ d.SubmitLabel }</button>
 		</div>
+		if d.Errors.Fields["format"] != "" {
+			<p class="field-error" id={ "post-format-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["format"] }</p>
+		}
+		@TagSuggestions(d.ID, nil)
+		if d.Errors.Fields["tags"] != "" {
+			<p class="field-error" id={ "post-tags-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["tags"] }</p>
+		} else {
+			<p class="hint">Separate tags with spaces or commas: up to 10 of letters, digits, - and _.</p>
+		}
+		if d.Errors.Fields["attachments"] != "" {
+			<p class="field-error" id={ "post-files-" + d.ID + "-error" } role="alert">{ d.Errors.Fields["attachments"] }</p>
+		}
+		if len(d.Attachments) > 0 {
+			<ul class="attachment-edit" aria-label="Current files">
+				for _, a := range d.Attachments {
+					<li>
+						<input type="hidden" name="keep" value={ roomIDText(a.ID) }/>
+						@IconFile()
+						<span class="attachment-name">{ a.FileName }</span>
+						<span class="hint">{ SizeText(a.Size) }</span>
+						<label class="choice">
+							<input type="checkbox" name="remove" value={ roomIDText(a.ID) } checked?={ d.Removing[a.ID] }/>
+							Remove
+						</label>
+					</li>
+				}
+			</ul>
+		}
 		<fieldset class="tasks-field">
 			<legend>Tasks</legend>
 			if d.Errors.Fields["tasks"] != "" {
@@ -111,17 +130,9 @@ templ PostEditor(d PostEditorData) {
 					@TaskRow(d.ID, i, row, d.Assignable)
 				}
 			</ul>
-			<button type="button" class="secondary" data-on:click={ addTaskAction(d) }>Add task</button>
 		</fieldset>
 		@PostPreview(PostPreviewData{EditorID: d.ID, Hidden: true})
 		@GroupMentionConfirm(GroupMentionConfirmData{ID: d.ID, Count: d.ConfirmCount, SendPath: GroupMentionSendPath(d.Action)})
-		<div class="post-editor-actions">
-			<button type="submit">{ d.SubmitLabel }</button>
-			<button type="button" class="secondary" data-on:click={ previewAction }>Preview</button>
-			if d.CancelPath != "" || d.CancelClose {
-				<a class="button-link" href={ templ.SafeURL(d.CancelHref) } data-on:click__prevent={ cancelAction(d) }>Cancel</a>
-			}
-		</div>
 	</form>
 }
 
@@ -175,6 +186,11 @@ templ PostTasks(roomID uint64, tasks []app.TaskCard) {
 		<ul class="post-tasks" aria-label="Tasks">
 			for _, t := range tasks {
 				<li class={ taskClasses(t) }>
+					if t.Done {
+						@IconTaskDone()
+					} else {
+						@IconTask()
+					}
 					<span class="task-title">{ t.Title }</span>
 					<span class={ taskColumnClasses(t) }>{ t.ColumnName }</span>
 					if len(t.Assignees) > 0 {
@@ -277,18 +293,28 @@ templ PostContent(d PostCardData) {
 	<div id={ postContentID(d.Post.ID) } class="post-content">
 		@formProblem(d.Message)
 		if d.Post.Deleted {
-			<p class="post-deleted-note">{ deletedNote(d.Post) }</p>
+			<div class="post-deleted-row">
+				<p class="post-deleted-note">{ deletedNote(d.Post) }</p>
+				@PostMenu(d)
+			</div>
 		} else {
 			<header class="post-meta">
-				@Avatar(d.Post.Author.ID, d.Post.Author.DisplayName, d.Post.Author.AvatarURL())
-				<span class="post-author">{ d.Post.Author.DisplayName }</span>
-				<span class="post-username">{ "@" + d.Post.Author.Username }</span>
-				<a class="post-time" href={ templ.SafeURL(timePath(d.Post)) }>
-					<time datetime={ postTimeStamp(d.Post.CreatedAt) } title={ postTimeStamp(d.Post.CreatedAt) }>{ postTimeText(d.Post.CreatedAt) }</time>
-				</a>
-				if d.Post.EditedAt != nil {
-					<span class="post-edited" title={ postTimeStamp(*d.Post.EditedAt) }>edited</span>
-				}
+				@AvatarSized(d.Post.Author.ID, d.Post.Author.DisplayName, d.Post.Author.AvatarURL(), postAvatarSize(d))
+				<div class="post-who">
+					<span class="post-author">{ d.Post.Author.DisplayName }</span>
+					<span class="post-sub">
+						<span class="post-username">{ "@" + d.Post.Author.Username }</span>
+						<span class="post-dot" aria-hidden="true">&middot;</span>
+						<a class="post-time" href={ templ.SafeURL(timePath(d.Post)) }>
+							<time datetime={ postTimeStamp(d.Post.CreatedAt) } title={ postTimeStamp(d.Post.CreatedAt) }>{ postTimeText(d.Post.CreatedAt) }</time>
+						</a>
+						if d.Post.EditedAt != nil {
+							<span class="post-dot" aria-hidden="true">&middot;</span>
+							<span class="post-edited" title={ postTimeStamp(*d.Post.EditedAt) }>edited</span>
+						}
+					</span>
+				</div>
+				@PostMenu(d)
 			</header>
 			if replyingToCapped(d) {
 				if d.ParentAuthor.Username != "" {
@@ -309,48 +335,71 @@ templ PostContent(d PostCardData) {
 					}
 				</ul>
 			}
-			<div class="reaction-bar">
-				@Reactions(d.reactions())
-				@ReactionPicker(d.reactions())
+		}
+		if !d.Post.Deleted || !d.Post.IsComment {
+			<div class="post-bottom">
+				if !d.Post.Deleted {
+					<div class="reaction-bar">
+						@Reactions(d.reactions())
+						@ReactionPicker(d.reactions())
+					</div>
+				}
+				<footer class="post-footer">
+					if !d.Post.IsComment {
+						<a class="post-comments" href={ templ.SafeURL(PostCommentsPath(d.Post.ID)) }>{ commentCountText(d.Post.CommentCount) }</a>
+					}
+					if d.CanReply && !d.Post.Deleted {
+						<a class="post-reply" href={ templ.SafeURL(replyPath(d.Post.ID)) } data-on:click__prevent={ "@get('" + escapeQuote(replyPath(d.Post.ID)) + "')" }>Reply</a>
+					}
+				</footer>
 			</div>
 		}
-		<footer class="post-footer">
-			if !d.Post.IsComment {
-				<a class="post-comments" href={ templ.SafeURL(PostCommentsPath(d.Post.ID)) }>{ commentCountText(d.Post.CommentCount) }</a>
-			}
-			if d.CanReply && !d.Post.Deleted {
-				<a class="post-reply" href={ templ.SafeURL(replyPath(d.Post.ID)) } data-on:click__prevent={ "@get('" + escapeQuote(replyPath(d.Post.ID)) + "')" }>Reply</a>
-			}
-			if !d.Post.IsComment && !d.Post.Deleted {
-				if d.Post.Following {
-					<form class="action post-follow" method="post" action={ templ.SafeURL(postActionPath(d.Post.ID, "unfollow", "")) } data-on:submit={ FormPost(PostPath(d.Post.ID) + "/unfollow") }>
+	</div>
+}
+
+// PostMenu is the "more" menu of a post or comment: a details element without
+// script, opened by the three dots, with Follow or Unfollow (posts), Edit and
+// Delete for the person who may. It is left out when none of them is offered.
+// The details element keeps its open state when a stream patches the card
+// (data-preserve-attr) and closes when the person clicks outside it.
+templ PostMenu(d PostCardData) {
+	if postHasMenu(d) {
+		<details class="post-menu" data-preserve-attr="open" data-on:click__outside="el.removeAttribute('open')">
+			<summary class="icon-button" aria-label="More actions" title="More actions">
+				@IconMore()
+			</summary>
+			<div class="post-menu-panel">
+				if !d.Post.IsComment && !d.Post.Deleted {
+					if d.Post.Following {
+						<form class="action post-follow" method="post" action={ templ.SafeURL(postActionPath(d.Post.ID, "unfollow", "")) } data-on:submit={ FormPost(PostPath(d.Post.ID) + "/unfollow") }>
+							if d.From != "" {
+								<input type="hidden" name="from" value={ d.From }/>
+							}
+							<button type="submit" class="secondary" title="Stop being notified of the comments of this post">Unfollow</button>
+						</form>
+					} else {
+						<form class="action post-follow" method="post" action={ templ.SafeURL(postActionPath(d.Post.ID, "follow", "")) } data-on:submit={ FormPost(PostPath(d.Post.ID) + "/follow") }>
+							if d.From != "" {
+								<input type="hidden" name="from" value={ d.From }/>
+							}
+							<button type="submit" class="secondary" title="Be notified of the comments of this post">Follow</button>
+						</form>
+					}
+				}
+				if d.Post.CanEdit {
+					<a class="post-edit" href={ templ.SafeURL(postActionPath(d.Post.ID, "edit", d.From)) } data-on:click__prevent={ "@get('" + escapeQuote(postActionPath(d.Post.ID, "edit", d.From)) + "')" }>Edit</a>
+				}
+				if d.Post.CanDelete {
+					<form class="action post-delete" method="post" action={ templ.SafeURL(PostPath(d.Post.ID) + "/delete") } data-on:submit={ FormPostConfirm(PostPath(d.Post.ID)+"/delete", deleteConfirm(d.Post)) }>
 						if d.From != "" {
 							<input type="hidden" name="from" value={ d.From }/>
 						}
-						<button type="submit" class="secondary" title="Stop being notified of the comments of this post">Unfollow</button>
-					</form>
-				} else {
-					<form class="action post-follow" method="post" action={ templ.SafeURL(postActionPath(d.Post.ID, "follow", "")) } data-on:submit={ FormPost(PostPath(d.Post.ID) + "/follow") }>
-						if d.From != "" {
-							<input type="hidden" name="from" value={ d.From }/>
-						}
-						<button type="submit" class="secondary" title="Be notified of the comments of this post">Follow</button>
+						<button type="submit" class="danger">Delete</button>
 					</form>
 				}
-			}
-			if d.Post.CanEdit {
-				<a class="post-edit" href={ templ.SafeURL(postActionPath(d.Post.ID, "edit", d.From)) } data-on:click__prevent={ "@get('" + escapeQuote(postActionPath(d.Post.ID, "edit", d.From)) + "')" }>Edit</a>
-			}
-			if d.Post.CanDelete {
-				<form class="action post-delete" method="post" action={ templ.SafeURL(PostPath(d.Post.ID) + "/delete") } data-on:submit={ FormPostConfirm(PostPath(d.Post.ID)+"/delete", deleteConfirm(d.Post)) }>
-					if d.From != "" {
-						<input type="hidden" name="from" value={ d.From }/>
-					}
-					<button type="submit" class="danger">Delete</button>
-				</form>
-			}
-		</footer>
-	</div>
+			</div>
+		</details>
+	}
 }
 
 // Reactions are the chips of a post or comment: one for each emoji with its
@@ -469,6 +518,7 @@ templ Attachments(atts []app.AttachmentView) {
 		<ul class="attachment-files" aria-label="Files">
 			for _, a := range others {
 				<li>
+					@IconFile()
 					<a href={ templ.SafeURL(FilePath(a)) }>{ a.FileName }</a>
 					<span class="hint">{ SizeText(a.Size) }</span>
 				</li>
