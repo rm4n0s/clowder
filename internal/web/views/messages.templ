@@ -10,10 +10,66 @@ import (
 templ MessagesPage(d ConversationsData) {
 	@Layout("Messages", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		<h1>Messages</h1>
-		@NewConversationForm(d.New)
-		@ConversationList(d.Items, d.ViewerID)
-		@liveStream(MessagesStreamPath)
+		@MessageSearchBox(d.Search.Query)
+		if d.Search.Active {
+			@MessageSearchResults(d.Search)
+			@liveStream(MeStreamPath)
+		} else {
+			@NewConversationForm(d.New)
+			@ConversationList(d.Items, d.ViewerID)
+			@liveStream(MessagesStreamPath)
+		}
 	}
+}
+
+// MessageSearchBox is the search box of the Messages page: a plain GET form,
+// so that a search is a link (SPEC §7.11, D56).
+templ MessageSearchBox(query string) {
+	<form id="message-search" class="search-form message-search" role="search" method="get" action={ templ.SafeURL(MessagesPath) }>
+		<label for="message-search-q">Search the messages</label>
+		<div class="search-form-row">
+			<input id="message-search-q" name="q" type="search" value={ query } autocomplete="off" placeholder="Words, or a phrase in quotes"/>
+			<button type="submit">Search</button>
+		</div>
+	</form>
+}
+
+// MessageSearchResults is the results of a search of the messages in place of
+// the list of conversations: the problem with the query, or the messages found
+// with a link to each in its conversation, "No messages match." for none, the
+// link that clears the search and the link to the older results.
+templ MessageSearchResults(d MessageSearchData) {
+	<section id="message-search-results" class="message-search-results">
+		<p class="hint"><a class="search-clear" href={ templ.SafeURL(MessagesPath) }>Clear</a></p>
+		if d.Message != "" {
+			<p class="field-error search-error" id="message-search-error" role="alert">{ d.Message }</p>
+		} else if len(d.Results) == 0 {
+			<p class="empty">No messages match.</p>
+		} else {
+			<ol class="search-results message-results">
+				for _, r := range d.Results {
+					<li class="search-result message-result" id={ "message-result-" + strconv.FormatUint(r.MessageID, 10) } data-message={ roomIDText(r.MessageID) }>
+						<header class="post-meta">
+							<a class="search-room" href={ templ.SafeURL(ConversationPath(r.ConversationID)) }>{ r.ConversationTitle }</a>
+							@Avatar(r.Author.ID, r.Author.DisplayName, r.Author.AvatarURL())
+							<span class="post-author">{ r.Author.DisplayName }</span>
+							<span class="post-username">{ "@" + r.Author.Username }</span>
+							<time class="post-time" datetime={ postTimeStamp(r.CreatedAt) } title={ postTimeStamp(r.CreatedAt) }>{ messageResultTime(r) }</time>
+						</header>
+						<p class="search-snippet">
+							@templ.Raw(string(r.Snippet))
+						</p>
+						<a class="search-open" href={ templ.SafeURL(ConversationMessagePath(r.ConversationID, r.MessageID)) }>Open the message</a>
+					</li>
+				}
+			</ol>
+			if d.HasMore {
+				<nav class="pager" aria-label="Pages">
+					<a class="older" href={ templ.SafeURL(MessageSearchPath(d.Query, d.NextBefore)) }>Older results</a>
+				</nav>
+			}
+		}
+	</section>
 }
 
 // NewConversationForm is the form that starts a conversation: the usernames
@@ -114,7 +170,7 @@ templ ConversationPage(d ConversationData) {
 				if d.Before != 0 {
 					<p class="hint feed-newest"><a href={ templ.SafeURL(ConversationPath(d.Header.ID)) }>Back to the newest messages</a></p>
 				}
-				<div id="message-pane" class="message-pane" data-init="el.scrollTop = el.scrollHeight">
+				<div id="message-pane" class="message-pane" data-init={ messagePaneInit(d.Focus) }>
 					@MessagesOlder(d.Header.ID, d.HasOlder, d.NextBefore)
 					<ol id="message-list" class="message-list">
 						for _, m := range d.Messages {

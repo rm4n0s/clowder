@@ -240,13 +240,49 @@ func (s *Server) messagesData(w http.ResponseWriter, r *http.Request, form views
 }
 
 // messagesPage answers GET /messages: the conversations of the person, the most
-// recent first, and the form that starts one.
+// recent first, and the form that starts one. With the query parameter "q" it
+// is a search of the person's messages instead (SPEC §7.11, D56): the results
+// replace the list, and "before" asks for the older results. A query the search
+// refuses shows its message under the box with status 422.
 func (s *Server) messagesPage(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q != "" {
+		s.messagesSearchPage(w, r, q)
+		return
+	}
 	d, ok := s.messagesData(w, r, views.NewConversationData{})
 	if !ok {
 		return
 	}
 	s.render(w, r, http.StatusOK, views.MessagesPage(d))
+}
+
+// messagesSearchPage answers GET /messages?q=: the page of the messages found
+// for the query q.
+func (s *Server) messagesSearchPage(w http.ResponseWriter, r *http.Request, q string) {
+	actor, _ := actorFrom(r.Context())
+	d := views.ConversationsData{ViewerID: actor.UserID, Search: views.MessageSearchData{Active: true, Query: q}}
+	status := http.StatusOK
+	page, err := s.svc.Messages.Search(r.Context(), actor, q, beforeOf(r))
+	switch {
+	case err == nil:
+		d.Search.Results, d.Search.HasMore, d.Search.NextBefore = page.Results, page.HasMore, page.NextBefore
+	case isTag(err, app.TagInvalidInput):
+		status = http.StatusUnprocessableEntity
+		d.Search.Message = formErrorsOf(err).Fields[app.FieldQuery]
+		if d.Search.Message == "" {
+			d.Search.Message = messageInvalid
+		}
+	default:
+		s.fail(w, r, err)
+		return
+	}
+	sb, ok := s.sidebarFor(w, r, 0)
+	if !ok {
+		return
+	}
+	d.Sidebar = sb
+	s.render(w, r, status, views.MessagesPage(d))
 }
 
 // conversationStart answers POST /messages with the form values "users" (the
@@ -350,6 +386,21 @@ func (s *Server) conversationPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.conversationFail(w, r, err, id)
 		return
+	}
+	// A search result opens the conversation at its message ("msg"): the
+	// newest page when the message is on it, else the page that ends with it.
+	if focus := uintQuery(r, "msg"); focus != 0 && before == 0 {
+		if d.HasOlder && !hasMessage(d, focus) {
+			d, err = s.conversationView(r.Context(), actor, id, focus+1)
+			if err != nil {
+				s.conversationFail(w, r, err, id)
+				return
+			}
+			before = d.Before
+		}
+		if hasMessage(d, focus) {
+			d.Focus = focus
+		}
 	}
 	if before == 0 && d.NewestID() != 0 {
 		if err := s.svc.Messages.MarkRead(r.Context(), actor, id, d.NewestID()); err != nil {

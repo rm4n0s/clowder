@@ -455,3 +455,91 @@ func TestOlderMessagesLoadOnScrollingUp(t *testing.T) {
 		t.Errorf("the new message is not in view at the bottom: %v", err)
 	}
 }
+
+// TestAliceSearchesHerMessages has alice search the Messages page for a word
+// that is in both her conversations (the demo's "notes"): the results replace
+// the list with the word highlighted, a click on a result opens the group at
+// that message (the page scrolls to it and marks it), and "Clear" brings the
+// list back.
+func TestAliceSearchesHerMessages(t *testing.T) {
+	srv := browsertest.Start(t)
+	browser := browsertest.Browser(t, srv)
+	ctx, cancel := context.WithTimeout(browser, pageTimeout)
+	defer cancel()
+	if err := browsertest.LogIn(ctx, srv, "alice"); err != nil {
+		t.Fatalf("LogIn: %+v", err)
+	}
+	err := chromedp.Do(ctx,
+		chromedp.Click(`aside a.sidebar-messages`),
+		chromedp.WaitVisible(`#conversation-list li.conversation`),
+		browsertest.Fill("#message-search-q", "notes"),
+		chromedp.Click(`#message-search button[type="submit"]`),
+		chromedp.WaitVisible(`#message-search-results .message-result`),
+	)
+	if err != nil {
+		t.Fatalf("search the messages: %v", err)
+	}
+	if got := locationOf(t, ctx); got != "/messages?q=notes" {
+		t.Errorf("location = %q, want /messages?q=notes", got)
+	}
+	// Three messages in two conversations, newest first, with the word marked,
+	// and no list of conversations.
+	if n := countOf(t, ctx, "#message-search-results .message-result"); n != 3 {
+		t.Fatalf("results = %d, want 3", n)
+	}
+	if n := countOf(t, ctx, "#conversation-list"); n != 0 {
+		t.Errorf("the list of conversations is still on the page (%d)", n)
+	}
+	if n := countOf(t, ctx, "#message-search-results .search-snippet mark"); n != 3 {
+		t.Errorf("marks = %d, want 3", n)
+	}
+	if got := textOf(t, ctx, "#message-search-results .message-result:first-child .search-room"); got != "Launch crew" {
+		t.Errorf("the newest result is in %q, want Launch crew", got)
+	}
+	if got := textOf(t, ctx, "#message-search-results .message-result:last-child .search-room"); got != "Bob" {
+		t.Errorf("the oldest result is in %q, want Bob", got)
+	}
+
+	// A result opens the group at its message.
+	err = chromedp.Do(ctx,
+		chromedp.Click(`#message-search-results .message-result:first-child a.search-open`),
+		chromedp.WaitVisible(`#message-composer-form`),
+	)
+	if err != nil {
+		t.Fatalf("open the message: %v", err)
+	}
+	if got := locationOf(t, ctx); !strings.HasPrefix(got, "/messages/") || !strings.Contains(got, "?msg=") {
+		t.Errorf("location = %q, want a conversation with ?msg=", got)
+	}
+	id, err := chromedp.Run(ctx, chromedp.Evaluate[string](`location.hash.replace('#', '')`))
+	if err != nil {
+		t.Fatalf("read the fragment: %v", err)
+	}
+	if !strings.HasPrefix(id, "msg-") {
+		t.Fatalf("the address has the fragment %q, want msg-<id>", id)
+	}
+	if got := textOf(t, ctx, "#"+id+" .message-body"); !strings.Contains(got, "release notes") {
+		t.Errorf("the message at the fragment says %q, want the one with the release notes", got)
+	}
+	if err := waitFor(ctx, `document.querySelector('#`+id+`:target') !== null`); err != nil {
+		t.Errorf("the message is not the target of the page: %v", err)
+	}
+	// The message is on the screen (inside the pane, not scrolled away).
+	if err := waitFor(ctx, `(() => { const r = document.getElementById(`+strconv.Quote(id)+`).getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; })()`); err != nil {
+		t.Errorf("the message is not in view: %v", err)
+	}
+
+	// Back to the list: the Messages link and Clear.
+	err = chromedp.Do(ctx,
+		chromedp.Navigate(srv.URL+"/messages?q=notes"),
+		chromedp.WaitVisible(`#message-search-results a.search-clear`),
+		chromedp.Click(`#message-search-results a.search-clear`),
+		chromedp.WaitVisible(`#conversation-list li.conversation`),
+	)
+	if err != nil {
+		t.Fatalf("clear the search: %v", err)
+	}
+	if got := valueOf(t, ctx, "#message-search-q"); got != "" {
+		t.Errorf("the box still says %q", got)
+	}
+}

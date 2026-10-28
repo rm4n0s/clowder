@@ -3860,6 +3860,58 @@
         }
       }
     },
+    "/messages/search": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Search the private messages",
+        "operationId": "searchMessages",
+        "description": "Searches the private messages of the conversations the user is a member of now: words (matched as prefixes) and phrases in double quotes, as in the search of posts, newest first, 30 a page. A message of a conversation the user left, or never was in, is never found, and admins get nothing more. The messages from before the user joined a group are found, as the conversation shows them; a deleted message is not. Attachment names and reactions are not searched. There are no filters: a query with no word (empty, only punctuation or only filters such as #tag or room:) is 422 on q, and so is a filter next to words (put the text in quotes to search for it as words). A mistake in a date is 422 on q. next_before is the before of the next, older page and null on the last.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "The words and phrases to look for; the first 500 characters count.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "The ID of the oldest message of the previous page (its next_before); the newest page when left out.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageSearchPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/admin/users": {
       "get": {
         "tags": [
@@ -6568,6 +6620,98 @@
         },
         "required": [
           "messages",
+          "next_before"
+        ],
+        "additionalProperties": false
+      },
+      "ConversationRef": {
+        "type": "object",
+        "description": "The conversation of a message that a search found.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the conversation."
+          },
+          "title": {
+            "type": "string",
+            "description": "The title as the user sees it: the name of a group, else the display names of the other members."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "group"
+            ],
+            "description": "direct: two users; group: up to 50 users."
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "MessageSearchResult": {
+        "type": "object",
+        "description": "A private message that a search found.",
+        "properties": {
+          "message_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the message."
+          },
+          "conversation": {
+            "$ref": "#/components/schemas/ConversationRef"
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the message was sent."
+          },
+          "snippet": {
+            "type": "array",
+            "description": "The matching text in pieces; joined, they are the text to show.",
+            "items": {
+              "$ref": "#/components/schemas/SnippetSegment"
+            }
+          }
+        },
+        "required": [
+          "message_id",
+          "conversation",
+          "author",
+          "created_at",
+          "snippet"
+        ],
+        "additionalProperties": false
+      },
+      "MessageSearchPage": {
+        "type": "object",
+        "description": "A page of the results of a search of private messages.",
+        "properties": {
+          "results": {
+            "type": "array",
+            "description": "The messages found, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/MessageSearchResult"
+            }
+          },
+          "next_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The before of the next, older page; null when this is the last."
+          }
+        },
+        "required": [
+          "results",
           "next_before"
         ],
         "additionalProperties": false

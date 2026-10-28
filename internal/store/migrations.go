@@ -21,6 +21,7 @@ func migrationList() []dialectMigration {
 		{ID: "0003_audit_entity_user", SQLite: migrationAuditEntityUserSQLite, Postgres: migrationAuditEntityUserPostgres},
 		{ID: "0004_notification_kinds", SQLite: migrationNotificationKindsSQLite, Postgres: migrationNotificationKindsPostgres},
 		{ID: "0005_room_reads", SQLite: migrationRoomReadsSQLite, Postgres: migrationRoomReadsPostgres},
+		{ID: "0006_messages_search", SQLite: migrationMessagesSearchSQLite, Postgres: migrationMessagesSearchPostgres},
 	}
 }
 
@@ -238,4 +239,38 @@ INSERT INTO room_reads (user_id, room_id, last_seen_id, updated_at)
 SELECT m.user_id, m.room_id, COALESCE((SELECT MAX(p.id) FROM posts p WHERE p.room_id = m.room_id), 0), now()
 FROM room_members m
 WHERE NOT EXISTS (SELECT 1 FROM room_reads r WHERE r.user_id = m.user_id AND r.room_id = m.room_id);
+`
+
+// migrationMessagesSearchSQLite creates the full-text index of private
+// messages (SPEC §7.11, D56) and fills it from the messages that exist. The
+// index text of a message is its body, without the two private-use characters
+// that mark the matches in a snippet; a deleted message, and one with no text
+// (only files), has no row (see messageIndexText in messages_search.go, which
+// does the same for later changes; this copy stays as it shipped). The
+// tokenizer is that of posts_fts.
+const migrationMessagesSearchSQLite = `
+CREATE VIRTUAL TABLE messages_fts USING fts5(text, tokenize = 'unicode61 remove_diacritics 2');
+INSERT INTO messages_fts (rowid, text)
+SELECT m.id, replace(replace(m.body, char(57344), ''), char(57345), '')
+FROM messages m
+WHERE m.deleted_at IS NULL AND m.body <> '';
+`
+
+// migrationMessagesSearchPostgres is migrationMessagesSearchSQLite for
+// PostgreSQL (SPEC D38, D56): the table messages_search holds the index text
+// of each message and its tsvector, with a GIN index on the vector, like
+// posts_search and with the same search configuration (migration 0001).
+const migrationMessagesSearchPostgres = `
+CREATE TABLE messages_search (
+  message_id bigint PRIMARY KEY,
+  text text NOT NULL,
+  tsv tsvector GENERATED ALWAYS AS (
+    to_tsvector('clowder_search', regexp_replace(text, '[\x01-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]', ' ', 'g'))
+  ) STORED
+);
+CREATE INDEX messages_search_tsv_idx ON messages_search USING GIN (tsv);
+INSERT INTO messages_search (message_id, text)
+SELECT m.id, replace(replace(m.body, chr(57344), ''), chr(57345), '')
+FROM messages m
+WHERE m.deleted_at IS NULL AND m.body <> '';
 `

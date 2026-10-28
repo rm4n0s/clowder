@@ -769,7 +769,7 @@ func TestIndexes(t *testing.T) {
 		Columns  string
 	}
 	if onPostgres() {
-		// The search index (posts_search and its GIN index) has no SQLite
+		// The search indexes (posts_search, messages_search and their GIN indexes) has no SQLite
 		// counterpart among these: SQLite keeps it in a virtual table.
 		err := f.s.db(f.ctx).Raw(`
 			SELECT i.relname AS name, t.relname AS tbl_name, x.indisunique AS is_unique, (
@@ -779,7 +779,7 @@ func TestIndexes(t *testing.T) {
 			FROM pg_index x
 			JOIN pg_class i ON i.oid = x.indexrelid
 			JOIN pg_class t ON t.oid = x.indrelid
-			WHERE t.relnamespace = 'public'::regnamespace AND NOT x.indisprimary AND t.relname <> 'posts_search'`).Scan(&indexes).Error
+			WHERE t.relnamespace = 'public'::regnamespace AND NOT x.indisprimary AND t.relname NOT IN ('posts_search', 'messages_search')`).Scan(&indexes).Error
 		if err != nil {
 			t.Fatal(err)
 		}

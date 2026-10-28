@@ -81,6 +81,16 @@ func TestStats(t *testing.T) {
 		{"a deleted post that is still indexed", func(w *statsWorld) {
 			w.f.exec("UPDATE posts SET deleted_at = ? WHERE id = ?", fakeStart, w.answer.ID)
 		}, func(s Stats) int64 { return s.StrayIndexRows }},
+		{"a message without an index row", func(w *statsWorld) {
+			msg := w.f.say(w.f.groupWith(w.alice, w.bob), w.alice, "hello")
+			w.f.reindexMessages(msg)
+			table, idColumn := messageSearchIndex(w.f.s.dialect)
+			w.f.exec("DELETE FROM "+table+" WHERE "+idColumn+" = ?", msg.ID)
+		}, func(s Stats) int64 { return s.UnindexedMessages }},
+		{"an index row of messages without a message", func(w *statsWorld) {
+			table, idColumn := messageSearchIndex(w.f.s.dialect)
+			w.f.exec("INSERT INTO " + table + " (" + idColumn + ", text) VALUES (999, 'stray')")
+		}, func(s Stats) int64 { return s.StrayMessageIndexRows }},
 		{"a comment in another room than its root", func(w *statsWorld) {
 			w.f.exec("UPDATE posts SET room_id = ? WHERE id = ?", w.other.ID, w.answer.ID)
 		}, func(s Stats) int64 { return s.BadComments }},

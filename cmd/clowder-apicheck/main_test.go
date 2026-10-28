@@ -359,7 +359,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 		{
 			name:     "the list",
 			args:     []string{"-list"},
-			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "prefs\t", "follow\t", "admin\t", "watch\t"},
+			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "msgsearch\t", "prefs\t", "follow\t", "admin\t", "watch\t"},
 		},
 		{
 			name:     "a server that is not there",
@@ -902,6 +902,28 @@ func TestPrefsScenario(t *testing.T) {
 	for _, want := range []string{
 		"== prefs:", "> GET /api/v1/me/settings", `"sound_name"`, "/notification-prefs", `"notify": "mentions"`,
 		`"muted": true`, "< 422 Unprocessable Entity", "< 404 Not Found", "ok prefs",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the output does not contain %q:\n%s", want, text)
+		}
+	}
+}
+
+// TestMsgSearchScenario runs the scenario of the search of private messages
+// and checks what it prints.
+func TestMsgSearchScenario(t *testing.T) {
+	t.Parallel()
+	base := startAPI(t)
+	var out, errOut bytes.Buffer
+	code := run(t.Context(), []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", msgSearchScenarioName},
+		func(string) string { return "" }, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d\n%s\n%s", code, out.String(), errOut.String())
+	}
+	text := out.String()
+	for _, want := range []string{
+		"== msgsearch:", "> GET /api/v1/messages/search?q=apicheck", `"message_id"`, `"match": true`, `"conversation": {`,
+		"< 422 Unprocessable Entity", "> PATCH /api/v1/messages/", `"results": []`, "> DELETE /api/v1/messages/", "ok msgsearch",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the output does not contain %q:\n%s", want, text)

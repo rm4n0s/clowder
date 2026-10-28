@@ -43,6 +43,31 @@ func ConversationBeforePath(convID, before uint64) string {
 	return ConversationPath(convID) + "?before=" + strconv.FormatUint(before, 10)
 }
 
+// ConversationMessagePath returns the path of the page of the conversation
+// that shows the message msgID and scrolls to it: the newest messages when it
+// is among them, else the page that ends with it.
+func ConversationMessagePath(convID, msgID uint64) string {
+	id := strconv.FormatUint(msgID, 10)
+	return ConversationPath(convID) + "?msg=" + id + "#" + MessageElementID(msgID)
+}
+
+// MessageSearchPath returns the path of the Messages page with a search: the
+// text of the box and, for an older page of results, the before that asks for
+// it. An empty query gives MessagesPath.
+func MessageSearchPath(q string, before uint64) string {
+	v := url.Values{}
+	if q != "" {
+		v.Set("q", q)
+	}
+	if before != 0 {
+		v.Set("before", strconv.FormatUint(before, 10))
+	}
+	if enc := v.Encode(); enc != "" {
+		return MessagesPath + "?" + enc
+	}
+	return MessagesPath
+}
+
 // ConversationReplyPath returns the path of the page of the conversation with
 // the composer set to reply to the message, for a browser without JavaScript.
 func ConversationReplyPath(convID, msgID uint64) string {
@@ -207,6 +232,25 @@ type NewConversationData struct {
 	Errors FormErrors
 }
 
+// MessageSearchData is the search of the Messages page. The zero value is no
+// search.
+type MessageSearchData struct {
+	// Active is true when the page shows a search: the text of the box is not
+	// empty. The results then replace the list of conversations.
+	Active bool
+	// Query is the text of the search box, as typed.
+	Query string
+	// Message is the problem with the query, such as a filter that does not
+	// work in messages; empty shows none.
+	Message string
+	// Results are the results of the page, newest first.
+	Results []app.MessageSearchResult
+	// HasMore is true when older results follow; NextBefore is the before that
+	// asks for them.
+	HasMore    bool
+	NextBefore uint64
+}
+
 // ConversationsData is what the Messages page shows.
 type ConversationsData struct {
 	// Sidebar is the sidebar of the page.
@@ -217,6 +261,8 @@ type ConversationsData struct {
 	Items []app.ConversationSummary
 	// New is the state of the form that starts a conversation.
 	New NewConversationData
+	// Search is the search of the page, if any (SPEC §7.11, D56).
+	Search MessageSearchData
 }
 
 // MembersPanelData is what the members panel of a group shows.
@@ -271,6 +317,24 @@ type ConversationData struct {
 	// Prefs is the dialog of the notification preferences of the viewer in
 	// the conversation.
 	Prefs PlacePrefsData
+	// Focus is the message the page was opened for (a search result links to
+	// it); 0 for none. The page scrolls to it and marks it.
+	Focus uint64
+}
+
+// messagePaneInit is the expression that runs when the pane of messages is
+// shown: the pane scrolls to the newest message, or to the message the page
+// was opened for.
+func messagePaneInit(focus uint64) string {
+	if focus == 0 {
+		return "el.scrollTop = el.scrollHeight"
+	}
+	return "el.scrollTop = el.scrollHeight; document.getElementById('" + MessageElementID(focus) + "')?.scrollIntoView({block: 'center'})"
+}
+
+// messageResultTime is the time of a message found by a search, as shown.
+func messageResultTime(r app.MessageSearchResult) string {
+	return postTimeText(r.CreatedAt)
 }
 
 // NewestID is the ID of the newest message of the page, 0 for none. The

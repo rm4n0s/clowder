@@ -104,6 +104,7 @@ func securedRoutes() []securedRoute {
 		{"react to a message", http.MethodPut, "/api/v1/messages" + missing + "/reactions/%F0%9F%91%8D", http.StatusNotFound, nil},
 		{"unreact to a message", http.MethodDelete, "/api/v1/messages" + missing + "/reactions/%F0%9F%91%8D", http.StatusNotFound, nil},
 		{"download a message file", http.MethodGet, "/api/v1/messages/attachments" + missing, http.StatusNotFound, nil},
+		{"search the messages", http.MethodGet, "/api/v1/messages/search?q=a", http.StatusOK, nil},
 		{"admin users", http.MethodGet, "/api/v1/admin/users", http.StatusOK, nil},
 		{"admin change a user", http.MethodPatch, "/api/v1/admin/users" + missing, http.StatusNotFound, map[string]any{"disabled": false}},
 		{"admin reset link", http.MethodPost, "/api/v1/admin/users" + missing + "/reset-link", http.StatusNotFound, nil},

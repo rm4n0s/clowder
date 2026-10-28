@@ -76,6 +76,7 @@ func (s *Server) messageRoutes() []Route {
 		s.route(http.MethodPut, "/messages/{id}/reactions/{emoji}", false, s.putMessageReaction),
 		s.route(http.MethodDelete, "/messages/{id}/reactions/{emoji}", false, s.deleteMessageReaction),
 		s.route(http.MethodGet, "/messages/attachments/{id}", false, s.messageAttachment),
+		s.route(http.MethodGet, "/messages/search", false, s.searchMessages),
 	}
 }
 
@@ -490,3 +491,37 @@ const (
 	tagNoOthers     = "NoOtherPeople"
 	tagDirectName   = "DirectNameInvalid"
 )
+
+// searchMessages answers GET /messages/search?q=&before=: the private messages
+// of the caller's own conversations (those the caller is a member of now) that
+// the query finds, newest first, 30 a page, with the matching text as
+// segments (SPEC §7.11, D56). The query is words and phrases as in SPEC §7.8,
+// with no filters: a query with no word, or with a filter, is 422 on q.
+// next_before is the before of the next, older page, null on the last.
+func (s *Server) searchMessages(w http.ResponseWriter, r *http.Request) {
+	c, _ := callerFrom(r.Context())
+	var before uint64
+	if query := r.URL.Query(); query.Has("before") {
+		var err error
+		before, err = strconv.ParseUint(query.Get("before"), 10, 63)
+		if err != nil || before == 0 {
+			s.writeError(w, r, errors.New(tagBeforeInvalid, "before is not the ID of a message",
+				"fields", map[string]string{"before": messageBeforeInvalid}))
+			return
+		}
+	}
+	page, err := s.svc.Messages.Search(r.Context(), c.actor, r.URL.Query().Get("q"), before)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	out := messageSearchResponse{Results: make([]messageSearchResultJSON, len(page.Results))}
+	for i, res := range page.Results {
+		out.Results[i] = messageSearchResultOf(res)
+	}
+	if page.HasMore {
+		next := page.NextBefore
+		out.NextBefore = &next
+	}
+	s.writeJSON(w, r, http.StatusOK, out)
+}

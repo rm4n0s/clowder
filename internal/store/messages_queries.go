@@ -403,12 +403,14 @@ COALESCE((SELECT MAX(messages.id) FROM messages WHERE messages.conversation_id =
 	return items, nil
 }
 
-// CreateMessage inserts the message and sets its ID and CreatedAt.
+// CreateMessage inserts the message, sets its ID and CreatedAt, and adds its
+// body to the full-text index of messages (SPEC D56) in the same transaction
+// when the caller runs it in one.
 func (s *Store) CreateMessage(ctx context.Context, m *Message) error {
 	if err := s.db(ctx).Create(m).Error; err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "createMessage", "conversationID", m.ConversationID)
 	}
-	return nil
+	return s.ReindexMessage(ctx, m.ID)
 }
 
 // MessageByID returns the message with the given ID. It fails with
@@ -427,25 +429,27 @@ func (s *Store) MessageByID(ctx context.Context, id uint64) (Message, error) {
 	return m, nil
 }
 
-// UpdateMessageBody sets the body and EditedAt of the message.
+// UpdateMessageBody sets the body and EditedAt of the message, and makes the
+// full-text index of messages hold the new body in place of the old one.
 func (s *Store) UpdateMessageBody(ctx context.Context, id uint64, body string, editedAt time.Time) error {
 	err := s.db(ctx).Model(&Message{}).Where("id = ?", id).
 		Updates(map[string]any{"body": body, "edited_at": editedAt.UTC()}).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "updateMessageBody", "messageID", id)
 	}
-	return nil
+	return s.ReindexMessage(ctx, id)
 }
 
-// MarkMessageDeleted clears the body of the message and sets DeletedAt. The
-// row stays, so that the conversation keeps its shape.
+// MarkMessageDeleted clears the body of the message and sets DeletedAt, and
+// removes the message from the full-text index of messages. The row stays, so
+// that the conversation keeps its shape.
 func (s *Store) MarkMessageDeleted(ctx context.Context, id uint64, at time.Time) error {
 	err := s.db(ctx).Model(&Message{}).Where("id = ?", id).
 		Updates(map[string]any{"body": "", "deleted_at": at.UTC()}).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "markMessageDeleted", "messageID", id)
 	}
-	return nil
+	return s.ReindexMessage(ctx, id)
 }
 
 // DeleteMessageExtras deletes the attachment rows and the reactions of the

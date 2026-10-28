@@ -63,6 +63,7 @@ func scenarios() []scenario {
 		{name: "rooms", summary: "list the rooms, leave and join one, make a room with a member, post, comment, react, edit, read the thread, delete", run: roomsScenario},
 		{name: "board", summary: "upload files, post them with a task, work the board, download, search, and as the assignee read the unread posts of the room and mark them read, then read the notifications", run: boardScenario},
 		{name: "messages", summary: "start a conversation, send a file, reply as the other user, react, edit, delete, read, make a group, rename it and leave", run: messagesScenario},
+		{name: msgSearchScenarioName, summary: "send a message with a new word, find it in the search of messages, edit the word away and find nothing, delete the message", run: msgSearchScenario},
 		{name: settingsScenarioName, summary: "change the display name and the theme, upload an avatar and fetch it, change the password and see the other login end, put everything back", run: settingsScenario},
 		{name: sshKeysScenarioName, summary: "read the SSH keys and the SSH server, add a freshly made ed25519 key, add it again (409), list it, remove it with a wrong and then the right password and list again", run: sshKeysScenario},
 		{name: prefsScenarioName, summary: "read the notification choices, set a group conversation to mentions, mute a room, read both back and put them back", run: prefsScenario},

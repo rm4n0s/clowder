@@ -107,7 +107,7 @@ func TestLargeDemoIsConsistent(t *testing.T) {
 			}
 		}
 		// The small demo's output is still there, first.
-		if !strings.Contains(out, "demo messages: 6 in 2 conversations") {
+		if !strings.Contains(out, "demo messages: 8 in 2 conversations") {
 			t.Errorf("the small demo's output is missing:\n%s", out)
 		}
 	})

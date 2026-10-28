@@ -138,3 +138,40 @@ type historyResponse struct {
 	Messages   []messageJSON `json:"messages"`
 	NextBefore *uint64       `json:"next_before"`
 }
+
+// conversationRefJSON names the conversation of a message that a search found.
+type conversationRefJSON struct {
+	ID    uint64 `json:"id"`
+	Title string `json:"title"`
+	Kind  string `json:"kind"`
+}
+
+// messageSearchResultJSON is a private message that a search found.
+type messageSearchResultJSON struct {
+	MessageID    uint64               `json:"message_id"`
+	Conversation conversationRefJSON  `json:"conversation"`
+	Author       userRefJSON          `json:"author"`
+	CreatedAt    string               `json:"created_at"`
+	Snippet      []snippetSegmentJSON `json:"snippet"`
+}
+
+// messageSearchResultOf makes the JSON of a message that a search found.
+func messageSearchResultOf(r app.MessageSearchResult) messageSearchResultJSON {
+	out := messageSearchResultJSON{
+		MessageID:    r.MessageID,
+		Conversation: conversationRefJSON{ID: r.ConversationID, Title: r.ConversationTitle, Kind: string(r.ConversationKind)},
+		Author:       userRefOf(r.Author),
+		CreatedAt:    rfc3339(r.CreatedAt),
+		Snippet:      make([]snippetSegmentJSON, len(r.Segments)),
+	}
+	for i, seg := range r.Segments {
+		out.Snippet[i] = snippetSegmentJSON{Text: seg.Text, Match: seg.Match}
+	}
+	return out
+}
+
+// messageSearchResponse is the answer of GET /messages/search.
+type messageSearchResponse struct {
+	Results    []messageSearchResultJSON `json:"results"`
+	NextBefore *uint64                   `json:"next_before"`
+}

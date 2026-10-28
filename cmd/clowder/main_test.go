@@ -1458,7 +1458,7 @@ func TestRunDemoMakesTheDemoMessages(t *testing.T) {
 	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
 		t.Fatalf("demo: %+v", err)
 	}
-	if want := "demo messages: 6 in 2 conversations (2 reactions, 1 edited; bob has 1 unread)"; !strings.Contains(stdout.String(), want) {
+	if want := "demo messages: 8 in 2 conversations (2 reactions, 1 edited; bob has 1 unread)"; !strings.Contains(stdout.String(), want) {
 		t.Errorf("stdout lacks %q:\n%s", want, stdout.String())
 	}
 
@@ -1539,8 +1539,25 @@ func TestRunDemoMakesTheDemoMessages(t *testing.T) {
 		t.Errorf("lunch = %+v", lunch)
 	}
 	gp, err := msgs.History(t.Context(), actors["carol"], group.ID, 0, 0)
-	if err != nil || len(gp.Messages) != 3 || gp.Messages[2].ReplyTo == nil || gp.Messages[2].ReplyTo.Author.Username != "carol" {
+	if err != nil || len(gp.Messages) != 5 || gp.Messages[4].ReplyTo == nil || gp.Messages[4].ReplyTo.Author.Username != "carol" {
 		t.Errorf("group history = %+v, %v", gp, err)
+	}
+
+	// The messages can be searched (SPEC D56): alice finds "notes" in both of
+	// her conversations, newest first, and admin, who is in none, finds none.
+	found, err := msgs.Search(t.Context(), actors["alice"], "notes", 0)
+	if err != nil {
+		t.Fatalf("Search: %+v", err)
+	}
+	var titles []string
+	for _, r := range found.Results {
+		titles = append(titles, r.ConversationTitle)
+	}
+	if want := []string{"Launch crew", "Launch crew", "Bob"}; !reflect.DeepEqual(titles, want) {
+		t.Errorf("alice finds notes in %v, want %v", titles, want)
+	}
+	if none, err := msgs.Search(t.Context(), actors["admin"], "notes", 0); err != nil || len(none.Results) != 0 {
+		t.Errorf("admin finds %+v, %v; want nothing", none, err)
 	}
 }
 

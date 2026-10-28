@@ -608,8 +608,10 @@ var demoMessages = []demoMessage{
 	{demoDirect, "bob", "Yes, they are in the shared folder. Thanks for asking!", 1},
 	{demoDirect, "alice", "Great! Lunch at noon?", 0},
 	{demoGroup, "alice", "Welcome to the launch crew! This is where we plan the release.", 0},
+	{demoGroup, "bob", "The draft of the release notes is ready, please review the changelog.", 0},
 	{demoGroup, "carol", "The release checklist is in general, have a look.", 0},
-	{demoGroup, "bob", "Thanks Carol, I will tag the release on Friday.", 5},
+	{demoGroup, "alice", "I read the release notes: the changelog needs the date of the release.", 0},
+	{demoGroup, "bob", "Thanks Carol, I will tag the release on Friday.", 6},
 }
 
 // makeDemoMessages makes the private conversations of the demo through the

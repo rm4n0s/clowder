@@ -1431,3 +1431,32 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - §7.17 says the line goes "above the oldest unseen post". The feed is newest first, so it goes at the boundary, below it (recorded in the SPEC note).
   - One post to a room of N members costs N one-room count queries (0.05–0.5 ms each), spread over the open streams.
   - The favicons are placeholders until M21.
+
+## 20.3 Search in private messages
+- **Date:** 2026-10-28
+- **Branch:** feat/step-20.3-message-search
+- **Summary:**
+  - Migration `0006_messages_search`: on SQLite an FTS5 table `messages_fts` with the tokenizer of `posts_fts`; on PostgreSQL a table `messages_search` (message ID, text, a generated `tsvector` with a GIN index, the `clowder_search` configuration), kept like `posts_search`. It fills itself from the existing messages.
+    - It covers the body only (D56). `CreateMessage`, `UpdateMessageBody` and `MarkMessageDeleted` reindex the message in their transaction; a deleted message has no row.
+    - The large demo rebuilds it in bulk. `Stats` checks `UnindexedMessages` and `StrayMessageIndexRows`.
+  - `Messages.Search(ctx, actor, query, before)` reuses the parser of §7.8: words, phrases and prefixes. Filters are refused with 422 (quoting searches them as words), and a query with no word is 422 "Type a word to search the messages."
+    - Only conversations the user is a member of now, joined inside the SQL, so a full page is always 30. Admins get nothing more. Messages from before a member joined are found, as the conversation page shows them.
+    - Newest first, 30 a page, the cursor `before`. The snippet comes from `snippet()` or `ts_headline` and is escaped with the posts search's code, with the matches in `<mark>`.
+  - The Messages page has a search box (`/messages?q=`). Results replace the list, with "No messages match.", "Clear" and "Older results".
+    - A result links to `/messages/{id}?msg={m}#msg-{m}`. The conversation page opens the newest page when the message is on it (and marks it read), else the page that ends with the message (not marked read), and highlights it.
+  - API: `GET /api/v1/messages/search?q=&before=` gives `{results, next_before}`. It is in `openapi.json` and `docs/API.md`. The apicheck has the scenario `msgsearch`.
+  - Demo: two more group messages, so that a search for "notes" finds three in two conversations.
+- **Main files:** `internal/store/{messages_search,messages_queries,migrations,stats}.go`, `internal/app/messages_search.go`, `internal/web/messages.go`, `internal/web/views/messages.{templ,go}`, `internal/web/static/app.css`, `internal/api/{handlers_messages,types_messages}.go`, `internal/api/openapi.json`, `cmd/clowder-apicheck/msgsearch_scenario.go`, `cmd/clowder/{demo,demo_large}.go`, `docs/SPEC.md`, `docs/API.md`.
+- **Tests:**
+  - store: the index follows a create, an edit, a delete and a rolled-back transaction; the rebuild; a word, a prefix, a phrase, two words, accents and case; who finds what (a member who left, one who joined later); paging of 31 into 30 and 1; the snippet markers; the failure routes; the upgrade from 20.2 on both databases; the stats;
+  - app: the permission table (member, another user's conversation, a member who left, an admin who is not a member, a disabled user), the query table and the refused queries, `<script>` escaped, and the posts search never returning a message;
+  - web and API: search, paging, the 422s, a disabled user, `?msg=` at an older message, the OpenAPI parity; the apicheck scenario;
+  - browser: `TestAliceSearchesHerMessages` searches, clicks a result and lands on the message.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [20.3 message search](implemented-proof-images/20.3-message-search.png)
+  - alice searches "notes": three messages in two conversations, with the word highlighted.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The brief's link `#message-{id}` is `#msg-{id}`, the ID the conversation page already uses, with `?msg=` to open an older page.
+  - `TestBackfill` on PostgreSQL now drops `messages_search` first, because it depends on the text search configuration that the test drops.

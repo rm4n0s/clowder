@@ -41,6 +41,12 @@ type Stats struct {
 	// StrayIndexRows counts rows of the full-text index whose post is missing
 	// or deleted.
 	StrayIndexRows int64
+	// UnindexedMessages counts private messages that are not deleted, have a
+	// body and have no row in the full-text index of messages.
+	UnindexedMessages int64
+	// StrayMessageIndexRows counts rows of the full-text index of messages
+	// whose message is missing, deleted or has no body.
+	StrayMessageIndexRows int64
 	// BadComments counts comments whose root is not a top-level post of their
 	// room, or whose parent is not in the same thread.
 	BadComments int64
@@ -69,6 +75,7 @@ func statQueries(st *Stats, d dialect) []struct {
 	sql  string
 } {
 	table, idColumn := searchIndex(d)
+	msgTable, msgIDColumn := messageSearchIndex(d)
 	return []struct {
 		dest *int64
 		sql  string
@@ -97,6 +104,10 @@ func statQueries(st *Stats, d dialect) []struct {
   AND NOT EXISTS (SELECT 1 FROM ` + table + ` f WHERE f.` + idColumn + ` = p.id)`},
 		{&st.StrayIndexRows, `SELECT COUNT(*) FROM ` + table + ` f WHERE NOT EXISTS
   (SELECT 1 FROM posts p WHERE p.id = f.` + idColumn + ` AND p.deleted_at IS NULL)`},
+		{&st.UnindexedMessages, `SELECT COUNT(*) FROM messages m WHERE ` + messageIndexable + `
+  AND NOT EXISTS (SELECT 1 FROM ` + msgTable + ` f WHERE f.` + msgIDColumn + ` = m.id)`},
+		{&st.StrayMessageIndexRows, `SELECT COUNT(*) FROM ` + msgTable + ` f WHERE NOT EXISTS
+  (SELECT 1 FROM messages m WHERE m.id = f.` + msgIDColumn + ` AND ` + messageIndexable + `)`},
 		{&st.BadComments, `SELECT COUNT(*) FROM posts c
   JOIN posts r ON r.id = c.root_id JOIN posts a ON a.id = c.parent_id
   WHERE c.parent_id IS NOT NULL

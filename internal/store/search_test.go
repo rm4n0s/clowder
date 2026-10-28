@@ -278,10 +278,12 @@ func TestBackfill(t *testing.T) {
 	if onPostgres() {
 		f = newFix(t)
 		reopen = func() {
-			// Undo migration 0001 (the search table and its configuration).
+			// Undo migration 0001 (the search table and its configuration),
+			// and migration 0006, whose table depends on the configuration.
+			f.exec("DROP TABLE messages_search")
 			f.exec("DROP TABLE posts_search")
 			f.exec("DROP TEXT SEARCH CONFIGURATION clowder_search")
-			f.exec("DELETE FROM schema_migrations WHERE id = ?", "0001_posts_fts")
+			f.exec("DELETE FROM schema_migrations WHERE id IN (?, ?)", "0001_posts_fts", "0006_messages_search")
 			if err := f.s.migrate(ctx, allModels(), rawMigrations(dialectPostgres)); err != nil {
 				t.Fatalf("migrate with the index: %+v", err)
 			}
