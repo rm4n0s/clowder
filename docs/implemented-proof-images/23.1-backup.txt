@@ -1,0 +1,194 @@
+# Step 23.1: backup and restore of the demo, while it is served
+
+$ clowder demo -data demo | tail -4
+demo tasks: 9
+demo notifications: 15 (admin 1, alice 4, bob 7, carol 3, dave 0, erin 0, frank 0)
+demo messages: 8 in 2 conversations (2 reactions, 1 edited; bob has 1 unread)
+demo notification preferences: alice hears only mentions of #secret, without a sound
+
+$ clowder serve -data demo -addr 127.0.0.1:18231 -ssh-addr 127.0.0.1:18232 &   # the original, running
+
+$ clowder healthcheck -addr 127.0.0.1:18231
+exit status 0
+
+$ ls -l demo   # the running server has its -wal and -shm files and the SSH host key
+-rw-------. 471040 clowder.db
+-rw-------. 32768 clowder.db-shm
+-rw-------. 0 clowder.db-wal
+drwxr-x---. 4096 files
+-rw-------. 387 ssh_host_ed25519_key
+
+$ grep -o 'SHA256:[A-Za-z0-9+/]*' serve1.log | sort -u   # the fingerprint of the host key of the original
+SHA256:84z0eNMu7sAE0MukbJhtCarFcAuGm+3DegHUKsrBDg8
+
+$ clowder backup -data demo -o backup.tar.gz   # while the server above runs
+backup written: /home/rmanos/ai-projects/github-projects/clowder/.tmp/w231/proof/backup.tar.gz (34272 bytes)
+database: SQLite, a consistent copy (schema 0007_calls_open)
+counts: 7 users, 3 rooms, 18 posts and comments, 8 messages, 5 files
+exit status 0
+
+$ ls -l backup.tar.gz && ls -a demo   # no temporary file left
+-rw-------. 34272 backup.tar.gz
+. .. clowder.db clowder.db-shm clowder.db-wal files ssh_host_ed25519_key 
+
+$ tar -tzvf backup.tar.gz
+-rw------- 1952 clowder-backup/manifest.json
+-rw------- 462848 clowder-backup/clowder.db
+-rw------- 387 clowder-backup/ssh_host_ed25519_key
+drwx------ 0 clowder-backup/files/
+-rw------- 1386 clowder-backup/files/195f37a2c2880bd9383adc0270d6b3ace1041109a74ae8e14f2aacf58b30b00d
+-rw------- 92 clowder-backup/files/4d7e743ed6efcc08f7972bc01da4daf64623f56abef85dcbf1dc0448a8f7b068
+drwx------ 0 clowder-backup/files/avatars/
+-rw------- 1990 clowder-backup/files/avatars/1bfc4ec170f28ecf1c4148d858923002785d76548d9ace4088713bdb011464d6
+-rw------- 1989 clowder-backup/files/avatars/1d42d99becce4a549abc2c97de9990b2830f9dda8212a7f02238e03ae425e425
+-rw------- 1989 clowder-backup/files/avatars/7fa6bb04ea04ac14c88e27af32961e41351f112d6c007c0c94010d03bdecfdae
+
+$ tar -xzOf backup.tar.gz clowder-backup/manifest.json
+{
+  "format": 1,
+  "clowder_version": "v1.1.1-0.20261028201853-4e8325345c02+dirty",
+  "created_at": "2026-10-28T20:40:06.795365406Z",
+  "dialect": "sqlite",
+  "database": "clowder.db",
+  "schema": "0007_calls_open",
+  "counts": {
+    "users": 7,
+    "rooms": 3,
+    "posts": 18,
+    "messages": 8,
+    "files": 5
+  },
+  "entries": [
+    {
+      "path": "clowder.db",
+      "type": "file",
+      "size": 462848,
+      "sha256": "62e1b06c147941615a1ac5765867932daea9c07ab22c116c98bc25e32f37f08e"
+    },
+    {
+      "path": "ssh_host_ed25519_key",
+      "type": "file",
+      "size": 387,
+      "sha256": "dc04f583d9004c6a5ce340a38b7eb33f942cb5829ce7097650a4434c736bc6e1"
+    },
+    {
+      "path": "files",
+      "type": "dir"
+    },
+    {
+      "path": "files/195f37a2c2880bd9383adc0270d6b3ace1041109a74ae8e14f2aacf58b30b00d",
+      "type": "file",
+      "size": 1386,
+      "sha256": "e2fa585f77b27e729d238c7d6a2f7fd4435cf3c31091e82328ad01f2f56950d1"
+    },
+    {
+      "path": "files/4d7e743ed6efcc08f7972bc01da4daf64623f56abef85dcbf1dc0448a8f7b068",
+      "type": "file",
+      "size": 92,
+      "sha256": "29a0585f20d971186cd651bf21b6502934670aa1ac394721afa85de36132ee78"
+    },
+    {
+      "path": "files/avatars",
+      "type": "dir"
+    },
+    {
+      "path": "files/avatars/1bfc4ec170f28ecf1c4148d858923002785d76548d9ace4088713bdb011464d6",
+      "type": "file",
+      "size": 1990,
+      "sha256": "ec552a8d36b5b860bc2344e5f3e7068fd6c45f439b497347edace7f8572221f4"
+    },
+    {
+      "path": "files/avatars/1d42d99becce4a549abc2c97de9990b2830f9dda8212a7f02238e03ae425e425",
+      "type": "file",
+      "size": 1989,
+      "sha256": "cfb47f4db72dcadebfa1e8e1fa1323f1fb3a71ab76818c1e0541b19a564ac5b1"
+    },
+    {
+      "path": "files/avatars/7fa6bb04ea04ac14c88e27af32961e41351f112d6c007c0c94010d03bdecfdae",
+      "type": "file",
+      "size": 1989,
+      "sha256": "3aff2742224f3be748550aca582b5642506619b0feb9d264c4f0afbf424e2d25"
+    }
+  ]
+}
+$ clowder restore -i backup.tar.gz -data restored   # into a directory that does not exist
+restored into /home/rmanos/ai-projects/github-projects/clowder/.tmp/w231/proof/restored: 7 files, 2 directories, 470681 bytes
+archive: Clowder v1.1.1-0.20261028201853-4e8325345c02+dirty, made 2026-10-28 20:40:06 UTC, schema 0007_calls_open
+counts: 7 users, 3 rooms, 18 posts and comments, 8 messages, 5 files
+next: clowder serve -data /home/rmanos/ai-projects/github-projects/clowder/.tmp/w231/proof/restored
+exit status 0
+
+$ ls -lR restored | head -20   # modes: files 0600, directories 0700
+restored:
+total 460
+-rw-------. 462848 clowder.db
+drwx------. 4096 files
+-rw-------. 387 ssh_host_ed25519_key
+
+restored/files:
+total 12
+-rw-------. 1386 195f37a2c2880bd9383adc0270d6b3ace1041109a74ae8e14f2aacf58b30b00d
+-rw-------. 92 4d7e743ed6efcc08f7972bc01da4daf64623f56abef85dcbf1dc0448a8f7b068
+drwx------. 4096 avatars
+
+restored/files/avatars:
+total 12
+-rw-------. 1990 1bfc4ec170f28ecf1c4148d858923002785d76548d9ace4088713bdb011464d6
+-rw-------. 1989 1d42d99becce4a549abc2c97de9990b2830f9dda8212a7f02238e03ae425e425
+-rw-------. 1989 7fa6bb04ea04ac14c88e27af32961e41351f112d6c007c0c94010d03bdecfdae
+
+$ clowder restore -i backup.tar.gz -data restored   # now it is not empty
+clowder: restore only into an empty directory: /home/rmanos/ai-projects/github-projects/clowder/.tmp/w231/proof/restored has 3 entries (clowder.db ...)
+exit status 1
+
+$ kill the original server
+
+$ clowder serve -data restored -addr 127.0.0.1:18233 -ssh-addr 127.0.0.1:18234 &
+
+$ grep -o 'SHA256:[A-Za-z0-9+/]*' serve2.log | sort -u   # the same fingerprint
+SHA256:84z0eNMu7sAE0MukbJhtCarFcAuGm+3DegHUKsrBDg8
+
+$ clowder-apicheck -base-url http://127.0.0.1:18233 -username alice -password demo-password-1234
+== session: log in, read who I am and my sessions, find users, log out
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "alice"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-27T20:40:07Z",
+<   "token": "<token>",
+<   "user": {
+<     "avatar_url": "/api/v1/avatars/2?v=1d42d99becce4a549abc2c97de9990b2830f9dda8212a7f02238e03ae425e425",
+<     "created_at": "2026-10-28T20:40:06Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+[... 5799 lines in all; the scenarios run, in order:]
+ok session ok rooms ok board ok messages ok msgsearch ok settings ok sshkeys ok prefs ok follow ok admin ok watch 
+
+all scenarios passed (204 requests)
+apicheck exit status 0
+lines with a token in the output: 0
+
+# A hostile archive: the same archive with one more entry, clowder-backup/files/../../evil
+
+$ python3 hostile.py backup.tar.gz hostile.tar.gz && tar -tzvf hostile.tar.gz | tail -2
+tar: Removing leading `clowder-backup/files/../../' from member names
+-rw------- 1989 clowder-backup/files/avatars/7fa6bb04ea04ac14c88e27af32961e41351f112d6c007c0c94010d03bdecfdae
+-rw-r--r-- 5 clowder-backup/files/../../evil
+
+$ clowder restore -i hostile.tar.gz -data target
+clowder: an entry has an unsafe path (element ..): clowder-backup/files/../../evil
+exit status 1
+
+$ ls -a . ; ls target
+. .. apicheck.out backup.tar.gz demo hostile.tar.gz restored serve1.log serve2.log 
+ls: cannot access 'target': No such file or directory

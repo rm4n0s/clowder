@@ -96,15 +96,22 @@ The second command prints the link of the first admin (see "The first admin"); i
 - **Stop and start:** `docker compose stop` and `docker compose start`. `docker compose down` removes the containers and keeps the data; `docker compose down -v` also deletes the volumes, which is the database and the attachments.
 - **Where the data is:** the volume `pgdata` holds the database and the volume `clowderdata` is the data directory of Clowder (`/data`), of which only `files/`, the attachments, matters with PostgreSQL.
 - **Upgrades:** get the new source (`git pull`) or image, then `docker compose build` (or `docker compose pull`) and `docker compose up -d`. Clowder migrates the database when it starts.
-- **Backups:** the database with `pg_dump`, then the attachments, **after** it, for the reason given under "Backups":
+- **Backups:** the database with `pg_dump`, then `clowder backup` for the attachments and the host key, **after** it, for the reason given under "Backups". The image has no shell, so the archive travels through the standard streams:
 
   ```sh
-  docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > clowder.dump
-  docker run --rm -v clowder_clowderdata:/data:ro -v "$PWD":/backup busybox \
-      tar czf /backup/files.tgz -C /data files
+  docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > clowder.dump
+  docker compose run --rm -T clowder backup -o - > clowder-backup.tar.gz
   ```
 
-  (The volume is named `<project>_clowderdata`, here for a project called `clowder`, which is the name of the directory unless you set `-p` or `COMPOSE_PROJECT_NAME`; `docker volume ls` shows it.) To restore into a new, empty installation: `docker compose up -d postgres`, then `docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < clowder.dump`, unpack `files.tgz` into the volume the same way, and `docker compose up -d`. Both files hold private data (password hashes, attachments): keep them private.
+  To restore into a new, empty installation (the volume `clowderdata` is empty): `docker compose up -d postgres`, then
+
+  ```sh
+  docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < clowder.dump
+  docker compose run --rm -T clowder restore -i - -data /data < clowder-backup.tar.gz
+  docker compose up -d
+  ```
+
+  `clowder backup` reports the `pg_dump` command for the URL inside the container (`postgres://clowder@postgres:5432/clowder`), which is the one that `docker compose exec` above runs for you. Both files hold private data (password hashes, messages, attachments): keep them private.
 - **Who can reach it:** compose publishes `CLOWDER_PORT` on every interface of the machine. Behind a reverse proxy on the same machine, publish it on the loopback address only, with a `compose.override.yaml` next to `compose.yaml`: `services: {clowder: {ports: !override ["127.0.0.1:8080:8080"]}}`. PostgreSQL (and, in the cluster, Redis and the Clowder processes) are never published; they are reachable only inside the compose network. The database password is in the environment of the Clowder container, so anyone who may use Docker on the machine can read it: that is already root-equivalent.
 - **TLS and a reverse proxy:** the container speaks plain HTTP, so put a reverse proxy with TLS in front of it, as "Running behind a TLS reverse proxy" says: proxy to the published port, set `CLOWDER_BASE_URL` to the public `https://` address and, only when every request comes through the proxy, `CLOWDER_TRUST_PROXY=true`.
 
@@ -146,7 +153,7 @@ Notes:
 - **TLS.** The URL's `sslmode` decides. The driver's default is `prefer`, which uses TLS when the server offers it and goes on without it when not, so an attacker on the network can make it go without. For a database that is not on the same machine or the same private network use `sslmode=verify-full` (with `sslrootcert=/path/to/ca.pem` when the certificate is not from a public authority) or at least `require`. `sslmode=disable` is for a database in the same compose network.
 - **The password in the URL.** A password with characters that have a meaning in a URL (`@`, `:`, `/`, `?`, `#`, `%`) must be percent-encoded, or use letters and digits only. The URL is never written to a log or an error with its password (it shows `xxxxx`), and `clowder serve -h` does not print the URL of the environment. Keep it in the environment (`CLOWDER_DATABASE_URL`) or in a file your service manager reads, not on a command line that others can list with `ps`.
 - **Connections.** Each process keeps up to 32 connections (two per CPU, at least 8): `max_connections` of the server must be above that times the number of processes.
-- **Backups.** `pg_dump -Fc`, then the attachments after it (see "Running with Docker" and "Backups").
+- **Backups.** `pg_dump -Fc`, then `clowder backup` for the attachments and the host key after it (see "Backups" and "Running with Docker").
 - **Sizes and speed.** The numbers on PostgreSQL are in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 ### Redis
@@ -178,7 +185,7 @@ Each setting is a flag of `clowder serve` or a `CLOWDER_*` environment variable.
 | `-call-ring-timeout` | `CLOWDER_CALL_RING_TIMEOUT` | `45s` | How long a call rings before nobody answered it and it becomes a missed call; at least one second. The default is what people expect: change it only for tests. |
 | `-trust-proxy` | `CLOWDER_TRUST_PROXY` | `false` | Take the client address, which the login limiter counts, from the last entry of `X-Forwarded-For`. Turn it on only behind your own reverse proxy. |
 
-Durations are written the way Go reads them: `720h`, `90m`. `clowder invite` reads `-data`, `-database-url`, `-base-url` and `-invitation-lifetime` (and their variables); `clowder demo` reads `-data`, `-database-url` and `-size`. `clowder healthcheck -addr host:port` asks `GET /healthz` of a running server and exits 0 when it answers 200 and 1 otherwise; the Docker image runs it as its health check.
+Durations are written the way Go reads them: `720h`, `90m`. `clowder invite` reads `-data`, `-database-url`, `-base-url` and `-invitation-lifetime` (and their variables); `clowder demo` reads `-data`, `-database-url` and `-size`; `clowder backup` reads `-o`, `-data` and `-database-url`, and `clowder restore` reads `-i` and `-data` (see "Backups"). `clowder healthcheck -addr host:port` asks `GET /healthz` of a running server and exits 0 when it answers 200 and 1 otherwise; the Docker image runs it as its health check.
 
 The log has one entry per request (method, route pattern, status, duration, user ID). It never has passwords, tokens, post bodies or query strings.
 
@@ -253,30 +260,68 @@ Start Clowder with `-addr 127.0.0.1:8080 -base-url https://chat.example.org -tru
 
 ## Backups
 
-Everything Clowder keeps is in the data directory: `clowder.db` and `files/`. The database runs in WAL mode, so do not copy the file with `cp` while the server runs. Take an online backup with SQLite's own tools, which give a consistent copy while the server keeps working:
+`clowder backup` writes one `.tar.gz` archive of the installation, and `clowder restore` turns it back into a data directory that `clowder serve` runs. Backup works while the server runs, on SQLite and on PostgreSQL.
 
 ```sh
-sqlite3 /var/lib/clowder/clowder.db ".backup /backups/clowder-2026-10-27.db"
-# or
-sqlite3 /var/lib/clowder/clowder.db "VACUUM INTO '/backups/clowder-2026-10-27.db'"
+clowder backup -data /var/lib/clowder -o /backups/clowder-2026-10-28.tar.gz
 ```
 
-Then copy the attachments, **after** the database, so that every attachment the copy of the database mentions is in the copy of the directory (a file that is only in the directory is harmless; a row without its file is a broken download):
+It prints the archive's path and size, the counts it recorded (users, rooms, posts and comments, messages, files) and, on PostgreSQL, the `pg_dump` command for the database. Take it from a timer (`cron`, a systemd timer) and copy the archives off the machine.
+
+**What is in an archive.** Everything a restored installation needs, under one directory `clowder-backup/`:
+
+| Entry | What it is |
+|---|---|
+| `manifest.json` | First entry. The format version, the Clowder version, the time (UTC), the database (`clowder.db`, or `external` on PostgreSQL), the schema version (the last migration applied), the counts, and every other entry with its path, size and SHA-256. |
+| `clowder.db` | SQLite only: a consistent copy of the database, made with `VACUUM INTO` (it is a snapshot; the server keeps writing meanwhile and the copy does not stop it). |
+| `files/` | The attachments and, in `files/avatars/`, the avatars. They are added **after** the copy of the database, so every attachment the copy names is in the archive (a file that is only in the directory is harmless; a row without its file is a broken download). |
+| `ssh_host_ed25519_key` | The host key of the SSH server (`-ssh-addr`), when the data directory has one, so that its fingerprint does not change and your users' `known_hosts` keep working. A host key kept elsewhere with `-ssh-host-key` is not in the archive: keep a copy of it yourself. |
+
+Left out, because it is temporary or rebuilt: uploads that were staged and never posted (they are removed after a day anyway), the files being written (`files/tmp/`), the SQLite `-wal` and `-shm` files (the copy of the database has no need of them), and anything else in the data directory. Redis keeps nothing worth saving.
+
+**An archive holds every message, post, password hash, session and file of the installation, and the host key.** Keep it as safely as the server itself: the file is made readable by its owner only, store it encrypted if it leaves the machine, and delete old ones.
+
+`-o -` writes the archive to the standard output (the report goes to stderr), and `clowder restore -i -` reads it from the standard input; Docker uses them below. The archive is complete before the first byte reaches the standard output, in a temporary file in the data directory. With a file name, the archive is written to a temporary file next to it and renamed at the end, so a failed backup never leaves a half archive under that name. `-o` may not be inside `files/`. An existing file of that name is replaced.
+
+### Restoring
 
 ```sh
-rsync -a /var/lib/clowder/files/ /backups/clowder-2026-10-27-files/
+mv /var/lib/clowder /var/lib/clowder.old     # restore only goes into an empty directory
+clowder restore -i /backups/clowder-2026-10-28.tar.gz -data /var/lib/clowder
+clowder serve -data /var/lib/clowder         # with your usual flags
 ```
 
-Keep both together, and keep them private: the database has password hashes.
+The directory must not exist or must be empty (anything in it is refused before a byte is written); a missing one is made with mode 0700. Restore checks the archive before it trusts it: the first entry must be the manifest, with a format and a schema this Clowder knows (an archive from a **newer** Clowder is refused; one from an older Clowder is fine, because `serve` migrates the database when it starts); every entry must be a regular file or a directory (no links, devices or FIFOs) with a relative path under `clowder-backup/` and no `..`, listed in the manifest, once, with the size and the SHA-256 the manifest gives; nothing may be missing, and the archive may not inflate beyond what the manifest declares. It writes into a temporary directory inside the target and moves the result into place at the end, so a refused or failed restore leaves the target as it was. Files are written with mode 0600 and directories with mode 0700 (the host key must be 0600).
 
-To restore, on a stopped server:
+Sessions are in the database, so everyone stays logged in after a restore of a recent backup. **Test a restore before you need it**: restore into a throw-away directory and start `clowder serve` on it with another `-addr`.
 
-1. Stop Clowder.
-2. Move the data directory away, and make a new one with mode 700: `mkdir -m 700 /var/lib/clowder`.
-3. Put the copy of the database there as `clowder.db`, and the copy of the attachments as `files/`. There must be no `clowder.db-wal` or `clowder.db-shm` file next to the restored database.
-4. Start Clowder. It checks the schema and brings it up to date.
+### With Docker
 
-Sessions are in the database, so everyone stays logged in after a restore to a recent backup. Test a restore before you need it.
+The image has no shell, so give Clowder its commands directly and move the archive through the standard streams. The volume `clowderdata` is the data directory (`/data`):
+
+```sh
+docker compose run --rm -T clowder backup -o - > clowder-backup.tar.gz
+```
+
+(`-T` keeps Docker from adding a terminal to the stream. The report and the `pg_dump` line go to the terminal's stderr.) To restore into a new installation, with the volume empty:
+
+```sh
+docker compose run --rm -T clowder restore -i - -data /data < clowder-backup.tar.gz
+docker compose up -d
+```
+
+With the PostgreSQL of `compose.yaml` the archive has the files and the host key, and the database is saved with `pg_dump`, **before** the archive (see below). The full sequence is under "Running with Docker".
+
+### PostgreSQL
+
+On PostgreSQL the archive holds the files and the host key, and the manifest says `"database": "external"`. The database is saved with `pg_dump`, which backup prints for your URL with the password left out (give it to `pg_dump` with `PGPASSWORD` or `~/.pgpass`):
+
+```sh
+pg_dump --format=custom --file=clowder.pgdump 'postgres://clowder@db.example.com:5432/clowder'
+clowder backup -o clowder-backup.tar.gz
+```
+
+**Run `pg_dump` first and `clowder backup` after it**: a dump taken before the archive names only attachments that are in the archive, and one taken after it may name attachments that were uploaded in between. To restore, make an empty database, load the dump with `pg_restore --dbname=<url> clowder.pgdump` (or `psql` for a plain SQL dump), then `clowder restore -i clowder-backup.tar.gz -data <dir>` and `clowder serve -data <dir> -database-url <url>`. Restore prints this reminder when the archive says the database is external. The dump and the archive hold private data: keep both private.
 
 ## The demo
 

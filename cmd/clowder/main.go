@@ -40,6 +40,10 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		return runInvite(ctx, args[1:], env, stdout, stderr, hasher)
 	case "reset-password":
 		return runResetPassword(ctx, args[1:], env, stdout, stderr, hasher)
+	case "backup":
+		return runBackup(ctx, args[1:], env, stdout, stderr)
+	case "restore":
+		return runRestore(ctx, args[1:], env, stdout, stderr, os.Stdin)
 	case "healthcheck":
 		return runHealthcheck(ctx, args[1:], env, stderr)
 	default:
@@ -57,9 +61,11 @@ commands:
   invite          print a one-time invitation link
   reset-password  print a one-time link that sets a new password (-user <name>)
   demo            fill an empty database with demo data (-size large: the data set of SPEC §10)
+  backup          write the database, the files and the SSH host key to one .tar.gz archive (-o <file>), while serve runs
+  restore         unpack such an archive into an empty data directory (-i <file> -data <dir>)
   healthcheck     ask a running server if it is healthy (exit status 0 if it is, 1 if not)
 
-Run "clowder serve -h" for the flags of serve.
+Run "clowder <command> -h" for the flags of a command.
 `)
 }
 

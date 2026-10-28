@@ -20,6 +20,11 @@
 # on a port of its own (7882 and 7883), and that each has announced itself in
 # Redis with the key clowder:process:<id> (SPEC D65).
 #
+# Last, it runs the README's commands for a backup of the Docker installation
+# (`backup -o -` into a file, `restore -i - -data /data` from it, into an empty volume) and
+# checks the archive: the manifest first, "database": "external", the pg_dump
+# line without the password.
+#
 # It never touches the compose project of a developer: it uses its own project
 # name, its own image tag, a free port and a temporary env file with a random
 # password.
@@ -144,6 +149,7 @@ cleanup() {
 	echo
 	echo "==> docker compose down -v --remove-orphans"
 	dc down -v --remove-orphans 2>&1
+	docker volume rm "$project-restored" >/dev/null 2>&1
 	docker image rm "$image" >/dev/null 2>&1
 	rm -rf "$tmp"
 	exit "$status"
@@ -356,6 +362,32 @@ if $cluster; then
 	echo "the stream of clowder2 received the post:"
 	grep -m1 "$text" "$tmp/stream.txt" | cut -c1-160
 fi
+
+step "docker compose run --rm -T clowder backup -o - (the README's backup of the Docker installation)"
+dc run --rm -T clowder backup -o - >"$tmp/backup.tar.gz" 2>"$tmp/backup.err" || {
+	cat "$tmp/backup.err" >&2
+	fail "backup failed"
+}
+cat "$tmp/backup.err"
+first=$(tar -tzf "$tmp/backup.tar.gz" | head -n1)
+echo "first entry of the archive: $first"
+[[ $first == clowder-backup/manifest.json ]] || fail "the first entry of the archive is not the manifest: $first"
+tar -xzOf "$tmp/backup.tar.gz" clowder-backup/manifest.json >"$tmp/manifest.json"
+grep -q '"database": "external"' "$tmp/manifest.json" || fail "the manifest does not say that the database is external"
+grep -q '"dialect": "postgres"' "$tmp/manifest.json" || fail "the manifest does not say postgres"
+grep -q 'pg_dump --format=custom' "$tmp/backup.err" || fail "the report has no pg_dump line"
+if grep -q "$password" "$tmp/backup.err" "$tmp/backup.tar.gz" "$tmp/manifest.json"; then
+	fail "the database password is in the report or the archive"
+fi
+tar -tzf "$tmp/backup.tar.gz" | grep -q 'ssh_host_ed25519_key' || fail "the archive has no SSH host key"
+
+step "docker compose run --rm -T clowder restore -i - -data /data (into a new, empty volume, as the README says)"
+dc run --rm -T -v "$project-restored:/data" clowder restore -i - -data /data <"$tmp/backup.tar.gz" >"$tmp/restore.out" 2>"$tmp/restore.err" || {
+	cat "$tmp/restore.out" "$tmp/restore.err" >&2
+	fail "restore failed"
+}
+cat "$tmp/restore.out"
+grep -q 'pg_restore' "$tmp/restore.out" || fail "restore did not say that the database comes first"
 
 step "docker compose ps (after the requests)"
 dc ps

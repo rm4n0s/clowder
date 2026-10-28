@@ -1738,3 +1738,38 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - With Redis, a restarted process no longer ends its old calls at start: they end when the old key has been missing for the grace period, so a user may see "in another call" for up to about 35 s.
   - The worker first accepted that a Redis that lost its data could end live calls; the manager sent it back to add the grace period.
+
+## 23.1 Backup and restore
+- **Date:** 2026-10-28
+- **Branch:** feat/step-23.1-backup
+- **Summary:**
+  - `clowder backup -o <file.tar.gz>` (with `-data` and `-database-url`) works while `serve` runs.
+    - On SQLite, `VACUUM INTO` writes a 0600 copy of the database in the data directory, removed whatever happens. The files are read after that copy, so every attachment the copy names is in the archive; a file that changes between the hashing and the copying fails the backup.
+    - On PostgreSQL the archive has the files and the host key, its manifest says `"database": "external"`, and the report prints the `pg_dump` command without the password.
+    - The archive is written next to `-o` and renamed at the end. `-o -` writes it to stdout, for Docker, where the image has no shell.
+  - **What an archive holds:**
+    - `manifest.json` first: the format, the Clowder version, the time, the dialect, the schema (the last migration), the counts, and every entry with its type, size and SHA-256;
+    - `clowder.db` (SQLite), `ssh_host_ed25519_key` (so its fingerprint survives), and `files/`.
+    - It leaves out the WAL and SHM files, `files/tmp/`, the notes, staged uploads that no attachment uses, and anything else in the directory.
+  - `clowder restore -i <file> -data <dir>` (also `-i -`) restores only into an empty or new directory, after checking everything:
+    - the manifest first, with a known format and a schema no newer than the binary;
+    - entries only from the allowlist (`clowder.db`, the host key, `files/…`), regular files and directories only;
+    - no `..`, no absolute or empty element, no links or devices, no duplicates or missing entries;
+    - each entry stopped at its declared size and checked against its SHA-256, and the whole stream capped at the manifest's total, so a gzip bomb fails.
+    - It writes into a temporary directory inside the target, moves it into place at the end, and leaves the target as it was on failure. Files are 0600 and directories 0700.
+  - The README's "Backups" is rewritten for a plain install, Docker and PostgreSQL. `scripts/compose-smoke.sh` runs its Docker commands against the built image.
+- **Main files:** `cmd/clowder/{backup,backup_format,restore,main}.go`, `internal/store/backup.go`, `internal/files/layout.go`, `scripts/compose-smoke.sh`, `README.md`, `docs/SPEC.md`, `CLAUDE.md` (the commands).
+- **Tests:**
+  - a backup while a goroutine writes posts and messages: `integrity_check` ok, every committed row there, every attachment named by the copy in the archive;
+  - the round trip: demo, backup, restore, the real `serve` on a port, then a login, a room, an attachment and an avatar, with the same host key fingerprint and the same counts;
+  - PostgreSQL: no database entry, `external`, no password in the output;
+  - every hostile archive, each with its own tag, into a missing and into an empty target, with nothing written: `..`, an absolute path, a symlink, a hard link, a device, a FIFO, an unlisted, missing or duplicate entry, a wrong size or checksum, the manifest not first, a newer schema, a header with a huge size, a trailing gzip bomb, a truncated gzip, a file that is not gzip, a manifest naming paths outside the allowlist;
+  - a non-empty target, the modes, a failed backup leaving nothing behind, and a route test for each of the 23 tags.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · compose-smoke ✅ (also `-cluster`, with the backup and restore of the README) · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [23.1 backup](implemented-proof-images/23.1-backup.txt)
+  - the demo served; a backup while it runs; `tar -tzvf` and the manifest; a restore into an empty directory; `serve` on it with the same host key fingerprint; `clowder-apicheck` passing against it (204 requests); an archive with `../` refused.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - `-o -` and `-i -` were added for Docker, where `/data` belongs to the image's user and there is no shell.
+  - A host key kept outside the data directory (`-ssh-host-key`) is not in the archive; the README says so.
