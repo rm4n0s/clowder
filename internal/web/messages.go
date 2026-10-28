@@ -624,7 +624,7 @@ func (s *Server) groupChanged(w http.ResponseWriter, r *http.Request, id uint64)
 		return
 	}
 	s.patchAll(w, r,
-		patchOp{component: views.ConversationHeader(views.ConversationData{Header: panel.Header, ViewerID: actor.UserID})},
+		patchOp{component: views.ConversationHeader(views.ConversationData{Header: panel.Header, ViewerID: actor.UserID, Members: panel})},
 		patchOp{component: views.ConversationMembers(panel)},
 	)
 }
@@ -688,7 +688,7 @@ func (s *Server) conversationNotice(w http.ResponseWriter, r *http.Request, err 
 	}
 	actor, _ := actorFrom(r.Context())
 	if isDatastar(r) {
-		s.patch(w, r, views.ConversationHeader(views.ConversationData{Header: h, ViewerID: actor.UserID, Notice: notice}))
+		s.patch(w, r, views.ConversationHeader(views.ConversationData{Header: h, ViewerID: actor.UserID, Notice: notice, Members: views.MembersPanelData{Online: s.onlineSet(r.Context(), actor, memberIDsOf(h))}}))
 		return
 	}
 	d, ok := s.conversationPageData(w, r, h.ID, 0, func(d *views.ConversationData) { d.Notice = notice })

@@ -63,6 +63,17 @@ templ IconMuted() {
 	}
 }
 
+// emptyState is the quiet box of a list with nothing in it: the paw mark above
+// the message, which the caller gives as its child.
+templ emptyState() {
+	<div class="empty-state">
+		<span class="empty-mark">
+			@IconPaw()
+		</span>
+		{ children... }
+	</div>
+}
+
 // IconPaw is a paw print: the mark of Clowder, filled.
 templ IconPaw() {
 	@iconFilled() {

@@ -454,3 +454,46 @@ func getAction(path string) string {
 
 // deleteMessageConfirm is the question asked before a message is deleted.
 const deleteMessageConfirm = "Delete this message? This cannot be undone."
+
+// conversationOthers are the people of a conversation of the list other than
+// the viewer, at most three, whose avatars the row shows. A conversation of one
+// (only the viewer) shows the viewer.
+func conversationOthers(c app.ConversationSummary, viewerID uint64) []app.UserRef {
+	var others []app.UserRef
+	for _, m := range c.Members {
+		if m.ID != viewerID {
+			others = append(others, m)
+		}
+	}
+	if len(others) == 0 {
+		others = c.Members
+	}
+	if len(others) > conversationAvatarMax {
+		others = others[:conversationAvatarMax]
+	}
+	return others
+}
+
+// conversationAvatarMax is the number of avatars a row of the list shows.
+const conversationAvatarMax = 3
+
+// conversationAvatarSize is the size of the avatars of a row: one large
+// avatar for a direct conversation, small ones side by side for a group.
+func conversationAvatarSize(c app.ConversationSummary) string {
+	if c.Kind == app.ConversationGroup {
+		return "md"
+	}
+	return "xl"
+}
+
+// conversationOtherMembers are the members of a conversation other than the
+// viewer, in the order they joined: the people the header shows.
+func conversationOtherMembers(h app.ConversationHeader, viewerID uint64) []app.ConversationMemberView {
+	var others []app.ConversationMemberView
+	for _, m := range h.Members {
+		if m.User.ID != viewerID {
+			others = append(others, m)
+		}
+	}
+	return others
+}

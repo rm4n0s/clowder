@@ -235,8 +235,10 @@ func pairs() []pair {
 	add(textRatio, []string{"c-ground", "c-surface", "c-surface-sunken"}, "c-link-hover")
 	add(textRatio, []string{"c-ground", "c-surface", "c-surface-raised", "c-surface-sunken", "c-bar"}, "c-danger", "c-success")
 	// The accent-tinted ground: the reaction you made, the comment a link points
-	// to, the question of a group mention.
-	add(textRatio, []string{"c-accent-wash"}, "c-text", "c-text-soft", "c-text-muted", "c-link", "c-badge-accent-text")
+	// to, the question of a group mention, and (21.3) the reader's own message,
+	// the message a search result points to, a card a link points to and an
+	// unread notification, with its links and its Delete.
+	add(textRatio, []string{"c-accent-wash"}, "c-text", "c-text-soft", "c-text-muted", "c-link", "c-link-hover", "c-badge-accent-text", "c-danger")
 	add(textRatio, []string{"c-accent"}, "c-on-accent")
 	add(textRatio, []string{"c-danger"}, "c-on-danger")
 	add(textRatio, []string{"c-badge-accent-bg"}, "c-badge-accent-text")

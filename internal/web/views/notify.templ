@@ -179,7 +179,7 @@ templ PlacePrefsDialog(d PlacePrefsData) {
 // and of a conversation have one.
 templ PlacePrefsButton(d PlacePrefsData) {
 	if d.Action != "" {
-		<button type="button" class="secondary" id="place-prefs-open" data-on:click={ "document.getElementById('" + PlacePrefsDialogID + "').showModal()" }>
+		<button type="button" class="secondary" id="place-prefs-open" data-on:click={ "el.closest('details')?.removeAttribute('open'); document.getElementById('" + PlacePrefsDialogID + "').showModal()" }>
 			if d.Prefs.Muted {
 				@mutedIcon()
 			}

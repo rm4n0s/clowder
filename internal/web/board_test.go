@@ -131,7 +131,7 @@ func TestBoardPage(t *testing.T) {
 		`aria-label="To do"`, `aria-label="In progress"`, `aria-label="Done"`,
 		`<span class="column-count" title="4 cards">4</span>`, `<span class="column-count" title="0 cards">0</span>`, `<span class="column-count" title="1 card">1</span>`,
 		// A card: id, title, assignees, due date, link to its post and to the comment.
-		`id="task-` + idText(s.late.ID) + `"`, `<p class="card-title">Late</p>`, `<p class="card-assignees" title="Assigned to">Bob</p>`,
+		`id="task-` + idText(s.late.ID) + `"`, `<p class="card-title">Late</p>`, `<p class="card-assignees" title="Assigned to">`, `<span class="card-assignee" title="Bob">`, `<span class="visually-hidden">Bob</span>`,
 		`<time class="task-due overdue" datetime="` + pastDue + `" title="Overdue">` + pastDue + `</time>`,
 		`<time class="task-due" datetime="` + futureDue + `" title="Due date">` + futureDue + `</time>`,
 		`href="/posts/` + idText(s.root.ID) + `#post-` + idText(s.root.ID) + `"`,

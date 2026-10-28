@@ -288,7 +288,7 @@ func TestMessageComposer(t *testing.T) {
 			`<div id="message-composer" class="message-composer"><form id="message-composer-form" class="message-composer-form" method="post" enctype="multipart/form-data" action="/messages/4" data-on:submit="@post(&#39;/messages/4&#39;, {contentType: &#39;form&#39;})">`,
 			`<div id="message-reply" class="message-reply"></div>`,
 			`<textarea id="message-body" name="body" rows="2" placeholder="Write a message. Enter sends, Shift+Enter makes a new line." data-on:keydown="evt.key === &#39;Enter&#39; &amp;&amp; !evt.shiftKey &amp;&amp; !evt.isComposing &amp;&amp; (evt.preventDefault(), el.form.requestSubmit())"></textarea>`,
-			`<input id="message-files" name="files" type="file" multiple>`, `<button type="submit">Send</button>`,
+			`<input id="message-files" class="attach-input" name="files" type="file" multiple data-on:change="`, `<label class="attach-button" for="message-files"`, `<button type="submit">Send</button>`,
 		}, []string{"disabled user", "reply_to", "aria-invalid"})
 	})
 	t.Run("a disabled counterpart", func(t *testing.T) {
@@ -334,7 +334,7 @@ func TestConversationList(t *testing.T) {
 	if got := strings.Count(html, `conversation-unread`); got != 1 {
 		t.Errorf("%d unread marks, want 1", got)
 	}
-	requireHTML(t, renderHTML(t, views.ConversationList(nil, alice.ID)), []string{`<div id="conversation-list" class="conversation-list"><p class="empty" id="conversations-empty">No conversations yet.</p></div>`}, []string{"<ul"})
+	requireHTML(t, renderHTML(t, views.ConversationList(nil, alice.ID)), []string{`<div id="conversation-list" class="conversation-list"><div class="empty-state">`, `<p class="empty" id="conversations-empty">No conversations yet.</p></div></div>`}, []string{"<ul"})
 }
 
 func TestNewConversationForm(t *testing.T) {
@@ -498,5 +498,75 @@ func TestMembersPanelHasMessageButtons(t *testing.T) {
 	}, []string{`value="alice"`})
 	if got := strings.Count(html, ">Message</button>"); got != 1 {
 		t.Errorf("%d Message buttons, want 1 (not for the viewer)", got)
+	}
+}
+
+// TestConversationListRowsHaveTheOthersAvatars: a row of the list shows the
+// avatar of the other person of a direct conversation (large) and up to three
+// of a group (small), never the viewer's own, in the avatar span the CSS lays
+// out beside the title (21.3).
+func TestConversationListRowsHaveTheOthersAvatars(t *testing.T) {
+	carol := app.UserRef{ID: 4, Username: "carol", DisplayName: "Carol"}
+	dave := app.UserRef{ID: 5, Username: "dave", DisplayName: "Dave"}
+	erin := app.UserRef{ID: 6, Username: "erin", DisplayName: "Erin"}
+	items := []app.ConversationSummary{
+		{ID: 4, Kind: app.ConversationDirect, DisplayName: "Bob", Members: []app.UserRef{alice, bob}, LastActivity: msgTime},
+		{ID: 6, Kind: app.ConversationGroup, DisplayName: "crew", Members: []app.UserRef{alice, bob, carol, dave, erin}, LastActivity: msgTime},
+	}
+	html := renderHTML(t, views.ConversationList(items, alice.ID))
+	direct := html[strings.Index(html, `id="conversation-4"`):strings.Index(html, `id="conversation-6"`)]
+	group := html[strings.Index(html, `id="conversation-6"`):]
+	tests := []struct {
+		name    string
+		html    string
+		want    []string
+		notWant []string
+		avatars int
+	}{
+		{"a direct conversation", direct, []string{`<span class="conversation-avatars" aria-hidden="true">`, `avatar avatar-xl`, ">B<"}, []string{">A<", "avatar-md"}, 1},
+		{"a group", group, []string{`avatar avatar-md`, ">B<", ">C<", ">D<"}, []string{">A<", ">E<", "avatar-xl"}, 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireHTML(t, tt.html, tt.want, tt.notWant)
+			if got := strings.Count(tt.html, `class="avatar avatar-`); got != tt.avatars {
+				t.Errorf("%d avatars, want %d", got, tt.avatars)
+			}
+		})
+	}
+}
+
+// TestConversationHeaderAndActions: the header names the people with their
+// avatars and presence dots and has no button of its own (the server patches it
+// when the group changes); the "more" menu with the notification preferences is
+// a separate component, drawn only for a viewer who has preferences here.
+func TestConversationHeaderAndActions(t *testing.T) {
+	h := app.ConversationHeader{
+		ID: 4, Kind: app.ConversationDirect, DisplayName: "Bob", CanSend: true,
+		Members: []app.ConversationMemberView{{User: alice}, {User: bob}},
+	}
+	online := views.ConversationData{Header: h, ViewerID: alice.ID, Members: views.MembersPanelData{Online: map[uint64]bool{bob.ID: true}}}
+	offline := views.ConversationData{Header: h, ViewerID: alice.ID}
+	tests := []struct {
+		name    string
+		html    string
+		want    []string
+		notWant []string
+	}{
+		{"the other person is online", renderHTML(t, views.ConversationHeader(online)), []string{
+			`<header id="conversation-header" class="conversation-header">`, `<a href="/messages">All conversations</a>`,
+			`<span class="conversation-person" title="Bob">`, `class="online-dot"`, `<h1>Bob</h1>`, `<p class="hint conversation-members-line">With Bob</p>`,
+		}, []string{`title="Alice"`, "place-prefs-open", "<details"}},
+		{"the other person is not", renderHTML(t, views.ConversationHeader(offline)), []string{`<span class="conversation-person" title="Bob">`}, []string{"online-dot"}},
+		{"the menu", renderHTML(t, views.ConversationActions(views.PlacePrefsData{Action: "/messages/4/notifications"})), []string{
+			`<div class="conversation-actions">`, `<details class="post-menu conversation-menu" data-preserve-attr="open" data-on:click__outside="el.removeAttribute('open')">`,
+			`aria-label="More actions"`, `id="place-prefs-open"`, `el.closest(&#39;details&#39;)?.removeAttribute(&#39;open&#39;)`,
+		}, nil},
+		{"no preferences here", renderHTML(t, views.ConversationActions(views.PlacePrefsData{})), []string{`<div class="conversation-actions"></div>`}, []string{"<details", "place-prefs-open"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireHTML(t, tt.html, tt.want, tt.notWant)
+		})
 	}
 }

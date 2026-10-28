@@ -327,7 +327,7 @@ func TestNotificationsPageForms(t *testing.T) {
 	e := newRoomsEnv(t)
 	rec := e.send(get("/notifications", e.cookies["bob"]))
 	requireBody(t, rec, []string{
-		`<section id="notifications" data-signals="{readUpTo: 0}">`,
+		`<section id="notifications" class="notifications-page" data-signals="{readUpTo: 0}">`,
 		`<form id="mark-all-form" class="mark-all-form" method="post" action="/notifications/read" data-on:submit="@post(&#39;/notifications/read&#39;, {contentType: &#39;form&#39;})">`,
 		"Mark all as read",
 	})

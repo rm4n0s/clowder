@@ -65,7 +65,12 @@ templ BoardHeader(d BoardData) {
 			<div class="room-title">
 				<h1>{ d.Board.Room.Name }</h1>
 				@roomVisibilityBadge(d.Board.Room.Visibility)
-				<span class="board-title">Board</span>
+			</div>
+			<div class="room-about">
+				if d.Board.Room.Description != "" {
+					<p class="room-description">{ d.Board.Room.Description }</p>
+				}
+				<p class="hint room-members-count">{ memberCountText(d.Board.Room.MemberCount) }</p>
 			</div>
 			@RoomNav(d.Board.Room.ID, NavBoard)
 		</div>
@@ -115,28 +120,35 @@ templ boardColumn(d BoardData, index int, col app.ColumnView) {
 			if d.Board.CanEdit {
 				<form class="column-rename" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "rename")) } data-on:submit={ FormPost(boardColumnPath(roomID, col.ID, "rename")) }>
 					<input class="column-name" name="name" type="text" value={ col.Name } maxlength="40" autocomplete="off" aria-label="Column name" required/>
-					<button type="submit" class="secondary">Rename</button>
+					<button type="submit" class="secondary column-rename-button" aria-label="Rename the column" title="Rename the column">
+						@IconCheck()
+					</button>
 				</form>
 			} else {
 				<h2 class="column-name">{ col.Name }</h2>
 			}
 			<span class="column-count" title={ cardCountText(len(col.Tasks)) }>{ strconv.Itoa(len(col.Tasks)) }</span>
+			if d.Board.CanEdit {
+				<details class="post-menu column-menu" data-preserve-attr="open" data-on:click__outside="el.removeAttribute('open')">
+					<summary class="icon-button" aria-label="Column actions" title="Column actions">
+						@IconMore()
+					</summary>
+					<div class="post-menu-panel column-actions">
+						<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "move")) } data-on:submit={ FormPost(boardColumnPath(roomID, col.ID, "move")) }>
+							<input type="hidden" name="position" value={ moveColumnTo(index - 1) }/>
+							<button type="submit" class="secondary" aria-label="Move the column left" disabled?={ index == 0 }>Move left</button>
+						</form>
+						<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "move")) } data-on:submit={ FormPost(boardColumnPath(roomID, col.ID, "move")) }>
+							<input type="hidden" name="position" value={ moveColumnTo(index + 1) }/>
+							<button type="submit" class="secondary" aria-label="Move the column right" disabled?={ index == len(d.Board.Columns)-1 }>Move right</button>
+						</form>
+						<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "delete")) } data-on:submit={ FormPostConfirm(boardColumnPath(roomID, col.ID, "delete"), "Delete this column?") }>
+							<button type="submit" class="danger" aria-label="Delete the column">Delete column</button>
+						</form>
+					</div>
+				</details>
+			}
 		</header>
-		if d.Board.CanEdit {
-			<div class="column-actions">
-				<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "move")) } data-on:submit={ FormPost(boardColumnPath(roomID, col.ID, "move")) }>
-					<input type="hidden" name="position" value={ moveColumnTo(index - 1) }/>
-					<button type="submit" class="secondary" aria-label="Move the column left" title="Move left" disabled?={ index == 0 }>←</button>
-				</form>
-				<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "move")) } data-on:submit={ FormPost(boardColumnPath(roomID, col.ID, "move")) }>
-					<input type="hidden" name="position" value={ moveColumnTo(index + 1) }/>
-					<button type="submit" class="secondary" aria-label="Move the column right" title="Move right" disabled?={ index == len(d.Board.Columns)-1 }>→</button>
-				</form>
-				<form class="action" method="post" action={ templ.SafeURL(boardColumnPath(roomID, col.ID, "delete")) } data-on:submit={ FormPostConfirm(boardColumnPath(roomID, col.ID, "delete"), "Delete this column?") }>
-					<button type="submit" class="danger" aria-label="Delete the column">Delete</button>
-				</form>
-			</div>
-		}
 		<ol class="board-cards" data-column={ columnIDText(col.ID) }>
 			for _, card := range col.Tasks {
 				@boardCard(d, col, card)
@@ -160,11 +172,27 @@ templ boardCard(d BoardData, col app.ColumnView, card app.TaskCard) {
 		}
 	>
 		<p class="card-title">{ card.Title }</p>
-		if len(card.Assignees) > 0 {
-			<p class="card-assignees" title="Assigned to">{ taskAssigneesText(card.Assignees) }</p>
-		}
-		if card.DueDate != nil {
-			<p class="card-due"><time class={ taskDueClasses(card) } datetime={ taskDueText(card) } title={ taskDueTitle(card) }>{ taskDueText(card) }</time></p>
+		if card.DueDate != nil || len(card.Assignees) > 0 {
+			<div class="card-meta">
+				if card.DueDate != nil {
+					<p class="card-due">
+						@IconCalendar()
+						<time class={ taskDueClasses(card) } datetime={ taskDueText(card) } title={ taskDueTitle(card) }>{ taskDueText(card) }</time>
+					</p>
+				}
+				if len(card.Assignees) > 0 {
+					<p class="card-assignees" title="Assigned to">
+						<span class="card-avatars">
+							for _, a := range card.Assignees {
+								<span class="card-assignee" title={ a.DisplayName }>
+									@Avatar(a.ID, a.DisplayName, a.AvatarURL())
+								</span>
+							}
+						</span>
+						<span class="visually-hidden">{ taskAssigneesText(card.Assignees) }</span>
+					</p>
+				}
+			</div>
 		}
 		<p class="card-links">
 			<a class="card-post" href={ templ.SafeURL(CommentPath(card.RootID, card.PostID)) }>Open post</a>
@@ -197,8 +225,11 @@ templ BoardAddColumn(d BoardData) {
 		if d.Board.CanEdit {
 			<form id="board-add-form" class="board-add-form" method="post" action={ templ.SafeURL(BoardColumnsPath(d.Board.Room.ID)) } data-on:submit={ FormPost(BoardColumnsPath(d.Board.Room.ID)) }>
 				<label for="board-add-name">New column</label>
-				<input id="board-add-name" name="name" type="text" maxlength="40" autocomplete="off" required/>
-				<button type="submit">Add column</button>
+				<input id="board-add-name" name="name" type="text" maxlength="40" autocomplete="off" placeholder="Name" required/>
+				<button type="submit">
+					@IconPlus()
+					Add column
+				</button>
 			</form>
 		}
 	</div>

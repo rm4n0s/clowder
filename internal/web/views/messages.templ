@@ -9,14 +9,23 @@ import (
 // first, with the form that starts one. Its stream keeps the list live.
 templ MessagesPage(d ConversationsData) {
 	@Layout("Messages", d.Sidebar.UnreadTotal(), &d.Sidebar) {
-		<h1>Messages</h1>
-		@MessageSearchBox(d.Search.Query)
+		<div class="messages-page">
+			<header class="messages-head">
+				<h1>Messages</h1>
+				@MessageSearchBox(d.Search.Query)
+			</header>
+			if d.Search.Active {
+				@MessageSearchResults(d.Search)
+			} else {
+				<div class="messages-layout">
+					@ConversationList(d.Items, d.ViewerID)
+					@NewConversationForm(d.New)
+				</div>
+			}
+		</div>
 		if d.Search.Active {
-			@MessageSearchResults(d.Search)
 			@liveStream(MeStreamPath)
 		} else {
-			@NewConversationForm(d.New)
-			@ConversationList(d.Items, d.ViewerID)
 			@liveStream(MessagesStreamPath)
 		}
 	}
@@ -26,10 +35,13 @@ templ MessagesPage(d ConversationsData) {
 // so that a search is a link (SPEC §7.11, D56).
 templ MessageSearchBox(query string) {
 	<form id="message-search" class="search-form message-search" role="search" method="get" action={ templ.SafeURL(MessagesPath) }>
-		<label for="message-search-q">Search the messages</label>
+		<label class="visually-hidden" for="message-search-q">Search the messages</label>
 		<div class="search-form-row">
-			<input id="message-search-q" name="q" type="search" value={ query } autocomplete="off" placeholder="Words, or a phrase in quotes"/>
-			<button type="submit">Search</button>
+			<input id="message-search-q" name="q" type="search" value={ query } autocomplete="off" placeholder="Search your messages"/>
+			<button type="submit">
+				@IconSearch()
+				Search
+			</button>
 		</div>
 	</form>
 }
@@ -44,12 +56,14 @@ templ MessageSearchResults(d MessageSearchData) {
 		if d.Message != "" {
 			<p class="field-error search-error" id="message-search-error" role="alert">{ d.Message }</p>
 		} else if len(d.Results) == 0 {
-			<p class="empty">No messages match.</p>
+			@emptyState() {
+				<p class="empty">No messages match.</p>
+			}
 		} else {
 			<ol class="search-results message-results">
 				for _, r := range d.Results {
 					<li class="search-result message-result" id={ "message-result-" + strconv.FormatUint(r.MessageID, 10) } data-message={ roomIDText(r.MessageID) }>
-						<header class="post-meta">
+						<header class="post-meta search-meta">
 							<a class="search-room" href={ templ.SafeURL(ConversationPath(r.ConversationID)) }>{ r.ConversationTitle }</a>
 							@Avatar(r.Author.ID, r.Author.DisplayName, r.Author.AvatarURL())
 							<span class="post-author">{ r.Author.DisplayName }</span>
@@ -130,19 +144,28 @@ templ NewConversationForm(d NewConversationData) {
 templ ConversationList(items []app.ConversationSummary, viewerID uint64) {
 	<div id="conversation-list" class="conversation-list">
 		if len(items) == 0 {
-			<p class="empty" id="conversations-empty">No conversations yet.</p>
+			@emptyState() {
+				<p class="empty" id="conversations-empty">No conversations yet.</p>
+			}
 		} else {
 			<ul class="conversation-items">
 				for _, c := range items {
 					<li id={ conversationElementID(c.ID) } class={ "conversation", templ.KV("unread", c.Unread), templ.KV("muted", c.Muted) } data-conversation={ roomIDText(c.ID) } data-members={ memberUsernames(c) }>
 						<a class="conversation-link" href={ templ.SafeURL(ConversationPath(c.ID)) }>
-							<span class="conversation-title">{ c.DisplayName }</span>
-							if c.Muted {
-								@mutedIcon()
-							}
-							if conversationKindText(c) != "" {
-								<span class="conversation-kind">{ conversationKindText(c) }</span>
-							}
+							<span class="conversation-avatars" aria-hidden="true">
+								for _, m := range conversationOthers(c, viewerID) {
+									@AvatarSized(m.ID, m.DisplayName, m.AvatarURL(), conversationAvatarSize(c))
+								}
+							</span>
+							<span class="conversation-head">
+								<span class="conversation-title">{ c.DisplayName }</span>
+								if c.Muted {
+									@mutedIcon()
+								}
+								if conversationKindText(c) != "" {
+									<span class="conversation-kind">{ conversationKindText(c) }</span>
+								}
+							</span>
 							if c.Unread && !c.Muted {
 								<span class="conversation-unread">Unread</span>
 							}
@@ -163,9 +186,12 @@ templ ConversationPage(d ConversationData) {
 	@Layout(d.Header.DisplayName, d.Sidebar.UnreadTotal(), &d.Sidebar) {
 		@liveStream(ConversationStreamPath(d.Header.ID, d.NewestID(), d.Before))
 		@NotifyPlace(PlaceKey(app.ConversationRef(d.Header.ID)))
-		@ConversationHeader(d)
+		<div class="conversation-top">
+			@ConversationHeader(d)
+			@ConversationActions(d.Prefs)
+		</div>
 		@PlacePrefsDialog(d.Prefs)
-		<div class="conversation-body">
+		<div class={ "conversation-body", templ.KV("conversation-direct", !d.Header.IsGroup) }>
 			<section class="conversation-main">
 				if d.Before != 0 {
 					<p class="hint feed-newest"><a href={ templ.SafeURL(ConversationPath(d.Header.ID)) }>Back to the newest messages</a></p>
@@ -199,12 +225,43 @@ templ ConversationPage(d ConversationData) {
 // change.
 templ ConversationHeader(d ConversationData) {
 	<header id="conversation-header" class="conversation-header">
-		<h1>{ d.Header.DisplayName }</h1>
-		<p class="hint conversation-members-line">{ conversationMembersText(d.Header, d.ViewerID) }</p>
+		<p class="hint conversation-back"><a href={ templ.SafeURL(MessagesPath) }>All conversations</a></p>
+		<div class="conversation-heading">
+			<span class="conversation-people">
+				for _, m := range conversationOtherMembers(d.Header, d.ViewerID) {
+					<span class="conversation-person" title={ m.User.DisplayName }>
+						@AvatarSized(m.User.ID, m.User.DisplayName, m.User.AvatarURL(), "xl")
+						@OnlineDot(d.Members.Online[m.User.ID])
+					</span>
+				}
+			</span>
+			<div class="conversation-names">
+				<h1>{ d.Header.DisplayName }</h1>
+				<p class="hint conversation-members-line">{ conversationMembersText(d.Header, d.ViewerID) }</p>
+			</div>
+		</div>
 		@formProblem(d.Notice)
-		<p class="hint"><a href={ templ.SafeURL(MessagesPath) }>All conversations</a></p>
-		@PlacePrefsButton(d.Prefs)
 	</header>
+}
+
+// ConversationActions is the row of actions at the right of the header of a
+// conversation: the "more" menu with the notification preferences. It is not
+// part of the header, which the server patches when the group changes, so that
+// a patch never takes the menu away. The room for a call button (M22) is the
+// row itself.
+templ ConversationActions(d PlacePrefsData) {
+	<div class="conversation-actions">
+		if d.Action != "" {
+			<details class="post-menu conversation-menu" data-preserve-attr="open" data-on:click__outside="el.removeAttribute('open')">
+				<summary class="icon-button" aria-label="More actions" title="More actions">
+					@IconMore()
+				</summary>
+				<div class="post-menu-panel">
+					@PlacePrefsButton(d)
+				</div>
+			</details>
+		}
+	</div>
 }
 
 // ConversationMembers is the panel of a group: its members, the form that adds
@@ -346,7 +403,7 @@ templ MessageContent(d MessageData) {
 	<div id={ MessageContentID(d.Message.ID) } class="message-content">
 		@formProblem(d.Notice)
 		<header class="message-meta">
-			@Avatar(d.Message.Author.ID, d.Message.Author.DisplayName, d.Message.Author.AvatarURL())
+			@AvatarSized(d.Message.Author.ID, d.Message.Author.DisplayName, d.Message.Author.AvatarURL(), "md")
 			<span class="message-author">{ d.Message.Author.DisplayName }</span>
 			<a class="message-time" href={ templ.SafeURL("#" + MessageElementID(d.Message.ID)) }>
 				<time datetime={ postTimeStamp(d.Message.CreatedAt) } title={ postTimeStamp(d.Message.CreatedAt) }>{ postTimeText(d.Message.CreatedAt) }</time>
@@ -573,26 +630,32 @@ templ MessageComposerForm(d ComposerData) {
 				<p class="field-error" id="message-body-error" role="alert">{ d.Errors.Fields["body"] }</p>
 			}
 		</div>
-		<div class="field attachments-field">
-			<label for="message-files">Attach files</label>
-			<input
-				id="message-files"
-				name="files"
-				type="file"
-				multiple
-				if d.Errors.Fields["attachments"] != "" {
-					aria-invalid="true"
-					aria-describedby="message-files-error"
-				}
-			/>
-			if d.Errors.Fields["attachments"] != "" {
-				<p class="field-error" id="message-files-error" role="alert">{ d.Errors.Fields["attachments"] }</p>
-			}
-		</div>
 		@GroupMentionConfirm(GroupMentionConfirmData{ID: composerConfirmID, Count: d.ConfirmCount, SendPath: GroupMentionSendPath(ConversationPath(d.ConversationID))})
 		<div class="post-editor-actions">
+			<div class="attach-control">
+				<input
+					id="message-files"
+					class="attach-input"
+					name="files"
+					type="file"
+					multiple
+					data-on:change={ attachNamesAction }
+					if d.Errors.Fields["attachments"] != "" {
+						aria-invalid="true"
+						aria-describedby="message-files-error"
+					}
+				/>
+				<label class="attach-button" for="message-files" title="Attach files">
+					@IconAttach()
+					<span class="visually-hidden">Attach files</span>
+				</label>
+				<span class="attach-names" aria-live="polite" data-ignore-morph></span>
+			</div>
 			<button type="submit">Send</button>
 		</div>
+		if d.Errors.Fields["attachments"] != "" {
+			<p class="field-error" id="message-files-error" role="alert">{ d.Errors.Fields["attachments"] }</p>
+		}
 	</form>
 }
 

@@ -46,11 +46,14 @@ func TestBoardColumnsOfAMember(t *testing.T) {
 		// Inline rename, the buttons that move and delete a column.
 		`<form class="column-rename" method="post" action="/rooms/4/board/columns/10/rename"`, `<input class="column-name" name="name" type="text" value="To do" maxlength="40"`,
 		`action="/rooms/4/board/columns/11/move"`, `<input type="hidden" name="position" value="0">`, `<input type="hidden" name="position" value="2">`,
-		`aria-label="Move the column left" title="Move left" disabled>`, `aria-label="Move the column right" title="Move right" disabled>`,
+		`aria-label="Move the column left" disabled>Move left</button>`, `aria-label="Move the column right" disabled>Move right</button>`,
+		`<summary class="icon-button" aria-label="Column actions" title="Column actions">`, `data-preserve-attr="open"`,
+		`aria-label="Rename the column"`,
 		`action="/rooms/4/board/columns/12/delete"`, `confirm(&#39;Delete this column?&#39;) &amp;&amp; @post(&#39;/rooms/4/board/columns/12/delete&#39;`,
 		// A card: id, drag, escaped title, assignees, overdue date, link to the post.
 		`<li id="task-31" class="board-card" data-task="31" data-column="10" draggable="true">`,
-		`<p class="card-title">Late &lt;one&gt;</p>`, `<p class="card-assignees" title="Assigned to">Alice, Bob &lt;B&gt;</p>`,
+		`<p class="card-title">Late &lt;one&gt;</p>`, `<p class="card-assignees" title="Assigned to">`, `<span class="card-assignee" title="Alice">`, `<span class="card-assignee" title="Bob &lt;B&gt;">`,
+		`<span class="visually-hidden">Alice, Bob &lt;B&gt;</span>`,
 		`<time class="task-due overdue" datetime="2026-10-20" title="Overdue">2026-10-20</time>`,
 		`<a class="card-post" href="/posts/7#post-7">Open post</a>`, `<a class="card-post" href="/posts/7#post-9">Open post</a>`,
 		// The link that opens the card form, by Datastar or by address.
@@ -76,6 +79,48 @@ func TestBoardColumnsOfAMember(t *testing.T) {
 	if n := strings.Count(html, "task-due overdue"); n != 1 {
 		t.Errorf("%d overdue dates, want 1", n)
 	}
+}
+
+// TestBoardCardMetaAndColumnMenu: a card shows its due date with the calendar
+// icon and its assignees as avatars with their names on tooltips (the names for
+// a screen reader are in the text), and the actions of a column are in its
+// "more" menu, a details element that a live update leaves open.
+func TestBoardCardMetaAndColumnMenu(t *testing.T) {
+	html := render(t, views.BoardColumns(views.BoardData{Board: testBoard(true)}))
+	card := html[strings.Index(html, `id="task-31"`):]
+	card = card[:strings.Index(card, "</li>")]
+	requireContains(t, card, []string{
+		`<div class="card-meta"><p class="card-due"><svg class="icon"`, `<time class="task-due overdue" datetime="2026-10-20"`,
+		`<span class="card-avatars"><span class="card-assignee" title="Alice"><span class="avatar avatar-sm`,
+		`<span class="visually-hidden">Alice, Bob &lt;B&gt;</span>`,
+	}, nil)
+	// The card without a date or assignee has no meta row.
+	bare := html[strings.Index(html, `id="task-32"`):]
+	bare = bare[:strings.Index(bare, "</li>")]
+	requireContains(t, bare, []string{`<p class="card-title">Bare</p>`}, []string{"card-meta", "card-due", "card-assignees"})
+	// The menu of the first column: its three actions are inside it.
+	column := html[strings.Index(html, `id="column-10"`):strings.Index(html, `id="column-11"`)]
+	menu := column[strings.Index(column, `<details class="post-menu column-menu"`):strings.Index(column, `</details>`)]
+	requireContains(t, menu, []string{
+		`data-preserve-attr="open"`, `data-on:click__outside="el.removeAttribute('open')"`, `<div class="post-menu-panel column-actions">`,
+		`/columns/10/move`, `/columns/10/delete`, `Move left`, `Move right`, `Delete column`,
+	}, nil)
+	if strings.Count(menu, "<form") != 3 {
+		t.Errorf("the menu has %d forms, want 3:\n%s", strings.Count(menu, "<form"), menu)
+	}
+}
+
+// TestBoardHeaderHasTheRoomHeaderOfTheFeed: the board page shows the name, the
+// pill, the description with the member count and the tabs with Board current.
+func TestBoardHeaderHasTheRoomHeaderOfTheFeed(t *testing.T) {
+	b := testBoard(true)
+	b.Room.Description = "Everything <here>"
+	b.Room.MemberCount = 7
+	html := render(t, views.BoardHeader(views.BoardData{Board: b}))
+	requireContains(t, html, []string{
+		`<header id="board-header" class="room-header board-header">`, "<h1>general</h1>", `<p class="room-description">Everything &lt;here&gt;</p>`,
+		`<p class="hint room-members-count">7 members</p>`, `<a href="/rooms/4/board" aria-current="page">Board</a>`,
+	}, []string{"board-title", "Everything <here>"})
 }
 
 func TestBoardColumnsRead(t *testing.T) {

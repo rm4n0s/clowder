@@ -142,9 +142,10 @@ func newestMessage(ms []app.Message) *app.Message {
 // headerOps are the patches of the header of the conversation and, for a
 // group, of its members panel.
 func (cs *conversationStream) headerOps(ctx context.Context, h app.ConversationHeader) []patchOp {
-	ops := []patchOp{{component: views.ConversationHeader(views.ConversationData{Header: h, ViewerID: cs.actor.UserID})}}
+	panel := views.MembersPanelData{Header: h, ViewerID: cs.actor.UserID, Online: cs.s.onlineSet(ctx, cs.actor, memberIDsOf(h))}
+	ops := []patchOp{{component: views.ConversationHeader(views.ConversationData{Header: h, ViewerID: cs.actor.UserID, Members: panel})}}
 	if h.IsGroup {
-		ops = append(ops, patchOp{component: views.ConversationMembers(views.MembersPanelData{Header: h, ViewerID: cs.actor.UserID, Online: cs.s.onlineSet(ctx, cs.actor, memberIDsOf(h))})})
+		ops = append(ops, patchOp{component: views.ConversationMembers(panel)})
 	}
 	return ops
 }

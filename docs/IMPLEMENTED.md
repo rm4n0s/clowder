@@ -1521,3 +1521,35 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The members panel moves under the feed below 75 rem, not about 1100 px, so that the feed keeps its width beside the sidebar.
   - The reader's own mentions are not highlighted: a body is rendered once for everyone (D9), and a per-reader style would be inline, which D36 refuses. The manager decided so.
   - The reply editor still opens under the item answered, not at the end of the thread, so that the page does what it did. The manager decided so.
+
+## 21.3 Board, messages, search and notifications in the new look
+- **Date:** 2026-10-28
+- **Branch:** feat/step-21.3-board-messages
+- **Summary:** markup and CSS, with the components of 21.2.
+  - **The board:**
+    - the room header of 21.2 with Board active;
+    - the columns are rounded boxes, each with its name (the rename field), a count pill and a "more" menu (move left, move right, delete) that stays open through live patches;
+    - the task cards have an accent stripe, a due-date pill (red when overdue), assignee avatars, Open post, Details and Move to….
+    - `.board-scroll` scrolls sideways inside its box, and each column's list scrolls down inside itself; the page never scrolls sideways.
+    - Dragging shows the card, the column under the pointer and the drop place; `board.js` is unchanged.
+  - **Messages:**
+    - the list is rows with the others' avatars (unread in bold, muted dimmed), the new-conversation form as a card beside it from 60 rem, and the search of 20.3 as a pill with its results as cards;
+    - a conversation has a header with the people and their presence dots, its actions in a "more" menu in their own row (room for the call button of M22), the bubbles (the reader's own on the right in the accent wash, the others on the left with their avatar), and the composer of 21.2, smaller and in the flow.
+  - **Search:** a large box, the filters as pills, the results as small post cards with `<mark>`, the pager as pills, and an empty state with the paw.
+  - **Notifications:** rows with the actor's avatar and the sentence of 18.3. The unread ones have the warm ground, the accent dot and an "Unread" pill. "Mark all as read" sits on the title's row.
+  - Clowder has no in-page toast (`notify.js` uses the browser's notifications), so none was styled.
+  - One handler change: the header patches of a conversation (`groupChanged`, `conversationNotice`, `headerOps`) now pass who is online, so that the presence dots survive a patch.
+- **Main files:** `internal/web/views/{board,messages,search,notifications,posts,icons}.templ` and their `.go` helpers, `internal/web/{messages,messages_stream}.go`, `internal/web/static/app.css`, `internal/web/browser_look_test.go`, `docs/SPEC.md`.
+- **Tests:**
+  - browser: `TestBoardScrollsInsideItsOwnBox` (five columns at 390 and 1280 px; the page does not scroll sideways), `TestBoardDragStatesAreVisible`, `TestPagesOfTheBoardMessagesSearchAndNotificationsFitAPhone` (no sideways scroll, bubbles at most 85%, touch targets of 44 px), `TestConversationMenuOpensTheNotificationPreferences`;
+  - views of the board, messages and notifications; `TestMembersListShowsWhoIsOnline` extended to the header's dots; two new contrast pairs;
+  - the tests whose markup moved updated, none weakened.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [board light](implemented-proof-images/21.3-board-light.png) · [board dark](implemented-proof-images/21.3-board-dark.png) · [board 390](implemented-proof-images/21.3-board-390.png) · [conversation light](implemented-proof-images/21.3-conversation-light.png) · [conversation dark](implemented-proof-images/21.3-conversation-dark.png) · [conversation 390](implemented-proof-images/21.3-conversation-390.png) · [search light](implemented-proof-images/21.3-search-light.png) · [search dark](implemented-proof-images/21.3-search-dark.png) · [search 390](implemented-proof-images/21.3-search-390.png) · [notifications light](implemented-proof-images/21.3-notifications-light.png) · [notifications dark](implemented-proof-images/21.3-notifications-dark.png) · [notifications 390](implemented-proof-images/21.3-notifications-390.png) · [messages list](implemented-proof-images/21.3-messages-list-light.png)
+  - the board of `general`; alice's "Launch crew" with a reply and a reaction; a search for `#design`; alice's notifications (opening the page reads them, as since 11.2, so the bell is empty while the rows still say "Unread"); the Messages list.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - In a group, every message of someone else shows its author: each message arrives as its own patch, so the markup cannot tell that the author changed. In a direct conversation, CSS hides the repeats.
+  - A conversation has no "new" line, and the list says "Unread" rather than a number, because the summary has no count per conversation.
+  - The composer of a conversation is not sticky: a sticky one covered the last messages on a phone.

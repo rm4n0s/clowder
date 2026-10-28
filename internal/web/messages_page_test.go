@@ -171,7 +171,7 @@ func TestConversationPageShowsTheMessages(t *testing.T) {
 			`data-on:submit="@post(&#39;/messages/` + idText(s.conv) + `&#39;, {contentType: &#39;form&#39;})"`,
 			`<div id="message-reply" class="message-reply"></div>`,
 			`<textarea id="message-body" name="body" rows="2"`, `data-on:keydown="evt.key === &#39;Enter&#39; &amp;&amp; !evt.shiftKey`,
-			`<input id="message-files" name="files" type="file" multiple>`, `<button type="submit">Send</button>`,
+			`<input id="message-files" class="attach-input" name="files" type="file" multiple data-on:change="`, `<button type="submit">Send</button>`,
 		}, []string{"disabled user"})
 	})
 }

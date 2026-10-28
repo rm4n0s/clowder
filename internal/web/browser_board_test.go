@@ -33,6 +33,15 @@ func columnSel(name string) string {
 	return `.board-column[aria-label=` + strconv.Quote(name) + `]`
 }
 
+// openColumnMenu opens the "more" menu of the column (a details element) and
+// waits for its actions.
+func openColumnMenu(column string) chromedp.Action[chromedp.Void] {
+	return chromedp.Steps(
+		chromedp.Click(columnSel(column)+` .column-menu > summary`),
+		chromedp.WaitVisible(columnSel(column)+` .column-menu[open] .column-actions`),
+	)
+}
+
 // cardsIn returns the titles of the cards of the column, top to bottom, joined
 // with "|".
 func cardsIn(t *testing.T, ctx context.Context, column string) string {
@@ -224,7 +233,7 @@ func TestBoardColumnsAndCardForm(t *testing.T) {
 	runJS(t, alice, `window.confirm = () => true; true`)
 
 	// A column with cards cannot be deleted.
-	err := chromedp.Do(alice, chromedp.Click(columnSel("To do")+` form[action$="/delete"] button`))
+	err := chromedp.Do(alice, openColumnMenu("To do"), chromedp.Click(columnSel("To do")+` form[action$="/delete"] button`))
 	if err != nil {
 		t.Fatalf("alice deletes To do: %v", err)
 	}
@@ -258,12 +267,17 @@ func TestBoardColumnsAndCardForm(t *testing.T) {
 		t.Fatalf("bob does not see the new name: %v", err)
 	}
 	// Move it left, then delete it (it has no cards).
-	err = chromedp.Do(alice, chromedp.Click(columnSel("Reviewed")+` form[action$="/move"] button[title="Move left"]`))
+	err = chromedp.Do(alice, openColumnMenu("Reviewed"), chromedp.Click(columnSel("Reviewed")+` form[action$="/move"] button[aria-label="Move the column left"]`))
 	if err != nil {
 		t.Fatalf("alice moves the column left: %v", err)
 	}
 	if err := waitFor(alice, `[...document.querySelectorAll('.board-column')].map(c => c.getAttribute('aria-label')).join('|') === 'To do|In progress|Reviewed|Done'`); err != nil {
 		t.Fatalf("the column did not move left: %v", err)
+	}
+	// The answer that moved the column patched the columns, and the menu of the
+	// column kept its place open (data-preserve-attr), so delete is at hand.
+	if err := waitFor(alice, `document.querySelector(`+strconv.Quote(columnSel("Reviewed")+" .column-menu")+`).open`); err != nil {
+		t.Fatalf("the menu of the column closed when the columns were patched: %v", err)
 	}
 	err = chromedp.Do(alice, chromedp.Click(columnSel("Reviewed")+` form[action$="/delete"] button`))
 	if err != nil {

@@ -193,7 +193,7 @@ func TestSearchPage(t *testing.T) {
 		{
 			name: "nothing found",
 			d:    views.SearchData{Query: "zzz", Searched: true, Page: 1},
-			want: []string{"Nothing found."}, notWant: []string{"search-result", `class="pager"`},
+			want: []string{`<div class="empty-state"><span class="empty-mark"><svg class="icon"`, `<p class="empty">Nothing found.</p></div>`}, notWant: []string{"search-result", `class="pager"`},
 		},
 		{
 			name:    "a problem is under the box",

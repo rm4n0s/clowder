@@ -847,9 +847,9 @@ func PlacePrefsButton(d PlacePrefsData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var43 string
-			templ_7745c5c3_Var43, templ_7745c5c3_Err = templruntime.NewAttributeExpression("document.getElementById('" + PlacePrefsDialogID + "').showModal()").Resolve(ctx)
+			templ_7745c5c3_Var43, templ_7745c5c3_Err = templruntime.NewAttributeExpression("el.closest('details')?.removeAttribute('open'); document.getElementById('" + PlacePrefsDialogID + "').showModal()").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `notify.templ`, Line: 182, Col: 147}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `notify.templ`, Line: 182, Col: 195}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
 			if templ_7745c5c3_Err != nil {

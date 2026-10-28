@@ -72,6 +72,29 @@ func TestHeaderHasTheBell(t *testing.T) {
 	}
 }
 
+// TestNotificationItemLayout: the avatar of the actor is beside the text and
+// not in it (the sentence stays the text of the notification), and the unread
+// dot of the avatar is the class unread of the item.
+func TestNotificationItemLayout(t *testing.T) {
+	n := app.Notification{
+		ID: 7, Kind: app.NotificationMention, Actor: app.UserRef{ID: 2, Username: "alice", DisplayName: "Alice"},
+		RoomID: 3, RoomName: "general", PostID: 11, RootID: 10, CreatedAt: time.Date(2026, 10, 27, 9, 30, 0, 0, time.UTC),
+	}
+	html := renderHTML(t, views.NotificationItem(n))
+	i, j, k := strings.Index(html, `<span class="notification-avatar">`), strings.Index(html, `<div class="notification-body">`), strings.Index(html, `<p class="notification-text">`)
+	if i < 0 || j < i || k < j {
+		t.Errorf("the avatar, the body and the text are not in this order (%d, %d, %d):\n%s", i, j, k, html)
+	}
+	text := html[k:]
+	text = text[:strings.Index(text, "</p>")]
+	if strings.Contains(text, "avatar") {
+		t.Errorf("the avatar is inside the sentence:\n%s", text)
+	}
+	if !strings.Contains(html, `avatar avatar-xl`) {
+		t.Errorf("the avatar is not the large one:\n%s", html)
+	}
+}
+
 func TestNotificationItem(t *testing.T) {
 	at := time.Date(2026, 10, 27, 9, 30, 0, 0, time.UTC)
 	base := app.Notification{

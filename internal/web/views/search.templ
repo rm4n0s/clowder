@@ -6,9 +6,11 @@ import "strconv"
 // chips and the results.
 templ SearchPage(d SearchData) {
 	@Layout("Search", d.Sidebar.UnreadTotal(), &d.Sidebar) {
-		<h1>Search</h1>
-		@SearchBox(d.Query)
-		@SearchPanel(d)
+		<div class="search-page">
+			<h1>Search</h1>
+			@SearchBox(d.Query)
+			@SearchPanel(d)
+		</div>
 		@liveStream(MeStreamPath)
 	}
 }
@@ -18,10 +20,13 @@ templ SearchPage(d SearchData) {
 // and patched in place after a short pause in the typing.
 templ SearchBox(query string) {
 	<form id="search-form" class="search-form" role="search" method="get" action="/search" data-on:submit={ searchBoxAction }>
-		<label for="search-q">Search</label>
+		<label class="visually-hidden" for="search-q">Search</label>
 		<div class="search-form-row">
-			<input id="search-q" name="q" type="search" value={ query } autocomplete="off" aria-describedby="search-help" data-on:input__debounce.300ms={ searchBoxAction }/>
-			<button type="submit">Search</button>
+			<input id="search-q" name="q" type="search" value={ query } autocomplete="off" placeholder="Search posts, #tags, @people" aria-describedby="search-help" data-on:input__debounce.300ms={ searchBoxAction }/>
+			<button type="submit">
+				@IconSearch()
+				Search
+			</button>
 		</div>
 	</form>
 }
@@ -56,12 +61,14 @@ templ SearchPanel(d SearchData) {
 		}
 		if d.Searched {
 			if len(d.Results) == 0 {
-				<p class="empty">Nothing found.</p>
+				@emptyState() {
+					<p class="empty">Nothing found.</p>
+				}
 			} else {
 				<ol class="search-results">
 					for _, r := range d.Results {
 						<li class="search-result" id={ "result-" + strconv.FormatUint(r.PostID, 10) }>
-							<header class="post-meta">
+							<header class="post-meta search-meta">
 								<a class="search-room" href={ templ.SafeURL(RoomPath(r.RoomID)) }>{ r.RoomName }</a>
 								@Avatar(r.Author.ID, r.Author.DisplayName, r.Author.AvatarURL())
 								<span class="post-author">{ r.Author.DisplayName }</span>

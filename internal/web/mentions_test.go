@@ -274,6 +274,29 @@ func TestMembersListShowsWhoIsOnline(t *testing.T) {
 			t.Errorf("conversation, %s: dot = %v, want %v:\n%s", name, !want, want, li)
 		}
 	}
+	// The header of the conversation shows the people with the same dots (21.3):
+	// one person of the header is the span with the avatar and the dot.
+	header := body[strings.Index(body, `id="conversation-header"`):]
+	header = header[:strings.Index(header, `</header>`)]
+	for name, want := range map[string]bool{"bob": true, "dave": false} {
+		person := header[strings.Index(header, `<span class="conversation-person" title="`+e.user(name).DisplayName+`">`):]
+		person = person[:strings.Index(person, `</span></span>`)+len(`</span></span>`)]
+		if strings.Contains(person, dot) != want {
+			t.Errorf("header, %s: dot = %v, want %v:\n%s", name, !want, want, person)
+		}
+	}
+	if strings.Contains(header, `title="Alice"`) {
+		t.Errorf("the header shows the viewer among the people:\n%s", header)
+	}
+	// A direct conversation has the other person's avatar and dot in its header.
+	pair, err := e.msgs.StartDirect(t.Context(), e.actor(e.alice), e.bob.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = e.send(get("/messages/"+idText(pair), e.cookies["alice"])).Body.String()
+	if !strings.Contains(body, `<span class="conversation-person" title="Bob">`) || !strings.Contains(body, dot) {
+		t.Errorf("the header of the direct conversation lacks Bob and his dot:\n%s", body)
+	}
 }
 
 // listItem returns the <li> of the page whose opening tag holds marker.

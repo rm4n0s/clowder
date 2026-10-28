@@ -7,14 +7,21 @@ import "github.com/rm4n0s/clowder/internal/app"
 // page opened; "Mark all as read" clears them through the signal readUpTo.
 templ NotificationsPage(d NotificationsData) {
 	@Layout("Notifications", d.Sidebar.UnreadTotal(), &d.Sidebar) {
-		<h1>Notifications</h1>
-		<section id="notifications" data-signals="{readUpTo: 0}">
+		<section id="notifications" class="notifications-page" data-signals="{readUpTo: 0}">
+			<header class="notifications-head">
+				<h1>Notifications</h1>
+				<form id="mark-all-form" class="mark-all-form" method="post" action={ templ.SafeURL(NotificationsReadPath) } data-on:submit={ FormPost(NotificationsReadPath) }>
+					<button type="submit" class="secondary">
+						@IconCheck()
+						Mark all as read
+					</button>
+				</form>
+			</header>
 			@NotificationsMessage(d.Message)
-			<form id="mark-all-form" class="mark-all-form" method="post" action={ templ.SafeURL(NotificationsReadPath) } data-on:submit={ FormPost(NotificationsReadPath) }>
-				<button type="submit" class="secondary">Mark all as read</button>
-			</form>
 			if len(d.Items) == 0 {
-				<p class="empty" id="notifications-empty">No notifications yet.</p>
+				@emptyState() {
+					<p class="empty" id="notifications-empty">No notifications yet.</p>
+				}
 			}
 			<ol id="notification-list" class="notification-list">
 				for _, n := range d.Items {
@@ -53,26 +60,30 @@ templ NotificationItem(n app.Notification) {
 			data-class:unread={ unreadWhile(n.ID) }
 		}
 	>
-		<p class="notification-text">
-			@Avatar(n.Actor.ID, n.Actor.DisplayName, n.Actor.AvatarURL())
-			if n.Others > 0 {
-				<span class="notification-actor">{ n.Actor.DisplayName }</span><span class="notification-others">{ NotificationOthers(n) }</span> { NotificationSentence(n) } <a class="notification-room" href={ templ.SafeURL(RoomPath(n.RoomID)) }>{ n.RoomName }</a>
-			} else {
-				<span class="notification-actor">{ n.Actor.DisplayName }</span> <span class="notification-username">{ "@" + n.Actor.Username }</span> { NotificationSentence(n) } <a class="notification-room" href={ templ.SafeURL(RoomPath(n.RoomID)) }>{ n.RoomName }</a>
-			}
-		</p>
-		<p class="notification-meta">
-			<time class="post-time" datetime={ postTimeStamp(n.CreatedAt) } title={ postTimeStamp(n.CreatedAt) }>{ postTimeText(n.CreatedAt) }</time>
-			<a class="notification-link" href={ templ.SafeURL(NotificationPath(n)) }>
-				if n.Kind == app.NotificationAddedToRoom {
-					Open room
+		<span class="notification-avatar">
+			@AvatarSized(n.Actor.ID, n.Actor.DisplayName, n.Actor.AvatarURL(), "xl")
+		</span>
+		<div class="notification-body">
+			<p class="notification-text">
+				if n.Others > 0 {
+					<span class="notification-actor">{ n.Actor.DisplayName }</span><span class="notification-others">{ NotificationOthers(n) }</span> { NotificationSentence(n) } <a class="notification-room" href={ templ.SafeURL(RoomPath(n.RoomID)) }>{ n.RoomName }</a>
 				} else {
-					Open post
+					<span class="notification-actor">{ n.Actor.DisplayName }</span> <span class="notification-username">{ "@" + n.Actor.Username }</span> { NotificationSentence(n) } <a class="notification-room" href={ templ.SafeURL(RoomPath(n.RoomID)) }>{ n.RoomName }</a>
 				}
-			</a>
-			if !n.Read {
-				<span class="notification-mark" data-show={ unreadWhile(n.ID) }>Unread</span>
-			}
-		</p>
+			</p>
+			<p class="notification-meta">
+				<time class="post-time" datetime={ postTimeStamp(n.CreatedAt) } title={ postTimeStamp(n.CreatedAt) }>{ postTimeText(n.CreatedAt) }</time>
+				<a class="notification-link" href={ templ.SafeURL(NotificationPath(n)) }>
+					if n.Kind == app.NotificationAddedToRoom {
+						Open room
+					} else {
+						Open post
+					}
+				</a>
+				if !n.Read {
+					<span class="notification-mark" data-show={ unreadWhile(n.ID) }>Unread</span>
+				}
+			</p>
+		</div>
 	</li>
 }
