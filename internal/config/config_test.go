@@ -27,6 +27,7 @@ func TestDefaultValidates(t *testing.T) {
 		LogLevel:              "info",
 		TrustProxyHeaders:     false,
 		MaxCalls:              20,
+		CallRingTimeout:       45 * time.Second,
 	}
 	if cfg != want {
 		t.Errorf("Default() = %+v, want %+v", cfg, want)
@@ -135,6 +136,10 @@ func TestValidate(t *testing.T) {
 		{"one call at most", func(c *Config) { c.MaxCalls = 1 }, ""},
 		{"no calls at most", func(c *Config) { c.MaxCalls = 0 }, TagMaxCallsInvalid},
 		{"negative calls at most", func(c *Config) { c.MaxCalls = -2 }, TagMaxCallsInvalid},
+		{"a call rings for a second", func(c *Config) { c.CallRingTimeout = time.Second }, ""},
+		{"a call rings for half a second", func(c *Config) { c.CallRingTimeout = time.Second / 2 }, TagCallRingTimeoutInvalid},
+		{"a call rings for no time", func(c *Config) { c.CallRingTimeout = 0 }, TagCallRingTimeoutInvalid},
+		{"a call rings for a negative time", func(c *Config) { c.CallRingTimeout = -time.Second }, TagCallRingTimeoutInvalid},
 		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }, TagLogLevelUnknown},
 		{"empty log level", func(c *Config) { c.LogLevel = "" }, TagLogLevelUnknown},
 	}

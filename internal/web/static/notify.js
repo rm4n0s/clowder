@@ -17,6 +17,15 @@
 //   - every tab of the person receives the event, so the tabs elect one of
 //     them through BroadcastChannel("clowder-notify"): the event rings once.
 //
+// The same script rings for a call (SPEC §7.18). The user's stream puts the
+// dialog of the call that rings in #call-ringing; this script opens it as a
+// dialog, plays the ringtone *Purr ring* (Web Audio, repeated until the dialog
+// goes away) in one tab of the user when the server says so (data-ring), and
+// shows the browser notification "Bob is calling you" when no Clowder tab has
+// the focus (data-browser). The ringtone does not depend on the user's
+// notification sound. If the browser refuses sound before the page was touched,
+// the dialog still shows and the ringtone starts at the first touch.
+//
 // A test can read what the script decided: when window.__clowderNotifyLog is
 // an array, every decision of the tab that rings is pushed to it as
 // {kind, sound, notified, played}.
@@ -39,6 +48,7 @@
   var seen = {};             // the events this tab has taken up
   var claims = {};           // event id -> the announcements of the tabs
   var channel = null;
+  var ringing = null;        // the call that rings in this tab: {id, tick, timer}
 
   try {
     if ('BroadcastChannel' in window) {
@@ -59,6 +69,9 @@
     window.addEventListener(name, function () {
       touched = true;
       context();
+      if (ringing && ringing.tick) {
+        ringing.tick();
+      }
     }, { capture: true, passive: true });
   });
 
@@ -300,6 +313,223 @@
     } catch (err) {
       return false;
     }
+  }
+
+  // The ringing dialog of a call (SPEC §7.18).
+
+  var RING_PERIOD = 4000;    // 1.5 s of ringtone and 2.5 s of quiet
+  var RING_LIMIT = 50000;    // the server stops the call after 45 s
+
+  // purrRing is the ringtone *Purr ring*: a warm low tone with a purr-like
+  // flutter, 1.5 seconds long.
+  function purrRing(ctx, out, t) {
+    var len = 1.5;
+    var body = ctx.createGain();
+    body.gain.setValueAtTime(0.0001, t);
+    body.gain.exponentialRampToValueAtTime(0.5, t + 0.12);
+    body.gain.setValueAtTime(0.5, t + len - 0.35);
+    body.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    body.connect(out);
+    // The flutter: a 26 Hz tremolo on a carrier gain.
+    var carrier = ctx.createGain();
+    carrier.gain.setValueAtTime(0.55, t);
+    var lfo = ctx.createOscillator();
+    var depth = ctx.createGain();
+    lfo.frequency.setValueAtTime(26, t);
+    depth.gain.setValueAtTime(0.4, t);
+    lfo.connect(depth);
+    depth.connect(carrier.gain);
+    carrier.connect(body);
+    // The tone: a low triangle with a sine a fifth above it, gliding a little.
+    var low = ctx.createOscillator();
+    low.type = 'triangle';
+    low.frequency.setValueAtTime(130, t);
+    low.frequency.linearRampToValueAtTime(150, t + len * 0.5);
+    low.frequency.linearRampToValueAtTime(124, t + len);
+    var fifth = ctx.createOscillator();
+    var fifthGain = ctx.createGain();
+    fifth.type = 'sine';
+    fifth.frequency.setValueAtTime(195, t);
+    fifth.frequency.linearRampToValueAtTime(225, t + len * 0.5);
+    fifth.frequency.linearRampToValueAtTime(186, t + len);
+    fifthGain.gain.setValueAtTime(0.35, t);
+    low.connect(carrier);
+    fifth.connect(fifthGain);
+    fifthGain.connect(carrier);
+    [lfo, low, fifth].forEach(function (osc) {
+      osc.start(t);
+      osc.stop(t + len + 0.05);
+    });
+  }
+
+  // ringContext is the AudioContext for the ringtone. It is made even before
+  // the page was touched: the browser may keep it suspended until then.
+  function ringContext() {
+    if (!audio) {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) {
+        return null;
+      }
+      try {
+        audio = new Ctx();
+      } catch (err) {
+        return null;
+      }
+    }
+    if (audio.state === 'suspended' && audio.resume) {
+      audio.resume().catch(function () {});
+    }
+    return audio;
+  }
+
+  // startRinging plays the ringtone every RING_PERIOD, while the browser lets
+  // sound play. It returns the state of the ringing; stop ends it.
+  function startRinging(onPlay) {
+    var r = { timer: null, stopped: false, started: false };
+    r.tick = function () {
+      if (r.stopped) {
+        return;
+      }
+      var ctx = ringContext();
+      if (!ctx || ctx.state !== 'running') {
+        return;
+      }
+      var now = Date.now();
+      if (r.last && now - r.last < RING_PERIOD - 200) {
+        return;
+      }
+      r.last = now;
+      try {
+        var master = ctx.createGain();
+        master.gain.setValueAtTime(0.5, ctx.currentTime);
+        master.connect(ctx.destination);
+        purrRing(ctx, master, ctx.currentTime + 0.02);
+        if (!r.started) {
+          r.started = true;
+          onPlay(true);
+        }
+      } catch (err) {
+        // The ringtone is a courtesy; the dialog is what matters.
+      }
+    };
+    r.tick();
+    r.timer = setInterval(r.tick, 500);
+    r.limit = setTimeout(function () {
+      r.stop();
+    }, RING_LIMIT);
+    r.stop = function () {
+      r.stopped = true;
+      clearInterval(r.timer);
+      clearTimeout(r.limit);
+    };
+    return r;
+  }
+
+  // openDialog opens the dialog of the call as a modal. When the person
+  // dismisses it (Escape) it stays as a small card in the corner, so that the
+  // call is not missed and the page is not blocked.
+  function openDialog(dialog) {
+    if (!dialog.__clowderCall) {
+      dialog.__clowderCall = true;
+      dialog.addEventListener('close', function () {
+        if (dialog.isConnected && !dialog.open) {
+          try {
+            dialog.show();
+          } catch (err) {
+            // Already open.
+          }
+        }
+      });
+    }
+    if (!dialog.open && dialog.showModal) {
+      try {
+        dialog.showModal();
+      } catch (err) {
+        dialog.setAttribute('open', '');
+      }
+    }
+  }
+
+  // The tabs elect the one that rings, as for the other events.
+  function electCall(id, done) {
+    var focused = document.hasFocus();
+    var mine = { type: 'claim', id: id, tab: tabID, focused: focused, suppress: false, touched: touched };
+    (claims[id] = claims[id] || []).push(mine);
+    if (channel) {
+      channel.postMessage(mine);
+    }
+    setTimeout(function () {
+      var all = claims[id] || [];
+      delete claims[id];
+      all.sort(function (a, b) {
+        if (a.touched !== b.touched) {
+          return a.touched ? -1 : 1;
+        }
+        return a.tab < b.tab ? -1 : a.tab > b.tab ? 1 : 0;
+      });
+      if (all.length && all[0].tab === tabID) {
+        done(all.some(function (c) { return c.focused; }));
+      }
+    }, channel ? ELECTION_WAIT : 0);
+  }
+
+  function stopCallRinging() {
+    if (ringing) {
+      ringing.stop();
+      ringing.stopped = true;
+      ringing = null;
+    }
+  }
+
+  function checkCallDialog(slot) {
+    var dialog = slot.querySelector('dialog.call-dialog');
+    if (!dialog) {
+      stopCallRinging();
+      return;
+    }
+    var call = dialog.getAttribute('data-call');
+    openDialog(dialog);
+    if (ringing && ringing.call === call) {
+      return;
+    }
+    stopCallRinging();
+    var mark = { call: call, stop: function () {}, stopped: false };
+    ringing = mark;
+    var id = 'call-' + call;
+    electCall(id, function (anyFocus) {
+      if (ringing !== mark || !slot.querySelector('dialog.call-dialog')) {
+        return;
+      }
+      var wantRing = dialog.hasAttribute('data-ring');
+      var played = false;
+      if (wantRing) {
+        var r = startRinging(function (p) { played = p; });
+        mark.stop = r.stop;
+        mark.tick = r.tick;
+        // The log gets the first sound, whenever the browser lets it play.
+        var watch = setInterval(function () {
+          if (r.started || r.stopped) {
+            clearInterval(watch);
+            log({ kind: 'call.ringing', sound: 'purr-ring', notified: notified, played: r.started });
+          }
+        }, 200);
+      }
+      var notified = false;
+      if (dialog.hasAttribute('data-browser') && !anyFocus) {
+        notified = show({ id: id, text: dialog.getAttribute('data-notice') || '', url: '' });
+      }
+      if (!wantRing) {
+        log({ kind: 'call.ringing', sound: '', notified: notified, played: false });
+      }
+    });
+  }
+
+  var callSlot = document.getElementById('call-ringing');
+  if (callSlot) {
+    new MutationObserver(function () {
+      checkCallDialog(callSlot);
+    }).observe(callSlot, { childList: true, subtree: true });
+    checkCallDialog(callSlot);
   }
 
   // Watch for what the server appends.

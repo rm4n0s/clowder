@@ -629,6 +629,220 @@ func TestCallEntryTexts(t *testing.T) {
 	}
 }
 
+// TestCallEntryMissedMark checks which entries a reader missed: the callee of a
+// call that nobody answered, that was cancelled or that found them busy; never
+// the caller, a call that was answered or one that the callee declined.
+func TestCallEntryMissedMark(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		end  func(e *callEnv, c app.Call)
+		// alice is the caller and bob the callee.
+		alice, bob bool
+	}{
+		{"answered", func(e *callEnv, c app.Call) {
+			e.answer("bob", c.ID)
+			mustCall(t)(e.calls.HangUp(t.Context(), e.as("bob"), c.ID))
+		}, false, false},
+		{"declined", func(e *callEnv, c app.Call) { mustCall(t)(e.calls.Decline(t.Context(), e.as("bob"), c.ID)) }, false, false},
+		{"cancelled", func(e *callEnv, c app.Call) { mustCall(t)(e.calls.Cancel(t.Context(), e.as("alice"), c.ID)) }, false, true},
+		{"missed", func(e *callEnv, c app.Call) {
+			e.clk.Advance(45 * time.Second)
+			if n, err := e.calls.Expire(t.Context()); err != nil || n != 1 {
+				t.Fatalf("Expire = %d, %v", n, err)
+			}
+		}, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newCallEnv(t)
+			tt.end(e, e.start("alice", e.ab, true))
+			for who, want := range map[string]bool{"alice": tt.alice, "bob": tt.bob} {
+				entries := e.entries(who, e.ab)
+				if len(entries) != 1 || entries[0].Call == nil {
+					t.Fatalf("%s reads %+v", who, entries)
+				}
+				if got := entries[0].Call.Missed; got != want {
+					t.Errorf("%s: Missed = %v, want %v (%q)", who, got, want, entries[0].Call.Text)
+				}
+			}
+		})
+	}
+	t.Run("busy", func(t *testing.T) {
+		t.Parallel()
+		e := newCallEnv(t)
+		e.start("bob", e.direct("bob", "carol"), false)
+		if _, err := e.calls.Start(t.Context(), e.as("alice"), e.ab, true); err == nil {
+			t.Fatal("Start to a busy user succeeded")
+		}
+		entries := e.entries("bob", e.ab)
+		if len(entries) != 1 || entries[0].Call == nil || !entries[0].Call.Missed {
+			t.Errorf("the callee reads %+v, want a missed call", entries)
+		}
+		if entries := e.entries("alice", e.ab); len(entries) != 1 || entries[0].Call.Missed {
+			t.Errorf("the caller reads %+v, want a call that is not marked missed", entries)
+		}
+	})
+}
+
+// TestCallsEnabledAndElapsed checks what the pages ask of the service besides
+// the actions: whether calls are on, and how long an active call has lasted.
+func TestCallsEnabledAndElapsed(t *testing.T) {
+	t.Parallel()
+	if !newCallEnv(t).calls.Enabled() {
+		t.Error("Enabled() is false with Enabled set")
+	}
+	if newCallEnvWith(t, app.CallsConfig{ProcessID: callTestProcess}).calls.Enabled() {
+		t.Error("Enabled() is true without it")
+	}
+	e := newCallEnv(t)
+	call := e.start("alice", e.ab, true)
+	if call.Elapsed != 0 {
+		t.Errorf("Elapsed of a call that rings = %v, want 0", call.Elapsed)
+	}
+	e.answer("bob", call.ID)
+	e.clk.Advance(75 * time.Second)
+	got, ok, err := e.calls.Current(t.Context(), e.as("alice"), e.ab)
+	if err != nil || !ok {
+		t.Fatalf("Current = %v, %v", ok, err)
+	}
+	if got.Elapsed != 75*time.Second {
+		t.Errorf("Elapsed = %v, want 75s", got.Elapsed)
+	}
+}
+
+// TestCallsInvitation is the table of who is asked to answer a call and how it
+// rings (SPEC §7.15, §7.18): the ringtone plays unless the conversation is muted
+// or its notifications say Nothing, whatever the sound setting says; the browser
+// notification needs the setting and a ringing call.
+func TestCallsInvitation(t *testing.T) {
+	t.Parallel()
+	conv := func(e *callEnv) app.PlaceRef { return app.ConversationRef(e.ab) }
+	tests := []struct {
+		name  string
+		setup func(e *callEnv)
+		// ring and browser are what bob's invitation says.
+		ring, browser bool
+	}{
+		{"defaults", func(e *callEnv) {}, true, false},
+		{"sound off globally", func(e *callEnv) {
+			e.setSettings("bob", app.SettingsUpdate{Sound: ptr(false)})
+		}, true, false},
+		{"sound off in the conversation", func(e *callEnv) {
+			e.setPlace("bob", conv(e), app.PlaceUpdate{Sound: ptr(app.PlaceSoundOff)})
+		}, true, false},
+		{"browser notifications on", func(e *callEnv) {
+			e.setSettings("bob", app.SettingsUpdate{BrowserNotifications: ptr(true)})
+		}, true, true},
+		{"conversation muted", func(e *callEnv) {
+			e.setPlace("bob", conv(e), app.PlaceUpdate{Muted: ptr(true)})
+		}, false, false},
+		{"conversation muted, browser notifications on", func(e *callEnv) {
+			e.setSettings("bob", app.SettingsUpdate{BrowserNotifications: ptr(true)})
+			e.setPlace("bob", conv(e), app.PlaceUpdate{Muted: ptr(true)})
+		}, false, false},
+		{"conversation says nothing", func(e *callEnv) {
+			e.setPlace("bob", conv(e), app.PlaceUpdate{Notify: ptr(app.PlaceNotifyNothing)})
+		}, false, false},
+		{"global nothing", func(e *callEnv) {
+			e.setSettings("bob", app.SettingsUpdate{Notify: ptr(app.NotifyNothing)})
+		}, false, false},
+		{"global nothing, the conversation says all", func(e *callEnv) {
+			e.setSettings("bob", app.SettingsUpdate{Notify: ptr(app.NotifyNothing)})
+			e.setPlace("bob", conv(e), app.PlaceUpdate{Notify: ptr(app.PlaceNotifyAll)})
+		}, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newCallEnv(t)
+			tt.setup(e)
+			call := e.start("alice", e.ab, true)
+			for _, byID := range []bool{true, false} {
+				var inv app.CallInvitation
+				var ok bool
+				var err error
+				if byID {
+					inv, ok, err = e.calls.Invitation(t.Context(), e.as("bob"), call.ID)
+				} else {
+					inv, ok, err = e.calls.Ringing(t.Context(), e.as("bob"))
+				}
+				if err != nil || !ok {
+					t.Fatalf("invitation (by ID %v) = %v, %v", byID, ok, err)
+				}
+				if inv.Ring != tt.ring || inv.Browser != tt.browser || inv.Text != "Alice is calling you" || inv.Call.ID != call.ID || !inv.Call.Incoming {
+					t.Errorf("invitation (by ID %v) = %+v, want ring %v browser %v", byID, inv, tt.ring, tt.browser)
+				}
+			}
+		})
+	}
+}
+
+// TestCallsInvitationPermissions is the table of who is asked: only the callee
+// of a call that rings. The others get no invitation and no hint that the call
+// exists; a disabled user is not served.
+func TestCallsInvitationPermissions(t *testing.T) {
+	t.Parallel()
+	states := []string{"ringing", "active", "ended"}
+	for _, state := range states {
+		for _, who := range []string{"alice", "bob", "carol", "admin", "erin"} {
+			t.Run(state+" as "+who, func(t *testing.T) {
+				t.Parallel()
+				e := newCallEnv(t)
+				call := e.inState(state)
+				want := state == "ringing" && who == "bob"
+				_, ok, err := e.calls.Invitation(t.Context(), e.as(who), call.ID)
+				if err != nil || ok != want {
+					t.Errorf("Invitation = %v, %v, want %v", ok, err, want)
+				}
+				_, ok, err = e.calls.Ringing(t.Context(), e.as(who))
+				if err != nil || ok != want {
+					t.Errorf("Ringing = %v, %v, want %v", ok, err, want)
+				}
+			})
+		}
+	}
+	t.Run("a call that does not exist", func(t *testing.T) {
+		t.Parallel()
+		e := newCallEnv(t)
+		if _, ok, err := e.calls.Invitation(t.Context(), e.as("bob"), 999); err != nil || ok {
+			t.Errorf("Invitation = %v, %v", ok, err)
+		}
+	})
+	for _, name := range []string{"Invitation", "Ringing"} {
+		t.Run(name+" as a disabled user", func(t *testing.T) {
+			t.Parallel()
+			e := newCallEnv(t)
+			call := e.inState("ringing")
+			e.disable("bob")
+			var err error
+			if name == "Invitation" {
+				_, _, err = e.calls.Invitation(t.Context(), e.as("bob"), call.ID)
+			} else {
+				_, _, err = e.calls.Ringing(t.Context(), e.as("bob"))
+			}
+			_ = requireTag(t, err, app.TagUnauthenticated, "checkActive.Unauthenticated")
+		})
+	}
+}
+
+// setSettings changes the global settings of the user.
+func (e *callEnv) setSettings(user string, update app.SettingsUpdate) {
+	e.t.Helper()
+	if _, err := e.svc.UpdateSettings(e.t.Context(), e.as(user), update); err != nil {
+		e.t.Fatalf("UpdateSettings(%s): %+v", user, err)
+	}
+}
+
+// setPlace changes the preferences of the user in the place.
+func (e *callEnv) setPlace(user string, ref app.PlaceRef, update app.PlaceUpdate) {
+	e.t.Helper()
+	if _, err := app.NewPrefs(e.st, e.rec).UpdatePlace(e.t.Context(), e.as(user), ref, update); err != nil {
+		e.t.Fatalf("UpdatePlace(%s): %+v", user, err)
+	}
+}
+
 // mustCall fails the test when a service call failed.
 func mustCall(t *testing.T) func(app.Call, error) {
 	return func(_ app.Call, err error) {

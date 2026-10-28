@@ -33,6 +33,9 @@ const (
 	// DefaultMaxCalls is the most calls that one process holds at once (SPEC
 	// D64).
 	DefaultMaxCalls = 20
+	// DefaultCallRingTimeout is how long a call rings before it is missed
+	// (SPEC §7.18).
+	DefaultCallRingTimeout = 45 * time.Second
 )
 
 // Config holds the settings of a Clowder process (SPEC §11).
@@ -90,6 +93,11 @@ type Config struct {
 	// MaxCalls is the most calls (ringing or in progress) that one process
 	// holds at once; at least 1.
 	MaxCalls int
+	// CallRingTimeout is how long a call rings before nobody answered it and
+	// it becomes a missed call (SPEC §7.18); at least one second. The default
+	// of 45 seconds is what people expect; a shorter time is for the tests of
+	// the pages.
+	CallRingTimeout time.Duration
 }
 
 // DefaultSSHHostKeyFile is the name of the host key inside the data directory
@@ -130,6 +138,7 @@ func Default() Config {
 		InvitationLifetime:    DefaultInvitationLifetime,
 		LogLevel:              DefaultLogLevel,
 		MaxCalls:              DefaultMaxCalls,
+		CallRingTimeout:       DefaultCallRingTimeout,
 	}
 }
 
@@ -246,6 +255,10 @@ func (c Config) Validate() error {
 		return errors.New(TagMaxCallsInvalid, "the maximum number of calls must be at least 1",
 			"value", c.MaxCalls)
 	}
+	if c.CallRingTimeout < time.Second {
+		return errors.New(TagCallRingTimeoutInvalid, "a call must ring for at least one second",
+			"value", c.CallRingTimeout.String())
+	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":
 	default:
@@ -318,6 +331,8 @@ const (
 	TagMediaPublicIPInvalid = "MediaPublicIPInvalid"
 	// TagMaxCallsInvalid is the tag of a maximum number of calls below 1.
 	TagMaxCallsInvalid = "MaxCallsInvalid"
+	// TagCallRingTimeoutInvalid is the tag of a ring timeout below one second.
+	TagCallRingTimeoutInvalid = "CallRingTimeoutInvalid"
 	// TagSSHAddrInvalid is the tag of an SSH address that is not host:port.
 	TagSSHAddrInvalid = "SSHAddrInvalid"
 	// TagSSHHostKeyDirMissing is the tag of an SSH host key path in a directory that does not exist.

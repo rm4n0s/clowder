@@ -40,6 +40,8 @@ func TestIcons(t *testing.T) {
 		"moon": views.IconMoon(), "monitor": views.IconMonitor(), "plus": views.IconPlus(), "check": views.IconCheck(),
 		"close": views.IconClose(), "menu": views.IconMenu(), "board": views.IconBoard(), "feed": views.IconFeed(),
 		"tag": views.IconTag(), "calendar": views.IconCalendar(), "file": views.IconFile(), "task": views.IconTask(), "task-done": views.IconTaskDone(),
+		"phone": views.IconPhone(), "hang-up": views.IconHangUp(), "video": views.IconVideo(), "video-off": views.IconVideoOff(),
+		"mic": views.IconMic(), "mic-off": views.IconMicOff(), "screen": views.IconScreen(), "sliders": views.IconSliders(),
 	}
 	for name, c := range icons {
 		t.Run(name, func(t *testing.T) {

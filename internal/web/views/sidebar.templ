@@ -28,6 +28,9 @@ type SidebarData struct {
 	// Theme is the theme of the user, which the theme form of the user menu
 	// marks; empty means System.
 	Theme app.Theme
+	// Ringing is the call that rings for the user, which the ringing dialog
+	// of the page shows (SPEC §7.18); nil while none does.
+	Ringing *CallInviteData
 }
 
 // PageHeader is the header element of the pages of a logged-in user, with

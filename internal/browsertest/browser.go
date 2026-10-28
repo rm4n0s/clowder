@@ -65,6 +65,25 @@ func NewBrowser(ctx context.Context, extra ...chromedp.ExecAllocatorOption) (con
 	return browserCtx, cancel, nil
 }
 
+// FakeMedia returns the allocator options that give a browser a camera, a
+// microphone and a screen to share without any hardware: Chromium's fake
+// devices (a moving test picture and a beep), its permission prompts answered
+// "allow" for the camera, the microphone and the screen, sound that plays
+// without a click on the page, and the host candidates of WebRTC on the
+// loopback address and not hidden behind mDNS names, so that a call to a
+// server on 127.0.0.1 connects. Pass them to NewBrowser. The tests and proofs
+// of the calls use them (step 22.2).
+func FakeMedia() []chromedp.ExecAllocatorOption {
+	return []chromedp.ExecAllocatorOption{
+		chromedp.Flag("use-fake-device-for-media-stream", true),
+		chromedp.Flag("use-fake-ui-for-media-stream", true),
+		chromedp.Flag("auto-select-desktop-capture-source", "Entire screen"),
+		chromedp.Flag("autoplay-policy", "no-user-gesture-required"),
+		chromedp.Flag("allow-loopback-in-peer-connection", true),
+		chromedp.Flag("disable-features", "Translate,BlinkGenPropertyTrees,WebRtcHideLocalIpsWithMdns"),
+	}
+}
+
 // Fill empties the first element that matches the CSS selector and types value
 // into it with key events, as a person does, so that the page's own handlers
 // see it. It sets the value property to empty first because chromedp.Clear

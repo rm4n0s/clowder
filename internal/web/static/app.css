@@ -147,6 +147,13 @@
   --code-operator: #f3e9da;
   --code-punctuation: #d9cbb8;
 
+  /* The call (SPEC §7.18): a dark stage in both palettes. */
+  --c-call-ground: #1c1511;
+  --c-call-text: #f3e9da;
+  --c-call-muted: #d9cbb8;
+  --c-call-control: #3a2e25;
+  --c-call-control-off: #f3e9da;
+
   /* Shadows. */
   --shadow-card: 0 1px 0 #eadfcd, 0 8px 24px rgb(120 80 30 / 0.07);
   --shadow-raised: 0 1px 0 #eadfcd, 0 6px 18px rgb(120 80 30 / 0.08);
@@ -244,6 +251,11 @@
     --code-comment: #a8957e;
     --code-operator: #f3e9da;
     --code-punctuation: #d9cbb8;
+    --c-call-ground: #0f0b09;
+    --c-call-text: #f3e9da;
+    --c-call-muted: #d9cbb8;
+    --c-call-control: #3a2e25;
+    --c-call-control-off: #f3e9da;
     --shadow-card: 0 0 0 1px #3a2e25, 0 8px 24px rgb(0 0 0 / 0.3);
     --shadow-raised: 0 0 0 1px #3a2e25, 0 6px 18px rgb(0 0 0 / 0.35);
     --shadow-pop: 0 0 0 1px #4a3b2f, 0 16px 40px rgb(0 0 0 / 0.5);
@@ -314,6 +326,11 @@
   --code-comment: #a8957e;
   --code-operator: #f3e9da;
   --code-punctuation: #d9cbb8;
+  --c-call-ground: #0f0b09;
+  --c-call-text: #f3e9da;
+  --c-call-muted: #d9cbb8;
+  --c-call-control: #3a2e25;
+  --c-call-control-off: #f3e9da;
   --shadow-card: 0 0 0 1px #3a2e25, 0 8px 24px rgb(0 0 0 / 0.3);
   --shadow-raised: 0 0 0 1px #3a2e25, 0 6px 18px rgb(0 0 0 / 0.35);
   --shadow-pop: 0 0 0 1px #4a3b2f, 0 16px 40px rgb(0 0 0 / 0.5);
@@ -2796,6 +2813,8 @@ main:has(> .conversation-top) { max-width: 78rem; }
 @media (min-width: 75rem) {
   main:has(> .conversation-top) .conversation-body { grid-template-columns: minmax(0, 48.75rem) minmax(15rem, 20rem); max-width: none; }
 
+  main:has(> .conversation-top) .conversation-body.conversation-direct { grid-template-columns: minmax(0, 48.75rem); }
+
   main:has(> .conversation-top) .conversation-top { max-width: 48.75rem; }
 }
 
@@ -2900,8 +2919,29 @@ main:has(> .conversation-top) { max-width: 78rem; }
 
 .message-deleted-note { margin: 0; color: var(--c-text-muted); font-style: italic; }
 
-/* The entry of a finished call: one plain line (step 22.2 gives it its look). */
-.message-call-entry { margin: 0; color: var(--c-text-soft); }
+/* The entry of a finished call: one quiet line in the middle of the list, with
+   the icon of the call; the call the reader missed is in the colour of a
+   warning. */
+.message.message-call, .message.own.message-call { align-self: center; max-width: 100%; padding-left: 0; }
+
+.message-call .message-content.call-entry {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: 4px 14px;
+  color: var(--c-text-muted);
+  background: transparent;
+  border-radius: var(--r-pill);
+  box-shadow: none;
+}
+
+.message-call .call-entry .icon { width: 1rem; height: 1rem; }
+
+.message-call-entry { margin: 0; font-weight: 700; color: var(--c-text-muted); }
+
+.message-call .call-entry .message-time { margin-left: 0; }
+
+.message-call .call-entry-missed, .message-call .call-entry-missed .message-call-entry { color: var(--c-danger); }
 
 .message-quote {
   display: flex;
@@ -3326,4 +3366,395 @@ form.ssh-key-remove .field-error, form.ssh-key-remove .form-error { flex-basis: 
     height: var(--tap);
     transform: translate(-50%, -50%);
   }
+}
+
+/* Calls (SPEC §7.18): the buttons of the header, "Calling Bob…", the call view
+   and the ringing dialog. */
+.call-buttons { display: inline-flex; gap: var(--sp-2); align-items: center; }
+
+.call-buttons:empty { display: none; }
+
+.call-start-form { margin: 0; }
+
+button.call-button {
+  display: inline-flex;
+  gap: var(--sp-2);
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0 var(--sp-4);
+  color: var(--c-text);
+  background: var(--c-surface-sunken);
+  border: 1px solid var(--c-border-strong);
+}
+
+button.call-button:hover { filter: none; background: var(--c-accent-wash); }
+
+.call-area { max-width: 48.75rem; margin-bottom: var(--sp-4); }
+
+.call-area:empty { display: none; }
+
+.call-panel { min-width: 0; }
+
+.call-elsewhere { display: none; margin: 0; color: var(--c-text-muted); }
+
+.call-panel[data-owner="0"] .call-elsewhere { display: block; }
+
+.call-calling {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  align-items: center;
+  padding: var(--sp-4) 20px;
+  background: var(--c-surface);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+}
+
+.call-calling-text { flex: 1 1 10rem; min-width: 0; }
+
+.call-calling-kind { margin: 0; font-size: var(--fs-sm); font-weight: 700; color: var(--c-text-muted); }
+
+.call-calling-line { margin: 0; font: 800 var(--fs-xl)/1.25 var(--font-heading); overflow-wrap: anywhere; }
+
+.call-calling .call-elsewhere { flex-basis: 100%; }
+
+.call-cancel-form { margin: 0; }
+
+button.call-cancel { min-height: var(--tap); padding: 0 var(--sp-5); }
+
+/* The call view: a dark stage with the other side, the user small in a corner,
+   and the round buttons under it. */
+.call-panel-active {
+  display: flex;
+  flex-direction: column;
+  color: var(--c-call-text);
+  background: var(--c-call-ground);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-pop);
+}
+
+.call-stage {
+  position: relative;
+  width: 100%;
+  min-height: 12rem;
+  max-height: min(22rem, 50dvh);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--c-call-ground);
+  border-radius: var(--r-card) var(--r-card) 0 0;
+}
+
+.call-remote { position: absolute; inset: 0; display: none; width: 100%; height: 100%; object-fit: contain; background: var(--c-call-ground); }
+
+.call-panel[data-peer-video="1"] .call-remote { display: block; }
+
+.call-remote-avatar { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+
+.call-remote-avatar .avatar { box-shadow: 0 0 0 4px var(--c-call-control); }
+
+.call-panel[data-peer-video="1"] .call-remote-avatar { display: none; }
+
+.call-info {
+  position: absolute;
+  top: var(--sp-3);
+  left: var(--sp-3);
+  right: var(--sp-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.call-name, .call-duration, .call-mark {
+  display: inline-flex;
+  gap: var(--sp-1);
+  align-items: center;
+  margin: 0;
+  padding: 2px var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--c-call-text);
+  background: var(--c-call-control);
+  border-radius: var(--r-pill);
+}
+
+.call-duration { font-variant-numeric: tabular-nums; }
+
+.call-marks { display: contents; margin: 0; }
+
+.call-mark[hidden] { display: none; }
+
+.call-mark .icon { width: 0.875rem; height: 0.875rem; }
+
+.call-local {
+  position: absolute;
+  right: var(--sp-3);
+  bottom: var(--sp-3);
+  display: none;
+  width: 28%;
+  max-width: 11rem;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--c-call-ground);
+  border-radius: var(--r-input);
+  box-shadow: 0 0 0 2px var(--c-call-control);
+  transform: scaleX(-1);
+}
+
+.call-panel[data-local-video="1"] .call-local { display: block; }
+
+.call-panel[data-sharing="1"] .call-local { transform: none; }
+
+.call-status {
+  position: absolute;
+  bottom: var(--sp-3);
+  left: var(--sp-3);
+  max-width: calc(100% - 13rem);
+  margin: 0;
+  padding: 2px var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--c-call-text);
+  background: var(--c-call-control);
+  border-radius: var(--r-pill);
+}
+
+.call-status[hidden] { display: none; }
+
+button.call-resume {
+  position: absolute;
+  inset: auto var(--sp-3) 3.5rem var(--sp-3);
+  min-height: var(--tap);
+  margin: 0 auto;
+  max-width: 16rem;
+}
+
+button.call-resume[hidden] { display: none; }
+
+.call-panel-active .call-elsewhere {
+  position: absolute;
+  inset: auto 0 var(--sp-3) 0;
+  padding: 0 var(--sp-4);
+  color: var(--c-call-muted);
+  text-align: center;
+}
+
+.call-panel-active[data-owner="0"] .call-remote-avatar { inset: 0 0 3rem 0; }
+
+.call-panel-active[data-owner="0"] .call-status, .call-panel-active[data-owner="0"] .call-local { display: none; }
+
+.call-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  border-radius: 0 0 var(--r-card) var(--r-card);
+}
+
+.call-panel-active[data-owner="0"] .call-controls > :not(.call-hangup-form) { display: none; }
+
+.call-hangup-form { margin: 0; }
+
+.call-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  padding: 0;
+  color: var(--c-call-text);
+  list-style: none;
+  background: var(--c-call-control);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.call-control::-webkit-details-marker { display: none; }
+
+.call-control[hidden] { display: none; }
+
+.call-panel-active :focus-visible { outline-color: var(--c-call-text); }
+
+.call-control .icon { width: 1.5rem; height: 1.5rem; }
+
+.call-control:hover { filter: brightness(1.25); }
+
+.call-icon-off { display: none; }
+
+.call-control[data-call-control="mic"][aria-pressed="false"],
+.call-control[data-call-control="camera"][aria-pressed="false"] {
+  color: var(--c-call-ground);
+  background: var(--c-call-control-off);
+}
+
+.call-control[data-call-control="mic"][aria-pressed="false"] .call-icon-on,
+.call-control[data-call-control="camera"][aria-pressed="false"] .call-icon-on { display: none; }
+
+.call-control[data-call-control="mic"][aria-pressed="false"] .call-icon-off,
+.call-control[data-call-control="camera"][aria-pressed="false"] .call-icon-off { display: inline-flex; }
+
+.call-control[data-call-control="screen"][aria-pressed="true"] { color: var(--c-on-accent); background: var(--c-accent); }
+
+.call-control-minimize { display: none; }
+
+.call-hangup { width: 4.5rem; color: var(--c-on-danger); background: var(--c-danger); border-radius: var(--r-pill); }
+
+.call-devices { position: relative; }
+
+.call-devices-panel {
+  position: absolute;
+  bottom: calc(100% + var(--sp-2));
+  left: 50%;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 16rem;
+  padding: var(--sp-3);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border-radius: var(--r-input);
+  box-shadow: var(--shadow-pop);
+  transform: translateX(-50%);
+}
+
+.call-devices-panel label { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-sm); font-weight: 700; }
+
+.call-devices-panel select { width: 100%; margin: 0; }
+
+/* From a wide screen the call sits beside the conversation, which stays usable
+   at its left; the call stays in view while the conversation scrolls. */
+@media (min-width: 75rem) {
+  main:has(> .conversation-top):has(> .call-area .call-panel-active) {
+    display: grid;
+    grid-template-columns: minmax(0, 48.75rem) minmax(20rem, 24rem);
+    gap: 0 var(--sp-5);
+    align-content: start;
+  }
+
+  main:has(> .conversation-top):has(> .call-area .call-panel-active) > .conversation-top,
+  main:has(> .conversation-top):has(> .call-area .call-panel-active) > .conversation-body { grid-column: 1; max-width: none; }
+
+  main:has(> .conversation-top):has(> .call-area .call-panel-active) > .call-area {
+    position: sticky;
+    top: var(--sp-4);
+    grid-row: 1 / span 3;
+    grid-column: 2;
+    align-self: start;
+    max-width: none;
+    margin: 0;
+  }
+
+  main:has(> .conversation-top):has(> .call-area .call-panel-active) .call-stage { max-height: none; aspect-ratio: 4 / 3; }
+}
+
+/* The ringing dialog: modal, in the middle; when the person dismisses it, a card
+   in the corner, so that the call is not missed and the page is not blocked. */
+.call-ringing-slot { display: contents; }
+
+dialog.call-dialog {
+  width: min(24rem, calc(100% - 2 * var(--sp-4)));
+  padding: 0;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 0;
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-pop);
+}
+
+dialog.call-dialog::backdrop { background: var(--c-scrim); }
+
+dialog.call-dialog:not(:modal) { position: fixed; inset: var(--sp-4) var(--sp-4) auto auto; z-index: 60; margin: 0; }
+
+.call-dialog-card { display: flex; flex-direction: column; gap: var(--sp-3); align-items: center; padding: var(--sp-6) var(--sp-5) var(--sp-5); text-align: center; }
+
+.call-dialog-kind { display: inline-flex; gap: var(--sp-2); align-items: center; margin: 0; font-size: var(--fs-sm); font-weight: 700; color: var(--c-text-muted); }
+
+.call-dialog h2 { margin: 0; font-size: var(--fs-lg); letter-spacing: 0; overflow-wrap: anywhere; }
+
+.call-dialog-actions { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; }
+
+.call-dialog-actions form { margin: 0; }
+
+.call-dialog-actions button { display: flex; gap: var(--sp-2); align-items: center; justify-content: center; width: 100%; min-height: var(--tap); }
+
+.call-dialog-actions button.secondary { border-color: var(--c-border-strong); }
+
+@keyframes call-pulse {
+  from { box-shadow: 0 0 0 0 var(--c-accent-line); }
+  to { box-shadow: 0 0 0 14px transparent; }
+}
+
+.call-dialog-card .avatar { animation: call-pulse 1.5s ease-out infinite; }
+
+/* Phones: the call fills the screen with the controls at the bottom inside the
+   safe area; the conversation is under it, and the button at the left of the
+   controls shrinks the call to a bar at the top of the page. */
+@media (max-width: 40rem) {
+  .call-panel-active[data-owner="1"]:not([data-minimized="1"]) {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .call-panel-active[data-owner="1"]:not([data-minimized="1"]) .call-remote { object-fit: cover; }
+
+  .call-panel-active[data-owner="1"]:not([data-minimized="1"]) .call-stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto;
+    border-radius: 0;
+  }
+
+  .call-panel-active[data-owner="1"]:not([data-minimized="1"]) .call-controls {
+    padding: var(--sp-4) max(var(--sp-4), env(safe-area-inset-right)) calc(var(--sp-4) + env(safe-area-inset-bottom)) max(var(--sp-4), env(safe-area-inset-left));
+    border-radius: 0;
+  }
+
+  .call-info { top: max(var(--sp-3), env(safe-area-inset-top)); }
+
+  .call-local { width: 30%; max-width: 8rem; }
+
+  .call-status { max-width: calc(100% - 9rem); }
+
+  .call-controls { gap: var(--sp-2); }
+
+  .call-control { width: 3rem; height: 3rem; }
+
+  .call-hangup { width: 3.75rem; }
+
+  .call-control-minimize { display: inline-flex; }
+
+  .call-panel-active[data-minimized="1"] { position: sticky; top: 0; z-index: 30; }
+
+  .call-panel-active[data-minimized="1"] .call-stage {
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto;
+    height: 3.5rem;
+    border-radius: var(--r-card) var(--r-card) 0 0;
+  }
+
+  .call-panel-active[data-minimized="1"] .call-remote,
+  .call-panel-active[data-minimized="1"] .call-remote-avatar,
+  .call-panel-active[data-minimized="1"] .call-local,
+  .call-panel-active[data-minimized="1"] .call-status { display: none; }
+
+  .call-panel-active[data-minimized="1"] .call-info { top: 50%; transform: translateY(-50%); }
+
+  .call-panel-active[data-minimized="1"] .call-controls { padding: var(--sp-2) var(--sp-4); }
+
+  .call-panel-active[data-minimized="1"] .call-control { width: 2.75rem; height: 2.75rem; }
+
+  .call-buttons button.call-button { min-width: var(--tap); min-height: var(--tap); padding: 0; }
+
+  .call-button-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }

@@ -152,8 +152,12 @@ func (s *Server) conversationView(ctx context.Context, actor app.Actor, id, befo
 	if err != nil {
 		return views.ConversationData{}, err
 	}
+	calls, err := s.callData(ctx, actor, h)
+	if err != nil {
+		return views.ConversationData{}, err
+	}
 	return views.ConversationData{
-		ViewerID: actor.UserID, Header: h, Messages: items,
+		ViewerID: actor.UserID, Header: h, Messages: items, Call: calls,
 		HasOlder: page.HasOlder, NextBefore: page.NextBefore, Before: before,
 		Composer: views.ComposerData{ConversationID: id, CanSend: h.CanSend},
 		Members:  views.MembersPanelData{Header: h, ViewerID: actor.UserID, Online: s.onlineSet(ctx, actor, memberIDsOf(h))},
@@ -358,6 +362,13 @@ func (s *Server) conversationStartFailed(w http.ResponseWriter, r *http.Request,
 	})
 }
 
+// isCallRefusal reports whether err is one of the refusals of the calls, which
+// carry a message for people.
+func isCallRefusal(err error) bool {
+	appErr, ok := errors.FromError(err)
+	return ok && app.IsCallRefusal(appErr.Tag)
+}
+
 // roomOfForm reads the room of the "Message" button the request comes from.
 func roomOfForm(r *http.Request) (uint64, bool) {
 	from, ok := strings.CutPrefix(r.PostFormValue("from"), views.FromRoomPrefix)
@@ -411,6 +422,12 @@ func (s *Server) conversationPage(w http.ResponseWriter, r *http.Request) {
 	d, ok = s.withSidebar(w, r, d, func(d *views.ConversationData) {
 		if q := s.replyQuote(r.Context(), actor, id, uintQuery(r, "reply")); q != nil && d.Header.CanSend {
 			d.Composer.Reply = q
+		}
+		// A user who just answered a call is sent here with what they chose to
+		// send; this tab then takes part in the call.
+		if way := r.URL.Query().Get(views.CallAnswerQuery); (way == "video" || way == "audio") && d.Call.Open != nil &&
+			d.Call.Open.Active && d.Call.Open.Incoming {
+			d.Call.Open.Answer = way
 		}
 	})
 	if !ok {
@@ -680,6 +697,8 @@ func (s *Server) conversationNotice(w http.ResponseWriter, r *http.Request, err 
 		notice = firstNonEmpty(problems.Fields[app.FieldUsers], problems.Fields[app.FieldName], problems.Form, messageActionInvalid)
 	case isTag(err, app.TagForbidden):
 		notice = messageForbidden
+	case isCallRefusal(err):
+		notice = firstNonEmpty(formErrorsOf(err).Form, messageConflict)
 	case isTag(err, app.TagConflict):
 		notice = messageConflict
 	default:

@@ -64,7 +64,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) settingsData(ctx context.Context) (views.SettingsData, error) {
 	actor, _ := actorFrom(ctx)
 	user, _ := userFrom(ctx)
-	sb, err := s.sidebarData(ctx, actor, user, 0)
+	sb, err := s.pageSidebar(ctx, actor, user, 0)
 	if err != nil {
 		return views.SettingsData{}, err
 	}

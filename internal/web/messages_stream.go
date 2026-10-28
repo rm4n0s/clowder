@@ -99,6 +99,14 @@ func (cs *conversationStream) connect(ctx context.Context) (start, error) {
 		}
 		ops = append(ops, sidebar...)
 		ops = append(ops, cs.headerOps(ctx, h)...)
+		// A call may have started, been answered or ended meanwhile.
+		d, err := cs.s.callData(ctx, cs.actor, h)
+		if err != nil {
+			return start{}, err
+		}
+		if d.Enabled {
+			ops = append(ops, callOps(d)...)
+		}
 	}
 	if cs.before != 0 {
 		return start{ops: ops}, nil
@@ -186,6 +194,9 @@ func (cs *conversationStream) event(ctx context.Context, ev live.Event) (end boo
 // userEvent handles an event of the user's topic: a count of the sidebar
 // changes, or a membership of a room does, then the sidebar is sent.
 func (cs *conversationStream) userEvent(ctx context.Context, ev live.Event) (end bool, err error) {
+	if isCallEvent(ev.Kind) {
+		return false, cs.callEvent(ctx, ev)
+	}
 	if handled, err := cs.countsEvent(ctx, ev); handled {
 		return false, err
 	}

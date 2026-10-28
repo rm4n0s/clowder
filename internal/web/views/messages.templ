@@ -188,9 +188,12 @@ templ ConversationPage(d ConversationData) {
 		@NotifyPlace(PlaceKey(app.ConversationRef(d.Header.ID)))
 		<div class="conversation-top">
 			@ConversationHeader(d)
-			@ConversationActions(d.Prefs)
+			@ConversationActions(d.Prefs, d.Call)
 		</div>
 		@PlacePrefsDialog(d.Prefs)
+		if d.Call.Enabled {
+			@CallArea(d.Call)
+		}
 		<div class={ "conversation-body", templ.KV("conversation-direct", !d.Header.IsGroup) }>
 			<section class="conversation-main">
 				if d.Before != 0 {
@@ -216,6 +219,9 @@ templ ConversationPage(d ConversationData) {
 			}
 		</div>
 		<script src={ StaticURL(ctx, "/static/messages.js") } defer></script>
+		if d.Call.Enabled {
+			<script src={ StaticURL(ctx, "/static/call.js") } defer></script>
+		}
 	}
 }
 
@@ -245,12 +251,15 @@ templ ConversationHeader(d ConversationData) {
 }
 
 // ConversationActions is the row of actions at the right of the header of a
-// conversation: the "more" menu with the notification preferences. It is not
-// part of the header, which the server patches when the group changes, so that
-// a patch never takes the menu away. The room for a call button (M22) is the
-// row itself.
-templ ConversationActions(d PlacePrefsData) {
+// conversation: the call buttons of a direct conversation (SPEC §7.18) and the
+// "more" menu with the notification preferences. It is not part of the header,
+// which the server patches when the group changes, so that a patch never takes
+// the menu or the buttons away.
+templ ConversationActions(d PlacePrefsData, call CallData) {
 	<div class="conversation-actions">
+		if call.Enabled {
+			@CallButtons(call)
+		}
 		if d.Action != "" {
 			<details class="post-menu conversation-menu" data-preserve-attr="open" data-on:click__outside="el.removeAttribute('open')">
 				<summary class="icon-button" aria-label="More actions" title="More actions">
@@ -398,10 +407,38 @@ templ MessageSeen(id uint64, seen bool) {
 // "edited", the quote of the message it replies to, the text, the files, the
 // reactions and the Reply, Edit and Delete buttons for the person who may. A
 // deleted message is the placeholder "message deleted". The entry of a call is
-// one plain line ("Video call · 12 min"), with nothing to reply to, edit or
-// react to (step 22.2 gives it its look). A live update of a message replaces
-// only this part.
+// one quiet line (CallEntry). A live update of a message replaces only this
+// part.
 templ MessageContent(d MessageData) {
+	if d.Message.Call != nil && !d.Message.Deleted {
+		@CallEntry(d)
+	} else {
+		@messageContentOf(d)
+	}
+}
+
+// CallEntry is the entry that a finished call leaves in a direct conversation
+// (SPEC §7.18): one quiet line in the middle of the list, with the icon of a
+// video or an audio call, the text the user reads ("Video call · 12 min",
+// "Declined video call", "Missed video call") and the time. The call the user
+// missed is in the colour of a warning. It has nothing to reply to, edit or
+// react to.
+templ CallEntry(d MessageData) {
+	<div id={ MessageContentID(d.Message.ID) } class={ "message-content", "call-entry", templ.KV("call-entry-missed", d.Message.Call.Missed) }>
+		if d.Message.Call.Video {
+			@IconVideo()
+		} else {
+			@IconPhone()
+		}
+		<span class="message-call-entry" data-call={ roomIDText(d.Message.Call.CallID) }>{ d.Message.Call.Text }</span>
+		<a class="message-time" href={ templ.SafeURL("#" + MessageElementID(d.Message.ID)) }>
+			<time datetime={ postTimeStamp(d.Message.CreatedAt) } title={ postTimeStamp(d.Message.CreatedAt) }>{ postTimeText(d.Message.CreatedAt) }</time>
+		</a>
+	</div>
+}
+
+// messageContentOf is MessageContent of a text message or a deleted message.
+templ messageContentOf(d MessageData) {
 	<div id={ MessageContentID(d.Message.ID) } class="message-content">
 		@formProblem(d.Notice)
 		<header class="message-meta">
@@ -416,8 +453,6 @@ templ MessageContent(d MessageData) {
 		</header>
 		if d.Message.Deleted {
 			<p class="message-deleted-note">{ app.MessageDeletedPreview }</p>
-		} else if d.Message.Call != nil {
-			<p class="message-call-entry" data-call={ roomIDText(d.Message.Call.CallID) }>{ d.Message.Call.Text }</p>
 		} else {
 			if d.Message.ReplyTo != nil {
 				@MessageQuote(*d.Message.ReplyTo)

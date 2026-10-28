@@ -323,6 +323,9 @@ type ConversationData struct {
 	// Focus is the message the page was opened for (a search result links to
 	// it); 0 for none. The page scrolls to it and marks it.
 	Focus uint64
+	// Call is the calls of the conversation: the buttons and the call in
+	// progress (SPEC §7.18). The zero value is a conversation without calls.
+	Call CallData
 }
 
 // messagePaneInit is the expression that runs when the pane of messages is

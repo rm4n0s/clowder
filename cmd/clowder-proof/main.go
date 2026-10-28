@@ -213,6 +213,15 @@ type options struct {
 	// and a code, so a proof of the second form types the password in the
 	// login form itself instead of using -as.
 	sshCode string
+	// calls starts the server with the media server of the calls and gives the
+	// browsers a camera, a microphone and a screen without hardware
+	// (browsertest.FakeMedia), so that a proof can show a call: the -other
+	// user calls, answers or hangs up with -other-click while the first user
+	// watches.
+	calls bool
+	// ringTimeout is how long a call rings before it is missed
+	// (-call-ring-timeout of the server); zero is 45 seconds.
+	ringTimeout time.Duration
 	// colorScheme is "light" or "dark": the browsers report it as the
 	// system's prefers-color-scheme, so that the page shows the palette of
 	// that scheme unless the user's setting overrides it; empty leaves the
@@ -309,7 +318,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 // startOne starts the one server of a run and returns the function that stops
 // it.
 func startOne(ctx context.Context, opts options) (servers, func() error, error) {
-	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite, ResetUser: opts.reset, SSH: opts.ssh || opts.sshCode != ""})
+	srv, err := browsertest.StartServer(ctx, browsertest.Options{
+		InviteMember: opts.invite, ResetUser: opts.reset, SSH: opts.ssh || opts.sshCode != "",
+		Calls: opts.calls, CallRingTimeout: opts.ringTimeout,
+	})
 	if err != nil {
 		return servers{}, nil, err
 	}
@@ -346,7 +358,9 @@ func startCluster(ctx context.Context, opts options, stdout io.Writer) (servers,
 	if err != nil {
 		return servers{}, nil, err
 	}
-	cluster, err := browsertest.StartCluster(ctx, browsertest.Options{DatabaseURL: dbURL, RedisURL: redisURL}, clusterServers)
+	cluster, err := browsertest.StartCluster(ctx, browsertest.Options{
+		DatabaseURL: dbURL, RedisURL: redisURL, Calls: opts.calls, CallRingTimeout: opts.ringTimeout,
+	}, clusterServers)
 	if err != nil {
 		if dropErr := drop(); dropErr != nil {
 			return servers{}, nil, errors.NewErr(tagClusterFailed, err).SetMetadata("drop", dropErr.Error())
@@ -395,6 +409,8 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.BoolVar(&o.ssh, "ssh", false, "start the server with its SSH server of the sign-in codes on a free port of 127.0.0.1, so that the Sign-in section of the settings page shows the ssh command (not with -cluster)")
 	fs.StringVar(&o.sshCode, "ssh-code", "", "demo user whose SSH code at login is turned on before the page opens (a key is added and fetches a code through the SSH server, which this starts): open /login and use -fill and -click to type the password, so that the screenshot shows the second form (not with -cluster; not the same user as -as)")
 	fs.StringVar(&o.apiLogin, "api-login", "", "client name: the -as user also logs in through POST /api/v1/auth/login as a client of that name before the page opens, and the session stays, so that the page of the sessions shows it (needs -as)")
+	fs.BoolVar(&o.calls, "calls", false, "start the server with its media server of the calls on a free port of 127.0.0.1 and give the browsers fake devices (a camera, a microphone, a screen), so that the pages have the call buttons and a call can be made with -other-click, such as '[data-call-start=\"video\"]' to call and '[data-call-answer=\"video\"]' to answer; use -wait of a few seconds to let the media connect")
+	fs.DurationVar(&o.ringTimeout, "ring-timeout", 0, "with -calls: how long a call rings before it is missed (default 45s)")
 	fs.StringVar(&o.colorScheme, "color-scheme", "", "light or dark: the browsers report it as the system's prefers-color-scheme, so that the page shows the palette of the system theme (a user's own theme setting still wins); default: the browser's own")
 	fs.StringVar(&o.renderIcon, "render-icon", "", "path of an SVG file to render to a PNG of -icon-size pixels at -o instead of taking a screenshot of a page (the favicons and the icons of the installed app); needs no server")
 	fs.IntVar(&o.iconSize, "icon-size", 0, "with -render-icon: the width and the height of the PNG in pixels (default 32)")
@@ -429,6 +445,10 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	case o.as == "" && conversationPlaceholder.MatchString(o.page):
 		return options{}, errors.New(tagFlagsInvalid, "{conversation:members} in -page needs -as: the conversation is found in the list of a user",
 			"page", o.page)
+	case !o.calls && o.ringTimeout != 0:
+		return options{}, errors.New(tagFlagsInvalid, "-ring-timeout needs -calls", "flag", "ring-timeout")
+	case o.ringTimeout != 0 && o.ringTimeout < time.Second:
+		return options{}, errors.New(tagFlagsInvalid, "-ring-timeout must be at least one second", "ring-timeout", o.ringTimeout.String())
 	case o.apiLogin != "" && o.as == "":
 		return options{}, errors.New(tagFlagsInvalid, "-api-login needs -as: the session is the user's", "flag", "api-login")
 	case o.other.user == "" && (o.other.page != "" || len(o.other.fills) > 0 || len(o.other.clicks) > 0):
@@ -473,7 +493,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 // sees of it. The first user is on srvs.shot and the second on srvs.other. The
 // browsers are closed before it returns.
 func screenshot(ctx context.Context, srvs servers, o options) ([]byte, error) {
-	browser, cancel, err := browsertest.NewBrowser(ctx, chromedp.WindowSize(o.width, o.height))
+	browser, cancel, err := browsertest.NewBrowser(ctx, o.browserOptions()...)
 	if err != nil {
 		return nil, err
 	}
@@ -514,11 +534,21 @@ func screenshot(ctx context.Context, srvs servers, o options) ([]byte, error) {
 	return shot, nil
 }
 
+// browserOptions are the options of the browsers of a run: the window, and with
+// -calls the fake devices.
+func (o options) browserOptions() []chromedp.ExecAllocatorOption {
+	opts := []chromedp.ExecAllocatorOption{chromedp.WindowSize(o.width, o.height)}
+	if o.calls {
+		opts = append(opts, browsertest.FakeMedia()...)
+	}
+	return opts
+}
+
 // actAs runs the script of the -other user in a browser of their own. The
 // browser is closed when the script is done, or, with -other-hold, when the
 // returned function is called.
 func actAs(ctx context.Context, srv *browsertest.Server, o options) (release func(), err error) {
-	browser, cancel, err := browsertest.NewBrowser(ctx, chromedp.WindowSize(o.width, o.height))
+	browser, cancel, err := browsertest.NewBrowser(ctx, o.browserOptions()...)
 	if err != nil {
 		return nil, err
 	}

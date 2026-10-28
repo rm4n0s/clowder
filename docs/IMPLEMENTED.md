@@ -1662,3 +1662,44 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - `-max-calls` is a soft limit across PostgreSQL transactions; the unique indexes are the hard rule per user.
   - `scripts/compose-smoke.sh` had been failing on `main` since M21 changed the page title and the user's element; its checks are fixed.
   - The internal test harness of `internal/calls` repeats about 300 lines of `callstest`; 22.3 folds it in.
+
+## 22.2 Calls in the pages
+- **Date:** 2026-10-28
+- **Branch:** feat/step-22.2-call-pages
+- **Summary:**
+  - The page routes `POST /messages/{id}/call`, `/call/answer`, `/decline`, `/cancel` and `/hangup` answer with Datastar patches or a redirect. Refusals ("Bob is in another call.", "Calls are turned off on this server.") show in the conversation's header; a stranger gets 404 and a group 409.
+  - **Video call** and **Audio call** in the header of a direct conversation (none in groups or with calls off), and "Calling Bob…" with Cancel and a ringback.
+  - **The ringing dialog** on every page of the callee: every shell has a `#call-ringing` slot that the user's stream fills on `call.ringing` and empties on answer or end. A page loaded while a call rings renders it at once. It has Answer with video, Answer with audio and Decline, and Escape leaves it as a corner card.
+    - The *Purr ring*, made with Web Audio, plays even with the notification sound off, but not in a muted conversation or one set to *Nothing*. A browser that refuses sound before a touch still shows the dialog, and the ring starts at the first touch.
+    - The browser notification "Bob is calling you" shows when no page has the focus.
+  - **The call view** on the conversation page:
+    - the other side large and yourself small, the name, the duration, and the marks of a muted microphone and a camera turned off;
+    - the microphone, camera, screen share, devices and Hang up;
+    - an audio call shows the avatar and can turn the camera on;
+    - beside the conversation on a wide screen; full screen at phone width, with a button that shrinks it to a bar.
+    - Leaving the page hangs up (`pagehide` and `sendBeacon`).
+  - Answering goes to `/messages/{id}?call=video` or `?call=audio`, and that tab alone takes part; another tab of the same conversation shows "This call is in another window." with Hang up.
+  - **The call entries** are a quiet line with the call's text from 22.1, the missed call in the danger colour for the callee.
+  - `call.js` is written by hand: `RTCPeerConnection` without ICE servers, the answer to the server's offer on its transceivers, trickle ICE, `replaceTrack` for the screen and the devices, and reconnecting the socket once. The ringing dialog, the ring and the notification are in `notify.js`.
+  - The flag `-call-ring-timeout` (`CLOWDER_CALL_RING_TIMEOUT`, default 45 s), so that tests can make a missed call quickly. `browsertest.FakeMedia()` gives Chromium a fake camera, microphone and screen, and `clowder-proof -calls` runs the media server.
+  - A fix found on the way: the user's stream no longer ends early with an unauthenticated error for a user who was disabled or removed (an intermittent failure of `TestMeStreamKeepAliveAndEnd`), with its own test.
+- **Main files:** `internal/web/{calls_pages,calls,me_stream,messages_stream}.go`, `internal/web/views/{calls.templ,calls.go,messages.templ,layout.templ,icons.templ}`, `internal/web/static/{call.js,notify.js,app.css,static.go}`, `internal/app/calls.go`, `internal/config`, `internal/browsertest`, `cmd/clowder-proof`, `docs/SPEC.md`, `CLAUDE.md` (the proof tool's `-calls`).
+- **Tests:**
+  - app: the invitation and ringing tables with their permission table, missed marks, the elapsed time;
+  - web: the call buttons; the five routes for each kind of user, with and without Datastar; the dialog in nine pages, with and without the ring; the stream's patches; the entries' texts for each outcome and side;
+  - 11 browser tests with two Chromium browsers and fake devices:
+    - alice calls and bob answers from another page, and each remote `<video>` plays (`videoWidth` and `currentTime`);
+    - the microphone and camera marks, the screen share and the hang-up entries;
+    - a decline, a missed call, and an audio call turning its camera on;
+    - the ring's preferences, sound refused until a touch, the notification with and without focus, the corner card;
+    - the socket reconnecting, a second tab, and 390×844 (no sideways scroll, 44 px controls);
+  - the new flag, and the contrast pairs of the call tokens.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ (`internal/web` now takes about 9 minutes, so the suite runs with `-timeout 40m`) · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [ringing](implemented-proof-images/22.2-ringing.png) · [call light](implemented-proof-images/22.2-call-light.png) · [call dark](implemented-proof-images/22.2-call-dark.png) · [call phone](implemented-proof-images/22.2-call-phone.png) · [missed](implemented-proof-images/22.2-missed.png)
+  - bob's dialog "Alice is calling you" over the feed; alice's call view beside the conversation (Chromium's fake camera), in light, dark and at 390 px; bob's missed call entry.
+- **Manual checks:** none. A real browser refusing sound before a touch could not be seen headless; that path is tested by making the page refuse it.
+- **Deviations and follow-ups:**
+  - The ring's timeout is a flag, added for the tests; its default is the 45 seconds of §7.18.
+  - The tab that clicked the start button, or the one that answered, takes part; other tabs of the conversation only show the call and can hang it up.
+  - The manager's fix of a test of 21.5: `TestServiceWorkerCachesOnlyStatic` failed once under load, waiting for the worker to claim the page; the helper now waits for the worker to be active and loads the page again when the claim is late.

@@ -1,0 +1,247 @@
+package views
+
+// CallRingingSlot is the slot of the ringing dialog, in the shell of every page
+// of a logged-in user (id "call-ringing"). It is empty while nothing rings for
+// the user, and holds the dialog while a call does. The user's stream patches
+// it when a call starts to ring and when it stops (SPEC §7.18); a page made
+// while a call rings has the dialog in it already. The script notify.js opens
+// the dialog, plays the ringtone and shows the browser notification.
+templ CallRingingSlot(inv *CallInviteData) {
+	<div id="call-ringing" class="call-ringing-slot">
+		if inv != nil {
+			@CallRingingDialog(*inv)
+		}
+	</div>
+}
+
+// CallRingingDialog is the dialog of a call that rings for the user: the avatar
+// and name of the caller, whether it is a video or an audio call, and
+// Answer with video, Answer with audio and Decline. Answering is a plain form
+// post that takes the page to the conversation, which opens the call (the
+// browser then asks for the camera and the microphone there); Decline is a
+// Datastar form that removes the dialog. The data attributes are what notify.js
+// reads: data-ring is present when the ringtone plays (SPEC §7.15), data-browser
+// when the browser notification is wanted, data-notice is its text and data-url
+// the page it opens.
+templ CallRingingDialog(inv CallInviteData) {
+	<dialog
+		id="call-dialog"
+		class="call-dialog"
+		aria-labelledby="call-dialog-title"
+		data-preserve-attr="open"
+		data-call={ roomIDText(inv.CallID) }
+		data-notice={ inv.Text }
+		data-url={ ConversationPath(inv.ConversationID) }
+		if inv.Ring {
+			data-ring="1"
+		}
+		if inv.Browser {
+			data-browser="1"
+		}
+	>
+		<div class="call-dialog-card">
+			@AvatarSized(inv.Caller.ID, inv.Caller.DisplayName, inv.Caller.AvatarURL(), "lg")
+			<p class="call-dialog-kind">
+				if inv.Video {
+					@IconVideo()
+				} else {
+					@IconPhone()
+				}
+				{ CallKindText(inv.Video) }
+			</p>
+			<h2 id="call-dialog-title">{ inv.Caller.DisplayName } is calling you</h2>
+			<div class="call-dialog-actions">
+				<form class="call-dialog-answer" method="post" action={ templ.SafeURL(CallPath(inv.ConversationID, "answer")) }>
+					<input type="hidden" name="video" value="true"/>
+					<button type="submit" class={ "call-answer", templ.KV("secondary", !inv.Video) } data-call-answer="video" autofocus?={ inv.Video }>
+						@IconVideo()
+						Answer with video
+					</button>
+				</form>
+				<form class="call-dialog-answer" method="post" action={ templ.SafeURL(CallPath(inv.ConversationID, "answer")) }>
+					<input type="hidden" name="video" value="false"/>
+					<button type="submit" class={ "call-answer", templ.KV("secondary", inv.Video) } data-call-answer="audio" autofocus?={ !inv.Video }>
+						@IconPhone()
+						Answer with audio
+					</button>
+				</form>
+				<form class="call-dialog-decline" method="post" action={ templ.SafeURL(CallPath(inv.ConversationID, "decline")) } data-on:submit={ FormPost(CallPath(inv.ConversationID, "decline")) }>
+					<button type="submit" class="call-decline danger" data-call-decline>
+						@IconHangUp()
+						Decline
+					</button>
+				</form>
+			</div>
+		</div>
+	</dialog>
+}
+
+// CallButtons are the buttons that start a call in the header actions of a
+// direct conversation: Video call and Audio call. They give way to the state of
+// the call while one rings or is active, and are not there at all when calls
+// are off or the conversation is a group. The element is always there for a
+// direct conversation, empty while a call is in progress, so that the stream
+// can patch it. Each button is a form that works without JavaScript.
+templ CallButtons(d CallData) {
+	<span id="call-buttons" class="call-buttons">
+		if d.Enabled && d.Open == nil {
+			@callStartButton(d.ConversationID, true)
+			@callStartButton(d.ConversationID, false)
+		}
+	</span>
+}
+
+// callStartButton is the form with the button that starts a video or an audio
+// call.
+templ callStartButton(conversationID uint64, video bool) {
+	<form class="call-start-form" method="post" action={ templ.SafeURL(CallPath(conversationID, "")) } data-on:submit={ FormPost(CallPath(conversationID, "")) }>
+		if video {
+			<input type="hidden" name="video" value="true"/>
+			<button type="submit" class="call-button" data-call-start="video" title="Video call">
+				@IconVideo()
+				<span class="call-button-label">Video call</span>
+			</button>
+		} else {
+			<input type="hidden" name="video" value="false"/>
+			<button type="submit" class="call-button" data-call-start="audio" title="Audio call">
+				@IconPhone()
+				<span class="call-button-label">Audio call</span>
+			</button>
+		}
+	</form>
+}
+
+// CallArea is the place of the call on the page of a direct conversation: empty
+// while there is no call, "Calling Bob…" with Cancel while the user's call
+// rings, and the call view while it is active. The stream patches it when the
+// call starts, is answered and ends; the script call.js watches it, takes part
+// in the call from the tab that started or answered it and keeps what it
+// changed in the view (the marks, the buttons, the duration) when the server
+// patches the area again.
+templ CallArea(d CallData) {
+	<section id="call-area" class="call-area" aria-label="Call">
+		if d.Enabled && d.Open != nil {
+			if d.Open.Active {
+				@callActive(d)
+			} else if !d.Open.Incoming {
+				@callCalling(d)
+			}
+		}
+	</section>
+}
+
+// callPanelAttrs are the attributes of the root of a call that call.js reads.
+// They are written once per patch; the script keeps its own model of the call.
+templ callRoot(d CallData) {
+	<div
+		id="call-panel"
+		class={ "call-panel", templ.KV("call-panel-active", d.Open.Active), templ.KV("call-panel-video", d.Open.callSendsVideo()) }
+		data-call={ roomIDText(d.Open.CallID) }
+		data-conversation={ roomIDText(d.ConversationID) }
+		data-state={ d.Open.callState() }
+		data-role={ d.Open.callRole() }
+		data-video={ boolText(d.Open.callSendsVideo()) }
+		data-call-video={ boolText(d.Open.Video) }
+		data-answer={ d.Open.Answer }
+		data-elapsed={ d.Open.callElapsedSeconds() }
+		data-socket={ CallSocketURL(d.ConversationID) }
+		data-hangup={ CallPath(d.ConversationID, "hangup") }
+		data-cancel={ CallPath(d.ConversationID, "cancel") }
+		data-other={ d.Open.Other.DisplayName }
+	>
+		{ children... }
+	</div>
+}
+
+// callCalling is "Calling Bob…" with Cancel, on the page of the caller while the
+// call rings.
+templ callCalling(d CallData) {
+	@callRoot(d) {
+		<div class="call-calling">
+			@AvatarSized(d.Open.Other.ID, d.Open.Other.DisplayName, d.Open.Other.AvatarURL(), "lg")
+			<div class="call-calling-text">
+				<p class="call-calling-kind">{ CallKindText(d.Open.Video) }</p>
+				<p class="call-calling-line" role="status">{ "Calling " + d.Open.Other.DisplayName + "…" }</p>
+			</div>
+			<p class="call-elsewhere">This call is in another window.</p>
+			<form class="call-cancel-form" method="post" action={ templ.SafeURL(CallPath(d.ConversationID, "cancel")) } data-on:submit={ FormPost(CallPath(d.ConversationID, "cancel")) }>
+				<button type="submit" class="secondary call-cancel" data-call-cancel>Cancel</button>
+			</form>
+		</div>
+	}
+}
+
+// callActive is the view of a call that is active: the other side large, the
+// user small and mirrored, the name, the marks, the duration, and the controls.
+templ callActive(d CallData) {
+	@callRoot(d) {
+		<div class="call-stage">
+			<video id="call-remote" class="call-remote" autoplay playsinline></video>
+			<div class="call-remote-avatar">
+				@AvatarSized(d.Open.Other.ID, d.Open.Other.DisplayName, d.Open.Other.AvatarURL(), "lg")
+			</div>
+			<div class="call-info">
+				<p class="call-name">{ d.Open.Other.DisplayName }</p>
+				<p class="call-duration" data-call-duration>{ callDurationText(d.Open.Elapsed) }</p>
+				<p class="call-marks">
+					<span class="call-mark call-mark-mic" hidden>
+						@IconMicOff()
+						Microphone off
+					</span>
+					<span class="call-mark call-mark-cam" hidden>
+						@IconVideoOff()
+						Camera off
+					</span>
+				</p>
+			</div>
+			<video id="call-local" class="call-local" autoplay playsinline muted></video>
+			<p class="call-status" role="status" aria-live="polite">Connecting…</p>
+			<button type="button" class="call-resume" data-call-control="resume" hidden>Tap to play the call</button>
+			<p class="call-elsewhere">This call is in another window. Hang up here to end it.</p>
+		</div>
+		<div class="call-controls">
+			<button type="button" class="call-control call-control-minimize" data-call-control="minimize" aria-label="Show the conversation" title="Show the conversation" aria-pressed="false">
+				@IconMessage()
+			</button>
+			<button type="button" class="call-control" data-call-control="mic" aria-pressed="true" aria-label="Mute the microphone" title="Mute the microphone">
+				<span class="call-icon-on">
+					@IconMic()
+				</span>
+				<span class="call-icon-off">
+					@IconMicOff()
+				</span>
+			</button>
+			<button type="button" class="call-control" data-call-control="camera" aria-pressed="false" aria-label="Turn the camera on" title="Turn the camera on">
+				<span class="call-icon-on">
+					@IconVideo()
+				</span>
+				<span class="call-icon-off">
+					@IconVideoOff()
+				</span>
+			</button>
+			<button type="button" class="call-control" data-call-control="screen" aria-pressed="false" aria-label="Share your screen" title="Share your screen">
+				@IconScreen()
+			</button>
+			<details class="call-devices" data-preserve-attr="open">
+				<summary class="call-control" aria-label="Choose the devices" title="Choose the devices">
+					@IconSliders()
+				</summary>
+				<div class="call-devices-panel">
+					<label>
+						Microphone
+						<select data-call-device="audioinput"></select>
+					</label>
+					<label>
+						Camera
+						<select data-call-device="videoinput"></select>
+					</label>
+				</div>
+			</details>
+			<form class="call-hangup-form" method="post" action={ templ.SafeURL(CallPath(d.ConversationID, "hangup")) } data-on:submit={ FormPost(CallPath(d.ConversationID, "hangup")) }>
+				<button type="submit" class="call-control call-hangup" data-call-hangup aria-label="Hang up" title="Hang up">
+					@IconHangUp()
+				</button>
+			</form>
+		</div>
+	}
+}

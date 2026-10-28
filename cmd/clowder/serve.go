@@ -124,7 +124,10 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		ProcessID: processID,
 		Enabled:   cfg.MediaAddr != "",
 		MaxCalls:  cfg.MaxCalls,
-		Logger:    logger,
+		// The service takes the default for a zero value, which only a
+		// hand-made configuration has.
+		RingTimeout: cfg.CallRingTimeout,
+		Logger:      logger,
 	}, pub)
 	// A run without Redis starts with no call alive: whatever the database says
 	// is open belongs to an earlier run.
@@ -382,6 +385,10 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 	if err != nil {
 		return config.Config{}, err
 	}
+	callRingTimeout, err := envDuration(env, "CLOWDER_CALL_RING_TIMEOUT", def.CallRingTimeout)
+	if err != nil {
+		return config.Config{}, err
+	}
 
 	var cfg config.Config
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
@@ -420,6 +427,8 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		"IP address that browsers reach the media server at, when it runs behind NAT; default: the addresses of the machine (CLOWDER_MEDIA_PUBLIC_IP)")
 	fs.IntVar(&cfg.MaxCalls, "max-calls", maxCalls,
 		"most calls (ringing or in progress) this process holds at once (CLOWDER_MAX_CALLS)")
+	fs.DurationVar(&cfg.CallRingTimeout, "call-ring-timeout", callRingTimeout,
+		"how long a call rings before it is missed (CLOWDER_CALL_RING_TIMEOUT)")
 	fs.BoolVar(&cfg.TrustProxyHeaders, "trust-proxy", trustProxy,
 		"take the client address from the last X-Forwarded-For entry; only behind our own reverse proxy (CLOWDER_TRUST_PROXY)")
 	if err := fs.Parse(args); err != nil {

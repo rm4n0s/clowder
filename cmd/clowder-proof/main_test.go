@@ -41,6 +41,21 @@ func TestParseFlags(t *testing.T) {
 			want: options{page: "/me/settings", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond, ssh: true},
 		},
 		{
+			name: "calls flags",
+			args: []string{"-o", "x.png", "-calls", "-ring-timeout", "3s", "-as", "alice"},
+			want: options{page: "/", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond, calls: true, ringTimeout: 3 * time.Second},
+		},
+		{
+			name:    "a ring timeout without calls",
+			args:    []string{"-o", "x.png", "-ring-timeout", "3s"},
+			wantTag: tagFlagsInvalid,
+		},
+		{
+			name:    "a ring timeout under a second",
+			args:    []string{"-o", "x.png", "-calls", "-ring-timeout", "100ms"},
+			wantTag: tagFlagsInvalid,
+		},
+		{
 			name: "ssh code flag",
 			args: []string{"-o", "x.png", "-ssh-code", "alice", "-page", "/login"},
 			want: options{page: "/login", out: "x.png", width: 1280, height: 800, wait: 500 * time.Millisecond, sshCode: "alice"},

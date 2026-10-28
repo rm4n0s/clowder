@@ -558,15 +558,55 @@ func TestConversationHeaderAndActions(t *testing.T) {
 			`<span class="conversation-person" title="Bob">`, `class="online-dot"`, `<h1>Bob</h1>`, `<p class="hint conversation-members-line">With Bob</p>`,
 		}, []string{`title="Alice"`, "place-prefs-open", "<details"}},
 		{"the other person is not", renderHTML(t, views.ConversationHeader(offline)), []string{`<span class="conversation-person" title="Bob">`}, []string{"online-dot"}},
-		{"the menu", renderHTML(t, views.ConversationActions(views.PlacePrefsData{Action: "/messages/4/notifications"})), []string{
+		{"the menu", renderHTML(t, views.ConversationActions(views.PlacePrefsData{Action: "/messages/4/notifications"}, views.CallData{})), []string{
 			`<div class="conversation-actions">`, `<details class="post-menu conversation-menu" data-preserve-attr="open" data-on:click__outside="el.removeAttribute('open')">`,
 			`aria-label="More actions"`, `id="place-prefs-open"`, `el.closest(&#39;details&#39;)?.removeAttribute(&#39;open&#39;)`,
 		}, nil},
-		{"no preferences here", renderHTML(t, views.ConversationActions(views.PlacePrefsData{})), []string{`<div class="conversation-actions"></div>`}, []string{"<details", "place-prefs-open"}},
+		{"no preferences here", renderHTML(t, views.ConversationActions(views.PlacePrefsData{}, views.CallData{})), []string{`<div class="conversation-actions"></div>`}, []string{"<details", "place-prefs-open"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			requireHTML(t, tt.html, tt.want, tt.notWant)
 		})
+	}
+}
+
+func TestCallDurationAndKindText(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"video", views.CallKindText(true), "Video call"},
+		{"audio", views.CallKindText(false), "Audio call"},
+		{"answered path with video", views.CallAnsweredPath(7, true), "/messages/7?call=video"},
+		{"answered path with audio", views.CallAnsweredPath(7, false), "/messages/7?call=audio"},
+		{"start path", views.CallPath(7, ""), "/messages/7/call"},
+		{"hang up path", views.CallPath(7, "hangup"), "/messages/7/call/hangup"},
+		{"socket", views.CallSocketURL(7), "/calls/7/ws"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if tt.got != tt.want {
+				t.Errorf("got %q, want %q", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCallActiveShowsTheDuration(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		elapsed time.Duration
+		want    string
+	}{{0, "00:00"}, {75 * time.Second, "01:15"}, {59*time.Minute + 59*time.Second, "59:59"}, {3*time.Hour + 5*time.Minute + 9*time.Second, "3:05:09"}}
+	for _, tt := range tests {
+		d := views.CallData{ConversationID: 3, Enabled: true, Open: &views.CallPanelData{CallID: 1, Active: true, Elapsed: tt.elapsed}}
+		html := renderHTML(t, views.CallArea(d))
+		if !strings.Contains(html, `data-call-duration>`+tt.want+`<`) {
+			t.Errorf("%v: the view does not show %s:\n%s", tt.elapsed, tt.want, html)
+		}
 	}
 }

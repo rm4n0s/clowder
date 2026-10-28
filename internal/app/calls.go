@@ -177,6 +177,9 @@ type Call struct {
 	Home string
 	// Incoming is true when the asking actor is the callee.
 	Incoming bool
+	// Elapsed is how long an active call has been answered, by the clock of
+	// the service when the call was read; zero for a call that is not active.
+	Elapsed time.Duration
 }
 
 // Other returns the participant who is not the user with this ID.
@@ -219,6 +222,10 @@ type CallEntry struct {
 	// · 12 min", "Declined video call", "Missed video call" (the callee), "No
 	// answer", "Cancelled video call" or "Video call · busy" (the caller).
 	Text string
+	// Missed is true for the callee of a call that nobody answered while it
+	// rang: missed, cancelled by the caller, or made while the callee was in
+	// another call. The pages show such an entry in the colour of a warning.
+	Missed bool
 }
 
 // outcomeOf says what became of a call that ended.
@@ -269,6 +276,7 @@ func callEntryOf(c store.Call, viewerID uint64) CallEntry {
 			e.Text = "Missed " + kind
 		}
 	}
+	e.Missed = callee && e.Outcome != CallCompleted && e.Outcome != CallDeclinedOutcome
 	return e
 }
 
@@ -581,6 +589,89 @@ func (c *Calls) Join(ctx context.Context, actor Actor, convID uint64) (Call, err
 	return call, nil
 }
 
+// Enabled reports whether this process runs the media server, so that a call
+// can be started. The pages show the call buttons only then.
+func (c *Calls) Enabled() bool { return c.cfg.Enabled }
+
+// CallInvitation is the ringing call that a user is asked to answer, with how
+// the invitation rings for them (SPEC §7.15, §7.18).
+type CallInvitation struct {
+	// Call is the call, as the callee reads it.
+	Call Call
+	// Ring is true when the invitation plays the ringtone: the conversation is
+	// not muted and its preferences do not say "Nothing". The ringtone plays
+	// whatever the user's notification sound says.
+	Ring bool
+	// Browser is true when the browser notification is wanted: the invitation
+	// rings and the user turned the browser notifications on.
+	Browser bool
+	// Text is the text of the browser notification, "Bob is calling you".
+	Text string
+}
+
+// Invitation returns the invitation of the call callID for the actor, and
+// false when there is nothing to answer any more: the call does not exist, is
+// not the actor's, is not ringing or was started by the actor. A disabled or
+// missing account fails with TagUnauthenticated.
+func (c *Calls) Invitation(ctx context.Context, actor Actor, callID uint64) (CallInvitation, bool, error) {
+	if _, err := checkActive(ctx, c.st, actor); err != nil {
+		return CallInvitation{}, false, err
+	}
+	row, err := c.st.CallByID(ctx, callID)
+	if err != nil {
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == store.TagNotFound {
+			return CallInvitation{}, false, nil
+		}
+		return CallInvitation{}, false, err
+	}
+	return c.invitationOf(ctx, actor, row)
+}
+
+// Ringing returns the invitation of the call that rings for the actor now,
+// and false when none does. The pages call it when they are made, so that a
+// page opened while a call rings shows the dialog at once. A disabled or
+// missing account fails with TagUnauthenticated.
+func (c *Calls) Ringing(ctx context.Context, actor Actor) (CallInvitation, bool, error) {
+	if _, err := checkActive(ctx, c.st, actor); err != nil {
+		return CallInvitation{}, false, err
+	}
+	open, err := c.st.OpenCallsOfUsers(ctx, actor.UserID)
+	if err != nil {
+		return CallInvitation{}, false, err
+	}
+	for _, row := range open {
+		if inv, ok, err := c.invitationOf(ctx, actor, row); err != nil || ok {
+			return inv, ok, err
+		}
+	}
+	return CallInvitation{}, false, nil
+}
+
+// invitationOf makes the invitation of a call row for the actor, if the row is
+// a call that rings for the actor.
+func (c *Calls) invitationOf(ctx context.Context, actor Actor, row store.Call) (CallInvitation, bool, error) {
+	if row.State != store.CallRinging || row.CalleeID != actor.UserID {
+		return CallInvitation{}, false, nil
+	}
+	global, err := c.st.UserSettingsOf(ctx, actor.UserID)
+	if err != nil {
+		return CallInvitation{}, false, err
+	}
+	place, _, err := c.st.PlacePrefOf(ctx, actor.UserID, store.PlaceKey{ConversationID: row.ConversationID})
+	if err != nil {
+		return CallInvitation{}, false, err
+	}
+	call, err := c.viewOfRow(ctx, actor, row)
+	if err != nil {
+		return CallInvitation{}, false, err
+	}
+	quiet := place.Muted || effectiveLevel(global, place, PlaceDirect) == NotifyNothing
+	return CallInvitation{
+		Call: call, Ring: !quiet, Browser: !quiet && global.BrowserNotifications,
+		Text: call.Caller.DisplayName + " is calling you",
+	}, true, nil
+}
+
 // Get returns the call, in any state, to one of its two participants. A call
 // that does not exist or is not the actor's fails with TagNotFound.
 func (c *Calls) Get(ctx context.Context, actor Actor, callID uint64) (Call, error) {
@@ -800,6 +891,9 @@ func (c *Calls) viewOfRow(ctx context.Context, actor Actor, row store.Call) (Cal
 	}
 	if row.EndedBy != nil {
 		v.EndedBy = *row.EndedBy
+	}
+	if row.State == store.CallActive && row.AnsweredAt != nil {
+		v.Elapsed = max(0, c.clk.Now().Sub(*row.AnsweredAt))
 	}
 	return v, nil
 }

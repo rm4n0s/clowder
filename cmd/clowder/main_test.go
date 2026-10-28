@@ -147,6 +147,7 @@ func TestParseServeConfig(t *testing.T) {
 				"CLOWDER_MEDIA_ADDR":          ":7000",
 				"CLOWDER_MEDIA_PUBLIC_IP":     "203.0.113.9",
 				"CLOWDER_MAX_CALLS":           "4",
+				"CLOWDER_CALL_RING_TIMEOUT":   "20s",
 			},
 			want: config.Config{
 				ListenAddr:            "127.0.0.1:9000",
@@ -161,6 +162,7 @@ func TestParseServeConfig(t *testing.T) {
 				MediaAddr:             ":7000",
 				MediaPublicIP:         "203.0.113.9",
 				MaxCalls:              4,
+				CallRingTimeout:       20 * time.Second,
 			},
 		},
 		{
@@ -170,6 +172,7 @@ func TestParseServeConfig(t *testing.T) {
 				"-max-attachment-size", "10", "-max-attachments", "2",
 				"-session-lifetime", "1h", "-invitation-lifetime", "30m", "-log-level", "warn",
 				"-trust-proxy", "-media-addr", "127.0.0.1:7001", "-media-public-ip", "2001:db8::2", "-max-calls", "2",
+				"-call-ring-timeout", "3s",
 			},
 			want: config.Config{
 				ListenAddr:            "127.0.0.1:9001",
@@ -184,6 +187,7 @@ func TestParseServeConfig(t *testing.T) {
 				MediaAddr:             "127.0.0.1:7001",
 				MediaPublicIP:         "2001:db8::2",
 				MaxCalls:              2,
+				CallRingTimeout:       3 * time.Second,
 			},
 		},
 		{
@@ -476,6 +480,12 @@ func TestParseServeConfigErrors(t *testing.T) {
 			args:      []string{"-max-calls", "0"},
 			wantTag:   config.TagMaxCallsInvalid,
 			wantRoute: "parseServeConfig->Config.Validate.MaxCallsInvalid",
+		},
+		{
+			name:      "invalid config: ring timeout",
+			args:      []string{"-call-ring-timeout", "100ms"},
+			wantTag:   config.TagCallRingTimeoutInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.CallRingTimeoutInvalid",
 		},
 		{
 			name:      "invalid config: session lifetime",

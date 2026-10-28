@@ -346,6 +346,12 @@ func (ls *liveStream) countsEvent(ctx context.Context, ev live.Event) (handled b
 		return true, ls.counts(ctx)
 	case live.KindRoomUnread:
 		return true, ls.roomUnread(ctx, ev.RoomID)
+	case live.KindCallRinging, live.KindCallStarted, live.KindCallEnded:
+		return true, ls.callDialog(ctx, ev)
+	case live.KindCallUpdated:
+		// The microphone or the camera of a participant: only the call view
+		// of the participants cares, and it hears it from the call's socket.
+		return true, nil
 	}
 	return false, nil
 }
@@ -396,6 +402,11 @@ func (ls *liveStream) run(sub *live.Subscription, handle eventHandler) {
 	// The person is online while a stream of theirs is open (SPEC §7.15).
 	ls.s.svc.Presence.Connect(ls.actor.UserID)
 	defer ls.s.svc.Presence.Disconnect(ls.actor.UserID)
+	// A call may have started or ended while the page had no stream.
+	if err := ls.ringingSync(ctx); err != nil {
+		ls.s.streamFailed(ls.r, err)
+		return
+	}
 	ticker := time.NewTicker(ls.s.pingInterval)
 	defer ticker.Stop()
 	for {

@@ -34,6 +34,14 @@
 // so that the proof shows the palette of the system theme (a user's own theme
 // setting still wins).
 //
+// With -calls the server also runs its media server of the calls (SPEC §7.18)
+// on a free port of 127.0.0.1 and the browsers get a fake camera, microphone and
+// screen (browsertest.FakeMedia), so that a proof can show a call: the -other
+// user presses Video call with -other-click '[data-call-start="video"]' (and
+// -other-hold keeps the call going), the first user answers with -click
+// '[data-call-answer="video"]', and a -wait of a few seconds lets the media
+// connect. -ring-timeout makes a call that nobody answers missed in seconds.
+//
 // With -render-icon <svg> the tool starts no server: it renders the SVG file to
 // the PNG of -o, -icon-size pixels wide and high, with a transparent ground or
 // the -icon-bg color and -icon-pad percent of space around the icon (the

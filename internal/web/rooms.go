@@ -31,7 +31,7 @@ func (s *Server) sidebarFor(w http.ResponseWriter, r *http.Request, current uint
 		s.redirectToLogin(w, r)
 		return views.SidebarData{}, false
 	}
-	sb, err := s.sidebarData(r.Context(), actor, user, current)
+	sb, err := s.pageSidebar(r.Context(), actor, user, current)
 	if err != nil {
 		s.fail(w, r, err)
 		return views.SidebarData{}, false

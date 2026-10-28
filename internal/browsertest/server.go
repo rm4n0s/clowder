@@ -99,6 +99,15 @@ type Options struct {
 	// free port of the loopback address; Server.SSHAddr says which. A proof
 	// of the Sign-in section sets it.
 	SSH bool
+	// Calls starts the server with the media server of the calls on a free
+	// port of the loopback address, announced as 127.0.0.1, so that the
+	// buttons of the calls are in the pages and two Chromium browsers (see
+	// FakeMedia) can call each other. A test or proof of the calls sets it.
+	Calls bool
+	// CallRingTimeout is how long a call rings before it is missed
+	// (-call-ring-timeout); zero is the server's 45 seconds. A test of the
+	// missed call makes it short.
+	CallRingTimeout time.Duration
 }
 
 // Server is a running clowder server on a temporary data directory. Make it
@@ -276,6 +285,12 @@ func launch(ctx context.Context, opts Options, bin, dataDir string) (srv *Server
 		}
 		sshAddr = net.JoinHostPort(listenHost, strconv.Itoa(sshPort))
 		args = append(args, "-ssh-addr", sshAddr)
+	}
+	if opts.Calls {
+		args = append(args, "-media-addr", net.JoinHostPort(listenHost, "0"), "-media-public-ip", listenHost)
+	}
+	if opts.CallRingTimeout > 0 {
+		args = append(args, "-call-ring-timeout", opts.CallRingTimeout.String())
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Stderr = w

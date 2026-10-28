@@ -23,6 +23,7 @@ func TestFS(t *testing.T) {
 		{"code.js"},
 		{"board.js"},
 		{"messages.js"},
+		{"call.js"},
 		{"notify.js"},
 		{"favicon.svg"},
 		{"favicon-dot.svg"},
@@ -262,6 +263,14 @@ func pairs() []pair {
 	add(nonTextRatio, []string{"c-track"}, "c-icon-muted")
 	add(nonTextRatio, []string{"c-accent-wash"}, "c-accent")
 	add(nonTextRatio, []string{"c-ground", "c-surface", "c-surface-raised", "c-surface-sunken"}, "c-sage")
+	// (22.2) The call: the text on the dark stage and on its round buttons, the
+	// dark text on a button that is off, and the labels of the buttons. The
+	// focus ring there is the light text colour (the ginger of --c-focus is
+	// too dim on the dark buttons in the light palette).
+	add(textRatio, []string{"c-call-ground", "c-call-control"}, "c-call-text")
+	add(textRatio, []string{"c-call-ground"}, "c-call-muted")
+	add(textRatio, []string{"c-call-control-off"}, "c-call-ground")
+	add(nonTextRatio, []string{"c-call-ground", "c-call-control"}, "c-call-text")
 	return ps
 }
 

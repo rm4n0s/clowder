@@ -44,6 +44,8 @@ templ Layout(title string, unread int, sb *SidebarData) {
 					@PageSidebar(*sb)
 					// The streams append here what the script rings for (SPEC §7.15); it is never patched itself.
 					<div id="notify-events" hidden></div>
+					// The slot of the dialog of a call that rings for the user (SPEC §7.18); the stream patches it.
+					@CallRingingSlot(sb.Ringing)
 					<main>
 						{ children... }
 					</main>
