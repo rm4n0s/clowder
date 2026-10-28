@@ -588,10 +588,12 @@ func (sc *scope) postPaths() map[string]string {
 	u := idText(sc.bob.ID)
 	return map[string]string{
 		"POST /login":                                      "/login",
+		"POST /login/code":                                 "/login/code",
 		"POST /logout":                                     "/logout",
 		"POST /invite/{token}":                             "/invite/sometoken",
 		"POST /reset/{token}":                              "/reset/sometoken",
 		"POST /admin/users/{id}/reset-link":                "/admin/users/" + u + "/reset-link",
+		"POST /admin/users/{id}/ssh-code/remove":           "/admin/users/" + u + "/ssh-code/remove",
 		"POST /admin/users/{id}/role":                      "/admin/users/" + u + "/role",
 		"POST /admin/users/{id}/disabled":                  "/admin/users/" + u + "/disabled",
 		"POST /admin/invitations":                          "/admin/invitations",
@@ -635,6 +637,7 @@ func (sc *scope) postPaths() map[string]string {
 		"POST /me/settings/password":                       "/me/settings/password",
 		"POST /me/settings/appearance":                     "/me/settings/appearance",
 		"POST /me/settings/notifications":                  "/me/settings/notifications",
+		"POST /me/settings/ssh-code":                       "/me/settings/ssh-code",
 		"POST /me/settings/ssh-keys":                       "/me/settings/ssh-keys",
 		"POST /me/settings/ssh-keys/{id}/remove":           "/me/settings/ssh-keys/99999/remove",
 		"POST /rooms/{id}/notifications":                   "/rooms/" + g + "/notifications",

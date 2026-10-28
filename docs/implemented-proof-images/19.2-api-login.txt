@@ -1,0 +1,169 @@
+# The server: clowder serve -ssh-addr 127.0.0.1:<ssh port> on demo data in a temporary directory
+{"level":"INFO","msg":"the SSH server is listening","addr":"127.0.0.1:<ssh port>","hostKey":"SHA256:WSEChU2if35wzV1a82tGqN1sfuhWSEcRVIklA0qZcGc"}
+
+# 1. Register the key of alice and turn the SSH code on (curl; tokens and codes are masked)
+$ curl -X POST /api/v1/auth/login -d {username: alice, password: <password>, client_name: curl}
+{"token":"<token>", ...}
+
+$ curl -X POST /api/v1/me/ssh-keys -d {name: proof, public_key: <alice.pub>, current_password: <password>}
+HTTP/1.1 201 Created
+{"id":1,"name":"proof","type":"ssh-ed25519","fingerprint":"SHA256:+0ohRZVpFDM87rvQ5qgHpoEl0qgsEyGKia4hex8SL/w","created_at":"2026-10-28T05:01:48Z","last_used_at":null}
+
+$ curl -X PUT /api/v1/me/ssh-code -d {current_password: <password>}   (before any code was fetched)
+HTTP/1.1 409 Conflict
+# (edited after the run: the manager made the 409 of the SSH code carry its reason as the message, which TestProblemOf checks; the run answered "That clashes with a change made just now.")
+{"error":{"code":"conflict","message":"Fetch a code with one of your keys first.","fields":{"form":"Fetch a code with one of your keys first."}}}
+
+$ ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=<tmp>/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p <ssh port> -i <tmp>/keys/alice alice@127.0.0.1 json
+{"code":"<code>","expires_at":"2026-10-28T05:02:49Z"}
+
+$ curl -X PUT /api/v1/me/ssh-code -d {current_password: <password>}
+HTTP/1.1 204 No Content
+
+$ curl /api/v1/me/settings   (ssh_code_required)
+{
+  "theme": "system",
+  "sound": true,
+  "browser_notifications": false,
+  "notify": "mentions",
+  "sound_name": "purr",
+  "replies": "following",
+  "keywords": [],
+  "group_mentions": true,
+  "ssh_code_required": true
+}
+
+# 2. apicheck with -ssh-key: the password alone is refused with ssh_code_required, then the code is fetched over SSH and the login works
+$ clowder-apicheck -base-url <base> -username alice -password <password> -only session -ssh-key <tmp>/keys/alice -ssh-addr 127.0.0.1:<ssh port>
+== session: log in, read who I am and my sessions, find users, log out
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "username": "alice"
+> }
+< 401 Unauthorized
+< WWW-Authenticate: Bearer realm="clowder"
+< {
+<   "error": {
+<     "code": "ssh_code_required",
+<     "message": "Send the SSH code with ssh_code."
+<   }
+< }
+
+> ssh -i <tmp>/keys/alice alice@127.0.0.1:<ssh port> json
+< host key: ssh-ed25519 SHA256:<host key>
+< {"code":"<code>","expires_at":"2026-10-28T05:02:49Z"}
+
+> POST /api/v1/auth/login
+> Content-Type: application/json
+> {
+>   "client_name": "clowder-apicheck",
+>   "password": "<password>",
+>   "ssh_code": "<code>",
+>   "username": "alice"
+> }
+< 200 OK
+< {
+<   "expires_at": "2026-11-27T05:01:49Z",
+<   "token": "<token>",
+<   "user": {
+<     "avatar_url": "/api/v1/avatars/2?v=ee6ddd5b3cabd94ea8597954693a639c78f861d16d929d1f7acd0bb8f12e66a5",
+<     "created_at": "2026-10-28T05:01:32Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "unread_conversations": 0,
+<   "unread_notifications": 4,
+<   "user": {
+<     "avatar_url": "/api/v1/avatars/2?v=ee6ddd5b3cabd94ea8597954693a639c78f861d16d929d1f7acd0bb8f12e66a5",
+<     "created_at": "2026-10-28T05:01:32Z",
+<     "display_name": "Alice",
+<     "id": 2,
+<     "role": "member",
+<     "username": "alice"
+<   }
+< }
+
+> GET /api/v1/me/sessions
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "sessions": [
+<     {
+<       "client_name": "clowder-apicheck",
+<       "created_at": "2026-10-28T05:01:49Z",
+<       "current": true,
+<       "expires_at": "2026-11-27T05:01:49Z",
+<       "id": 2,
+<       "kind": "api",
+<       "last_seen_at": "2026-10-28T05:01:49Z"
+<     },
+<     {
+<       "client_name": "curl",
+<       "created_at": "2026-10-28T05:01:48Z",
+<       "current": false,
+<       "expires_at": "2026-11-27T05:01:48Z",
+<       "id": 1,
+<       "kind": "api",
+<       "last_seen_at": "2026-10-28T05:01:48Z"
+<     }
+<   ]
+< }
+
+> GET /api/v1/users?q=al
+> Authorization: Bearer <token>
+< 200 OK
+< {
+<   "users": [
+<     {
+<       "avatar_url": "/api/v1/avatars/2?v=ee6ddd5b3cabd94ea8597954693a639c78f861d16d929d1f7acd0bb8f12e66a5",
+<       "created_at": "2026-10-28T05:01:32Z",
+<       "display_name": "Alice",
+<       "id": 2,
+<       "role": "member",
+<       "username": "alice"
+<     }
+<   ]
+< }
+
+> POST /api/v1/auth/logout
+> Authorization: Bearer <token>
+< 204 No Content
+
+> GET /api/v1/me
+> Authorization: Bearer <token>
+< 401 Unauthorized
+< WWW-Authenticate: Bearer realm="clowder"
+< {
+<   "error": {
+<     "code": "unauthenticated",
+<     "message": "Log in to use this."
+<   }
+< }
+
+ok session
+
+all scenarios passed (7 requests)
+
+# 3. A user without the code is not asked for it (bob), and a wrong code is refused (alice)
+$ curl -X POST /api/v1/auth/login -d {username: alice, password: <password>, client_name: curl, ssh_code: 0000-0000}
+HTTP/1.1 401 Unauthorized
+{"error":{"code":"unauthenticated","message":"Wrong username, password or SSH code."}}
+
+$ curl -X POST /api/v1/auth/login -d {username: alice, password: <password>, client_name: curl}   (no code)
+HTTP/1.1 401 Unauthorized
+{"error":{"code":"ssh_code_required","message":"Send the SSH code with ssh_code."}}
+
+$ curl -X POST /api/v1/auth/login -d {username: bob, password: <password>, client_name: curl}
+HTTP/1.1 200 OK

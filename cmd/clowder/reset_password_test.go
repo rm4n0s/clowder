@@ -142,7 +142,7 @@ func TestRunResetPassword(t *testing.T) {
 			if res.User.Username != tt.wantUser {
 				t.Errorf("user = %q, want %q", res.User.Username, tt.wantUser)
 			}
-			if _, _, err := accounts.Login(t.Context(), tt.wantUser, "a brand new passphrase", "192.0.2.1"); err != nil {
+			if _, err := accounts.Login(t.Context(), tt.wantUser, "a brand new passphrase", "192.0.2.1"); err != nil {
 				t.Errorf("login with the new password: %+v", err)
 			}
 			if stderr.Len() != 0 {

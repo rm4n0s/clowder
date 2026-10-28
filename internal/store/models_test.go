@@ -95,6 +95,9 @@ func TestModelsRoundTrip(t *testing.T) {
 			f.create(k)
 			return &SSHCode{UserID: u.ID, KeyID: k.ID, CodeHash: "c", ExpiresAt: day(time.Minute), UsedAt: ptr(day(time.Second)), Replaced: true}
 		}},
+		{"PendingLogin", "pending_logins", func(f *fix) any {
+			return &PendingLogin{TokenHash: "p1", UserID: f.user().ID, ExpiresAt: day(5 * time.Minute), WrongTries: 2, Next: "/rooms/1"}
+		}},
 		{"Session", "sessions", func(f *fix) any {
 			return &Session{TokenHash: "h1", UserID: f.user().ID, ExpiresAt: day(48 * time.Hour), LastSeenAt: day(time.Minute)}
 		}},
@@ -255,8 +258,8 @@ func TestEveryModelIsMigrated(t *testing.T) {
 			t.Errorf("no table for %T", m)
 		}
 	}
-	if got := len(allModels()); got != 27 {
-		t.Errorf("%d models, want the 27 of SPEC §6.3", got)
+	if got := len(allModels()); got != 28 {
+		t.Errorf("%d models, want the 28 of SPEC §6.3", got)
 	}
 }
 
@@ -284,6 +287,11 @@ func TestUniqueConstraints(t *testing.T) {
 			a, b := f.user(), f.user()
 			return &SSHKey{UserID: a.ID, Name: "a", Type: "ssh-ed25519", Fingerprint: "SHA256:x", PublicKey: "ssh-ed25519 AAAA"},
 				&SSHKey{UserID: b.ID, Name: "b", Type: "ssh-ed25519", Fingerprint: "SHA256:x", PublicKey: "ssh-ed25519 AAAA"}
+		}},
+		{"pending_logins.token_hash", func(f *fix) (any, any) {
+			u := f.user()
+			return &PendingLogin{TokenHash: "h", UserID: u.ID, ExpiresAt: day(time.Minute)},
+				&PendingLogin{TokenHash: "h", UserID: u.ID, ExpiresAt: day(time.Minute)}
 		}},
 		{"sessions.token_hash", func(f *fix) (any, any) {
 			u := f.user()
@@ -642,6 +650,7 @@ func TestForeignKeyActions(t *testing.T) {
 		{"ssh_keys", "user_id", "users", restrict},
 		{"ssh_codes", "user_id", "users", restrict},
 		{"ssh_codes", "key_id", "ssh_keys", cascade},
+		{"pending_logins", "user_id", "users", restrict},
 	}
 
 	f := newFix(t)
@@ -694,6 +703,9 @@ func TestIndexes(t *testing.T) {
 		"idx_ssh_keys_user_id":                      {"ssh_keys", false, "user_id"},
 		"idx_ssh_codes_user_id":                     {"ssh_codes", false, "user_id"},
 		"idx_ssh_codes_created_at":                  {"ssh_codes", false, "created_at"},
+		"uq_pending_logins_token_hash":              {"pending_logins", true, "token_hash"},
+		"idx_pending_logins_user_id":                {"pending_logins", false, "user_id"},
+		"idx_pending_logins_expires_at":             {"pending_logins", false, "expires_at"},
 		"uq_sessions_token_hash":                    {"sessions", true, "token_hash"},
 		"idx_sessions_user_id":                      {"sessions", false, "user_id"},
 		"uq_rooms_name":                             {"rooms", true, "name"},
@@ -1062,6 +1074,11 @@ func TestDeleteUserIsRefused(t *testing.T) {
 		{"password reset creator", func(f *fix) *User {
 			u := f.user()
 			f.create(&PasswordReset{UserID: f.user().ID, TokenHash: "h", CreatedBy: &u.ID, ExpiresAt: day(time.Hour)})
+			return u
+		}},
+		{"pending login", func(f *fix) *User {
+			u := f.user()
+			f.create(&PendingLogin{TokenHash: "pl", UserID: u.ID, ExpiresAt: day(time.Minute)})
 			return u
 		}},
 		{"ssh key", func(f *fix) *User {

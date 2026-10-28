@@ -8,10 +8,13 @@
 # balances the requests round-robin between the two. The processes are not
 # published any more: people reach Clowder through Caddy only.
 #
-# The SSH server of the sign-in codes (SPEC §7.16) runs in the first process
-# only, which publishes CLOWDER_SSH_PORT itself: Caddy balances HTTP, and the
-# codes are kept in the database, so any process takes a code that this one
-# gave. The second process runs no SSH server.
+# The SSH server of the sign-in codes (SPEC §7.16) runs in both processes (the
+# second inherits CLOWDER_SSH_ADDR from compose.yaml): a login asks for the SSH
+# code only in a process that runs the server, so a user must not be able to
+# skip the code by landing on a process without one. Both share one host key,
+# which the first of them makes in the data volume. Only the first process
+# publishes CLOWDER_SSH_PORT: Caddy balances HTTP, and the codes are kept in
+# the database, so the code that either gave works in both.
 #
 # The first admin: docker compose -f compose.yaml -f compose.cluster.yaml run --rm clowder invite -admin
 
@@ -45,20 +48,21 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    # Only the SSH port: the web port is Caddy's.
+    # Only the SSH port (of the first process): the web port is Caddy's.
     ports: !override
       - "${CLOWDER_SSH_PORT:-2222}:2222"
 
   # The second process: the service clowder of compose.yaml (same image,
-  # database, base URL and data volume), with the settings above.
+  # database, base URL, data volume and SSH address), with the settings above.
+  # Its SSH port is not published.
   clowder2:
     extends:
       file: compose.yaml
       service: clowder
     environment:
       <<: *cluster-environment
-      # No SSH server in this process: an empty address turns it off.
-      CLOWDER_SSH_ADDR: ""
+      # The SSH server runs here too (CLOWDER_SSH_ADDR is ":2222" in
+      # compose.yaml): every process has the same setting.
     depends_on:
       redis:
         condition: service_healthy

@@ -58,7 +58,49 @@ func (s *Server) sshKeyRoutes() []Route {
 		s.route(http.MethodGet, "/me/ssh-keys", false, s.listSSHKeys),
 		s.route(http.MethodPost, "/me/ssh-keys", false, s.addSSHKey),
 		s.route(http.MethodDelete, "/me/ssh-keys/{id}", false, s.removeSSHKey),
+		s.route(http.MethodPut, "/me/ssh-code", false, s.enableSSHCode),
+		s.route(http.MethodDelete, "/me/ssh-code", false, s.disableSSHCode),
 	}
+}
+
+// sshCodeRequest is the body of PUT and DELETE /me/ssh-code.
+type sshCodeRequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
+// enableSSHCode answers PUT /me/ssh-code: it turns on "Ask for an SSH code when
+// I log in" after it checks the current password, and answers 204 (also when
+// it was on). A wrong password is 422 on current_password; the SSH server being
+// off and no key having fetched a code are 409.
+func (s *Server) enableSSHCode(w http.ResponseWriter, r *http.Request) {
+	c, _ := callerFrom(r.Context())
+	var body sshCodeRequest
+	if err := decodeJSON(w, r, &body); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.svc.SSHKeys.EnableSSHCode(r.Context(), c.actor, body.CurrentPassword, s.clientIP(r)); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	s.writeNoContent(w)
+}
+
+// disableSSHCode answers DELETE /me/ssh-code: it turns the SSH code at login
+// off after it checks the current password, and answers 204 (also when it was
+// off).
+func (s *Server) disableSSHCode(w http.ResponseWriter, r *http.Request) {
+	c, _ := callerFrom(r.Context())
+	var body sshCodeRequest
+	if err := decodeJSON(w, r, &body); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.svc.SSHKeys.DisableSSHCode(r.Context(), c.actor, body.CurrentPassword, s.clientIP(r)); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	s.writeNoContent(w)
 }
 
 // listSSHKeys answers GET /me/ssh-keys: the keys of the user, oldest first, and

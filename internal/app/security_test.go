@@ -40,7 +40,7 @@ func TestHashingWaitsForItsTurn(t *testing.T) {
 	release := e.svc.FillHashSlots(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+		_, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
 		done <- err
 	}()
 	select {
@@ -69,7 +69,7 @@ func TestHashingWaitEndsWithTheRequest(t *testing.T) {
 		route string
 	}{
 		{"login", func(ctx context.Context, e *env, _ string) error {
-			_, _, err := e.svc.Login(ctx, "alice", goodPassword, loginIP)
+			_, err := e.svc.Login(ctx, "alice", goodPassword, loginIP)
 			return err
 		}, "Accounts.Login->Accounts.LoginClient->Accounts.verify->gate.enter.HashWaitCanceled"},
 		{"sign-up", func(ctx context.Context, e *env, token string) error {

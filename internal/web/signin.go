@@ -8,6 +8,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/web/views"
+	"github.com/rm4n0s/errors"
 )
 
 // sectionSignIn is the id of the Sign-in section of the settings page, and the
@@ -21,7 +22,11 @@ func (s *Server) signInData(ctx context.Context, actor app.Actor) (views.SignInD
 	if err != nil {
 		return views.SignInData{}, err
 	}
-	return views.SignInData{Keys: keys, Server: s.svc.SSHKeys.Server(actor.Username)}, nil
+	settings, err := s.svc.Accounts.Settings(ctx, actor)
+	if err != nil {
+		return views.SignInData{}, err
+	}
+	return views.SignInData{Keys: keys, Server: s.svc.SSHKeys.Server(actor.Username), CodeRequired: settings.SSHCodeRequired}, nil
 }
 
 // settingsSSHKeyAdd answers POST /me/settings/ssh-keys: it registers the public
@@ -78,4 +83,39 @@ func (s *Server) settingsSSHKeyRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Saved = err == nil
 	s.settingsSaved(w, r, sectionSignIn, views.SignInSection(d), "")
+}
+
+// settingsSSHCode answers POST /me/settings/ssh-code: it turns "Ask for an SSH
+// code when I log in" on ("enabled" is "true") or off ("false"), after it
+// checks the current password.
+func (s *Server) settingsSSHCode(w http.ResponseWriter, r *http.Request) {
+	if !s.parseForm(w, r) {
+		return
+	}
+	ctx := r.Context()
+	actor, _ := actorFrom(ctx)
+	password, ip := r.PostFormValue("currentPassword"), clientIP(r, s.cfg.TrustProxyHeaders)
+	var err error
+	switch r.PostFormValue("enabled") {
+	case "true":
+		err = s.svc.SSHKeys.EnableSSHCode(ctx, actor, password, ip)
+	case "false":
+		err = s.svc.SSHKeys.DisableSSHCode(ctx, actor, password, ip)
+	default:
+		err = errors.New(app.TagInvalidInput, "enabled is not true or false",
+			"fields", map[string]string{app.FieldForm: messageActionInvalid})
+	}
+	if err != nil {
+		s.settingsFailed(w, r, err, func(d *views.SettingsData, problems views.FormErrors) {
+			d.SignIn.Code = problems
+		}, func(d views.SettingsData) templ.Component { return views.SignInSection(d.SignIn) })
+		return
+	}
+	d, err := s.signInData(ctx, actor)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	d.Saved = true
+	s.settingsSaved(w, r, sectionSignIn, views.SignInSection(d), resetFormJS("ssh-code-form"))
 }

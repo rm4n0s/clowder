@@ -45,9 +45,9 @@ func statusOf(err error) int {
 		return http.StatusNotFound
 	case app.TagForbidden:
 		return http.StatusForbidden
-	case app.TagInvalidInput, app.TagSSHKeyTypeRefused, app.TagSSHKeyTooShort:
+	case app.TagInvalidInput, app.TagSSHKeyTypeRefused, app.TagSSHKeyTooShort, app.TagSSHCodeWrong:
 		return http.StatusUnprocessableEntity
-	case app.TagConflict:
+	case app.TagConflict, app.TagSSHServerOff, app.TagSSHCodeNotTried, app.TagSSHCodeNeedsKey:
 		return http.StatusConflict
 	case app.TagRateLimited:
 		return http.StatusTooManyRequests
@@ -115,7 +115,9 @@ type formView struct {
 //
 //   - TagInvalidInput shows the messages of the metadata "fields" next to
 //     their inputs, and the one named FieldForm above the form; so do the tags
-//     of a refused SSH key and a TagConflict that has such messages;
+//     of a refused SSH key, of a wrong SSH code and of the SSH code switch
+//     (server off, no key tried, last key), and a TagConflict that has such
+//     messages;
 //   - TagTooLarge shows "Each file can be at most N MB." next to the files;
 //   - TagRateLimited shows messageRateLimited above the form;
 //   - TagForbidden and TagConflict show messageForbidden and messageConflict;
@@ -132,7 +134,8 @@ func (s *Server) formFailed(w http.ResponseWriter, r *http.Request, err error, b
 	case status == http.StatusFound:
 		s.redirectToLogin(w, r)
 		return
-	case isTag(err, app.TagInvalidInput), isTag(err, app.TagTooLarge), isTag(err, app.TagSSHKeyTypeRefused), isTag(err, app.TagSSHKeyTooShort):
+	case isTag(err, app.TagInvalidInput), isTag(err, app.TagTooLarge), isTag(err, app.TagSSHKeyTypeRefused), isTag(err, app.TagSSHKeyTooShort),
+		isTag(err, app.TagSSHCodeWrong), isTag(err, app.TagSSHServerOff), isTag(err, app.TagSSHCodeNotTried), isTag(err, app.TagSSHCodeNeedsKey):
 		problems = formErrorsOf(err)
 	case isTag(err, app.TagConflict) && hasFields(err):
 		// A conflict that says what clashes (a key that is registered, the

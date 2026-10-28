@@ -39,6 +39,23 @@ func startAPI(t *testing.T) string {
 // a second process of the same installation.
 func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
 	t.Helper()
+	first, second, _ = startAPIFull(t, listen, false)
+	return first, second
+}
+
+// apiParts are the services of a test API that a test reaches into.
+type apiParts struct {
+	st       *store.Store
+	accounts *app.Accounts
+	keys     *app.SSHKeys
+	clk      *clock.Fake
+}
+
+// startAPIFull is startAPIWith, and sshServer says that the accounts ask for
+// the SSH code of a user who turned it on (the test runs the SSH server). It
+// returns the services too.
+func startAPIFull(t *testing.T, listen *live.Hub, sshServer bool) (first, second string, parts *apiParts) {
+	t.Helper()
 	hub := live.New()
 	t.Cleanup(hub.Close)
 	if listen == nil {
@@ -52,7 +69,7 @@ func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
 	}
 	accounts := app.NewAccounts(st, clk, auth.FastHasher(), app.AccountsConfig{
 		InvitationLifetime: 7 * 24 * time.Hour, SessionLifetime: 30 * 24 * time.Hour,
-		Publisher: hub, Avatars: avatarStore,
+		Publisher: hub, Avatars: avatarStore, SSHServer: sshServer,
 	})
 	for _, u := range []struct {
 		name string
@@ -80,6 +97,7 @@ func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
 		app.RoomInput{Name: "lobby", Visibility: app.VisibilityVisible}); err != nil {
 		t.Fatal(err)
 	}
+	keys := app.NewSSHKeys(st, clk, accounts, app.SSHServerInfo{Addr: ":2222", PublicHost: "chat.example.org", HostFingerprint: "SHA256:testhostkey"})
 	srv, err := api.New(api.Options{Services: api.Services{
 		Accounts:      accounts,
 		Notifications: app.NewNotifications(st, hub),
@@ -92,7 +110,7 @@ func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
 		Search:  app.NewSearch(st),
 		Audit:   app.NewAudit(st),
 		Prefs:   app.NewPrefs(st, hub),
-		SSHKeys: app.NewSSHKeys(st, clk, accounts, app.SSHServerInfo{Addr: ":2222", PublicHost: "chat.example.org", HostFingerprint: "SHA256:testhostkey"}),
+		SSHKeys: keys,
 		Hub:     listen,
 	}, MaxUploadSize: 1 << 20, BaseURL: "http://clowder.example.com"})
 	if err != nil {
@@ -105,7 +123,7 @@ func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
 	ts, other := httptest.NewServer(mux), httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 	t.Cleanup(other.Close)
-	return ts.URL, other.URL
+	return ts.URL, other.URL, &apiParts{st: st, accounts: accounts, keys: keys, clk: clk}
 }
 
 func TestRunAgainstTheRealAPI(t *testing.T) {

@@ -180,7 +180,7 @@ func newSSHCode() (string, error) {
 
 // NormalizeCode returns the code as it is stored and compared: without dashes
 // and spaces, in upper case, with Crockford's I and L read as 1 and O as 0.
-// The login of step 19.2 uses it on what a person types.
+// The login with the SSH code uses it on what a person types.
 func NormalizeCode(s string) string {
 	var b strings.Builder
 	for _, r := range strings.ToUpper(s) {
@@ -198,7 +198,7 @@ func NormalizeCode(s string) string {
 }
 
 // SSHCodeHash returns the hash that is stored for a code the person typed:
-// the SHA-256 of the normalised code. The login of step 19.2 uses it.
+// the SHA-256 of the normalised code. The login with the SSH code uses it.
 func SSHCodeHash(typed string) string {
 	return auth.HashToken(NormalizeCode(typed))
 }

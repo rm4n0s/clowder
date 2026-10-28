@@ -123,6 +123,10 @@ type Settings struct {
 	// GroupMentions is true when @room, @all and @here reach the user (the
 	// default).
 	GroupMentions bool
+	// SSHCodeRequired is true when the user turned on "Ask for an SSH code
+	// when I log in" (SPEC §7.16). It is read only here: EnableSSHCode and
+	// DisableSSHCode change it.
+	SSHCodeRequired bool
 }
 
 // SettingsUpdate is a change of the settings. A nil field keeps the value.
@@ -347,7 +351,8 @@ func (a *Accounts) OpenAvatar(ctx context.Context, actor Actor, userID uint64) (
 // username in the login limiter, and a username or address that the limiter
 // blocks gets TagRateLimited before the password is looked at. In one
 // transaction it stores the new hash, deletes every session of the user but
-// sessionID (browsers and clients alike) and writes the audit event
+// sessionID (browsers and clients alike) and every pending login that waits for
+// an SSH code, and writes the audit event
 // user.password_changed; after the commit it publishes live.KindUserChanged,
 // which closes the sockets and streams of the other sessions.
 //
@@ -401,6 +406,10 @@ func (a *Accounts) ChangePassword(ctx context.Context, actor Actor, sessionID ui
 			return err
 		}
 		if err := tx.DeleteSessionsOfUserExcept(ctx, user.ID, sessionID); err != nil {
+			return err
+		}
+		// A login that waits for its SSH code was made with the old password.
+		if err := tx.DeletePendingLoginsOfUser(ctx, user.ID); err != nil {
 			return err
 		}
 		return recordAudit(ctx, tx, auditEntry{
@@ -577,7 +586,7 @@ func settingsOf(row store.UserSettings) Settings {
 	return Settings{
 		Theme: row.Theme, Sound: row.Sound, BrowserNotifications: row.BrowserNotifications,
 		Notify: row.Notify, SoundName: row.SoundName, Replies: row.Replies,
-		Keywords: keywords, GroupMentions: row.GroupMentions(),
+		Keywords: keywords, GroupMentions: row.GroupMentions(), SSHCodeRequired: row.SSHCodeRequired,
 	}
 }
 

@@ -206,7 +206,8 @@ func (a *Accounts) usableResetLink(ctx context.Context, st *store.Store, token s
 
 // ResetPassword sets a new password with a reset link (SPEC §7.1, D51). In one
 // transaction it checks the link again, stores the new hash, deletes every
-// session of the user (browsers and API clients alike), starts a new browser
+// session of the user (browsers and API clients alike) and every pending login
+// that waits for an SSH code, starts a new browser
 // session, marks the link used and writes the audit event
 // user.password_reset (the actor is the user). After the commit it clears the
 // failed logins of the username and publishes live.KindUserChanged, which
@@ -259,9 +260,13 @@ func (a *Accounts) ResetPassword(ctx context.Context, in ResetInput) (LoginResul
 		if err := tx.SetUserPasswordHash(ctx, u.ID, hash); err != nil {
 			return err
 		}
-		// TODO(step 19.2): the reset must not touch the SSH sign-in code of
-		// the user (SPEC D51); nothing of it is read or written here.
+		// The reset does not touch the SSH sign-in code of the user (SPEC
+		// D51): only the logins that wait for a code, made with the old
+		// password, end with the sessions.
 		if err := tx.DeleteSessionsOfUser(ctx, u.ID); err != nil {
+			return err
+		}
+		if err := tx.DeletePendingLoginsOfUser(ctx, u.ID); err != nil {
 			return err
 		}
 		if err := tx.CreateSession(ctx, sess); err != nil {

@@ -12,6 +12,9 @@ type loginRequest struct {
 	Username   string `json:"username"`
 	Password   string `json:"password"`
 	ClientName string `json:"client_name"`
+	// SSHCode is the sign-in code of a user who turned on the SSH code
+	// (SPEC §7.16); optional.
+	SSHCode string `json:"ssh_code"`
 }
 
 // signupRequest is the body of POST /auth/signup.
@@ -49,7 +52,10 @@ func (s *Server) authRoutes() []Route {
 
 // login answers POST /auth/login: it starts a session of kind api and returns
 // its token. A wrong username or password is 401, said the same way whether
-// the user exists, and the login limiter answers 429 (SPEC D43, §7.1).
+// the user exists, and the login limiter answers 429 (SPEC D43, §7.1). For a
+// user who turned on the SSH code (SPEC §7.16) the right password alone is 401
+// ssh_code_required; with ssh_code too it uses the code up and logs in, and a
+// wrong code is 401 unauthenticated and counts in the limiter.
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var in loginRequest
 	if err := decodeJSON(w, r, &in); err != nil {
@@ -62,10 +68,16 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		ClientIP:   s.clientIP(r),
 		Kind:       app.SessionAPI,
 		ClientName: in.ClientName,
+		SSHCode:    in.SSHCode,
 	})
 	if err != nil {
 		if wrongCredentials(err) {
 			s.writeProblem(w, r, unauthenticatedProblem(messageWrongCredentials))
+			return
+		}
+		if isTag(err, app.TagUnauthenticated) {
+			// The password was right and the code was not.
+			s.writeProblem(w, r, unauthenticatedProblem(messageWrongCode))
 			return
 		}
 		s.writeError(w, r, err)

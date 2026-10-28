@@ -93,6 +93,10 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Publisher:          pub,
 		Avatars:            avatarStore,
 		Logger:             logger,
+		// A login asks for the SSH code only when this process runs the SSH
+		// server; every process of a cluster has the same -ssh-addr
+		// (SPEC §7.16).
+		SSHServer: cfg.SSHAddr != "",
 	})
 	postsConfig := app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,

@@ -41,6 +41,11 @@ func TestParseFlags(t *testing.T) {
 			want: options{page: "/me/settings", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond, ssh: true},
 		},
 		{
+			name: "ssh code flag",
+			args: []string{"-o", "x.png", "-ssh-code", "alice", "-page", "/login"},
+			want: options{page: "/login", out: "x.png", width: 1280, height: 800, wait: 500 * time.Millisecond, sshCode: "alice"},
+		},
+		{
 			name: "sign-up flags",
 			args: []string{
 				"-o", "x.png", "-invite", "-page", "/invite/{invite}",
@@ -136,6 +141,8 @@ func TestParseFlags(t *testing.T) {
 		{name: "api login without a user", args: []string{"-o", "x.png", "-api-login", "clowder-apicheck"}, wantTag: tagFlagsInvalid},
 		{name: "cluster without other", args: []string{"-o", "x.png", "-as", "bob", "-cluster"}, wantTag: tagFlagsInvalid},
 		{name: "cluster with ssh", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-ssh"}, wantTag: tagFlagsInvalid},
+		{name: "cluster with ssh code", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-ssh-code", "alice"}, wantTag: tagFlagsInvalid},
+		{name: "ssh code user is the as user", args: []string{"-o", "x.png", "-as", "alice", "-ssh-code", "alice"}, wantTag: tagFlagsInvalid},
 		{name: "cluster with invite", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-invite", "-page", "/invite/{invite}"}, wantTag: tagFlagsInvalid},
 		{name: "cluster with reset", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-reset", "bob", "-page", "/reset/{reset}"}, wantTag: tagFlagsInvalid},
 		{name: "reset without the placeholder", args: []string{"-o", "x.png", "-reset", "bob", "-page", "/reset/x"}, wantTag: tagFlagsInvalid},

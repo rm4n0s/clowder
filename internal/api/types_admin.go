@@ -13,6 +13,8 @@ type adminUserJSON struct {
 	// AvatarURL is the address of the avatar (see avatarURL), null for none.
 	AvatarURL *string `json:"avatar_url"`
 	CreatedAt string  `json:"created_at"`
+	// SSHCodeRequired is true when the user turned on the SSH code at login.
+	SSHCodeRequired bool `json:"ssh_code_required"`
 }
 
 // adminUserOf makes the JSON of a user for an admin.
@@ -25,6 +27,8 @@ func adminUserOf(u app.User) adminUserJSON {
 		Disabled:    u.Disabled,
 		AvatarURL:   avatarURL(u.ID, u.AvatarKey),
 		CreatedAt:   rfc3339(u.CreatedAt),
+		// SSHCodeRequired is read from the settings of the user.
+		SSHCodeRequired: u.SSHCodeRequired,
 	}
 }
 

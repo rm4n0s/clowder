@@ -64,6 +64,15 @@ const (
 	ActionUserSSHKeyAdded AuditAction = "user.ssh_key_added"
 	// ActionUserSSHKeyRemoved is a user who removed an SSH key.
 	ActionUserSSHKeyRemoved AuditAction = "user.ssh_key_removed"
+	// ActionUserSSHCodeEnabled is a user who turned on the SSH code at login
+	// (SPEC §7.16).
+	ActionUserSSHCodeEnabled AuditAction = "user.ssh_code_enabled"
+	// ActionUserSSHCodeDisabled is a user who turned off the SSH code at
+	// login.
+	ActionUserSSHCodeDisabled AuditAction = "user.ssh_code_disabled"
+	// ActionUserSSHCodeRemoved is an admin who turned off the SSH code of
+	// another user.
+	ActionUserSSHCodeRemoved AuditAction = "user.ssh_code_removed"
 )
 
 // AuditEvent records a change to a post, task, column, membership, room or

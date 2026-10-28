@@ -125,8 +125,8 @@ func TestComposePublishesOnlyWhatItShould(t *testing.T) {
 		}
 	}
 	// The web port is Caddy's. The first process publishes the SSH port of the
-	// sign-in codes (SPEC §7.16) and nothing else; the second runs no SSH
-	// server and publishes nothing.
+	// sign-in codes (SPEC §7.16) and nothing else; the second runs the SSH
+	// server too (every process has the same -ssh-addr) and publishes nothing.
 	if !strings.Contains(service(cluster, "clowder2"), "ports: !reset []") {
 		t.Error("compose.cluster.yaml still publishes clowder2")
 	}
@@ -135,8 +135,15 @@ func TestComposePublishesOnlyWhatItShould(t *testing.T) {
 		strings.Contains(first, "8080:8080") {
 		t.Errorf("compose.cluster.yaml: the first process must publish only the SSH port:\n%s", first)
 	}
-	if !strings.Contains(service(cluster, "clowder2"), `CLOWDER_SSH_ADDR: ""`) {
-		t.Error("compose.cluster.yaml does not turn the SSH server of clowder2 off")
+	// Neither process may turn its SSH server off: a login asks for the SSH
+	// code only where the server runs, so every process has the same setting.
+	for _, name := range []string{"clowder", "clowder2"} {
+		if regexp.MustCompile(`(?m)^\s*CLOWDER_SSH_ADDR:`).MatchString(service(cluster, name)) {
+			t.Errorf("compose.cluster.yaml changes CLOWDER_SSH_ADDR of %s: both processes take it from compose.yaml", name)
+		}
+	}
+	if !strings.Contains(service(cluster, "clowder2"), "service: clowder") {
+		t.Error("compose.cluster.yaml: clowder2 does not extend the service clowder, so it would not get its SSH address")
 	}
 	if !strings.Contains(compose, `CLOWDER_SSH_ADDR: ":2222"`) || !strings.Contains(service(compose, "clowder"), `"${CLOWDER_SSH_PORT:-2222}:2222"`) {
 		t.Error("compose.yaml does not run and publish the SSH server on 2222")

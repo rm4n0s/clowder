@@ -53,7 +53,8 @@ func TestLogin(t *testing.T) {
 				tt.prepare(e, alice)
 			}
 
-			token, user, err := e.svc.Login(t.Context(), tt.username, tt.password, loginIP)
+			res, err := e.svc.Login(t.Context(), tt.username, tt.password, loginIP)
+			token, user := res.Token, res.User
 			if tt.wantErr {
 				appErr := requireTag(t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 				fields := fieldsOf(t, appErr)
@@ -107,7 +108,7 @@ func TestLoginErrorsAreTheSame(t *testing.T) {
 		{"nobody", "wrong password"}, // unknown user
 		{"alice", goodPassword},      // disabled user
 	} {
-		_, _, err := e.svc.Login(t.Context(), c.user, c.password, loginIP)
+		_, err := e.svc.Login(t.Context(), c.user, c.password, loginIP)
 		appErr := requireTag(t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 		messages = append(messages, appErr.Message+"|"+fieldsOf(t, appErr)[app.FieldForm])
 	}
@@ -120,11 +121,13 @@ func TestLoginTwiceMakesTwoSessions(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	alice := e.signUp("alice", store.RoleMember)
-	t1, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+	r1, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+	t1 := r1.Token
 	if err != nil {
 		t.Fatal(err)
 	}
-	t2, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+	r2, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+	t2 := r2.Token
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +144,7 @@ func TestLoginRateLimit(t *testing.T) {
 	failN := func(e *env, n int, user, ip string) {
 		e.t.Helper()
 		for range n {
-			_, _, err := e.svc.Login(e.t.Context(), user, "wrong password", ip)
+			_, err := e.svc.Login(e.t.Context(), user, "wrong password", ip)
 			_ = requireTag(e.t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 		}
 	}
@@ -153,10 +156,10 @@ func TestLoginRateLimit(t *testing.T) {
 			for i := range 5 {
 				failN(e, 1, "alice", "192.0.2."+string(rune('1'+i))) // five different addresses
 			}
-			_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, "192.0.2.99")
+			_, err := e.svc.Login(t.Context(), "alice", goodPassword, "192.0.2.99")
 			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 			// Another user from the same fresh address is fine.
-			if _, _, err := e.svc.Login(t.Context(), "bob", goodPassword, "192.0.2.99"); err != nil {
+			if _, err := e.svc.Login(t.Context(), "bob", goodPassword, "192.0.2.99"); err != nil {
 				t.Errorf("another user was blocked: %+v", err)
 			}
 		}},
@@ -164,25 +167,25 @@ func TestLoginRateLimit(t *testing.T) {
 			for _, u := range []string{"u1", "u2", "u3", "u4", "u5"} {
 				failN(e, 1, u, loginIP)
 			}
-			_, _, err := e.svc.Login(t.Context(), "bob", goodPassword, loginIP)
+			_, err := e.svc.Login(t.Context(), "bob", goodPassword, loginIP)
 			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
-			if _, _, err := e.svc.Login(t.Context(), "bob", goodPassword, "192.0.2.77"); err != nil {
+			if _, err := e.svc.Login(t.Context(), "bob", goodPassword, "192.0.2.77"); err != nil {
 				t.Errorf("another address was blocked: %+v", err)
 			}
 		}},
 		{"four failures do not block", func(t *testing.T, e *env) {
 			failN(e, 4, "alice", loginIP)
-			if _, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
+			if _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
 				t.Errorf("Login after 4 failures: %+v", err)
 			}
 		}},
 		{"the block ends when the window passes", func(t *testing.T, e *env) {
 			failN(e, 5, "alice", loginIP)
 			e.clk.Advance(14*time.Minute + 59*time.Second)
-			_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+			_, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
 			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 			e.clk.Advance(time.Second)
-			if _, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
+			if _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
 				t.Errorf("Login after the window: %+v", err)
 			}
 		}},
@@ -190,25 +193,25 @@ func TestLoginRateLimit(t *testing.T) {
 			failN(e, 5, "alice", loginIP)
 			for range 10 {
 				e.clk.Advance(time.Minute)
-				_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+				_, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
 				if i := e.clk.Now().Sub(start); i < 15*time.Minute {
 					_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 				}
 			}
 			e.clk.Advance(6 * time.Minute)
-			if _, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
+			if _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
 				t.Errorf("Login after the window: %+v", err)
 			}
 		}},
 		{"a success resets the failures of the username", func(t *testing.T, e *env) {
 			failN(e, 4, "alice", loginIP)
-			if _, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
+			if _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP); err != nil {
 				t.Fatal(err)
 			}
 			// The four failures of the address count: one more is the fifth.
 			failN(e, 1, "alice", "192.0.2.50")
 			failN(e, 3, "alice", "192.0.2.51") // alice has 4 now, not 8
-			if _, _, err := e.svc.Login(t.Context(), "alice", goodPassword, "192.0.2.52"); err != nil {
+			if _, err := e.svc.Login(t.Context(), "alice", goodPassword, "192.0.2.52"); err != nil {
 				t.Errorf("Login: the success should have cleared the earlier failures: %+v", err)
 			}
 		}},
@@ -221,17 +224,17 @@ func TestLoginRateLimit(t *testing.T) {
 				t.Fatal(err)
 			}
 			for range 5 {
-				_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+				_, err := e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
 				_ = requireTag(t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 			}
-			_, _, err = e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
+			_, err = e.svc.Login(t.Context(), "alice", goodPassword, loginIP)
 			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 		}},
 		{"the username is normalized for the limiter", func(t *testing.T, e *env) {
 			for _, u := range []string{"alice", "ALICE", " Alice ", "aLiCe", "alice"} {
 				failN(e, 1, u, "")
 			}
-			_, _, err := e.svc.Login(t.Context(), "alice", goodPassword, "")
+			_, err := e.svc.Login(t.Context(), "alice", goodPassword, "")
 			_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 		}},
 	}
@@ -256,7 +259,7 @@ func TestLoginUsesTheInjectedLimiter(t *testing.T) {
 	for range 5 {
 		limiter.Fail(t.Context(), "ghost", "")
 	}
-	_, _, err := svc.Login(t.Context(), "ghost", goodPassword, "")
+	_, err := svc.Login(t.Context(), "ghost", goodPassword, "")
 	_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 }
 
@@ -266,18 +269,18 @@ func TestLoginStoreErrorsPassUp(t *testing.T) {
 	e.signUp("alice", store.RoleMember)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, _, err := e.svc.Login(ctx, "alice", goodPassword, loginIP)
+	_, err := e.svc.Login(ctx, "alice", goodPassword, loginIP)
 	_ = requireTag(t, err, store.TagQueryFailed, "Accounts.Login->Accounts.LoginClient->Store.UserByUsername.QueryFailed")
 }
 
 // login logs in as the user and returns the token.
 func (e *env) login(username string) string {
 	e.t.Helper()
-	token, _, err := e.svc.Login(e.t.Context(), username, goodPassword, loginIP)
+	res, err := e.svc.Login(e.t.Context(), username, goodPassword, loginIP)
 	if err != nil {
 		e.t.Fatalf("Login %s: %+v", username, err)
 	}
-	return token
+	return res.Token
 }
 
 func TestSessionActor(t *testing.T) {

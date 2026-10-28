@@ -33,6 +33,11 @@ type runner struct {
 	// eventWait is how long the watch scenario waits for the event of a write;
 	// 0 means defaultEventWait.
 	eventWait time.Duration
+	// sshKey is the path of an unencrypted OpenSSH private key of the runner's
+	// user, and sshAddr the address of the SSH server: with a key, the login
+	// of the user fetches an SSH code when the user needs one (SPEC §7.16).
+	sshKey  string
+	sshAddr string
 }
 
 // otherBase returns the address the other user writes through.
@@ -82,9 +87,15 @@ func (r *runner) loginAs(ctx context.Context, username, password string) (answer
 // runner's, and keeps the token in it.
 func (r *runner) loginOn(ctx context.Context, c *client, username, password string) (answer, error) {
 	c.redac.add(password)
-	a, err := c.do(ctx, "POST", "/api/v1/auth/login", map[string]string{
-		"username": username, "password": password, "client_name": r.clientName,
-	}, 200)
+	var a answer
+	var err error
+	if r.sshKey != "" && username == r.username {
+		a, err = r.loginWithSSHCode(ctx, c, username, password)
+	} else {
+		a, err = c.do(ctx, "POST", "/api/v1/auth/login", map[string]string{
+			"username": username, "password": password, "client_name": r.clientName,
+		}, 200)
+	}
 	if err != nil {
 		return a, err
 	}

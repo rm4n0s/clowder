@@ -146,7 +146,7 @@ func TestAdminPatchUser(t *testing.T) {
 		if code := errorCode(t, rec); code != "unauthenticated" {
 			t.Errorf("code = %q", code)
 		}
-		if _, _, err := f.accounts.Login(t.Context(), "bob", testPassword, "192.0.2.50"); err == nil {
+		if _, err := f.accounts.Login(t.Context(), "bob", testPassword, "192.0.2.50"); err == nil {
 			t.Error("a disabled user logged in")
 		}
 		if n, err := f.st.CountSessionsOfUser(t.Context(), f.userID("bob")); err != nil || n != 0 {

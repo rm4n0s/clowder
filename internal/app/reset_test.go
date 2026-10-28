@@ -338,9 +338,9 @@ func TestResetPassword(t *testing.T) {
 	bobClient := r.loginAs("bob", app.SessionAPI, "Bob's app")
 	// Five failed logins block the username; a reset starts clean.
 	for range 5 {
-		_, _, _ = r.svc.Login(ctx, "alice", "not the password", loginIP)
+		_, _ = r.svc.Login(ctx, "alice", "not the password", loginIP)
 	}
-	if _, _, err := r.svc.Login(ctx, "alice", goodPassword, loginIP); err == nil {
+	if _, err := r.svc.Login(ctx, "alice", goodPassword, loginIP); err == nil {
 		t.Fatal("the limiter did not block the username")
 	}
 	token := r.link(r.alice.ID)
@@ -384,10 +384,10 @@ func TestResetPassword(t *testing.T) {
 	}
 
 	// The new password works, the old one does not, and the limiter is clear.
-	if _, _, err := r.svc.Login(ctx, "alice", newPassword, loginIP); err != nil {
+	if _, err := r.svc.Login(ctx, "alice", newPassword, loginIP); err != nil {
 		t.Errorf("login with the new password: %+v", err)
 	}
-	if _, _, err := r.svc.Login(ctx, "alice", goodPassword, loginIP); err == nil {
+	if _, err := r.svc.Login(ctx, "alice", goodPassword, loginIP); err == nil {
 		t.Error("login with the old password still works")
 	}
 
@@ -446,7 +446,7 @@ func TestResetPasswordFailures(t *testing.T) {
 			if _, err := r.svc.SessionActor(ctx, session.Token); err != nil {
 				t.Errorf("a failed reset ended a session: %+v", err)
 			}
-			if _, _, err := r.svc.Login(ctx, "alice", goodPassword, loginIP); err != nil {
+			if _, err := r.svc.Login(ctx, "alice", goodPassword, loginIP); err != nil {
 				t.Errorf("the old password stopped working: %+v", err)
 			}
 			if n := len(r.resetEvents()); n != before {

@@ -273,8 +273,9 @@ func (k *SSHKeys) Add(ctx context.Context, actor Actor, name, line, password, cl
 // password as Add does, and writes the audit event user.ssh_key_removed. A key
 // that does not exist and a key of another user both fail with TagNotFound.
 // A wrong password fails with TagInvalidInput (field "currentPassword"), a
-// blocked username or address with TagRateLimited and a disabled or missing
-// account with TagUnauthenticated.
+// blocked username or address with TagRateLimited, a disabled or missing
+// account with TagUnauthenticated and the last key of a user whose SSH code is
+// on with TagSSHCodeNeedsKey.
 func (k *SSHKeys) Remove(ctx context.Context, actor Actor, keyID uint64, password, clientIP string) error {
 	user, err := k.accounts.activeUser(ctx, actor)
 	if err != nil {
@@ -306,6 +307,22 @@ func (k *SSHKeys) Remove(ctx context.Context, actor Actor, keyID uint64, passwor
 		if row.UserID != user.ID {
 			return errors.New(TagNotFound, "the SSH key belongs to another user",
 				"op", "removeSSHKey", "keyID", keyID)
+		}
+		// A user whose login asks for a code keeps a key that can fetch it:
+		// the last key cannot go while the code is on.
+		settings, err := tx.UserSettingsOf(ctx, user.ID)
+		if err != nil {
+			return err
+		}
+		if settings.SSHCodeRequired {
+			n, err := tx.CountSSHKeysOfUser(ctx, user.ID)
+			if err != nil {
+				return err
+			}
+			if n <= 1 {
+				return errors.New(TagSSHCodeNeedsKey, "the last SSH key cannot go while the SSH code is on",
+					"userID", user.ID, "fields", map[string]string{FieldForm: MessageSSHCodeNeedsKey})
+			}
 		}
 		if err := tx.DeleteSSHKey(ctx, keyID); err != nil {
 			return err

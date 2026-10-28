@@ -61,9 +61,10 @@ func (s *Server) signUpSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	login, err := s.svc.Accounts.LoginClient(r.Context(), s.browserLogin(r, username, password))
-	if err != nil {
+	if err != nil || login.Pending != nil {
 		// The account exists; only the login after it failed. The person can
-		// log in by hand.
+		// log in by hand. (A new account has no SSH code, so a pending login
+		// does not happen; it is sent to the login page like a failure.)
 		s.logger.Warn("login after sign-up failed", "pattern", r.Pattern, "err", err)
 		s.redirect(w, r, "/login", http.StatusSeeOther)
 		return

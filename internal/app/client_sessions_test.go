@@ -176,7 +176,7 @@ func TestLoginClientIsLimitedLikeLogin(t *testing.T) {
 		_ = requireTag(t, err, app.TagInvalidInput, "Accounts.LoginClient.InvalidInput")
 	}
 	for range 2 {
-		_, _, err := e.svc.Login(t.Context(), "alice", "wrong password!", loginIP)
+		_, err := e.svc.Login(t.Context(), "alice", "wrong password!", loginIP)
 		_ = requireTag(t, err, app.TagInvalidInput, "Accounts.Login->Accounts.LoginClient.InvalidInput")
 	}
 	_, err := e.svc.LoginClient(t.Context(), app.ClientLogin{Username: "alice", Password: goodPassword, ClientIP: loginIP, Kind: app.SessionAPI, ClientName: "x"})

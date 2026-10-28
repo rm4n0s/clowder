@@ -44,6 +44,7 @@ var auditActions = []app.AuditAction{
 	app.ActionRoomCreated, app.ActionRoomRenamed, app.ActionRoomDeleted,
 	app.ActionUserPasswordChanged, app.ActionUserResetLinkCreated, app.ActionUserPasswordReset,
 	app.ActionUserSSHKeyAdded, app.ActionUserSSHKeyRemoved,
+	app.ActionUserSSHCodeEnabled, app.ActionUserSSHCodeDisabled, app.ActionUserSSHCodeRemoved,
 }
 
 // auditQuery reads the filters and the page number from the query of the

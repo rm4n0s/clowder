@@ -110,7 +110,7 @@ func TestSettingsRoutes(t *testing.T) {
 		return map[string]any{
 			"theme": theme, "sound": sound, "browser_notifications": browser,
 			"notify": "mentions", "sound_name": "purr", "replies": "following",
-			"keywords": []any{}, "group_mentions": true,
+			"keywords": []any{}, "group_mentions": true, "ssh_code_required": false,
 		}
 	}
 	with := func(m map[string]any, kv ...any) map[string]any {
@@ -419,7 +419,7 @@ func TestSettingsEventsReachTheWebSocket(t *testing.T) {
 	sameJSON(t, "settings.changed data", ev["data"], map[string]any{
 		"theme": "dark", "sound": false, "browser_notifications": false,
 		"notify": "mentions", "sound_name": "purr", "replies": "following",
-		"keywords": []any{}, "group_mentions": true,
+		"keywords": []any{}, "group_mentions": true, "ssh_code_required": false,
 	})
 	if ev["user_id"] != float64(w.userID("alice")) {
 		t.Errorf("settings.changed = %v", ev)

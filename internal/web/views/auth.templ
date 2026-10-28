@@ -1,5 +1,7 @@
 package views
 
+import "strconv"
+
 // LoginData is what the login page and its form show.
 type LoginData struct {
 	// Username is the username typed in the last submit. The password is
@@ -34,6 +36,51 @@ templ LoginForm(d LoginData) {
 			<input type="hidden" name="next" value={ d.Next }/>
 		}
 		<button type="submit">Log in</button>
+	</form>
+}
+
+// LoginCodeData is what the second form of the login shows: the code of the
+// SSH server (SPEC §7.16).
+type LoginCodeData struct {
+	// Command is the ssh command that fetches a code for the user of the
+	// pending login, such as "ssh -p 2222 alice@chat.example.org"; empty when
+	// this Clowder shows none.
+	Command string
+	// Errors are the problems of the last submit, under the field "code".
+	Errors FormErrors
+}
+
+// LoginCodePath is the page and the form of the second step of the login.
+const LoginCodePath = "/login/code"
+
+// LoginCodeRestartPath is the "Start again" link of the second step.
+const LoginCodeRestartPath = "/login/code/restart"
+
+// LoginCodePage is the page of the second form of the login, which asks for
+// the SSH code after the right password.
+templ LoginCodePage(d LoginCodeData) {
+	@Layout("Log in", nil) {
+		<div class="auth-card">
+			<h1>Enter your code</h1>
+			@LoginCodeForm(d)
+		</div>
+	}
+}
+
+// LoginCodeForm is the form of the SSH code. The server sends it alone as a
+// Datastar patch to show a wrong code; it replaces the element with the same
+// id.
+templ LoginCodeForm(d LoginCodeData) {
+	<form id="login-code-form" method="post" action={ templ.SafeURL(LoginCodePath) } data-on:submit={ FormPost(LoginCodePath) }>
+		@formProblem(d.Errors.Form)
+		if d.Command != "" {
+			<p>Run <code id="login-code-command" class="ssh-command">{ d.Command }</code> and type the code.</p>
+		} else {
+			<p>Fetch a code with one of your SSH keys and type it.</p>
+		}
+		@inputField(formField{ID: "login-code", Name: "code", Label: "Code", Type: "text", Autocomplete: "one-time-code", Autocapitalize: "characters", NoSpellcheck: true, MaxLength: 9, Error: d.Errors.Fields["sshCode"], Autofocus: true})
+		<button type="submit">Log in</button>
+		<p class="hint login-code-restart"><a id="login-code-restart" href={ templ.SafeURL(LoginCodeRestartPath) }>Start again</a></p>
 	</form>
 }
 
@@ -122,6 +169,15 @@ templ inputField(f formField) {
 				value={ f.Value }
 			}
 			autocomplete={ f.Autocomplete }
+			if f.Autocapitalize != "" {
+				autocapitalize={ f.Autocapitalize }
+			}
+			if f.NoSpellcheck {
+				spellcheck="false"
+			}
+			if f.MaxLength > 0 {
+				maxlength={ strconv.Itoa(f.MaxLength) }
+			}
 			required
 			if f.Autofocus {
 				autofocus

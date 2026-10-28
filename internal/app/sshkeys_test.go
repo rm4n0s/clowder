@@ -78,7 +78,14 @@ type sshEnv struct {
 
 func newSSHEnv(t *testing.T) *sshEnv {
 	t.Helper()
-	p := newProfileEnv(t)
+	return newSSHEnvOn(t, false)
+}
+
+// newSSHEnvOn is newSSHEnv for a process whose accounts ask for the SSH code
+// at login (serverOn true) or not.
+func newSSHEnvOn(t *testing.T, serverOn bool) *sshEnv {
+	t.Helper()
+	p := newProfileEnvSSH(t, serverOn)
 	return &sshEnv{
 		profileEnv: p,
 		keys: app.NewSSHKeys(p.st, p.clk, p.svc, app.SSHServerInfo{
@@ -253,7 +260,7 @@ func TestSSHKeysCountInTheLimiter(t *testing.T) {
 	_ = requireTag(t, err, app.TagRateLimited, "SSHKeys.Add.RateLimited")
 	err = e.keys.Remove(ctx, actor(e.alice), 1, goodPassword, "198.51.100.8")
 	_ = requireTag(t, err, app.TagRateLimited, "SSHKeys.Remove.RateLimited")
-	_, _, err = e.svc.Login(ctx, "alice", goodPassword, "203.0.113.9")
+	_, err = e.svc.Login(ctx, "alice", goodPassword, "203.0.113.9")
 	_ = requireTag(t, err, app.TagRateLimited, "Accounts.LoginClient.RateLimited")
 	// Another user is not affected.
 	if _, err := e.keys.Add(ctx, actor(e.bob), "k", newEd25519Line(t), goodPassword, "203.0.113.20"); err != nil {

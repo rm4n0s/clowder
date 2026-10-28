@@ -43,6 +43,13 @@ type profileEnv struct {
 
 func newProfileEnv(t *testing.T) *profileEnv {
 	t.Helper()
+	return newProfileEnvSSH(t, false)
+}
+
+// newProfileEnvSSH is newProfileEnv for a process that runs the SSH server
+// (sshServer true) or not: a login asks for the SSH code only when it does.
+func newProfileEnvSSH(t *testing.T, sshServer bool) *profileEnv {
+	t.Helper()
 	e := newEnv(t)
 	rec := &live.Recorder{}
 	dir := filepath.Join(t.TempDir(), "avatars")
@@ -52,6 +59,7 @@ func newProfileEnv(t *testing.T) *profileEnv {
 	}
 	e.svc = app.NewAccounts(e.st, e.clk, auth.FastHasher(), app.AccountsConfig{
 		InvitationLifetime: lifetime, SessionLifetime: sessionLifetime, Publisher: rec, Avatars: avatars,
+		SSHServer: sshServer,
 	})
 	p := &profileEnv{env: e, rec: rec, avatars: avatars, dir: dir}
 	p.admin = e.signUp("root", store.RoleAdmin)
@@ -339,10 +347,10 @@ func TestChangePassword(t *testing.T) {
 	if _, err := p.svc.SessionActor(ctx, bobSession.Token); err != nil {
 		t.Errorf("the session of another user ended: %+v", err)
 	}
-	if _, _, err := p.svc.Login(ctx, "alice", newPassword, loginIP); err != nil {
+	if _, err := p.svc.Login(ctx, "alice", newPassword, loginIP); err != nil {
 		t.Errorf("login with the new password: %+v", err)
 	}
-	if _, _, err := p.svc.Login(ctx, "alice", goodPassword, loginIP); err == nil {
+	if _, err := p.svc.Login(ctx, "alice", goodPassword, loginIP); err == nil {
 		t.Error("login with the old password still works")
 	}
 
@@ -402,7 +410,7 @@ func TestChangePasswordFailures(t *testing.T) {
 			if _, err := p.svc.APISessionActor(ctx, elsewhere.Token); err != nil {
 				t.Errorf("a failed change ended another session: %+v", err)
 			}
-			if _, _, err := p.svc.Login(ctx, "alice", goodPassword, loginIP); err != nil {
+			if _, err := p.svc.Login(ctx, "alice", goodPassword, loginIP); err != nil {
 				t.Errorf("the old password stopped working: %+v", err)
 			}
 			if n := len(p.auditUserEvents()); n != 0 {
@@ -439,7 +447,7 @@ func TestChangePasswordCountsInTheLimiter(t *testing.T) {
 		t.Errorf("metadata = %v, want the username", appErr.Metadata)
 	}
 	// The login of that username is blocked too: they share the counter.
-	_, _, err = p.svc.Login(ctx, "alice", goodPassword, "203.0.113.9")
+	_, err = p.svc.Login(ctx, "alice", goodPassword, "203.0.113.9")
 	_ = requireTag(t, err, app.TagRateLimited, "Accounts.Login->Accounts.LoginClient.RateLimited")
 	// Time passes and the change works.
 	p.clk.Advance(16 * time.Minute)
@@ -453,7 +461,7 @@ func TestChangePasswordLimiterCountsLoginFailuresToo(t *testing.T) {
 	p := newProfileEnv(t)
 	ctx := t.Context()
 	for range 5 {
-		_, _, _ = p.svc.Login(ctx, "alice", "wrong wrong wrong", "198.51.100.1")
+		_, _ = p.svc.Login(ctx, "alice", "wrong wrong wrong", "198.51.100.1")
 	}
 	err := p.svc.ChangePassword(ctx, actor(p.alice), 0, app.PasswordChange{CurrentPassword: goodPassword, NewPassword: newPassword, ClientIP: "198.51.100.2"})
 	_ = requireTag(t, err, app.TagRateLimited, "Accounts.ChangePassword.RateLimited")
@@ -474,7 +482,7 @@ func TestChangePasswordPermissions(t *testing.T) {
 				t.Fatalf("ChangePassword: %+v", err)
 			}
 			// The password of another user is not touched.
-			if _, _, err := p.svc.Login(t.Context(), "bob", goodPassword, loginIP); err != nil && c.user(p).ID != p.bob.ID {
+			if _, err := p.svc.Login(t.Context(), "bob", goodPassword, loginIP); err != nil && c.user(p).ID != p.bob.ID {
 				t.Errorf("bob's login: %+v", err)
 			}
 		})

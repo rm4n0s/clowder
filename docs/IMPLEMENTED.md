@@ -1301,3 +1301,59 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - The second process of the cluster file runs no SSH server, so its settings page says the server is not running. A process with no SSH server must not skip the code at login, so step 19.2 gives every process of the cluster the same `-ssh-addr` (the host key is shared through the data volume) and publishes the port from the first only.
   - With `ssh -tt` the client closes at the refused PTY. The shell request it had already sent still makes a code that it never shows.
+
+## 19.2 The SSH code at login
+- **Date:** 2026-10-28
+- **Branch:** feat/step-19.2-login-code
+- **Summary:**
+  - `pending_logins` holds a token stored as SHA-256, the user, an expiry of 5 minutes, the wrong tries and `next`. `user_settings.ssh_code_required` is written only by its own store function.
+  - A code is asked for after the right password when the user has the code on and the process has an SSH address.
+    - Pages: `Accounts.Login` returns a pending login, then 303 to `/login/code` with the cookie `clowder_pending` (HttpOnly, SameSite=Strict, Path=/login, 5 minutes).
+    - `CompleteLogin` deletes the pending row, consumes the code and makes the session in one transaction.
+    - A wrong code counts in the limiter for the username and the address. The fifth deletes the pending login.
+    - "Start again" cancels it. An expired one goes back to `/login?expired=1`.
+  - API: `POST /auth/login` takes `ssh_code`. Without one it answers 401 `ssh_code_required`, only after the right password. A wrong one is 401 `unauthenticated`.
+  - `EnableSSHCode` needs the password, the server on and a key that has fetched a code. `DisableSSHCode` needs the password and works with the server off. The admin's `RemoveSSHCode` turns it off for another user. All three are idempotent and audited.
+  - Removing the last key while the code is on is refused.
+  - A password change, a reset link and disabling a user delete the user's pending logins. Sign-up and a reset link never ask for a code.
+  - Pages:
+    - the switch in Settings › Sign-in;
+    - Admin › Users: an SSH code column and "Turn off SSH code";
+    - a warning when the server is off and some user has the code on. The manager narrowed it to that case, so that a Clowder without SSH does not always show it.
+  - API:
+    - `PUT` and `DELETE /me/ssh-code`, `DELETE /admin/users/{id}/ssh-code`;
+    - `ssh_code_required` in `/me/settings` and `/admin/users`.
+
+    The manager made the 409 answers of the SSH code carry their reason as the message, instead of the generic "That clashes with a change made just now.".
+  - The cluster: every process runs the SSH server with the same address and the shared host key, and only the first publishes the port. This way no process lets a user skip the code. The cluster smoke test checks that both processes show the same host key.
+  - `clowder-apicheck -ssh-key <path> -ssh-addr <host:port>` meets `ssh_code_required`, fetches the code over SSH and logs in with it. `clowder-proof -ssh-code <user>` prepares a user with the code on.
+- **Main files:** `internal/app/{sshlogin,sessions,accounts,sshkeys,reset}.go`, `internal/store/{pending_logins,settings,ssh}.go`, `internal/web/{logincode,signin,admin}.go`, `internal/web/views/{auth,signin,admin}.templ`, `internal/api/{respond,handlers_auth,handlers_settings,handlers_admin}.go`, `openapi.json`, `docs/API.md`, `compose.cluster.yaml`, `scripts/compose-smoke.sh`, `cmd/clowder-apicheck/sshcode_login.go`, `cmd/clowder-proof/sshcode.go`.
+- **Tests:** about 187 new cases, plus one browser test that logs in through both forms with a code fetched over SSH:
+
+  | Package | Cases |
+  |---|---|
+  | app | 85 |
+  | web | 57 |
+  | api | 29 |
+  | apicheck | 10 |
+  | store | 3 |
+  | cmd/clowder | 3 |
+
+  They cover:
+  - the login table on the pages and the API: no code, right, wrong, expired, used, replaced, another user's, a dash and lower case, 5 wrong, a pending login that expired, a user disabled in between, a password changed in between, and the server off;
+  - the limiter;
+  - the cookie's flags, and a missing, forged or expired cookie;
+  - the permission tables of the switch and the admin action, with their audit events;
+  - the last key refused;
+  - the admin warning shown or not;
+  - a route test for every tag;
+  - the OpenAPI parity test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · scripts/compose-smoke.sh ✅ (and `-cluster`)
+- **Proof:**
+  [19.2 login code](implemented-proof-images/19.2-login-code.png) · [19.2 API login](implemented-proof-images/19.2-api-login.txt)
+  - The second form of the login.
+  - The API proof: 409 before a key has fetched a code, then 204. After that, apicheck gets `ssh_code_required`, fetches the code with the real OpenSSH setup, and logs in. One line was edited after the run for the 409 message change, and the file says so.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The limiter is checked before the code, so a blocked user gets 429 even with the right code.
+  - A code that is not 8 characters is a wrong code with no lookup.

@@ -54,6 +54,9 @@ type settingsJSON struct {
 	Keywords []string `json:"keywords"`
 	// GroupMentions is true when @room, @all and @here reach the user.
 	GroupMentions bool `json:"group_mentions"`
+	// SSHCodeRequired is true when the user turned on the SSH code at login.
+	// It is read only: PUT and DELETE /me/ssh-code change it.
+	SSHCodeRequired bool `json:"ssh_code_required"`
 }
 
 // settingsOf makes the JSON of the settings.
@@ -65,7 +68,7 @@ func settingsOf(s app.Settings) settingsJSON {
 	return settingsJSON{
 		Theme: string(s.Theme), Sound: s.Sound, BrowserNotifications: s.BrowserNotifications,
 		Notify: string(s.Notify), SoundName: string(s.SoundName), Replies: string(s.Replies),
-		Keywords: keywords, GroupMentions: s.GroupMentions,
+		Keywords: keywords, GroupMentions: s.GroupMentions, SSHCodeRequired: s.SSHCodeRequired,
 	}
 }
 

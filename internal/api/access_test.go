@@ -38,6 +38,8 @@ func securedRoutes() []securedRoute {
 		{"my ssh keys", http.MethodGet, "/api/v1/me/ssh-keys", http.StatusOK, nil},
 		{"add an ssh key", http.MethodPost, "/api/v1/me/ssh-keys", http.StatusUnprocessableEntity, map[string]any{"name": "k", "public_key": "not a key", "current_password": "x"}},
 		{"remove an ssh key", http.MethodDelete, "/api/v1/me/ssh-keys" + missing, http.StatusUnprocessableEntity, map[string]any{"current_password": "not the password"}},
+		{"turn on the ssh code", http.MethodPut, "/api/v1/me/ssh-code", http.StatusUnprocessableEntity, map[string]any{"current_password": "not the password"}},
+		{"turn off the ssh code", http.MethodDelete, "/api/v1/me/ssh-code", http.StatusUnprocessableEntity, map[string]any{"current_password": "not the password"}},
 		{"download an avatar", http.MethodGet, "/api/v1/avatars" + missing, http.StatusNotFound, nil},
 		{"sessions", http.MethodGet, "/api/v1/me/sessions", http.StatusOK, nil},
 		{"users", http.MethodGet, "/api/v1/users", http.StatusOK, nil},
@@ -104,6 +106,7 @@ func securedRoutes() []securedRoute {
 		{"admin users", http.MethodGet, "/api/v1/admin/users", http.StatusOK, nil},
 		{"admin change a user", http.MethodPatch, "/api/v1/admin/users" + missing, http.StatusNotFound, map[string]any{"disabled": false}},
 		{"admin reset link", http.MethodPost, "/api/v1/admin/users" + missing + "/reset-link", http.StatusNotFound, nil},
+		{"admin turns off an ssh code", http.MethodDelete, "/api/v1/admin/users" + missing + "/ssh-code", http.StatusNotFound, nil},
 		{"admin invitation", http.MethodPost, "/api/v1/admin/invitations", http.StatusCreated, map[string]any{"role": "member"}},
 		{"admin rooms", http.MethodGet, "/api/v1/admin/rooms", http.StatusOK, nil},
 		{"admin room members", http.MethodGet, "/api/v1/admin/rooms" + missing + "/members", http.StatusNotFound, nil},
@@ -118,13 +121,14 @@ func securedRoutes() []securedRoute {
 // securedRoutes, which is the answer to an admin: the admin routes are 403 for
 // a member (SPEC D42), before anything about the resource is looked at.
 var memberStatuses = map[string]int{
-	"admin users":         http.StatusForbidden,
-	"admin change a user": http.StatusForbidden,
-	"admin reset link":    http.StatusForbidden,
-	"admin invitation":    http.StatusForbidden,
-	"admin rooms":         http.StatusForbidden,
-	"admin room members":  http.StatusForbidden,
-	"admin audit":         http.StatusForbidden,
+	"admin users":                 http.StatusForbidden,
+	"admin change a user":         http.StatusForbidden,
+	"admin reset link":            http.StatusForbidden,
+	"admin turns off an ssh code": http.StatusForbidden,
+	"admin invitation":            http.StatusForbidden,
+	"admin rooms":                 http.StatusForbidden,
+	"admin room members":          http.StatusForbidden,
+	"admin audit":                 http.StatusForbidden,
 }
 
 // TestEverySecuredRouteIsListed checks that the table above holds every route

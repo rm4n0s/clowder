@@ -37,6 +37,13 @@ type formField struct {
 	Hint string
 	// Autofocus puts the cursor in the input when the page opens.
 	Autofocus bool
+	// Autocapitalize is the autocapitalize hint of the input, such as
+	// "characters"; empty sets none.
+	Autocapitalize string
+	// NoSpellcheck turns the spell checker of the browser off for the input.
+	NoSpellcheck bool
+	// MaxLength is the most characters the input takes; 0 sets no limit.
+	MaxLength int
 }
 
 // FormPost returns the Datastar action that sends the form it is on to path

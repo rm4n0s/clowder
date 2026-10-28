@@ -85,7 +85,7 @@
         ],
         "summary": "Log in",
         "operationId": "login",
-        "description": "Checks the username and the password and starts a session of the kind api. After 5 failed attempts for the username or the address within 15 minutes, further attempts get 429 until the window has passed. A wrong username and a wrong password are answered alike.",
+        "description": "Checks the username and the password and starts a session of the kind api. After 5 failed attempts for the username or the address within 15 minutes, further attempts get 429 until the window has passed. A wrong username and a wrong password are answered alike. A user who turned on the SSH code (SPEC 7.16) and whose password is right gets 401 ssh_code_required when ssh_code is missing, which tells the client to fetch a code with ssh and send it; a wrong, used or expired ssh_code is 401 unauthenticated and counts as a failed login. The code alone never logs anyone in. While the SSH server is off, the password alone logs in.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -599,7 +599,7 @@
         ],
         "summary": "Remove an SSH key",
         "operationId": "removeSSHKey",
-        "description": "Removes an SSH key of the user, after it checks the current password, which comes as a JSON body. The codes the key fetched stop working with it. The audit log records user.ssh_key_removed. A wrong current_password is 422 on current_password and counts as a failed login of the username in the limiter, which answers 429 once it blocks. A key that does not exist and a key of someone else are both 404.",
+        "description": "Removes an SSH key of the user, after it checks the current password, which comes as a JSON body. The codes the key fetched stop working with it. The audit log records user.ssh_key_removed. A wrong current_password is 422 on current_password and counts as a failed login of the username in the limiter, which answers 429 once it blocks. A key that does not exist and a key of someone else are both 404. The last key of a user whose SSH code is on cannot be removed: 409 conflict, with the message under fields.form; turn the code off first (DELETE /me/ssh-code).",
         "parameters": [
           {
             "name": "id",
@@ -632,6 +632,98 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me/ssh-code": {
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Turn on the SSH code at login",
+        "operationId": "enableSSHCode",
+        "description": "Turns on \"Ask for an SSH code when I log in\" (SPEC 7.16): after the password, a login needs a code that one of the user's keys fetches over SSH. It needs the current password, the SSH server running on this Clowder and at least one key that has fetched a code (its last_used_at is set), which proves that the setup works. It answers 204 also when the code is on already, and writes the audit event user.ssh_code_enabled once. A wrong current_password is 422 on current_password and counts as a failed login of the username in the limiter, which answers 429 once it blocks. The SSH server being off and no key having fetched a code are both 409 conflict.",
+        "requestBody": {
+          "required": true,
+          "description": "The current password.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SSHKeyRemoveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The SSH code is on."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Turn off the SSH code at login",
+        "operationId": "disableSSHCode",
+        "description": "Turns off \"Ask for an SSH code when I log in\". It needs the current password, and works with the SSH server off too. It answers 204 also when the code is off already, and writes the audit event user.ssh_code_disabled once. A wrong current_password is 422 on current_password and counts as a failed login of the username in the limiter, which answers 429 once it blocks.",
+        "requestBody": {
+          "required": true,
+          "description": "The current password.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SSHKeyRemoveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The SSH code is off."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
           },
           "413": {
             "$ref": "#/components/responses/TooLarge"
@@ -3858,6 +3950,45 @@
         }
       }
     },
+    "/admin/users/{id}/ssh-code": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Turn off the SSH code of a user",
+        "operationId": "adminRemoveSSHCode",
+        "description": "Turns off \"Ask for an SSH code when I log in\" for a user who lost their keys (SPEC 7.16); the user can log in with the password alone and turn it on again later. It needs no password. It answers 204 also when it is off already, and writes the audit event user.ssh_code_removed (the admin is the actor) once. An admin may use it on themselves. Admins only: 403 forbidden for a member. An unknown user is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the user.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The SSH code of the user is off."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/admin/invitations": {
       "post": {
         "tags": [
@@ -4073,7 +4204,10 @@
                 "user.reset_link_created",
                 "user.password_reset",
                 "user.ssh_key_added",
-                "user.ssh_key_removed"
+                "user.ssh_key_removed",
+                "user.ssh_code_enabled",
+                "user.ssh_code_disabled",
+                "user.ssh_code_removed"
               ]
             }
           },
@@ -4457,6 +4591,7 @@
               "rate_limited",
               "too_large",
               "unauthenticated",
+              "ssh_code_required",
               "method_not_allowed",
               "unsupported_media_type",
               "internal"
@@ -4609,6 +4744,10 @@
             "minLength": 1,
             "maxLength": 80,
             "description": "Names this client in the list of the user's sessions, for example the name of the app and of the computer."
+          },
+          "ssh_code": {
+            "type": "string",
+            "description": "The sign-in code from the SSH server (SPEC 7.16), for a user who turned on \"Ask for an SSH code when I log in\". Optional; the dash and the case do not matter. A code works once, for 60 seconds."
           }
         },
         "required": [
@@ -6402,6 +6541,10 @@
             "type": "string",
             "format": "date-time",
             "description": "When the user signed up."
+          },
+          "ssh_code_required": {
+            "type": "boolean",
+            "description": "True when the user turned on \"Ask for an SSH code when I log in\" (SPEC 7.16). DELETE /admin/users/{id}/ssh-code turns it off for a user who lost their keys."
           }
         },
         "required": [
@@ -6411,7 +6554,8 @@
           "avatar_url",
           "role",
           "disabled",
-          "created_at"
+          "created_at",
+          "ssh_code_required"
         ],
         "additionalProperties": false
       },
@@ -6564,7 +6708,10 @@
               "user.reset_link_created",
               "user.password_reset",
               "user.ssh_key_added",
-              "user.ssh_key_removed"
+              "user.ssh_key_removed",
+              "user.ssh_code_enabled",
+              "user.ssh_code_disabled",
+              "user.ssh_code_removed"
             ],
             "description": "What happened."
           },
@@ -7101,6 +7248,10 @@
           "group_mentions": {
             "type": "boolean",
             "description": "True when @room, @all and @here reach the user (the default)."
+          },
+          "ssh_code_required": {
+            "type": "boolean",
+            "description": "True when the user turned on \"Ask for an SSH code when I log in\" (SPEC 7.16). Read only: PUT and DELETE /me/ssh-code change it, and PATCH /me/settings refuses the field. It is false by default."
           }
         },
         "required": [
@@ -7111,7 +7262,8 @@
           "sound_name",
           "replies",
           "keywords",
-          "group_mentions"
+          "group_mentions",
+          "ssh_code_required"
         ],
         "additionalProperties": false
       },
@@ -7540,7 +7692,7 @@
     },
     "responses": {
       "Unauthenticated": {
-        "description": "The token is missing, unknown, expired or of a user who is disabled, or (for a login) the username or password is wrong.",
+        "description": "The token is missing, unknown, expired or of a user who is disabled, or (for a login) the username or password is wrong, or the SSH code is wrong (code unauthenticated). A login whose password is right and whose user needs an SSH code, without one, has the code ssh_code_required.",
         "content": {
           "application/json": {
             "schema": {

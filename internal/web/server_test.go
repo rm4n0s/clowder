@@ -141,6 +141,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		SessionLifetime:    cfg.SessionLifetime,
 		Publisher:          hub,
 		Avatars:            avatarStore,
+		SSHServer:          cfg.SSHAddr != "",
 	})
 	filesDir := filepath.Join(t.TempDir(), "files")
 	fileStore, err := files.New(filesDir)

@@ -41,6 +41,7 @@ var auditActions = []app.AuditAction{
 	app.ActionRoomCreated, app.ActionRoomRenamed, app.ActionRoomDeleted,
 	app.ActionUserPasswordChanged, app.ActionUserResetLinkCreated, app.ActionUserPasswordReset,
 	app.ActionUserSSHKeyAdded, app.ActionUserSSHKeyRemoved,
+	app.ActionUserSSHCodeEnabled, app.ActionUserSSHCodeDisabled, app.ActionUserSSHCodeRemoved,
 }
 
 // adminUserPatch is the body of PATCH /admin/users/{id}: a field that is not
@@ -62,6 +63,7 @@ func (s *Server) adminRoutes() []Route {
 		s.route(http.MethodGet, "/admin/users", false, s.adminUsers),
 		s.route(http.MethodPatch, "/admin/users/{id}", false, s.adminPatchUser),
 		s.route(http.MethodPost, "/admin/users/{id}/reset-link", false, s.adminResetLink),
+		s.route(http.MethodDelete, "/admin/users/{id}/ssh-code", false, s.adminRemoveSSHCode),
 		s.route(http.MethodPost, "/admin/invitations", false, s.adminInvite),
 		s.route(http.MethodGet, "/admin/rooms", false, s.adminRooms),
 		s.route(http.MethodGet, "/admin/rooms/{id}/members", false, s.adminRoomMembers),
@@ -142,6 +144,23 @@ func (s *Server) adminPatchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	// Users are never deleted, so the user that was just changed is there.
 	s.writeError(w, r, errors.New(app.TagNotFound, "the user is gone", "userID", id))
+}
+
+// adminRemoveSSHCode answers DELETE /admin/users/{id}/ssh-code: an admin turns
+// off the SSH code at login of a user who lost their keys. It answers 204 (also
+// when it was off) and 404 for an unknown user.
+func (s *Server) adminRemoveSSHCode(w http.ResponseWriter, r *http.Request) {
+	c, _ := callerFrom(r.Context())
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.svc.SSHKeys.RemoveSSHCode(r.Context(), c.actor, id); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	s.writeNoContent(w)
 }
 
 // adminResetLink answers POST /admin/users/{id}/reset-link: an admin makes a

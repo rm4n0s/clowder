@@ -222,12 +222,12 @@ echo "banner: ${banner%$'\r'}"
 [[ $banner == SSH-2.0-* ]] || fail "the SSH port did not answer with an SSH banner"
 
 if $cluster; then
-	step "only the first Clowder process runs the SSH server"
+	step "both Clowder processes run the SSH server, and share its host key"
 	dc logs --no-color clowder 2>&1 | grep -q 'the SSH server is listening' || fail "clowder logged no SSH server"
-	if dc logs --no-color clowder2 2>&1 | grep -q 'the SSH server is listening'; then
-		fail "clowder2 runs an SSH server"
-	fi
-	echo "clowder runs the SSH server, clowder2 does not"
+	dc logs --no-color clowder2 2>&1 | grep -q 'the SSH server is listening' || fail "clowder2 logged no SSH server"
+	host_keys=$(dc logs --no-color clowder clowder2 2>&1 | grep -o '"hostKey":"[^"]*"' | sort -u)
+	[[ $(wc -l <<<"$host_keys") == 1 ]] || fail "the two processes show different host keys: $host_keys"
+	echo "clowder and clowder2 run the SSH server with one host key: ${host_keys#*:}"
 	token=$(awk '$6 == "clowder_session" { print $7 }' "$jar")
 	[[ -n $token ]] || fail "no session token in the cookie jar"
 

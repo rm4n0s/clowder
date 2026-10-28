@@ -85,6 +85,14 @@ const (
 	ActionUserSSHKeyAdded = store.ActionUserSSHKeyAdded
 	// ActionUserSSHKeyRemoved is a user who removed an SSH key.
 	ActionUserSSHKeyRemoved = store.ActionUserSSHKeyRemoved
+	// ActionUserSSHCodeEnabled is a user who turned on the SSH code at login.
+	ActionUserSSHCodeEnabled = store.ActionUserSSHCodeEnabled
+	// ActionUserSSHCodeDisabled is a user who turned off the SSH code at
+	// login.
+	ActionUserSSHCodeDisabled = store.ActionUserSSHCodeDisabled
+	// ActionUserSSHCodeRemoved is an admin who turned off the SSH code of
+	// another user.
+	ActionUserSSHCodeRemoved = store.ActionUserSSHCodeRemoved
 )
 
 // AuditFilter narrows Audit.Events (SPEC §7.10). A zero field does not

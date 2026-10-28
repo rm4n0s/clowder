@@ -95,11 +95,11 @@ func (e *testEnv) invitation() string {
 // session logs the user in with the service and returns the cookie token.
 func (e *testEnv) session(username string) string {
 	e.t.Helper()
-	token, _, err := e.accounts.Login(e.t.Context(), username, testPassword, "192.0.2.200")
+	res, err := e.accounts.Login(e.t.Context(), username, testPassword, "192.0.2.200")
 	if err != nil {
 		e.t.Fatalf("Login: %+v", err)
 	}
-	return token
+	return res.Token
 }
 
 // loginForm is the form of a login.
@@ -1016,7 +1016,7 @@ func TestSignUpThenLoginFailsRedirectsToLogin(t *testing.T) {
 		t.Error("a cookie was set")
 	}
 	// The account exists, and a login from another address works.
-	if _, _, err := e.accounts.Login(t.Context(), "dana", testPassword, "192.0.2.6"); err != nil {
+	if _, err := e.accounts.Login(t.Context(), "dana", testPassword, "192.0.2.6"); err != nil {
 		t.Errorf("the account was not made: %+v", err)
 	}
 	if !strings.Contains(e.log.String(), "login after sign-up failed") {
@@ -1200,6 +1200,10 @@ func TestStatusOf(t *testing.T) {
 		{"forbidden", errors.New(app.TagForbidden, "x"), http.StatusForbidden},
 		{"invalid input", errors.New(app.TagInvalidInput, "x"), http.StatusUnprocessableEntity},
 		{"conflict", errors.New(app.TagConflict, "x"), http.StatusConflict},
+		{"ssh server off", errors.New(app.TagSSHServerOff, "x"), http.StatusConflict},
+		{"ssh code not tried", errors.New(app.TagSSHCodeNotTried, "x"), http.StatusConflict},
+		{"ssh code needs a key", errors.New(app.TagSSHCodeNeedsKey, "x"), http.StatusConflict},
+		{"ssh code wrong", errors.New(app.TagSSHCodeWrong, "x"), http.StatusUnprocessableEntity},
 		{"rate limited", errors.New(app.TagRateLimited, "x"), http.StatusTooManyRequests},
 		{"too large", errors.New(app.TagTooLarge, "x"), http.StatusRequestEntityTooLarge},
 		{"unauthenticated is a redirect", errors.New(app.TagUnauthenticated, "x"), http.StatusFound},

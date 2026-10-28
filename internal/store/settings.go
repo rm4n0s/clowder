@@ -90,6 +90,10 @@ type UserSettings struct {
 	// (default false). It is stored inverted because GORM replaces a false
 	// value by the column default when it is true; use GroupMentions.
 	GroupMentionsOff bool `gorm:"not null;default:false"`
+	// SSHCodeRequired is true when the user turned on "Ask for an SSH code
+	// when I log in" (SPEC §7.16, default false). Only SetSSHCodeRequired
+	// writes it: SaveUserSettings leaves it alone.
+	SSHCodeRequired bool `gorm:"column:ssh_code_required;not null;default:false"`
 
 	// Relation: declared so that GORM creates the foreign key.
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:RESTRICT"`

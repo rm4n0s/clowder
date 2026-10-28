@@ -71,7 +71,8 @@ func newBenchServer(b *testing.B) *benchServer {
 	if err != nil {
 		b.Fatalf("newServer: %v", err)
 	}
-	token, _, err := accounts.Login(b.Context(), "alice", "demo-password-1234", "192.0.2.1")
+	login, err := accounts.Login(b.Context(), "alice", "demo-password-1234", "192.0.2.1")
+	token := login.Token
 	if err != nil {
 		b.Fatalf("Login: %+v", err)
 	}

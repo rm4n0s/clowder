@@ -361,7 +361,7 @@ func TestSettingsPassword(t *testing.T) {
 			if tt.changed != (errOther != nil) || tt.changed != (errAPI != nil) {
 				t.Errorf("other sessions ended = %v (browser), %v (api); want %v", errOther != nil, errAPI != nil, tt.changed)
 			}
-			_, _, loginErr := e.accounts.Login(t.Context(), "alice", newPassword, "192.0.2.77")
+			_, loginErr := e.accounts.Login(t.Context(), "alice", newPassword, "192.0.2.77")
 			if tt.changed != (loginErr == nil) {
 				t.Errorf("login with the new password: %v, password changed = %v", loginErr, tt.changed)
 			}

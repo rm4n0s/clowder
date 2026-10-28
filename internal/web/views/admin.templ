@@ -23,6 +23,10 @@ type AdminUsersData struct {
 	// Reset is the reset link that was just made, shown once above the
 	// table; its Link is empty when none was.
 	Reset ResetLinkData
+	// SSHServerOff is true when this Clowder runs no SSH server and some user
+	// has the SSH code on: the page warns that those users log in with their
+	// password only (SPEC §7.16).
+	SSHServerOff bool
 }
 
 // ResetLinkData is the password reset link that an admin just made.
@@ -94,6 +98,9 @@ templ AdminTabs(current string) {
 // it. The server sends it alone as a Datastar patch after an action on a user.
 templ UsersPanel(d AdminUsersData) {
 	<section id="users-panel">
+		if d.SSHServerOff {
+			<p id="ssh-server-warning" class="notice-warning" role="status">The SSH server is not running: users who turned on the SSH code log in with their password only.</p>
+		}
 		@formProblem(d.Message)
 		if d.Reset.Link != "" {
 			<div id="reset-link-box" class="invitation-box">
@@ -110,6 +117,7 @@ templ UsersPanel(d AdminUsersData) {
 					<th scope="col">Display name</th>
 					<th scope="col">Role</th>
 					<th scope="col">State</th>
+					<th scope="col">SSH code</th>
 					<th scope="col">Created</th>
 					<th scope="col">Actions</th>
 				</tr>
@@ -136,6 +144,13 @@ templ userRow(u app.User, self bool) {
 				Active
 			}
 		</td>
+		<td class="ssh-code">
+			if u.SSHCodeRequired {
+				On
+			} else {
+				Off
+			}
+		</td>
 		<td>{ u.CreatedAt.UTC().Format("2006-01-02") }</td>
 		<td class="actions">
 			if u.IsAdmin() {
@@ -145,6 +160,9 @@ templ userRow(u app.User, self bool) {
 			}
 			if !u.Disabled {
 				@actionButton(userPath(u.ID, "reset-link"), "Reset password")
+			}
+			if u.SSHCodeRequired {
+				@actionButton(userPath(u.ID, "ssh-code/remove"), "Turn off SSH code")
 			}
 			if !self {
 				if u.Disabled {

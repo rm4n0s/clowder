@@ -314,10 +314,10 @@ func TestResetSuccess(t *testing.T) {
 			}
 			// The new session opens the home page; the old password is gone.
 			requireBody(t, e.send(get("/", withCookie(c.Value))), []string{"Signed in as Alice"})
-			if _, _, err := e.accounts.Login(t.Context(), "alice", fresh, "192.0.2.9"); err != nil {
+			if _, err := e.accounts.Login(t.Context(), "alice", fresh, "192.0.2.9"); err != nil {
 				t.Errorf("login with the new password: %+v", err)
 			}
-			if _, _, err := e.accounts.Login(t.Context(), "alice", testPassword, "192.0.2.9"); err == nil {
+			if _, err := e.accounts.Login(t.Context(), "alice", testPassword, "192.0.2.9"); err == nil {
 				t.Error("login with the old password works")
 			}
 			// The link is used up.

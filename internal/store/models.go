@@ -10,6 +10,7 @@ func allModels() []any {
 		&PasswordReset{},
 		&SSHKey{},
 		&SSHCode{},
+		&PendingLogin{},
 		&Session{},
 		&Room{},
 		&RoomMember{},

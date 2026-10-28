@@ -63,12 +63,18 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	if raw := r.URL.Query().Get("next"); raw != "" && safeNext(raw) == raw {
 		data.Next = raw
 	}
+	if r.URL.Query().Get("expired") == "1" {
+		// A login that waited for its SSH code is gone (SPEC §7.16).
+		data.Errors.Form = app.MessageSignInExpired
+	}
 	s.render(w, r, http.StatusOK, views.LoginPage(data))
 }
 
 // loginSubmit answers POST /login, sent by the login form with Datastar. On
 // success it sets the session cookie and redirects to "next" (a path of this
-// site) or to the home page. On failure it shows the problems in the form and
+// site) or to the home page. When the password is right and the user turned on
+// the SSH code, it sets the cookie clowder_pending instead and redirects to the
+// second form, /login/code, with no session (SPEC §7.16). On failure it shows the problems in the form and
 // keeps the username; the password is never sent back.
 func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	if !s.parseForm(w, r) {
@@ -77,7 +83,9 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	username := r.PostFormValue("username")
 	next := safeNext(r.PostFormValue("next"))
 
-	res, err := s.svc.Accounts.LoginClient(r.Context(), s.browserLogin(r, username, r.PostFormValue("password")))
+	in := s.browserLogin(r, username, r.PostFormValue("password"))
+	in.Next = next
+	res, err := s.svc.Accounts.LoginClient(r.Context(), in)
 	if err != nil {
 		s.formFailed(w, r, err, func(problems views.FormErrors) formView {
 			data := views.LoginData{Username: username, Errors: problems}
@@ -88,8 +96,17 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if res.Pending != nil {
+		s.setPendingCookie(w, res.Pending.Token)
+		s.redirect(w, r, views.LoginCodePath, http.StatusSeeOther)
+		return
+	}
 	stateOf(r.Context()).userID = res.User.ID
 	s.setSessionCookie(w, res.Token)
+	if pendingToken(r) != "" {
+		// A login that waited for its code is replaced by this one.
+		s.clearPendingCookie(w)
+	}
 	s.redirect(w, r, next, http.StatusSeeOther)
 }
 

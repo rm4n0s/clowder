@@ -62,6 +62,9 @@ type User struct {
 	AvatarKey string
 	// CreatedAt is when the user signed up.
 	CreatedAt time.Time
+	// SSHCodeRequired is true when the user turned on the SSH code at login.
+	// Only Users fills it; the other services leave it false.
+	SSHCodeRequired bool
 }
 
 // IsAdmin reports whether the user has the admin role.
@@ -97,6 +100,9 @@ type Accounts struct {
 	pictures *gate
 	avatars  *files.Store
 	cleaner  fileCleaner
+	// sshServer is true when this process runs the SSH server: only then a
+	// user who turned on the SSH code is asked for it (SPEC §7.16).
+	sshServer bool
 }
 
 // AccountsConfig holds the settings and the injected parts of Accounts.
@@ -124,6 +130,11 @@ type AccountsConfig struct {
 	// Logger receives what could not be cleaned up, such as the file of an
 	// avatar that was replaced. Nil discards it.
 	Logger *slog.Logger
+	// SSHServer is true when this process runs the SSH server (-ssh-addr is
+	// set). A login asks for the SSH code of a user who turned it on only
+	// then; with the server off the password alone logs in. Every process of
+	// a cluster has the same setting (SPEC §7.16).
+	SSHServer bool
 }
 
 // NewAccounts makes the service. Time is counted on clk; a nil clk is the real
@@ -154,6 +165,7 @@ func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg Accou
 		pictures:           pictures,
 		avatars:            cfg.Avatars,
 		cleaner:            newFileCleaner(cfg.Avatars, cfg.Logger),
+		sshServer:          cfg.SSHServer,
 	}
 }
 
@@ -351,9 +363,14 @@ func (a *Accounts) Users(ctx context.Context, actor Actor) ([]User, error) {
 	if err != nil {
 		return nil, err
 	}
+	withCode, err := a.st.UserIDsWithSSHCode(ctx)
+	if err != nil {
+		return nil, err
+	}
 	users := make([]User, len(rows))
 	for i, row := range rows {
 		users[i] = viewOf(row)
+		users[i].SSHCodeRequired = withCode[row.ID]
 	}
 	return users, nil
 }
@@ -449,7 +466,7 @@ func (a *Accounts) SetRole(ctx context.Context, actor Actor, userID uint64, role
 }
 
 // SetDisabled disables or enables a user. Disabling also deletes the sessions
-// of the user, in the same transaction. Only admins may; anyone else gets
+// and the pending logins of the user, in the same transaction. Only admins may; anyone else gets
 // TagForbidden. It fails with TagInvalidInput (field "user") when an admin
 // disables themselves, with TagNotFound for an unknown user, and with
 // TagConflict when the user is the last active admin.
@@ -491,6 +508,9 @@ func (a *Accounts) SetDisabled(ctx context.Context, actor Actor, userID uint64, 
 			return err
 		}
 		changed = true
+		if err := tx.DeletePendingLoginsOfUser(ctx, userID); err != nil {
+			return err
+		}
 		return tx.DeleteSessionsOfUser(ctx, userID)
 	})
 	if err != nil {

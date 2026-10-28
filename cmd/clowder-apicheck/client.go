@@ -41,7 +41,7 @@ func (r *redactor) text(s string) string {
 
 // redactJSON returns v (a decoded JSON value) with the fields that hold a
 // secret replaced: token and invitation_token by <token>, password by
-// <password>, and the token at the end of the link of an invitation (the
+// <password>, ssh_code by <code>, and the token at the end of the link of an invitation (the
 // field url) by <token>. It copies the maps and slices it changes.
 func redactJSON(v any) any {
 	switch x := v.(type) {
@@ -53,6 +53,8 @@ func redactJSON(v any) any {
 				out[k] = "<token>"
 			case "password", "current_password", "new_password":
 				out[k] = "<password>"
+			case "ssh_code":
+				out[k] = "<code>"
 			case "fields":
 				// The fields of an error name a field and say what is wrong
 				// with it: no secret, even where the field is a password.

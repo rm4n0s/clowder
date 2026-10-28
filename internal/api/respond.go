@@ -34,6 +34,7 @@ const (
 	codeRateLimited          = "rate_limited"
 	codeTooLarge             = "too_large"
 	codeUnauthenticated      = "unauthenticated"
+	codeSSHCodeRequired      = "ssh_code_required"
 	codeMethodNotAllowed     = "method_not_allowed"
 	codeUnsupportedMediaType = "unsupported_media_type"
 	codeInternal             = "internal"
@@ -49,6 +50,8 @@ const (
 	messageTooLarge          = "That is too large."
 	messageUnauthenticated   = "Log in to use this."
 	messageWrongCredentials  = "Wrong username or password."
+	messageWrongCode         = "Wrong username, password or SSH code."
+	messageSSHCodeRequired   = "Send the SSH code with ssh_code."
 	messageMethodNotAllowed  = "That method is not allowed here."
 	messageUnsupportedMedia  = "Send the body as application/json."
 	messageInternal          = "Something went wrong."
@@ -87,7 +90,9 @@ type problem struct {
 //     app.TagInvalidInput 422 invalid_input with the field errors of the
 //     metadata "fields" (named in snake_case; so do app.TagSSHKeyTypeRefused
 //     and app.TagSSHKeyTooShort), app.TagConflict 409 conflict (with the
-//     "fields" it carries, if any),
+//     "fields" it carries, if any; so do the tags of the SSH code switch:
+//     the server is off, no key fetched a code, the last key is needed),
+//     app.TagSSHCodeRequired 401 ssh_code_required,
 //     app.TagRateLimited 429 rate_limited with Retry-After, app.TagTooLarge
 //     413 too_large;
 //   - app.TagUnauthenticated and a missing or malformed bearer header 401
@@ -128,12 +133,22 @@ func problemOf(err error) (problem, bool) {
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, snakeCase)}}, false
-	case app.TagConflict:
+	case app.TagSSHCodeRequired:
+		return problem{status: http.StatusUnauthorized,
+			object: errorObject{Code: codeSSHCodeRequired, Message: messageSSHCodeRequired},
+			header: map[string]string{"WWW-Authenticate": wwwAuthenticateChallenge}}, false
+	case app.TagConflict, app.TagSSHServerOff, app.TagSSHCodeNotTried, app.TagSSHCodeNeedsKey:
 		// A conflict may say what clashes, with the messages of "fields" (an
 		// SSH key that is registered, the limit of keys).
+		// The SSH code's own refusals say why in the message too: "That
+		// clashes with a change made just now" would not tell the client.
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
+		message := messageConflict
+		if appErr.Tag != app.TagConflict && fields[app.FieldForm] != "" {
+			message = fields[app.FieldForm]
+		}
 		return problem{status: http.StatusConflict,
-			object: errorObject{Code: codeConflict, Message: messageConflict, Fields: renamedFields(fields, apiFieldName)}}, false
+			object: errorObject{Code: codeConflict, Message: message, Fields: renamedFields(fields, apiFieldName)}}, false
 	case app.TagRateLimited:
 		return problem{status: http.StatusTooManyRequests,
 			object: errorObject{Code: codeRateLimited, Message: messageRateLimited},

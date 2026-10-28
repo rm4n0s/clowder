@@ -59,27 +59,55 @@ type ClientLogin struct {
 	// characters and cleaned of control characters, never refused; it may be
 	// empty.
 	ClientName string
+	// SSHCode is the sign-in code of a user who turned the SSH code on, for
+	// SessionAPI (the API logs in with the code in one call). A browser login
+	// ignores it: the pages ask for the code in a second step
+	// (CompleteLogin).
+	SSHCode string
+	// Next is the local path a browser goes to after the login, kept with a
+	// pending login for CompleteLogin; the web layer has checked it.
+	Next string
 }
 
-// LoginResult is what a successful login returns.
+// LoginResult is what a successful login returns, or, with Pending set, what a
+// login that waits for the SSH code returns instead of a session.
 type LoginResult struct {
 	// Token is the session token, shown once and never stored (only its
-	// SHA-256 is).
+	// SHA-256 is). It is empty when Pending is set.
 	Token string
 	// User is the user who logged in.
 	User User
 	// ExpiresAt is when the session ends if it is not used again.
 	ExpiresAt time.Time
+	// Pending is set when the password was right and the user has to type an
+	// SSH code before a session starts (SPEC §7.16): no session exists yet.
+	// Only a SessionBrowser login gets it; the API login asks for the code in
+	// the same call.
+	Pending *PendingLogin
+	// Next is the path stored with the pending login that CompleteLogin
+	// finished; empty otherwise and for the home page.
+	Next string
+}
+
+// PendingLogin is a login that waits for the SSH code (SPEC §7.16, D53).
+type PendingLogin struct {
+	// Token is the secret of the cookie clowder_pending. It is shown once and
+	// never stored (only its SHA-256 is); PendingLoginInfo leaves it empty.
+	Token string
+	// Username is the username of the user, for the ssh command shown.
+	Username string
+	// ExpiresAt is when the pending login stops working.
+	ExpiresAt time.Time
+	// Next is the local path to go to after the login; empty for the home
+	// page.
+	Next string
 }
 
 // Login is LoginClient for a browser that sends no name: a SessionBrowser
-// session with an empty client name. It returns the token and the user.
-func (a *Accounts) Login(ctx context.Context, username, password, clientIP string) (string, User, error) {
-	res, err := a.LoginClient(ctx, ClientLogin{Username: username, Password: password, ClientIP: clientIP, Kind: SessionBrowser})
-	if err != nil {
-		return "", User{}, err
-	}
-	return res.Token, res.User, nil
+// session with an empty client name. It returns the result of LoginClient: a
+// session, or, for a user who has to type an SSH code, a pending login.
+func (a *Accounts) Login(ctx context.Context, username, password, clientIP string) (LoginResult, error) {
+	return a.LoginClient(ctx, ClientLogin{Username: username, Password: password, ClientIP: clientIP, Kind: SessionBrowser})
 }
 
 // CleanClientName returns the client name a session of the kind keeps, or
@@ -134,6 +162,16 @@ func CleanClientName(kind SessionKind, name string) (string, error) {
 // within 15 minutes it fails with TagRateLimited, before it looks at the
 // password, until the window has passed. A successful login clears the
 // failures of the username.
+//
+// A user who turned on the SSH code is asked for it when this process runs
+// the SSH server (AccountsConfig.SSHServer), and only after the right password
+// (SPEC §7.16, D53). A SessionBrowser login then makes a pending login and no
+// session: the result has Pending set, and CompleteLogin finishes it. A
+// SessionAPI login takes the code in in.SSHCode: without one it fails with
+// TagSSHCodeRequired, with a wrong, used, expired or foreign one with
+// TagUnauthenticated and a failure in the limiter, and with a right one it
+// uses the code up and starts the session in one transaction. Nothing but the
+// right password and the right code logs anyone in.
 func (a *Accounts) LoginClient(ctx context.Context, in ClientLogin) (LoginResult, error) {
 	clientName, err := CleanClientName(in.Kind, in.ClientName)
 	if err != nil {
@@ -170,23 +208,37 @@ func (a *Accounts) LoginClient(ctx context.Context, in ClientLogin) (LoginResult
 			"fields", map[string]string{FieldForm: "Wrong username or password."})
 	}
 
-	token, err := auth.NewToken()
+	needsCode, err := a.needsSSHCode(ctx, user.ID)
 	if err != nil {
 		return LoginResult{}, err
 	}
-	now := a.clk.Now().UTC()
-	sess := &store.Session{
-		TokenHash:  auth.HashToken(token),
-		UserID:     user.ID,
-		ExpiresAt:  now.Add(a.sessionLifetime),
-		LastSeenAt: now,
-		Kind:       in.Kind,
-		ClientName: clientName,
+	if needsCode && in.Kind == SessionBrowser {
+		return a.startPendingLogin(ctx, user, in.Next)
+	}
+	if needsCode && in.SSHCode == "" {
+		return LoginResult{}, errors.New(TagSSHCodeRequired, "the user needs an SSH sign-in code",
+			"userID", user.ID)
+	}
+
+	sess, token, err := newSession(user.ID, in.Kind, clientName, a.clk.Now().UTC(), a.sessionLifetime)
+	if err != nil {
+		return LoginResult{}, err
 	}
 	// The expired sessions of the user go in the same transaction that makes
-	// the new one.
+	// the new one; so does the use of the code.
+	wrongCode := false
 	err = a.st.Tx(ctx, func(tx *store.Store) error {
-		if err := tx.DeleteExpiredSessionsOfUser(ctx, user.ID, now); err != nil {
+		wrongCode = false
+		if needsCode {
+			if _, err := tx.ConsumeSSHCode(ctx, user.ID, SSHCodeHash(in.SSHCode), sess.LastSeenAt); err != nil {
+				if appErr, ok := errors.FromError(err); ok && appErr.Tag == store.TagNotFound {
+					wrongCode = true
+					return nil
+				}
+				return err
+			}
+		}
+		if err := tx.DeleteExpiredSessionsOfUser(ctx, user.ID, sess.LastSeenAt); err != nil {
 			return err
 		}
 		return tx.CreateSession(ctx, sess)
@@ -194,8 +246,30 @@ func (a *Accounts) LoginClient(ctx context.Context, in ClientLogin) (LoginResult
 	if err != nil {
 		return LoginResult{}, err
 	}
+	if wrongCode {
+		a.limiter.Fail(ctx, username, clientIP)
+		return LoginResult{}, errors.New(TagUnauthenticated, "the SSH sign-in code is wrong",
+			"reason", "sshCode", "userID", user.ID)
+	}
 	a.limiter.Reset(ctx, username)
 	return LoginResult{Token: token, User: viewOf(user), ExpiresAt: sess.ExpiresAt}, nil
+}
+
+// newSession makes the row of a new session of the user, started at now, and
+// its token, which is shown once and never stored.
+func newSession(userID uint64, kind SessionKind, clientName string, now time.Time, lifetime time.Duration) (*store.Session, string, error) {
+	token, err := auth.NewToken()
+	if err != nil {
+		return nil, "", err
+	}
+	return &store.Session{
+		TokenHash:  auth.HashToken(token),
+		UserID:     userID,
+		ExpiresAt:  now.Add(lifetime),
+		LastSeenAt: now,
+		Kind:       kind,
+		ClientName: clientName,
+	}, token, nil
 }
 
 // Session is who a session token belongs to, as SessionActor returns it.

@@ -34,6 +34,15 @@
 // other user's writes to another process of the same installation (SPEC
 // §8.1), so that the events cross from one process to the other.
 //
+// -ssh-key <path> (an unencrypted OpenSSH private key of the user) and
+// -ssh-addr <host:port> (by default the host of -base-url and port 2222) are
+// for a user who turned on the SSH code at login (SPEC §7.16): every login of
+// the user first sends the password alone, expects 401 with the code
+// ssh_code_required, fetches a code over SSH with the key (the command json;
+// the fingerprint of the host key is printed, not checked), and logs in again
+// with ssh_code. The code is printed as <code>. A user without the code on
+// logs in at once.
+//
 // Each scenario is a named function of scenarios.go; -only runs just the named
 // ones, and -list prints their names. A later step adds its scenarios to the
 // list.

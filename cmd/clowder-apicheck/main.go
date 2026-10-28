@@ -60,6 +60,8 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	adminPassword := fs.String("admin-password", "", "password of the admin ("+adminPasswordEnv+" when empty; the demo password if that is empty too)")
 	otherBaseURL := fs.String("other-base-url", "", "address the other user writes through in the "+watchScenarioName+" scenario, another process of the same installation (the same as -base-url when empty)")
 	eventTimeout := fs.Duration("event-timeout", defaultEventWait, "how long the "+watchScenarioName+" scenario waits for the event of each write")
+	sshKey := fs.String("ssh-key", "", "path of an unencrypted OpenSSH private key of the user: a login that needs an SSH code fetches it over SSH (the code is printed as <code>)")
+	sshAddr := fs.String("ssh-addr", "", "host:port of the SSH server of Clowder (the host of -base-url and port 2222 when empty)")
 	only := fs.String("only", "", "run only these scenarios, separated by commas")
 	watch := fs.Bool("watch", false, "run only the "+watchScenarioName+" scenario (the same as -only "+watchScenarioName+")")
 	list := fs.Bool("list", false, "print the names of the scenarios and stop")
@@ -116,6 +118,15 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		return 2
 	}
 
+	if *sshKey != "" && *sshAddr == "" {
+		addr, err := defaultSSHAddr(*baseURL)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "clowder-apicheck: %s\n", describe(err))
+			return 2
+		}
+		*sshAddr = addr
+	}
+
 	c := &client{
 		base:  strings.TrimRight(*baseURL, "/"),
 		http:  &http.Client{Timeout: requestTimeout},
@@ -125,7 +136,7 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 	r := &runner{c: c, username: *username, password: *password, clientName: *clientName,
 		otherUsername: *otherUsername, otherPassword: *otherPassword, thirdUsername: *thirdUsername,
 		adminUsername: *adminUsername, adminPassword: *adminPassword,
-		otherBaseURL: strings.TrimRight(*otherBaseURL, "/"), eventWait: *eventTimeout}
+		otherBaseURL: strings.TrimRight(*otherBaseURL, "/"), eventWait: *eventTimeout, sshKey: *sshKey, sshAddr: *sshAddr}
 	for _, s := range chosen {
 		_, _ = fmt.Fprintf(stdout, "== %s: %s\n\n", s.name, s.summary)
 		if err := s.run(ctx, r); err != nil {

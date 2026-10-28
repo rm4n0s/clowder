@@ -35,9 +35,19 @@ type SignInData struct {
 	// RemoveErrors are the problems of the last Remove, under the field
 	// "currentPassword".
 	RemoveErrors FormErrors
-	// Saved is true right after a key was added or removed.
+	// CodeRequired is true when the user turned on "Ask for an SSH code when
+	// I log in".
+	CodeRequired bool
+	// Code holds the problems of the last submit of the switch, under the
+	// fields "form" and "currentPassword".
+	Code FormErrors
+	// Saved is true right after a key was added or removed, or the switch was
+	// used.
 	Saved bool
 }
+
+// SettingsSSHCodePath turns the SSH code at login on or off.
+const SettingsSSHCodePath = SettingsPath + "/ssh-code"
 
 // SSHKeyAddData is the Add form of the Sign-in section.
 type SSHKeyAddData struct {
@@ -99,8 +109,76 @@ templ SignInSection(d SignInData) {
 		} else {
 			<p class="hint" id="ssh-server-off">The SSH server is not running on this Clowder.</p>
 		}
-		// TODO(step 19.2): the switch "Ask for an SSH code when I log in".
+		@sshCodeSwitch(d)
 	</section>
+}
+
+// sshCodeUsed reports whether one of the keys has fetched a code, which is
+// what turning the SSH code on needs.
+func sshCodeUsed(keys []app.SSHKey) bool {
+	for _, k := range keys {
+		if k.LastUsedAt != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// sshCodeSwitch is the switch "Ask for an SSH code when I log in": a small
+// form with the current password and the button that turns it on or off. It
+// cannot be turned on while the SSH server is off or no key has fetched a
+// code; turning it off always works.
+templ sshCodeSwitch(d SignInData) {
+	<h3>Ask for an SSH code when I log in</h3>
+	<form id="ssh-code-form" method="post" action={ templ.SafeURL(SettingsSSHCodePath) } data-on:submit={ FormPost(SettingsSSHCodePath) }>
+		<p id="ssh-code-state">
+			if d.CodeRequired {
+				It is <strong>on</strong>: after your password, a code from your SSH key is asked for.
+			} else {
+				It is <strong>off</strong>: your password alone logs you in.
+			}
+		</p>
+		if d.CodeRequired && !d.Server.Enabled {
+			<p class="hint" id="ssh-code-server-off">The SSH server is not running on this Clowder, so no code is asked for now.</p>
+		} else if !d.CodeRequired && !d.Server.Enabled {
+			<p class="hint" id="ssh-code-unavailable">The SSH server is not running on this Clowder.</p>
+		} else if !d.CodeRequired && !sshCodeUsed(d.Keys) {
+			<p class="hint" id="ssh-code-unavailable">Fetch a code with one of your keys first.</p>
+		}
+		@formProblem(d.Code.Form)
+		<div class="field">
+			<label for="ssh-code-password">Current password</label>
+			<input
+				id="ssh-code-password"
+				name="currentPassword"
+				type="password"
+				autocomplete="current-password"
+				required
+				if !d.CodeRequired && (!d.Server.Enabled || !sshCodeUsed(d.Keys)) {
+					disabled
+				}
+				if d.Code.Fields["currentPassword"] != "" {
+					aria-invalid="true"
+					aria-describedby="ssh-code-password-error"
+				}
+			/>
+			if d.Code.Fields["currentPassword"] != "" {
+				<p class="field-error" id="ssh-code-password-error" role="alert">{ d.Code.Fields["currentPassword"] }</p>
+			}
+		</div>
+		if d.CodeRequired {
+			<input type="hidden" name="enabled" value="false"/>
+			<button type="submit" class="secondary">Turn off</button>
+		} else {
+			<input type="hidden" name="enabled" value="true"/>
+			<button
+				type="submit"
+				if !d.Server.Enabled || !sshCodeUsed(d.Keys) {
+					disabled
+				}
+			>Turn on</button>
+		}
+	</form>
 }
 
 // sshKeyRow is one row of the table of keys, with the small form that removes

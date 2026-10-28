@@ -205,7 +205,9 @@ func (s *Store) CountSSHCodesSince(ctx context.Context, userID uint64, since tim
 // it, when it is unused, not replaced and not expired at now. The marking is
 // one conditional update, so that a code is used once even when two requests
 // race: the loser finds no row to change. It fails with TagNotFound when no
-// such code exists. Nothing in the services calls it yet (step 19.2).
+// such code exists. The login with the SSH code (Accounts.LoginClient and
+// Accounts.CompleteLogin) calls it inside the transaction that starts the
+// session.
 func (s *Store) ConsumeSSHCode(ctx context.Context, userID uint64, codeHash string, now time.Time) (SSHCode, error) {
 	var code SSHCode
 	err := s.db(ctx).

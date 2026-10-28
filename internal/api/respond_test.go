@@ -29,6 +29,8 @@ func TestProblemOf(t *testing.T) {
 		wantFields map[string]string
 		header     map[string]string
 		internal   bool
+		// wantMessage is the message, when the row checks it.
+		wantMessage string
 	}{
 		{name: "not found", err: errors.New(app.TagNotFound, "m"), status: 404, code: "not_found"},
 		{name: "a path that has no route", err: errors.New(tagRouteNotFound, "m"), status: 404, code: "not_found"},
@@ -44,7 +46,21 @@ func TestProblemOf(t *testing.T) {
 			name: "a body that cannot be read", err: errors.New(tagBodyInvalid, "m", "fields", map[string]string{"body": "x"}),
 			status: 422, code: "invalid_input", wantFields: map[string]string{"body": "x"},
 		},
-		{name: "conflict", err: errors.New(app.TagConflict, "m"), status: 409, code: "conflict"},
+		{name: "conflict", err: errors.New(app.TagConflict, "m"), status: 409, code: "conflict", wantMessage: messageConflict},
+		{
+			name: "a conflict with a form message keeps its own message", err: errors.New(app.TagConflict, "m", "fields", map[string]string{"form": "x"}),
+			status: 409, code: "conflict", wantFields: map[string]string{"form": "x"}, wantMessage: messageConflict,
+		},
+		{
+			name: "the SSH server is off", err: errors.New(app.TagSSHServerOff, "m", "fields", map[string]string{"form": "The server is off."}),
+			status: 409, code: "conflict", wantFields: map[string]string{"form": "The server is off."}, wantMessage: "The server is off.",
+		},
+		{name: "no key fetched a code", err: errors.New(app.TagSSHCodeNotTried, "m"), status: 409, code: "conflict"},
+		{name: "the last key while the code is on", err: errors.New(app.TagSSHCodeNeedsKey, "m"), status: 409, code: "conflict"},
+		{
+			name: "the SSH code is required", err: errors.New(app.TagSSHCodeRequired, "m"), status: 401, code: "ssh_code_required",
+			header: map[string]string{"WWW-Authenticate": `Bearer realm="clowder"`},
+		},
 		{name: "rate limited", err: errors.New(app.TagRateLimited, "m"), status: 429, code: "rate_limited", header: map[string]string{"Retry-After": "900"}},
 		{name: "too large", err: errors.New(app.TagTooLarge, "m"), status: 413, code: "too_large"},
 		{name: "a body over the limit", err: errors.New(tagBodyTooLarge, "m"), status: 413, code: "too_large"},
@@ -85,6 +101,9 @@ func TestProblemOf(t *testing.T) {
 				if p.header[name] != value {
 					t.Errorf("header %s = %q, want %q", name, p.header[name], value)
 				}
+			}
+			if tt.wantMessage != "" && p.object.Message != tt.wantMessage {
+				t.Errorf("message = %q, want %q", p.object.Message, tt.wantMessage)
 			}
 			if strings.Contains(p.object.Message, "secret") || p.object.Message == "" {
 				t.Errorf("message = %q", p.object.Message)

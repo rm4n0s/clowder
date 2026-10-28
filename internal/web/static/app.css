@@ -127,6 +127,7 @@ button.danger { background: var(--danger); }
 body:not(:has(aside)) main { margin: 0 auto; }
 
 .auth-card { max-width: 24rem; margin: 3rem auto 0; }
+.hint.login-code-restart { margin: 1rem 0 0; }
 
 .field { margin-bottom: 0.25rem; }
 
@@ -140,6 +141,15 @@ body:not(:has(aside)) main { margin: 0 auto; }
   padding: 0.5rem 0.75rem;
   color: var(--danger);
   border: 1px solid var(--danger);
+  border-radius: 6px;
+}
+
+/* A warning that is not a failed action, such as the SSH server being off. */
+.notice-warning {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--danger);
   border-radius: 6px;
 }
 

@@ -23,6 +23,13 @@
 // §7.16) on a free port of 127.0.0.1, so that the Sign-in section of the
 // settings page shows the ssh command.
 //
+// With -ssh-code <user> the tool turns the SSH code at login on for that demo
+// user before the page opens (it starts the SSH server, adds a key through the
+// API, fetches a code with it and turns the switch on). A proof of the second
+// form of the login opens /login without -as and types the password with -fill
+// and -click: -page /login -fill '#login-username=alice' -fill
+// '#login-password=demo-password-1234' -click '#login-form button[type=submit]'.
+//
 // With -other a second user acts in a second browser while the first one
 // watches. With -cluster the tool starts two servers on one new PostgreSQL
 // database, one Redis and one data directory, as compose.cluster.yaml does

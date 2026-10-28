@@ -126,6 +126,7 @@ func newTestEnvSSH(t *testing.T, mutate func(*Options), sshServer app.SSHServerI
 		SessionLifetime:    30 * 24 * time.Hour,
 		Publisher:          pub,
 		Avatars:            avatars,
+		SSHServer:          sshServer.Addr != "",
 	})
 	filesDir := filepath.Join(t.TempDir(), "files")
 	fileStore, err := files.New(filesDir)
@@ -213,11 +214,11 @@ func (e *testEnv) token(username string) string {
 // cookie token.
 func (e *testEnv) browserToken(username string) string {
 	e.t.Helper()
-	token, _, err := e.accounts.Login(e.t.Context(), username, testPassword, "192.0.2.201")
+	res, err := e.accounts.Login(e.t.Context(), username, testPassword, "192.0.2.201")
 	if err != nil {
 		e.t.Fatalf("Login: %+v", err)
 	}
-	return token
+	return res.Token
 }
 
 // reqOpt changes a request a test sends.

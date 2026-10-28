@@ -55,7 +55,17 @@ func (s *Server) usersData(w http.ResponseWriter, r *http.Request, actor app.Act
 	if invite.Role == "" {
 		invite.Role = string(app.RoleMember)
 	}
-	return views.AdminUsersData{Viewer: viewer, Sidebar: sb, Users: users, Invite: invite}, true
+	// The warning is only for a server with no SSH address on which some user
+	// has the code on: a Clowder that never used the codes has nothing to warn
+	// about.
+	withCode := false
+	for _, u := range users {
+		withCode = withCode || u.SSHCodeRequired
+	}
+	return views.AdminUsersData{
+		Viewer: viewer, Sidebar: sb, Users: users, Invite: invite,
+		SSHServerOff: withCode && !s.svc.SSHKeys.Server("").Enabled,
+	}, true
 }
 
 // adminUsers answers GET /admin/users: the users and the invitation form.
@@ -124,6 +134,14 @@ func (s *Server) setDisabled(w http.ResponseWriter, r *http.Request) {
 			return errors.New(app.TagInvalidInput, "the disabled value is not true or false",
 				"fields", map[string]string{app.FieldForm: messageActionInvalid})
 		}
+	})
+}
+
+// removeSSHCode answers POST /admin/users/{id}/ssh-code/remove: an admin turns
+// off the SSH code at login of a user who lost their keys.
+func (s *Server) removeSSHCode(w http.ResponseWriter, r *http.Request) {
+	s.userChange(w, r, func(actor app.Actor, id uint64) error {
+		return s.svc.SSHKeys.RemoveSSHCode(r.Context(), actor, id)
 	})
 }
 
