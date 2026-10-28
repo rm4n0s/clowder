@@ -233,6 +233,9 @@ func (s *Server) serveSocket(parent context.Context, conn *websocket.Conn, c *ca
 	sub := s.svc.Hub.Subscribe(ctx, live.UserTopic(c.user.ID))
 	defer sub.Close()
 	ws := s.newSession(conn, c, token, sub)
+	// The user is online while a WebSocket of theirs is open (SPEC §7.15).
+	s.svc.Presence.Connect(c.user.ID)
+	defer s.svc.Presence.Disconnect(c.user.ID)
 	s.logger.Debug("websocket connected", "user_id", c.user.ID)
 
 	var wg sync.WaitGroup

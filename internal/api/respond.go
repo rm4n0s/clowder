@@ -122,7 +122,7 @@ func problemOf(err error) (problem, bool) {
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, apiFieldName)}}, false
 	case tagBodyInvalid, tagBeforeInvalid, tagLimitInvalid, tagDueDateInvalid, tagKeepOnCreate,
 		tagUploadInvalid, tagFieldMissing, tagPageInvalid, tagTaskDueInvalid, tagListsInvalid, tagNoOthers, tagDirectName,
-		tagFilterInvalid, tagAdminUserInvalid, tagProfileEmpty, tagSettingsEmpty, tagPrefsEmpty, tagTopicInvalid, tagTopicsTooMany, tagSocketMessageInvalid:
+		tagFilterInvalid, tagAdminUserInvalid, tagProfileEmpty, tagSettingsEmpty, tagPrefsEmpty, tagFormatInvalid, tagUserIDsInvalid, tagTopicInvalid, tagTopicsTooMany, tagSocketMessageInvalid:
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, snakeCase)}}, false

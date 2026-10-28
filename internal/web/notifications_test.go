@@ -130,7 +130,7 @@ func TestNotificationsPageText(t *testing.T) {
 				`data-kind="mention"`,
 				`mentioned you in <a class="notification-room" href="/rooms/` + gen + `">general</a>`,
 				`href="/posts/` + idText(mention.ID) + `#post-` + idText(mention.ID) + `"`,
-				`data-kind="reply"`, `replied to you in <a class="notification-room" href="/rooms/` + gen + `">general</a>`,
+				`data-kind="reply"`, `replied in <a class="notification-room" href="/rooms/` + gen + `">general</a>`,
 				`href="/posts/` + idText(reply.RootID) + `#post-` + idText(reply.ID) + `"`,
 				`data-kind="assigned"`, `assigned you &#34;Fix &lt;it&gt;&#34; in <a class="notification-room"`,
 				`href="/posts/` + idText(assigned.ID) + `#post-` + idText(assigned.ID) + `"`,

@@ -153,6 +153,15 @@ func (ms *meStream) freshOps(ctx context.Context) ([]patchOp, error) {
 
 // event renders one event of the hub for the user of the stream.
 func (ms *meStream) event(ctx context.Context, ev live.Event) (end bool, err error) {
+	if ev.Kind == live.KindNotificationChanged {
+		// A reply was folded into a notification: the count of the bell does
+		// not change, and nothing rings (SPEC §7.15). The notifications page
+		// shows the notification again, in its place.
+		if ms.list {
+			return false, ms.refreshNotification(ctx, ev.NotificationID)
+		}
+		return false, nil
+	}
 	if handled, err := ms.countsEvent(ctx, ev); handled {
 		if err != nil {
 			return false, err
@@ -193,4 +202,20 @@ func (ms *meStream) fresh(ctx context.Context) error {
 	}
 	_, err = ms.send(start{ops: ops})
 	return err
+}
+
+// refreshNotification puts the notification id of the person on the list again,
+// where it is: it names a newer actor and counts more people now. A
+// notification that is gone, or of a room the person can no longer read,
+// changes nothing.
+func (ms *meStream) refreshNotification(ctx context.Context, id uint64) error {
+	// The newest notification with an ID below id+1 is the notification itself.
+	page, err := ms.s.svc.Notifications.List(ctx, ms.actor, id+1, 1)
+	if err != nil {
+		return err
+	}
+	if len(page.Notifications) == 0 || page.Notifications[0].ID != id {
+		return nil
+	}
+	return ms.patch(views.NotificationItem(page.Notifications[0]))
 }

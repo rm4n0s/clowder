@@ -14,6 +14,12 @@ const (
 	NotificationAssigned NotificationKind = "assigned"
 	// NotificationAddedToRoom is the user's addition to a private room.
 	NotificationAddedToRoom NotificationKind = "added_to_room"
+	// NotificationGroupMention is an @room, @all or @here that reached the
+	// user (SPEC §7.15).
+	NotificationGroupMention NotificationKind = "group_mention"
+	// NotificationKeyword is a keyword of the user found in a post or comment
+	// (SPEC §7.15).
+	NotificationKeyword NotificationKind = "keyword"
 )
 
 // Notification is shown to a user in the bell and on the notifications page.
@@ -22,7 +28,7 @@ type Notification struct {
 	ID        uint64 `gorm:"primaryKey;index:idx_notifications_user_read,priority:3"`
 	CreatedAt time.Time
 	UserID    uint64           `gorm:"not null;index:idx_notifications_user_read,priority:1"`
-	Kind      NotificationKind `gorm:"not null;check:chk_notifications_kind,kind IN ('mention','reply','assigned','added_to_room')"`
+	Kind      NotificationKind `gorm:"not null;check:chk_notifications_kind,kind IN ('mention','reply','assigned','added_to_room','group_mention','keyword')"`
 	// PostID is the post or comment of a mention or a reply.
 	PostID *uint64 `gorm:"index:idx_notifications_post_id"`
 	// TaskID is the task of an assignment.
@@ -33,6 +39,10 @@ type Notification struct {
 	ActorID uint64 `gorm:"not null"`
 	// ReadAt is when the user read the notification; nil while unread.
 	ReadAt *time.Time `gorm:"index:idx_notifications_user_read,priority:2"`
+	// Others is the number of other people who replied in the same burst of
+	// one minute, folded into this reply notification (SPEC §7.15); the
+	// ActorID is the latest of them. It is 0 for every other notification.
+	Others int `gorm:"not null;default:0"`
 
 	// Relations: declared so that GORM creates the foreign keys.
 	User  *User `gorm:"foreignKey:UserID;constraint:OnDelete:RESTRICT"`

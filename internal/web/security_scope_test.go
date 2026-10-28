@@ -616,6 +616,8 @@ func (sc *scope) postPaths() map[string]string {
 		"POST /posts/{id}/delete":                          "/posts/" + gp + "/delete",
 		"POST /posts/{id}/replies":                         "/posts/" + gp + "/replies",
 		"POST /posts/{id}/reactions":                       "/posts/" + gp + "/reactions",
+		"POST /posts/{id}/follow":                          "/posts/" + gp + "/follow",
+		"POST /posts/{id}/unfollow":                        "/posts/" + gp + "/unfollow",
 		"POST /preview":                                    "/preview",
 		"POST /messages":                                   "/messages",
 		"POST /messages/{id}":                              "/messages/" + cv,

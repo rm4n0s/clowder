@@ -1194,3 +1194,58 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Datastar evaluates every `data-text` attribute, so the ring element uses `data-notice` instead.
   - The sidebar badge of mentions in a muted room waits for the unread counts of step 20.2 (`TODO(step 20.2)`).
   - The muted icon of a conversation sits under its time, because an existing test pins the title's markup.
+
+## 18.4 Group mentions, keywords, presence and following posts
+- **Date:** 2026-10-28
+- **Branch:** feat/step-18.4-mentions-following
+- **Summary:**
+  - **Group mentions:** `@room` (or `@all`) and `@here` work in posts and comments of a room, and in messages of a group conversation, never in a direct conversation or inside code.
+    - They reach every member, or only the online ones for `@here`. The author is left out, and so is anyone who ignores group mentions in that place or has turned them off globally.
+    - In a room they make the bell notification `group_mention`. In a conversation they set the mention flag of the ringing decision.
+    - Over 5 people, the new-post, comment and message forms ask "This will notify N people. Send anyway?" and create nothing until Send is pressed. Editing never asks, and neither does the API: `GET …/group-mention-count` lets a client ask its own user.
+    - `room`, `all` and `here` are reserved usernames at sign-up.
+  - **Keywords:** up to 10 per user, 1 to 32 characters each, phrases allowed, matched as whole words, case-insensitively and outside code. A match in a room makes the notification `keyword`.
+    - A user gets one notification per action, by rank: assigned, direct reply, `@username`, reply from following, group mention, keyword.
+    - Kept in `user_settings.keywords` as JSON. `group_mentions` is stored inverted as `group_mentions_off`, because GORM rewrites a false value of a `default:true` column.
+  - **Presence:** a user is online while any page stream or WebSocket of theirs is open.
+    - In one process it is counted in memory (`live.MemoryPresence`). With Redis, `cluster.Presence` keeps a set per process with a TTL of 60 s, refreshed every 20 s by a goroutine stopped in `Close`, and a heartbeat sorted set read on the Redis clock.
+    - `GET /api/v1/me/presence?user_ids=`. Online dots in the members lists of rooms and groups, rendered when the page loads.
+  - **Following:** `post_follows` makes a user follow a post when they write it, comment under it or are `@username`-mentioned in it. An unfollow sticks: the row keeps an `unfollowed` flag.
+    - Follow and Unfollow on the post card, `PUT` and `DELETE /api/v1/posts/{id}/follow`, and `following` on posts.
+    - With *Threads I follow*, a comment notifies every follower except its author. Replies within 1 minute of an unread reply notification fold into it ("Dave and 2 others replied …"), publish `notification.changed`, and do not ring again.
+  - Raw migration `0004_notification_kinds` widens the kind CHECK on both dialects and adds `notifications.others` and `mentions.kind`.
+  - The notifications page now says "replied in" for every reply (the manager's change, to match §7.15). It said "replied to you in", which was wrong for replies from followed threads.
+  - Demo data: dave, erin and frank join #general, so `@room` there notifies 6 people, and a third commenter under carol's checklist gives a folded notification. The apicheck has a new scenario `follow`.
+  - `clowder-proof -other-hold` keeps the `-other` user's browser open until the screenshot, so that user is online.
+- **Main files:** `internal/app/{mentions,follow,presence,posts,notifications,notice,ring,messages_send,profile}.go`, `internal/store/{post_follows,migrations,notifications_queries,settings,place_prefs}.go`, `internal/markdown/keyword.go`, `internal/live/presence.go`, `internal/cluster/presence.go`, `internal/api/handlers_mentions.go`, `openapi.json`, `internal/web/{follow,mentions}.go`, `internal/web/views/mentions.templ`, `cmd/clowder/{serve,demo}.go`, `cmd/clowder-proof`, `cmd/clowder-apicheck/follow_scenario.go`.
+- **Tests:** about 340 new test functions, most of them tables:
+
+  | Package | Functions |
+  |---|---|
+  | app | about 100 |
+  | store and markdown | 21 |
+  | Redis presence | 14 |
+  | web and api | 22 |
+  | cmd | 5 |
+
+  There are also the migration's upgrade tests. They cover:
+  - group mentions (place and global ignore, `@here` with presence, code, direct conversations), keywords (whole words, phrases, case, code, the limits);
+  - one notification per action, and edits;
+  - follows (automatic, sticky unfollow, on a comment), *Threads I follow* versus *Only direct replies*, the folded burst with no second ring, and a new notification after the minute;
+  - one table run on both presence implementations, a dead process expiring, and `Close`;
+  - the confirmation;
+  - the permission tables of `Follow`, `Unfollow`, `GroupMentionCount` and `Presence.Online`;
+  - a route test for every tag, and the OpenAPI parity test.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [18.4 room mention](implemented-proof-images/18.4-room-mention.png) · [18.4 bell](implemented-proof-images/18.4-room-mention-bell.png) · [18.4 following](implemented-proof-images/18.4-following.png) · [18.4 presence](implemented-proof-images/18.4-presence.png)
+  - Alice's `@room` in #general asks "This will notify 6 people. Send anyway?".
+  - Carol's bell after Alice sent it.
+  - Carol's folded "Dave and 2 others replied in general".
+  - The online dots of Alice and of Bob, whose browser is held open.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The dots are not live: they are rendered when the page loads, with no presence event, as the brief decided.
+  - Following is not audited and publishes no event.
+  - With Redis unreadable, `@here` and the dots count nobody else as online, and `GET /me/presence` answers 500.
+  - The notifications page names the room without the thread's name or "#", as it has since 1.0. The redesign of M21 can align it with the browser notification texts.

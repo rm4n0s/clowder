@@ -114,6 +114,7 @@ templ PostEditor(d PostEditorData) {
 			<button type="button" class="secondary" data-on:click={ addTaskAction(d) }>Add task</button>
 		</fieldset>
 		@PostPreview(PostPreviewData{EditorID: d.ID, Hidden: true})
+		@GroupMentionConfirm(GroupMentionConfirmData{ID: d.ID, Count: d.ConfirmCount, SendPath: GroupMentionSendPath(d.Action)})
 		<div class="post-editor-actions">
 			<button type="submit">{ d.SubmitLabel }</button>
 			<button type="button" class="secondary" data-on:click={ previewAction }>Preview</button>
@@ -319,6 +320,23 @@ templ PostContent(d PostCardData) {
 			}
 			if d.CanReply && !d.Post.Deleted {
 				<a class="post-reply" href={ templ.SafeURL(replyPath(d.Post.ID)) } data-on:click__prevent={ "@get('" + escapeQuote(replyPath(d.Post.ID)) + "')" }>Reply</a>
+			}
+			if !d.Post.IsComment && !d.Post.Deleted {
+				if d.Post.Following {
+					<form class="action post-follow" method="post" action={ templ.SafeURL(postActionPath(d.Post.ID, "unfollow", "")) } data-on:submit={ FormPost(PostPath(d.Post.ID) + "/unfollow") }>
+						if d.From != "" {
+							<input type="hidden" name="from" value={ d.From }/>
+						}
+						<button type="submit" class="secondary" title="Stop being notified of the comments of this post">Unfollow</button>
+					</form>
+				} else {
+					<form class="action post-follow" method="post" action={ templ.SafeURL(postActionPath(d.Post.ID, "follow", "")) } data-on:submit={ FormPost(PostPath(d.Post.ID) + "/follow") }>
+						if d.From != "" {
+							<input type="hidden" name="from" value={ d.From }/>
+						}
+						<button type="submit" class="secondary" title="Be notified of the comments of this post">Follow</button>
+					</form>
+				}
 			}
 			if d.Post.CanEdit {
 				<a class="post-edit" href={ templ.SafeURL(postActionPath(d.Post.ID, "edit", d.From)) } data-on:click__prevent={ "@get('" + escapeQuote(postActionPath(d.Post.ID, "edit", d.From)) + "')" }>Edit</a>

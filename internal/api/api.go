@@ -46,6 +46,10 @@ type Services struct {
 	Search *app.Search
 	// Audit is the service that reads the audit log.
 	Audit *app.Audit
+	// Presence tells who is online (GET /me/presence) and is told when a
+	// WebSocket opens or closes (SPEC §7.15). It must be the one of the
+	// server of internal/web. Nil counts nobody.
+	Presence *app.Presence
 	// Hub is the hub the services publish to; the WebSocket (SPEC §7.13)
 	// subscribes to it. It must be the hub of the server of internal/web,
 	// which closes it when the server stops. Nil makes a hub that nothing
@@ -186,6 +190,7 @@ func (s *Server) defineRoutes() []Route {
 	routes = append(routes, s.userRoutes()...)
 	routes = append(routes, s.roomRoutes()...)
 	routes = append(routes, s.prefsRoutes()...)
+	routes = append(routes, s.mentionRoutes()...)
 	routes = append(routes, s.postRoutes()...)
 	routes = append(routes, s.uploadRoutes()...)
 	routes = append(routes, s.boardRoutes()...)

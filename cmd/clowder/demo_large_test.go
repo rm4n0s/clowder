@@ -179,8 +179,8 @@ func TestDemoSizeFlag(t *testing.T) {
 		}
 		_, st := openAccounts(t, dir)
 		s, err := st.Stats(t.Context())
-		if err != nil || s.Users != 4 || s.Rooms != 3 || s.Posts != 8 || s.Comments != 9 {
-			t.Errorf("Stats = %+v, %v; want the 4 users, 3 rooms, 8 posts and 9 comments of the small demo", s, err)
+		if err != nil || s.Users != 7 || s.Rooms != 3 || s.Posts != 8 || s.Comments != 10 {
+			t.Errorf("Stats = %+v, %v; want the 7 users, 3 rooms, 8 posts and 10 comments of the small demo", s, err)
 		}
 	})
 

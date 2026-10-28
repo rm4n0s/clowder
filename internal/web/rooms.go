@@ -125,6 +125,11 @@ func (s *Server) roomView(ctx context.Context, actor app.Actor, id uint64) (view
 		return views.RoomData{}, err
 	}
 	d := views.RoomData{Room: room, Members: members, Editor: views.NewPostEditorData(id).WithMembers(id, members)}
+	ids := make([]uint64, len(members))
+	for i, m := range members {
+		ids[i] = m.UserID
+	}
+	d.Online = s.onlineSet(ctx, actor, ids)
 	if room.IsMember {
 		if d.Candidates, err = s.svc.Rooms.Candidates(ctx, actor, id); err != nil {
 			return views.RoomData{}, err

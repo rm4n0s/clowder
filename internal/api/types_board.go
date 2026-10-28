@@ -125,6 +125,10 @@ type notificationJSON struct {
 	TaskID    *uint64      `json:"task_id"`
 	CreatedAt string       `json:"created_at"`
 	Read      bool         `json:"read"`
+	// Others is the number of other people whose replies in the same thread,
+	// within a minute, a reply notification took in: "Bob and 2 others
+	// replied"; 0 otherwise.
+	Others int `json:"others"`
 }
 
 // notificationOf makes the JSON of a notification. A part that the
@@ -132,7 +136,7 @@ type notificationJSON struct {
 // the post of an addition to a room, the task of everything but an
 // assignment.
 func notificationOf(n app.Notification) notificationJSON {
-	out := notificationJSON{ID: n.ID, Kind: string(n.Kind), CreatedAt: rfc3339(n.CreatedAt), Read: n.Read}
+	out := notificationJSON{ID: n.ID, Kind: string(n.Kind), CreatedAt: rfc3339(n.CreatedAt), Read: n.Read, Others: n.Others}
 	if n.Actor.ID != 0 {
 		actor := userRefOf(n.Actor)
 		out.Actor = &actor

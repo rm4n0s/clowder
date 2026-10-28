@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/rm4n0s/clowder/internal/app"
@@ -78,10 +79,15 @@ func (s *Server) settingsNotifications(w http.ResponseWriter, r *http.Request) {
 		mode := app.RepliesMode(v)
 		update.Replies = &mode
 	}
+	groups := r.PostFormValue("groupMentions") != ""
+	keywords := keywordsOf(r.PostFormValue("keywords"))
+	update.GroupMentions, update.Keywords = &groups, &keywords
 	settings, err := s.svc.Accounts.UpdateSettings(ctx, actor, update)
 	if err != nil {
+		typed := r.PostFormValue("keywords")
 		s.settingsFailed(w, r, err, func(d *views.SettingsData, problems views.FormErrors) {
 			d.Notifications.Errors = problems
+			d.Notifications.KeywordsTyped = &typed
 		}, func(d views.SettingsData) templ.Component { return views.NotifyPrefsSection(d.Notifications) })
 		return
 	}
@@ -92,6 +98,18 @@ func (s *Server) settingsNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Saved = true
 	s.settingsSaved(w, r, sectionNotifications, views.NotifyPrefsSection(d), "")
+}
+
+// keywordsOf splits the text of the keywords field at the commas. Segments
+// that are only white space are dropped; the service checks the rest.
+func keywordsOf(text string) []string {
+	out := []string{}
+	for _, k := range strings.Split(text, ",") {
+		if strings.TrimSpace(k) != "" {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // placePrefsData reads the dialog "Notification preferences" of the actor for

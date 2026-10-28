@@ -132,6 +132,8 @@ const (
 	TagRedisAddFailed = "RedisAddFailed"
 	// TagRedisClearFailed is the tag of the failure to forget the failed logins of a key in Redis.
 	TagRedisClearFailed = "RedisClearFailed"
+	// TagRedisPresenceFailed is the tag of the failure of a command that records or reads who is online in Redis; the metadata "op" names the operation (add, remove, refresh, drop or online).
+	TagRedisPresenceFailed = "RedisPresenceFailed"
 )
 
 // count implements counterBackend with one MULTI/EXEC transaction: it removes
@@ -166,4 +168,123 @@ func (c *redisClient) clear(ctx context.Context, key string) error {
 		return errors.NewErr(TagRedisClearFailed, err)
 	}
 	return nil
+}
+
+// presenceKey returns the Redis key of the set of online users of a process.
+func presenceKey(process string) string {
+	return presenceKeyPrefix + process
+}
+
+// presenceMembers returns the user ids as the strings stored in the sets.
+func presenceMembers(userIDs []uint64) []any {
+	members := make([]any, len(userIDs))
+	for i, id := range userIDs {
+		members[i] = strconv.FormatUint(id, 10)
+	}
+	return members
+}
+
+// addUser implements presenceBackend: it reads the clock of Redis, then adds the
+// user, sets the time to live and writes the heartbeat in one MULTI/EXEC.
+func (c *redisClient) addUser(ctx context.Context, process string, userID uint64, ttl time.Duration) error {
+	now, err := c.rc.Time(ctx).Result()
+	if err != nil {
+		return errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "add")
+	}
+	key := presenceKey(process)
+	pipe := c.rc.TxPipeline()
+	pipe.SAdd(ctx, key, strconv.FormatUint(userID, 10))
+	pipe.PExpire(ctx, key, ttl)
+	pipe.ZAdd(ctx, presenceProcessesKey, redis.Z{Score: float64(now.UnixMilli()), Member: process})
+	if _, err := pipe.Exec(ctx); err != nil {
+		return errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "add")
+	}
+	return nil
+}
+
+// removeUser implements presenceBackend.
+func (c *redisClient) removeUser(ctx context.Context, process string, userID uint64) error {
+	if err := c.rc.SRem(ctx, presenceKey(process), strconv.FormatUint(userID, 10)).Err(); err != nil {
+		return errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "remove")
+	}
+	return nil
+}
+
+// refreshProcess implements presenceBackend: it reads the clock of Redis, then
+// replaces the set, writes the heartbeat and forgets the old processes in one
+// MULTI/EXEC.
+func (c *redisClient) refreshProcess(ctx context.Context, process string, users []uint64, ttl time.Duration) error {
+	now, err := c.rc.Time(ctx).Result()
+	if err != nil {
+		return errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "refresh")
+	}
+	ms := now.UnixMilli()
+	key := presenceKey(process)
+	pipe := c.rc.TxPipeline()
+	pipe.Del(ctx, key)
+	if len(users) > 0 {
+		pipe.SAdd(ctx, key, presenceMembers(users)...)
+		pipe.PExpire(ctx, key, ttl)
+	}
+	pipe.ZAdd(ctx, presenceProcessesKey, redis.Z{Score: float64(ms), Member: process})
+	pipe.ZRemRangeByScore(ctx, presenceProcessesKey, "-inf", strconv.FormatInt(ms-2*ttl.Milliseconds(), 10))
+	if _, err := pipe.Exec(ctx); err != nil {
+		return errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "refresh")
+	}
+	return nil
+}
+
+// dropProcess implements presenceBackend with one MULTI/EXEC transaction.
+func (c *redisClient) dropProcess(ctx context.Context, process string) error {
+	pipe := c.rc.TxPipeline()
+	pipe.Del(ctx, presenceKey(process))
+	pipe.ZRem(ctx, presenceProcessesKey, process)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "drop")
+	}
+	return nil
+}
+
+// onlineUsers implements presenceBackend: it reads the clock of Redis, lists the
+// processes whose heartbeat is newer than ttl and asks each of their sets
+// which of the users it holds, all sets in one pipeline.
+func (c *redisClient) onlineUsers(ctx context.Context, userIDs []uint64, ttl time.Duration) (map[uint64]bool, error) {
+	out := make(map[uint64]bool, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	now, err := c.rc.Time(ctx).Result()
+	if err != nil {
+		return nil, errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "online")
+	}
+	// The minimum is exclusive: a heartbeat of exactly ttl ago is dead.
+	processes, err := c.rc.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     presenceProcessesKey,
+		ByScore: true,
+		Start:   "(" + strconv.FormatInt(now.UnixMilli()-ttl.Milliseconds(), 10),
+		Stop:    "+inf",
+	}).Result()
+	if err != nil {
+		return nil, errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "online")
+	}
+	if len(processes) == 0 {
+		return out, nil
+	}
+	members := presenceMembers(userIDs)
+	pipe := c.rc.Pipeline()
+	cmds := make([]*redis.BoolSliceCmd, len(processes))
+	for i, process := range processes {
+		cmds[i] = pipe.SMIsMember(ctx, presenceKey(process), members...)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, errors.NewErr(TagRedisPresenceFailed, err).SetMetadata("op", "online")
+	}
+	for _, cmd := range cmds {
+		for i, ok := range cmd.Val() {
+			if ok {
+				out[userIDs[i]] = true
+			}
+		}
+	}
+	return out, nil
 }

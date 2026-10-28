@@ -339,7 +339,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 		{
 			name:     "the list",
 			args:     []string{"-list"},
-			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "prefs\t", "admin\t", "watch\t"},
+			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "prefs\t", "follow\t", "admin\t", "watch\t"},
 		},
 		{
 			name:     "a server that is not there",
@@ -856,6 +856,28 @@ func TestPrefsScenario(t *testing.T) {
 	for _, want := range []string{
 		"== prefs:", "> GET /api/v1/me/settings", `"sound_name"`, "/notification-prefs", `"notify": "mentions"`,
 		`"muted": true`, "< 422 Unprocessable Entity", "< 404 Not Found", "ok prefs",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the output does not contain %q:\n%s", want, text)
+		}
+	}
+}
+
+// TestFollowScenario runs the follow scenario and checks what it prints.
+func TestFollowScenario(t *testing.T) {
+	t.Parallel()
+	base := startAPI(t)
+	var out, errOut bytes.Buffer
+	code := run(t.Context(), []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", followScenarioName},
+		func(string) string { return "" }, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d\n%s\n%s", code, out.String(), errOut.String())
+	}
+	text := out.String()
+	for _, want := range []string{
+		"== follow:", "PUT /api/v1/posts/", "/follow", "DELETE /api/v1/posts/", `"following": true`, `"following": false`,
+		"/group-mention-count", `"count": 0`, "/api/v1/me/presence?user_ids=", `"online": {}`,
+		`"keywords"`, "apicheck keyword", "< 422 Unprocessable Entity", "< 404 Not Found", "ok follow",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the output does not contain %q:\n%s", want, text)

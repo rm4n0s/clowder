@@ -89,6 +89,16 @@ const (
 	FieldSoundName = "soundName"
 	// FieldReplies names the replies choice of the settings.
 	FieldReplies = "replies"
+	// FieldKeywords names the mention keywords of the settings.
+	FieldKeywords = "keywords"
+)
+
+// The rules of the mention keywords (SPEC §7.15).
+const (
+	// keywordMaxCount is the most keywords a user has.
+	keywordMaxCount = 10
+	// keywordMaxLength is the longest keyword, in characters.
+	keywordMaxLength = 32
 )
 
 // Settings are the preferences of a user (SPEC §7.14, §7.15), which follow the
@@ -107,6 +117,12 @@ type Settings struct {
 	SoundName SoundName
 	// Replies says which comments notify the user.
 	Replies RepliesMode
+	// Keywords are the mention keywords: up to 10 words or phrases of 1 to 32
+	// characters, unique ignoring case. Never nil.
+	Keywords []string
+	// GroupMentions is true when @room, @all and @here reach the user (the
+	// default).
+	GroupMentions bool
 }
 
 // SettingsUpdate is a change of the settings. A nil field keeps the value.
@@ -123,6 +139,14 @@ type SettingsUpdate struct {
 	SoundName *SoundName
 	// Replies is the new replies choice.
 	Replies *RepliesMode
+	// Keywords is the new list of mention keywords. Each is trimmed and its
+	// inner white space made one space; a blank one, one of more than 32
+	// characters, a duplicate (ignoring case) and a list of more than 10 are
+	// mistakes. A nil pointer keeps the list; a pointer to an empty list
+	// clears it.
+	Keywords *[]string
+	// GroupMentions is the new value of "@room, @all and @here".
+	GroupMentions *bool
 }
 
 // PasswordChange is what a person gives to change their password.
@@ -418,7 +442,15 @@ func (a *Accounts) Settings(ctx context.Context, actor Actor) (Settings, error) 
 // TagInvalidInput (field "theme", "notify", "soundName" or "replies"); a
 // disabled or missing account fails with TagUnauthenticated.
 func (a *Accounts) UpdateSettings(ctx context.Context, actor Actor, update SettingsUpdate) (Settings, error) {
-	if fields := checkSettingsUpdate(update); len(fields) > 0 {
+	fields := checkSettingsUpdate(update)
+	var keywords []string
+	if update.Keywords != nil {
+		var problem string
+		if keywords, problem = normalizeKeywords(*update.Keywords); problem != "" {
+			fields[FieldKeywords] = problem
+		}
+	}
+	if len(fields) > 0 {
 		return Settings{}, errors.New(TagInvalidInput, "the settings have mistakes", "fields", fields)
 	}
 	var row store.UserSettings
@@ -451,6 +483,12 @@ func (a *Accounts) UpdateSettings(ctx context.Context, actor Actor, update Setti
 		}
 		if update.Replies != nil {
 			row.Replies = *update.Replies
+		}
+		if update.Keywords != nil {
+			row.SetKeywords(keywords)
+		}
+		if update.GroupMentions != nil {
+			row.SetGroupMentions(*update.GroupMentions)
 		}
 		if row == before {
 			return nil
@@ -502,11 +540,44 @@ func checkSettingsUpdate(update SettingsUpdate) map[string]string {
 	return fields
 }
 
+// normalizeKeywords checks a list of mention keywords and returns it cleaned:
+// each trimmed, inner white space made one space. The second result is the
+// message of the first rule it breaks, "" when it holds.
+func normalizeKeywords(raw []string) ([]string, string) {
+	if len(raw) > keywordMaxCount {
+		return nil, "Use at most 10 keywords."
+	}
+	out := make([]string, 0, len(raw))
+	seen := make(map[string]bool, len(raw))
+	for _, k := range raw {
+		k = strings.Join(strings.Fields(k), " ")
+		n := utf8.RuneCountInString(k)
+		switch {
+		case n == 0:
+			return nil, "A keyword cannot be empty."
+		case n > keywordMaxLength:
+			return nil, "Use at most 32 characters in a keyword."
+		}
+		folded := strings.ToLower(k)
+		if seen[folded] {
+			return nil, "\"" + k + "\" is there twice."
+		}
+		seen[folded] = true
+		out = append(out, k)
+	}
+	return out, ""
+}
+
 // settingsOf makes the Settings of a row.
 func settingsOf(row store.UserSettings) Settings {
+	keywords := row.Keywords()
+	if keywords == nil {
+		keywords = []string{}
+	}
 	return Settings{
 		Theme: row.Theme, Sound: row.Sound, BrowserNotifications: row.BrowserNotifications,
 		Notify: row.Notify, SoundName: row.SoundName, Replies: row.Replies,
+		Keywords: keywords, GroupMentions: row.GroupMentions(),
 	}
 }
 

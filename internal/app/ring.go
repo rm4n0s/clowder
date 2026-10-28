@@ -1,9 +1,6 @@
 package app
 
 import (
-	"context"
-	"strings"
-
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/store"
 )
@@ -136,17 +133,13 @@ func ringEvent(ev *live.Event, r Ring) bool {
 }
 
 // postRingEvents are the events that ring the members of a room for a new
-// top-level post: one on the topic of each member, except the author and the
-// users in skip (who have a notification of the same action already), whose
-// choice for the room is All and who are not muted (SPEC §7.15). The settings
-// and the room preferences of all the members come from one query. The event
-// holds only the IDs; the pages read the place's name and the author, never
-// the body, when they render it.
-func postRingEvents(ctx context.Context, tx *store.Store, roomID, postID, authorID uint64, skip map[uint64]bool) ([]live.Event, error) {
-	recipients, err := tx.RoomMemberRecipients(ctx, roomID, authorID)
-	if err != nil {
-		return nil, err
-	}
+// top-level post: one on the topic of each recipient (the members except the
+// author), except the users in skip (who have a notification of the same
+// action already), whose choice for the room is All and who are not muted
+// (SPEC §7.15). recipients carry the settings and the room preferences of the
+// members, read by one query. The event holds only the IDs; the pages read the
+// place's name and the author, never the body, when they render it.
+func postRingEvents(recipients []store.Recipient, roomID, postID uint64, skip map[uint64]bool) []live.Event {
 	var events []live.Event
 	for _, r := range recipients {
 		if skip[r.UserID] {
@@ -157,7 +150,7 @@ func postRingEvents(ctx context.Context, tx *store.Store, roomID, postID, author
 			events = append(events, ev)
 		}
 	}
-	return events, nil
+	return events
 }
 
 // usersOf returns the set of the users that the events concern (Event.UserID).
@@ -170,15 +163,12 @@ func usersOf(events []live.Event) map[uint64]bool {
 }
 
 // messageRingEvents are the events that ring the members of a conversation for
-// a new message: one on the topic of each member except the author whose
-// choice for the conversation covers it (SPEC §7.15). mentioned is the set of
-// usernames, lower case, that the message mentions. The settings and the
-// preferences of all the members come from one query.
-func messageRingEvents(ctx context.Context, tx *store.Store, conv store.Conversation, messageID, authorID uint64, mentioned map[string]bool) ([]live.Event, error) {
-	recipients, err := tx.ConversationRecipients(ctx, conv.ID, authorID)
-	if err != nil {
-		return nil, err
-	}
+// a new message: one on the topic of each recipient (the members except the
+// author) whose choice for the conversation covers it (SPEC §7.15). mentioned
+// is the set of the users that the message mentions: by @username, by a group
+// mention or by a keyword. recipients carry the settings and the preferences
+// of the members, read by one query.
+func messageRingEvents(conv store.Conversation, recipients []store.Recipient, messageID uint64, mentioned map[uint64]bool) []live.Event {
 	kind := PlaceGroup
 	if conv.Kind == ConversationDirect {
 		kind = PlaceDirect
@@ -189,9 +179,17 @@ func messageRingEvents(ctx context.Context, tx *store.Store, conv store.Conversa
 			Topic: live.UserTopic(r.UserID), Kind: live.KindMessageCreated,
 			ConversationID: conv.ID, MessageID: messageID, UserID: r.UserID,
 		}
-		if ringEvent(&ev, ringFor(r.Settings, r.Place, kind, EventMessage, mentioned[strings.ToLower(r.Username)])) {
+		if ringEvent(&ev, ringFor(r.Settings, r.Place, kind, EventMessage, mentioned[r.UserID])) {
 			events = append(events, ev)
 		}
 	}
-	return events, nil
+	return events
+}
+
+// orMemoryPresence returns p, or a presence with nobody online when p is nil.
+func orMemoryPresence(p live.Presence) live.Presence {
+	if p == nil {
+		return live.NewMemoryPresence()
+	}
+	return p
 }

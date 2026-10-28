@@ -50,13 +50,22 @@ type settingsJSON struct {
 	Notify               string `json:"notify"`
 	SoundName            string `json:"sound_name"`
 	Replies              string `json:"replies"`
+	// Keywords are the mention keywords; [] for none.
+	Keywords []string `json:"keywords"`
+	// GroupMentions is true when @room, @all and @here reach the user.
+	GroupMentions bool `json:"group_mentions"`
 }
 
 // settingsOf makes the JSON of the settings.
 func settingsOf(s app.Settings) settingsJSON {
+	keywords := s.Keywords
+	if keywords == nil {
+		keywords = []string{}
+	}
 	return settingsJSON{
 		Theme: string(s.Theme), Sound: s.Sound, BrowserNotifications: s.BrowserNotifications,
 		Notify: string(s.Notify), SoundName: string(s.SoundName), Replies: string(s.Replies),
+		Keywords: keywords, GroupMentions: s.GroupMentions,
 	}
 }
 

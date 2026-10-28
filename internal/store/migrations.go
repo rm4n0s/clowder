@@ -19,6 +19,7 @@ func migrationList() []dialectMigration {
 		{ID: "0001_posts_fts", SQLite: migrationPostsFTS, Postgres: migrationPostsSearchPostgres},
 		{ID: "0002_posts_feed_roots", SQLite: migrationPostsFeedRootsSQLite, Postgres: migrationPostsFeedRootsPostgres},
 		{ID: "0003_audit_entity_user", SQLite: migrationAuditEntityUserSQLite, Postgres: migrationAuditEntityUserPostgres},
+		{ID: "0004_notification_kinds", SQLite: migrationNotificationKindsSQLite, Postgres: migrationNotificationKindsPostgres},
 	}
 }
 
@@ -170,3 +171,49 @@ const migrationAuditEntityUserSQLite = "" +
 	"CREATE INDEX `idx_audit_events_action` ON `audit_events`(`action`,`id`);\n" +
 	"CREATE INDEX `idx_audit_events_actor` ON `audit_events`(`actor_id`,`id`);\n" +
 	"CREATE INDEX `idx_audit_events_room` ON `audit_events`(`room_id`,`id`);\n"
+
+// migrationNotificationKindsPostgres lets notifications be of the kinds
+// group_mention and keyword (SPEC §7.9, §7.15, 1.2): the check constraint on
+// the kind is dropped and added again with the two kinds; the rows are not
+// touched. Where the table was made by this version the constraint is there
+// already, and the two statements change nothing.
+const migrationNotificationKindsPostgres = `
+ALTER TABLE notifications DROP CONSTRAINT IF EXISTS chk_notifications_kind;
+ALTER TABLE notifications ADD CONSTRAINT chk_notifications_kind
+  CHECK (kind IN ('mention','reply','assigned','added_to_room','group_mention','keyword'));
+`
+
+// migrationNotificationKindsSQLite is migrationNotificationKindsPostgres for
+// SQLite, which cannot change a check constraint: the table is made again
+// under another name with the new constraint, every row is copied with its ID,
+// the old table is dropped, the new one takes its name and the indexes are made
+// again, all in the transaction of the migration. The text of the new table is
+// what GORM makes for the model, so that AutoMigrate finds nothing to change at
+// the next start; the column others was added by AutoMigrate before this
+// migration runs. No other table has a foreign key to notifications.
+const migrationNotificationKindsSQLite = "" +
+	"CREATE TABLE notifications_new (" +
+	"`id` integer PRIMARY KEY AUTOINCREMENT," +
+	"`created_at` datetime," +
+	"`user_id` integer NOT NULL," +
+	"`kind` text NOT NULL," +
+	"`post_id` integer," +
+	"`task_id` integer," +
+	"`room_id` integer," +
+	"`actor_id` integer NOT NULL," +
+	"`read_at` datetime," +
+	"`others` integer NOT NULL DEFAULT 0," +
+	"CONSTRAINT `fk_notifications_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT," +
+	"CONSTRAINT `fk_notifications_post` FOREIGN KEY (`post_id`) REFERENCES `posts`(`id`) ON DELETE CASCADE," +
+	"CONSTRAINT `fk_notifications_task` FOREIGN KEY (`task_id`) REFERENCES `tasks`(`id`) ON DELETE CASCADE," +
+	"CONSTRAINT `fk_notifications_room` FOREIGN KEY (`room_id`) REFERENCES `rooms`(`id`) ON DELETE CASCADE," +
+	"CONSTRAINT `fk_notifications_actor` FOREIGN KEY (`actor_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT," +
+	"CONSTRAINT `chk_notifications_kind` CHECK (kind IN ('mention','reply','assigned','added_to_room','group_mention','keyword')));\n" +
+	"INSERT INTO notifications_new (id, created_at, user_id, kind, post_id, task_id, room_id, actor_id, read_at, others) " +
+	"SELECT id, created_at, user_id, kind, post_id, task_id, room_id, actor_id, read_at, others FROM notifications ORDER BY id;\n" +
+	"DROP TABLE notifications;\n" +
+	"ALTER TABLE notifications_new RENAME TO notifications;\n" +
+	"CREATE INDEX `idx_notifications_room_id` ON `notifications`(`room_id`);\n" +
+	"CREATE INDEX `idx_notifications_task_id` ON `notifications`(`task_id`);\n" +
+	"CREATE INDEX `idx_notifications_post_id` ON `notifications`(`post_id`);\n" +
+	"CREATE INDEX `idx_notifications_user_read` ON `notifications`(`user_id`,`read_at`,`id`);\n"

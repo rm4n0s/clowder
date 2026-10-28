@@ -317,6 +317,8 @@ func signUpProblems(username, displayName, password string) map[string]string {
 		return (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' && r != '-'
 	}) {
 		fields[FieldUsername] = "Use only the letters a to z, digits, _ and -."
+	} else if isGroupMentionName(username) {
+		fields[FieldUsername] = "This username is reserved."
 	}
 	if n := utf8.RuneCountInString(displayName); n < 1 || n > displayNameMaxLength {
 		fields[FieldDisplayName] = "Use 1 to 64 characters."

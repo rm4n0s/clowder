@@ -28,6 +28,16 @@ func newNotifEnv(t *testing.T) *notifEnv {
 	t.Helper()
 	e := &notifEnv{boardEnv: newBoardEnv(t)}
 	e.notes = app.NewNotifications(e.st, e.rec)
+	// These tests are about the rules of 1.0: the notifications of a comment
+	// under your post or comment, and the mentions. They run on "Only direct
+	// replies"; the follows of *Threads I follow* have their own tests
+	// (follow_test.go).
+	direct := app.RepliesDirect
+	for name := range e.users {
+		if _, err := e.svc.UpdateSettings(t.Context(), e.as(name), app.SettingsUpdate{Replies: &direct}); err != nil {
+			t.Fatalf("UpdateSettings %s: %+v", name, err)
+		}
+	}
 	// What the fixture made is read: the unread counts start at 0.
 	for name := range e.users {
 		if err := e.notes.MarkRead(t.Context(), e.as(name), 1<<40); err != nil {

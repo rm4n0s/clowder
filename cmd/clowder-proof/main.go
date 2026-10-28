@@ -188,6 +188,10 @@ type options struct {
 	// other is a second user who acts in a second browser after the page of
 	// the first one has loaded and its live stream is open.
 	other script
+	// otherHold keeps the browser of the -other user open, on its page, until
+	// the screenshot is taken, so that the user stays online (presence, SPEC
+	// §7.15) for a page of the first user that is loaded again by a -click.
+	otherHold bool
 	// cluster starts two servers on one new PostgreSQL database, one Redis and
 	// one data directory (SPEC D41): the -other user acts on the first, and the
 	// screenshot is taken on the second.
@@ -348,6 +352,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.StringVar(&o.other.user, "other", "", "a second demo user who acts in a second browser once the page has loaded and its live stream is open, before the screenshot of the first one; see -other-page, -other-fill and -other-click")
 	fs.StringVar(&o.other.page, "other-page", "", "path of the page the -other user opens (default /); {room:name}, {board:name} and {post:text} are looked up for that user")
 	fs.Var(&o.other.fills, "other-fill", "type text into an element of the -other user's page before the click, as selector=value (repeatable)")
+	fs.BoolVar(&o.otherHold, "other-hold", false, "keep the browser of the -other user open until the screenshot is taken, so that the user is online (use a -click on a link to load the page of the first user again, which shows who is online)")
 	fs.BoolVar(&o.cluster, "cluster", false, "start two servers on one new PostgreSQL database, one Redis and one data directory (as compose.cluster.yaml runs them); the -other user acts on the first one and the screenshot is taken on the second one, so it shows a change that came through Redis; needs -other, a PostgreSQL server (-postgres-url or CLOWDER_TEST_POSTGRES) and a Redis (-redis-url or CLOWDER_TEST_REDIS), and prints both addresses")
 	fs.StringVar(&o.postgresURL, "postgres-url", "", "with -cluster: the PostgreSQL server where the new database is made, postgres://user:password@host:port/postgres; the user may create and drop databases (default: CLOWDER_TEST_POSTGRES)")
 	fs.StringVar(&o.redisURL, "redis-url", "", "with -cluster: the Redis server, redis://host:port/0 (default: CLOWDER_TEST_REDIS)")
@@ -381,6 +386,8 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "-api-login needs -as: the session is the user's", "flag", "api-login")
 	case o.other.user == "" && (o.other.page != "" || len(o.other.fills) > 0 || len(o.other.clicks) > 0):
 		return options{}, errors.New(tagFlagsInvalid, "-other-page, -other-fill and -other-click need -other", "flag", "other")
+	case o.other.user == "" && o.otherHold:
+		return options{}, errors.New(tagFlagsInvalid, "-other-hold needs -other", "flag", "other-hold")
 	case o.other.user != "" && o.as == "":
 		return options{}, errors.New(tagFlagsInvalid, "-other needs -as: the second user acts while the first one watches", "flag", "other")
 	case o.other.user != "" && o.other.page != "" && !validPage(o.other.page):
@@ -434,9 +441,11 @@ func screenshot(ctx context.Context, srvs servers, o options) ([]byte, error) {
 		return nil, err
 	}
 	if o.other.user != "" {
-		if err := actAs(ctx, srvs.other, o); err != nil {
+		release, err := actAs(ctx, srvs.other, o)
+		if err != nil {
 			return nil, err
 		}
+		defer release()
 		// The live update takes a moment to reach the page.
 		if err := chromedp.Do(pageCtx, chromedp.Sleep(o.wait)); err != nil {
 			return nil, errors.NewErr(tagPageLoadFailed, err).SetMetadata("url", url)
@@ -452,22 +461,33 @@ func screenshot(ctx context.Context, srvs servers, o options) ([]byte, error) {
 	return shot, nil
 }
 
-// actAs runs the script of the -other user in a browser of their own, which is
-// closed when it is done.
-func actAs(ctx context.Context, srv *browsertest.Server, o options) error {
+// actAs runs the script of the -other user in a browser of their own. The
+// browser is closed when the script is done, or, with -other-hold, when the
+// returned function is called.
+func actAs(ctx context.Context, srv *browsertest.Server, o options) (release func(), err error) {
 	browser, cancel, err := browsertest.NewBrowser(ctx, chromedp.WindowSize(o.width, o.height))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer cancel()
 	pageCtx, cancelPage := context.WithTimeout(browser, pageTimeout)
-	defer cancelPage()
+	stop := func() {
+		cancelPage()
+		cancel()
+	}
 	other := o.other
 	url, err := other.open(pageCtx, srv, o)
-	if err != nil {
-		return err
+	if err == nil {
+		err = other.interact(pageCtx, url, o)
 	}
-	return other.interact(pageCtx, url, o)
+	if err != nil {
+		stop()
+		return nil, err
+	}
+	if !o.otherHold {
+		stop()
+		return func() {}, nil
+	}
+	return stop, nil
 }
 
 // open logs the user in, resolves the placeholders of the page, opens it and

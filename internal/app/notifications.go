@@ -14,7 +14,7 @@ import (
 // store.
 type NotificationKind = store.NotificationKind
 
-// The four kinds of notification.
+// The kinds of notification.
 const (
 	// NotificationMention is an "@username" in a post or comment.
 	NotificationMention NotificationKind = store.NotificationMention
@@ -26,6 +26,12 @@ const (
 	// NotificationAddedToRoom is the user's addition to a room by someone
 	// else.
 	NotificationAddedToRoom NotificationKind = store.NotificationAddedToRoom
+	// NotificationGroupMention is an @room, @all or @here that reached the
+	// user (SPEC §7.15). It is shown as a mention.
+	NotificationGroupMention NotificationKind = store.NotificationGroupMention
+	// NotificationKeyword is a keyword of the user found in a post or comment
+	// (SPEC §7.15). It is shown as a mention.
+	NotificationKeyword NotificationKind = store.NotificationKeyword
 )
 
 // The page size of the notifications (SPEC D30).
@@ -58,6 +64,10 @@ type Notification struct {
 	// other kinds.
 	TaskID    uint64
 	TaskTitle string
+	// Others is the number of other people who replied within the minute that
+	// the notification took them in: "Bob and 2 others replied"; 0 for a
+	// single actor and for the kinds other than reply.
+	Others int
 	// Read is true when the user has read the notification; ReadAt is when.
 	Read   bool
 	ReadAt *time.Time
@@ -125,6 +135,7 @@ func (n *Notifications) List(ctx context.Context, actor Actor, before uint64, li
 			RootID:    r.RootID,
 			TaskID:    r.TaskID,
 			TaskTitle: r.TaskTitle,
+			Others:    r.Others,
 			Read:      r.ReadAt != nil,
 			ReadAt:    r.ReadAt,
 			CreatedAt: r.CreatedAt,
@@ -178,17 +189,31 @@ type notice struct {
 	kind   NotificationKind
 	// taskID is the task of an assignment; 0 for the other kinds.
 	taskID uint64
+	// foldRoot is the top-level post of a reply that comes from following the
+	// thread: such a reply is folded into the user's unread reply
+	// notification of the same thread that is less than a minute old (SPEC
+	// §7.15). 0 for every other notice.
+	foldRoot uint64
 }
 
-// rank orders the kinds of one action: when several apply to one user, the
-// highest wins (SPEC D30: assigned and reply win over mention).
-func rank(kind NotificationKind) int {
-	switch kind {
+// rank orders the notices of one action: when several apply to one user, the
+// highest wins. SPEC D30: assigned and a direct reply win over a mention; SPEC
+// §7.15: a mention wins over a reply that only comes from following the thread,
+// which wins over a group mention, which wins over a keyword.
+func rank(n notice) int {
+	switch n.kind {
 	case NotificationAssigned:
-		return 3
+		return 6
 	case NotificationReply:
-		return 2
+		if n.foldRoot != 0 {
+			return 3
+		}
+		return 5
 	case NotificationMention:
+		return 4
+	case NotificationGroupMention:
+		return 2
+	case NotificationKeyword:
 		return 1
 	default:
 		return 0
@@ -201,21 +226,37 @@ func rank(kind NotificationKind) int {
 // when none (added_to_room). A user gets at most one notification of an
 // action, the one of the highest rank; a notice for the actor is dropped (nobody
 // is notified of their own action), and so is one for a user who is disabled
-// or cannot read the room (SPEC D30). It does nothing for no notices.
+// or cannot read the room (SPEC D30). A reply that comes from following the
+// thread is folded into the user's unread reply notification of the thread
+// that is less than a minute old, which then names the actor and counts the
+// others, and publishes live.KindNotificationChanged instead of a new
+// notification (SPEC §7.15). It does nothing for no notices.
 func notify(ctx context.Context, tx *store.Store, actor Actor, room store.Room, postID uint64, notices []notice) ([]live.Event, error) {
 	best := map[uint64]notice{}
+	follows := map[uint64]uint64{}
 	var order []uint64
 	for _, n := range notices {
 		if n.userID == actor.UserID {
 			continue
+		}
+		if n.foldRoot != 0 {
+			follows[n.userID] = n.foldRoot
 		}
 		cur, ok := best[n.userID]
 		switch {
 		case !ok:
 			order = append(order, n.userID)
 			best[n.userID] = n
-		case rank(n.kind) > rank(cur.kind):
+		case rank(n) > rank(cur):
 			best[n.userID] = n
+		}
+	}
+	// A user who follows the thread has a reply folded into the notification
+	// of the burst, whether the reply is direct or comes from the follow.
+	for id, root := range follows {
+		if n := best[id]; n.kind == NotificationReply {
+			n.foldRoot = root
+			best[id] = n
 		}
 	}
 	if len(order) == 0 {
@@ -243,8 +284,22 @@ func notify(ctx context.Context, tx *store.Store, actor Actor, room store.Room, 
 	}
 	var rows []store.Notification
 	var kept []uint64
+	var events []live.Event
 	for _, id := range present {
 		n := best[id]
+		if n.foldRoot != 0 && n.kind == NotificationReply {
+			folded, err := foldReply(ctx, tx, id, actor.UserID, n.foldRoot)
+			if err != nil {
+				return nil, err
+			}
+			if folded.ID != 0 {
+				events = append(events, live.Event{
+					Topic: live.UserTopic(id), Kind: live.KindNotificationChanged,
+					RoomID: room.ID, PostID: postID, UserID: id, NotificationID: folded.ID,
+				})
+				continue
+			}
+		}
 		row := store.Notification{UserID: id, Kind: n.kind, RoomID: &room.ID, ActorID: actor.UserID}
 		if postID != 0 {
 			row.PostID = &postID
@@ -258,7 +313,6 @@ func notify(ctx context.Context, tx *store.Store, actor Actor, room store.Room, 
 	if err := tx.CreateNotifications(ctx, rows); err != nil {
 		return nil, err
 	}
-	events := make([]live.Event, len(rows))
 	for i, id := range kept {
 		ev := live.Event{
 			Topic: live.UserTopic(id), Kind: live.KindNotificationCreated,
@@ -269,9 +323,33 @@ func notify(ctx context.Context, tx *store.Store, actor Actor, room store.Room, 
 			// the bell has it whatever the answer.
 			ringEvent(&ev, ringFor(r.Settings, r.Place, PlaceRoom, EventNotification, true))
 		}
-		events[i] = ev
+		events = append(events, ev)
 	}
 	return events, nil
+}
+
+// foldReply folds a new reply of actorID in the thread rootID into the unread
+// reply notification of userID for the same thread that is less than a minute
+// old, if there is one: the notification names the actor and counts the other
+// distinct people who replied since it began. It returns the notification, or
+// the zero value when there is none to fold into.
+func foldReply(ctx context.Context, tx *store.Store, userID, actorID, rootID uint64) (store.Notification, error) {
+	current, found, err := tx.FoldableReply(ctx, userID, rootID)
+	if err != nil || !found {
+		return store.Notification{}, err
+	}
+	var from uint64
+	if current.PostID != nil {
+		from = *current.PostID
+	}
+	others, err := tx.DistinctRepliers(ctx, rootID, from, userID, actorID)
+	if err != nil {
+		return store.Notification{}, err
+	}
+	if err := tx.FoldReply(ctx, current.ID, actorID, others); err != nil {
+		return store.Notification{}, err
+	}
+	return current, nil
 }
 
 // assignment is a user newly assigned to a task.
@@ -284,15 +362,6 @@ func assignedNotices(assigned []assignment) []notice {
 	out := make([]notice, len(assigned))
 	for i, a := range assigned {
 		out[i] = notice{userID: a.userID, kind: NotificationAssigned, taskID: a.taskID}
-	}
-	return out
-}
-
-// mentionNotices makes the notices of the users newly mentioned.
-func mentionNotices(userIDs []uint64) []notice {
-	out := make([]notice, len(userIDs))
-	for i, id := range userIDs {
-		out[i] = notice{userID: id, kind: NotificationMention}
 	}
 	return out
 }

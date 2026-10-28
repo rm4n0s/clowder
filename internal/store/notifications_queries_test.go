@@ -101,19 +101,23 @@ func TestMentionQueries(t *testing.T) {
 
 	ids := func(postID uint64) []uint64 {
 		t.Helper()
-		got, err := f.s.MentionedUserIDs(f.ctx, postID)
+		got, err := f.s.PostMentions(f.ctx, postID)
 		if err != nil {
-			t.Fatalf("MentionedUserIDs: %+v", err)
+			t.Fatalf("PostMentions: %+v", err)
 		}
-		return got
+		var out []uint64
+		for _, m := range got {
+			out = append(out, m.UserID)
+		}
+		return out
 	}
 	replace := func(postID uint64, users ...*User) {
 		t.Helper()
-		var userIDs []uint64
+		var mentioned []MentionedUser
 		for _, u := range users {
-			userIDs = append(userIDs, u.ID)
+			mentioned = append(mentioned, MentionedUser{UserID: u.ID, Kind: MentionUser})
 		}
-		if err := f.s.ReplacePostMentions(f.ctx, postID, userIDs); err != nil {
+		if err := f.s.ReplacePostMentions(f.ctx, postID, mentioned); err != nil {
 			t.Fatalf("ReplacePostMentions: %+v", err)
 		}
 	}
@@ -374,21 +378,23 @@ func TestNotificationQueryTags(t *testing.T) {
 			wantRoute: "Store.EnabledReaders.QueryFailed", wantOp: "enabledReaders",
 		},
 		{
-			name: "MentionedUserIDs",
+			name: "PostMentions",
 			call: func() error {
-				_, err := f.s.MentionedUserIDs(canceled(t), post.ID)
+				_, err := f.s.PostMentions(canceled(t), post.ID)
 				return err
 			},
-			wantRoute: "Store.MentionedUserIDs.QueryFailed", wantOp: "mentionedUserIDs",
+			wantRoute: "Store.PostMentions.QueryFailed", wantOp: "postMentions",
 		},
 		{
-			name:      "ReplacePostMentions",
-			call:      func() error { return f.s.ReplacePostMentions(canceled(t), post.ID, []uint64{alice.ID}) },
+			name: "ReplacePostMentions",
+			call: func() error {
+				return f.s.ReplacePostMentions(canceled(t), post.ID, []MentionedUser{{UserID: alice.ID}})
+			},
 			wantRoute: "Store.ReplacePostMentions.QueryFailed", wantOp: "replacePostMentions",
 		},
 		{
 			name:      "ReplacePostMentions of a user who does not exist",
-			call:      func() error { return f.s.ReplacePostMentions(f.ctx, post.ID, []uint64{9999}) },
+			call:      func() error { return f.s.ReplacePostMentions(f.ctx, post.ID, []MentionedUser{{UserID: 9999}}) },
 			wantRoute: "Store.ReplacePostMentions.QueryFailed", wantOp: "replacePostMentions",
 		},
 		{

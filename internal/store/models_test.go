@@ -152,6 +152,10 @@ func TestModelsRoundTrip(t *testing.T) {
 				ActorID: u.ID, ReadAt: ptr(day(time.Hour)),
 			}
 		}},
+		{"PostFollow", "post_follows", func(f *fix) any {
+			u := f.user()
+			return &PostFollow{UserID: u.ID, PostID: f.post(f.room(u), u).ID, Unfollowed: true}
+		}},
 		{"Conversation", "conversations", func(f *fix) any {
 			return &Conversation{Kind: ConversationDirect, Name: "", CreatedBy: f.user().ID, DirectKey: ptr("1-2")}
 		}},
@@ -242,8 +246,8 @@ func TestEveryModelIsMigrated(t *testing.T) {
 			t.Errorf("no table for %T", m)
 		}
 	}
-	if got := len(allModels()); got != 24 {
-		t.Errorf("%d models, want the 24 of SPEC §6.3", got)
+	if got := len(allModels()); got != 25 {
+		t.Errorf("%d models, want the 25 of SPEC §6.3", got)
 	}
 }
 
@@ -309,6 +313,11 @@ func TestUniqueConstraints(t *testing.T) {
 			u := f.user()
 			p := f.post(f.room(u), u)
 			return &Mention{PostID: p.ID, UserID: u.ID}, &Mention{PostID: p.ID, UserID: u.ID}
+		}},
+		{"post_follows user,post", func(f *fix) (any, any) {
+			u := f.user()
+			p := f.post(f.room(u), u)
+			return &PostFollow{UserID: u.ID, PostID: p.ID}, &PostFollow{UserID: u.ID, PostID: p.ID}
 		}},
 		{"task_assignees task,user", func(f *fix) (any, any) {
 			u := f.user()
@@ -594,6 +603,8 @@ func TestForeignKeyActions(t *testing.T) {
 		{"notifications", "task_id", "tasks", cascade},
 		{"notifications", "room_id", "rooms", cascade},
 		{"notifications", "actor_id", "users", restrict},
+		{"post_follows", "user_id", "users", cascade},
+		{"post_follows", "post_id", "posts", cascade},
 		{"conversations", "created_by", "users", restrict},
 		{"conversation_members", "conversation_id", "conversations", cascade},
 		{"conversation_members", "user_id", "users", restrict},
@@ -686,6 +697,8 @@ func TestIndexes(t *testing.T) {
 		"idx_notifications_post_id":                 {"notifications", false, "post_id"},
 		"idx_notifications_task_id":                 {"notifications", false, "task_id"},
 		"idx_notifications_room_id":                 {"notifications", false, "room_id"},
+		"uq_post_follows_user_post":                 {"post_follows", true, "user_id,post_id"},
+		"idx_post_follows_post":                     {"post_follows", false, "post_id"},
 		"uq_conversations_direct_key":               {"conversations", true, "direct_key"},
 		"uq_conversation_members_conversation_user": {"conversation_members", true, "conversation_id,user_id"},
 		"idx_conversation_members_user_id":          {"conversation_members", false, "user_id"},

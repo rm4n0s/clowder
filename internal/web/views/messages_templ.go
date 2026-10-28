@@ -753,6 +753,10 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			templ_7745c5c3_Err = OnlineDot(d.Online[m.User.ID]).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<span class=\"member-name\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -760,7 +764,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(m.User.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 166, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 167, Col: 51}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -773,7 +777,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs("@" + m.User.Username)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 167, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 168, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -801,7 +805,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 		var templ_7745c5c3_Var35 string
 		templ_7745c5c3_Var35, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ConversationPath(d.Header.ID) + "/members")).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 174, Col: 134}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 175, Col: 134}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 		if templ_7745c5c3_Err != nil {
@@ -814,7 +818,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(ConversationPath(d.Header.ID) + "/members")).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 174, Col: 206}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 175, Col: 206}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 		if templ_7745c5c3_Err != nil {
@@ -835,7 +839,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templruntime.NewAttributeExpression(d.AddUsers).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 181, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 182, Col: 22}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 		if templ_7745c5c3_Err != nil {
@@ -863,7 +867,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(d.AddErrors.Fields["users"])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 191, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 192, Col: 103}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -886,7 +890,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 		var templ_7745c5c3_Var39 string
 		templ_7745c5c3_Var39, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ConversationPath(d.Header.ID) + "/rename")).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 197, Col: 136}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 198, Col: 136}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 		if templ_7745c5c3_Err != nil {
@@ -899,7 +903,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 		var templ_7745c5c3_Var40 string
 		templ_7745c5c3_Var40, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(ConversationPath(d.Header.ID) + "/rename")).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 197, Col: 207}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 198, Col: 207}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 		if templ_7745c5c3_Err != nil {
@@ -920,7 +924,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templruntime.NewAttributeExpression(renameValue(d)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 204, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 205, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 		if templ_7745c5c3_Err != nil {
@@ -948,7 +952,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(d.RenameErrors.Fields["name"])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 213, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 214, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
@@ -966,7 +970,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 		var templ_7745c5c3_Var43 string
 		templ_7745c5c3_Var43, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ConversationPath(d.Header.ID) + "/leave")).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 217, Col: 130}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 218, Col: 130}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
 		if templ_7745c5c3_Err != nil {
@@ -979,7 +983,7 @@ func ConversationMembers(d MembersPanelData) templ.Component {
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPostConfirm(ConversationPath(d.Header.ID)+"/leave", "Leave this group? You will not see it again unless someone adds you back.")).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 217, Col: 282}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 218, Col: 282}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 		if templ_7745c5c3_Err != nil {
@@ -1032,7 +1036,7 @@ func MessagesOlder(convID uint64, hasOlder bool, before uint64) templ.Component 
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templruntime.NewAttributeExpression(loadOlderAction(convID, before)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 239, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 240, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var46)
 			if templ_7745c5c3_Err != nil {
@@ -1045,7 +1049,7 @@ func MessagesOlder(convID uint64, hasOlder bool, before uint64) templ.Component 
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ConversationBeforePath(convID, before))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 240, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 241, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var47)
 			if templ_7745c5c3_Err != nil {
@@ -1123,7 +1127,7 @@ func MessageItem(d MessageData) templ.Component {
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templruntime.NewAttributeExpression(MessageElementID(d.Message.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 257, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 258, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
 			if templ_7745c5c3_Err != nil {
@@ -1154,7 +1158,7 @@ func MessageItem(d MessageData) templ.Component {
 			var templ_7745c5c3_Var53 string
 			templ_7745c5c3_Var53, templ_7745c5c3_Err = templruntime.NewAttributeExpression(roomIDText(d.Message.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 257, Col: 110}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 258, Col: 110}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 			if templ_7745c5c3_Err != nil {
@@ -1167,7 +1171,7 @@ func MessageItem(d MessageData) templ.Component {
 			var templ_7745c5c3_Var54 string
 			templ_7745c5c3_Var54, templ_7745c5c3_Err = templruntime.NewAttributeExpression(d.Message.Author.Username).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 257, Col: 152}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 258, Col: 152}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var54)
 			if templ_7745c5c3_Err != nil {
@@ -1239,7 +1243,7 @@ func MessageItemEditing(d MessageEditData) templ.Component {
 			var templ_7745c5c3_Var56 string
 			templ_7745c5c3_Var56, templ_7745c5c3_Err = templruntime.NewAttributeExpression(MessageElementID(d.Message.Message.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 268, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 269, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
 			if templ_7745c5c3_Err != nil {
@@ -1270,7 +1274,7 @@ func MessageItemEditing(d MessageEditData) templ.Component {
 			var templ_7745c5c3_Var59 string
 			templ_7745c5c3_Var59, templ_7745c5c3_Err = templruntime.NewAttributeExpression(roomIDText(d.Message.Message.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 268, Col: 134}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 269, Col: 134}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 			if templ_7745c5c3_Err != nil {
@@ -1283,7 +1287,7 @@ func MessageItemEditing(d MessageEditData) templ.Component {
 			var templ_7745c5c3_Var60 string
 			templ_7745c5c3_Var60, templ_7745c5c3_Err = templruntime.NewAttributeExpression(d.Message.Message.Author.Username).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 268, Col: 184}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 269, Col: 184}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
 			if templ_7745c5c3_Err != nil {
@@ -1345,7 +1349,7 @@ func MessageSeen(id uint64, seen bool) templ.Component {
 		var templ_7745c5c3_Var62 string
 		templ_7745c5c3_Var62, templ_7745c5c3_Err = templruntime.NewAttributeExpression(messageSeenID(id)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 276, Col: 28}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 277, Col: 28}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var62)
 		if templ_7745c5c3_Err != nil {
@@ -1398,7 +1402,7 @@ func MessageContent(d MessageData) templ.Component {
 		var templ_7745c5c3_Var64 string
 		templ_7745c5c3_Var64, templ_7745c5c3_Err = templruntime.NewAttributeExpression(MessageContentID(d.Message.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 289, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 290, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var64)
 		if templ_7745c5c3_Err != nil {
@@ -1427,7 +1431,7 @@ func MessageContent(d MessageData) templ.Component {
 		var templ_7745c5c3_Var65 string
 		templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.JoinStringErrs(d.Message.Author.DisplayName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 293, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 294, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var65))
 		if templ_7745c5c3_Err != nil {
@@ -1440,7 +1444,7 @@ func MessageContent(d MessageData) templ.Component {
 		var templ_7745c5c3_Var66 string
 		templ_7745c5c3_Var66, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL("#" + MessageElementID(d.Message.ID))).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 294, Col: 85}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 295, Col: 85}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 		if templ_7745c5c3_Err != nil {
@@ -1453,7 +1457,7 @@ func MessageContent(d MessageData) templ.Component {
 		var templ_7745c5c3_Var67 string
 		templ_7745c5c3_Var67, templ_7745c5c3_Err = templruntime.NewAttributeExpression(postTimeStamp(d.Message.CreatedAt)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 295, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 296, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
 		if templ_7745c5c3_Err != nil {
@@ -1466,7 +1470,7 @@ func MessageContent(d MessageData) templ.Component {
 		var templ_7745c5c3_Var68 string
 		templ_7745c5c3_Var68, templ_7745c5c3_Err = templruntime.NewAttributeExpression(postTimeStamp(d.Message.CreatedAt)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 295, Col: 100}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 296, Col: 100}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var68)
 		if templ_7745c5c3_Err != nil {
@@ -1479,7 +1483,7 @@ func MessageContent(d MessageData) templ.Component {
 		var templ_7745c5c3_Var69 string
 		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinStringErrs(postTimeText(d.Message.CreatedAt))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 295, Col: 138}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 296, Col: 138}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
 		if templ_7745c5c3_Err != nil {
@@ -1497,7 +1501,7 @@ func MessageContent(d MessageData) templ.Component {
 			var templ_7745c5c3_Var70 string
 			templ_7745c5c3_Var70, templ_7745c5c3_Err = templruntime.NewAttributeExpression(postTimeStamp(*d.Message.EditedAt)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 298, Col: 75}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 299, Col: 75}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
 			if templ_7745c5c3_Err != nil {
@@ -1520,7 +1524,7 @@ func MessageContent(d MessageData) templ.Component {
 			var templ_7745c5c3_Var71 string
 			templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(app.MessageDeletedPreview)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 302, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 303, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 			if templ_7745c5c3_Err != nil {
@@ -1587,7 +1591,7 @@ func MessageContent(d MessageData) templ.Component {
 				var templ_7745c5c3_Var72 string
 				templ_7745c5c3_Var72, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ConversationReplyPath(d.Message.ConversationID, d.Message.ID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 319, Col: 118}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 320, Col: 118}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var72)
 				if templ_7745c5c3_Err != nil {
@@ -1600,7 +1604,7 @@ func MessageContent(d MessageData) templ.Component {
 				var templ_7745c5c3_Var73 string
 				templ_7745c5c3_Var73, templ_7745c5c3_Err = templruntime.NewAttributeExpression(getAction(MessageActionPath(d.Message.ID, "reply"))).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 319, Col: 197}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 320, Col: 197}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var73)
 				if templ_7745c5c3_Err != nil {
@@ -1619,7 +1623,7 @@ func MessageContent(d MessageData) templ.Component {
 				var templ_7745c5c3_Var74 string
 				templ_7745c5c3_Var74, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessageActionPath(d.Message.ID, "edit"))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 322, Col: 95}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 323, Col: 95}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
 				if templ_7745c5c3_Err != nil {
@@ -1632,7 +1636,7 @@ func MessageContent(d MessageData) templ.Component {
 				var templ_7745c5c3_Var75 string
 				templ_7745c5c3_Var75, templ_7745c5c3_Err = templruntime.NewAttributeExpression(getAction(MessageActionPath(d.Message.ID, "edit"))).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 322, Col: 173}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 323, Col: 173}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var75)
 				if templ_7745c5c3_Err != nil {
@@ -1651,7 +1655,7 @@ func MessageContent(d MessageData) templ.Component {
 				var templ_7745c5c3_Var76 string
 				templ_7745c5c3_Var76, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessageActionPath(d.Message.ID, "delete"))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 325, Col: 120}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 326, Col: 120}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var76)
 				if templ_7745c5c3_Err != nil {
@@ -1664,7 +1668,7 @@ func MessageContent(d MessageData) templ.Component {
 				var templ_7745c5c3_Var77 string
 				templ_7745c5c3_Var77, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPostConfirm(MessageActionPath(d.Message.ID, "delete"), deleteMessageConfirm)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 325, Col: 220}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 326, Col: 220}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var77)
 				if templ_7745c5c3_Err != nil {
@@ -1736,7 +1740,7 @@ func MessageQuote(q app.MessageQuote) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templruntime.NewAttributeExpression(roomIDText(q.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 337, Col: 115}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 338, Col: 115}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -1763,7 +1767,7 @@ func MessageQuote(q app.MessageQuote) templ.Component {
 		var templ_7745c5c3_Var82 string
 		templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(q.Author.DisplayName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 338, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 339, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 		if templ_7745c5c3_Err != nil {
@@ -1776,7 +1780,7 @@ func MessageQuote(q app.MessageQuote) templ.Component {
 		var templ_7745c5c3_Var83 string
 		templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.JoinStringErrs(q.Preview)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 339, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 340, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var83))
 		if templ_7745c5c3_Err != nil {
@@ -1824,7 +1828,7 @@ func MessageAttachments(atts []app.AttachmentView) templ.Component {
 				var templ_7745c5c3_Var85 string
 				templ_7745c5c3_Var85, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessageFilePath(a))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 352, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 353, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var85)
 				if templ_7745c5c3_Err != nil {
@@ -1837,7 +1841,7 @@ func MessageAttachments(atts []app.AttachmentView) templ.Component {
 				var templ_7745c5c3_Var86 string
 				templ_7745c5c3_Var86, templ_7745c5c3_Err = templruntime.NewAttributeExpression(MessageFilePath(a)).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 354, Col: 31}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 355, Col: 31}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var86)
 				if templ_7745c5c3_Err != nil {
@@ -1850,7 +1854,7 @@ func MessageAttachments(atts []app.AttachmentView) templ.Component {
 				var templ_7745c5c3_Var87 string
 				templ_7745c5c3_Var87, templ_7745c5c3_Err = templruntime.NewAttributeExpression(a.FileName).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 355, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 356, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var87)
 				if templ_7745c5c3_Err != nil {
@@ -1868,7 +1872,7 @@ func MessageAttachments(atts []app.AttachmentView) templ.Component {
 					var templ_7745c5c3_Var88 string
 					templ_7745c5c3_Var88, templ_7745c5c3_Err = templruntime.NewAttributeExpression(roomIDText(uint64(a.Width))).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 358, Col: 43}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 359, Col: 43}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var88)
 					if templ_7745c5c3_Err != nil {
@@ -1881,7 +1885,7 @@ func MessageAttachments(atts []app.AttachmentView) templ.Component {
 					var templ_7745c5c3_Var89 string
 					templ_7745c5c3_Var89, templ_7745c5c3_Err = templruntime.NewAttributeExpression(roomIDText(uint64(a.Height))).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 359, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 360, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var89)
 					if templ_7745c5c3_Err != nil {
@@ -1915,7 +1919,7 @@ func MessageAttachments(atts []app.AttachmentView) templ.Component {
 				var templ_7745c5c3_Var90 string
 				templ_7745c5c3_Var90, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessageFilePath(a))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 371, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 372, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var90)
 				if templ_7745c5c3_Err != nil {
@@ -1928,7 +1932,7 @@ func MessageAttachments(atts []app.AttachmentView) templ.Component {
 				var templ_7745c5c3_Var91 string
 				templ_7745c5c3_Var91, templ_7745c5c3_Err = templ.JoinStringErrs(a.FileName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 371, Col: 63}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 372, Col: 63}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var91))
 				if templ_7745c5c3_Err != nil {
@@ -1941,7 +1945,7 @@ func MessageAttachments(atts []app.AttachmentView) templ.Component {
 				var templ_7745c5c3_Var92 string
 				templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs(SizeText(a.Size))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 372, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 373, Col: 42}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
 				if templ_7745c5c3_Err != nil {
@@ -1989,7 +1993,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 		var templ_7745c5c3_Var94 string
 		templ_7745c5c3_Var94, templ_7745c5c3_Err = templruntime.NewAttributeExpression(messageReactionsID(d.Message.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 384, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 385, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var94)
 		if templ_7745c5c3_Err != nil {
@@ -2012,7 +2016,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 				var templ_7745c5c3_Var95 string
 				templ_7745c5c3_Var95, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessageActionPath(d.Message.ID, "react"))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 388, Col: 111}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 389, Col: 111}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var95)
 				if templ_7745c5c3_Err != nil {
@@ -2025,7 +2029,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 				var templ_7745c5c3_Var96 string
 				templ_7745c5c3_Var96, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(MessageActionPath(d.Message.ID, "react"))).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 388, Col: 181}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 389, Col: 181}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var96)
 				if templ_7745c5c3_Err != nil {
@@ -2047,7 +2051,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 						var templ_7745c5c3_Var97 string
 						templ_7745c5c3_Var97, templ_7745c5c3_Err = templruntime.NewAttributeExpression(r.Emoji).Resolve(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 390, Col: 56}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 391, Col: 56}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var97)
 						if templ_7745c5c3_Err != nil {
@@ -2078,7 +2082,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 						var templ_7745c5c3_Var100 string
 						templ_7745c5c3_Var100, templ_7745c5c3_Err = templruntime.NewAttributeExpression(reactionTitle(r)).Resolve(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 390, Col: 112}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 391, Col: 112}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var100)
 						if templ_7745c5c3_Err != nil {
@@ -2091,7 +2095,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 						var templ_7745c5c3_Var101 string
 						templ_7745c5c3_Var101, templ_7745c5c3_Err = templruntime.NewAttributeExpression(reactionLabel(r)).Resolve(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 390, Col: 144}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 391, Col: 144}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var101)
 						if templ_7745c5c3_Err != nil {
@@ -2104,7 +2108,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 						var templ_7745c5c3_Var102 string
 						templ_7745c5c3_Var102, templ_7745c5c3_Err = templruntime.NewAttributeExpression(strconv.FormatBool(r.Mine)).Resolve(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 390, Col: 188}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 391, Col: 188}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var102)
 						if templ_7745c5c3_Err != nil {
@@ -2131,7 +2135,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 					var templ_7745c5c3_Var103 string
 					templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.JoinStringErrs(r.Emoji)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 391, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 392, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var103))
 					if templ_7745c5c3_Err != nil {
@@ -2144,7 +2148,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 					var templ_7745c5c3_Var104 string
 					templ_7745c5c3_Var104, templ_7745c5c3_Err = templ.JoinStringErrs(roomIDText(uint64(r.Count)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 392, Col: 65}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 393, Col: 65}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var104))
 					if templ_7745c5c3_Err != nil {
@@ -2194,7 +2198,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 						var templ_7745c5c3_Var107 string
 						templ_7745c5c3_Var107, templ_7745c5c3_Err = templruntime.NewAttributeExpression(reactionTitle(r)).Resolve(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 399, Col: 63}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 400, Col: 63}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var107)
 						if templ_7745c5c3_Err != nil {
@@ -2221,7 +2225,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 					var templ_7745c5c3_Var108 string
 					templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(r.Emoji)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 400, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 401, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 					if templ_7745c5c3_Err != nil {
@@ -2234,7 +2238,7 @@ func MessageReactions(d MessageReactionsData) templ.Component {
 					var templ_7745c5c3_Var109 string
 					templ_7745c5c3_Var109, templ_7745c5c3_Err = templ.JoinStringErrs(roomIDText(uint64(r.Count)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 401, Col: 65}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 402, Col: 65}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var109))
 					if templ_7745c5c3_Err != nil {
@@ -2286,7 +2290,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 		var templ_7745c5c3_Var111 string
 		templ_7745c5c3_Var111, templ_7745c5c3_Err = templruntime.NewAttributeExpression(messageReactionPickerID(d.Message.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 414, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 415, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var111)
 		if templ_7745c5c3_Err != nil {
@@ -2314,7 +2318,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 			var templ_7745c5c3_Var112 string
 			templ_7745c5c3_Var112, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessageActionPath(d.Message.ID, "react"))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 419, Col: 111}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 420, Col: 111}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var112)
 			if templ_7745c5c3_Err != nil {
@@ -2327,7 +2331,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 			var templ_7745c5c3_Var113 string
 			templ_7745c5c3_Var113, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(MessageActionPath(d.Message.ID, "react"))).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 419, Col: 181}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 420, Col: 181}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var113)
 			if templ_7745c5c3_Err != nil {
@@ -2345,7 +2349,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 				var templ_7745c5c3_Var114 string
 				templ_7745c5c3_Var114, templ_7745c5c3_Err = templruntime.NewAttributeExpression(e).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 421, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 422, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var114)
 				if templ_7745c5c3_Err != nil {
@@ -2358,7 +2362,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 				var templ_7745c5c3_Var115 string
 				templ_7745c5c3_Var115, templ_7745c5c3_Err = templruntime.NewAttributeExpression("React with " + e).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 421, Col: 108}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 422, Col: 108}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var115)
 				if templ_7745c5c3_Err != nil {
@@ -2371,7 +2375,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 				var templ_7745c5c3_Var116 string
 				templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.JoinStringErrs(e)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 421, Col: 114}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 422, Col: 114}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var116))
 				if templ_7745c5c3_Err != nil {
@@ -2389,7 +2393,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 			var templ_7745c5c3_Var117 string
 			templ_7745c5c3_Var117, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessageActionPath(d.Message.ID, "react"))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 424, Col: 113}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 425, Col: 113}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var117)
 			if templ_7745c5c3_Err != nil {
@@ -2402,7 +2406,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 			var templ_7745c5c3_Var118 string
 			templ_7745c5c3_Var118, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(MessageActionPath(d.Message.ID, "react"))).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 424, Col: 183}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 425, Col: 183}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var118)
 			if templ_7745c5c3_Err != nil {
@@ -2415,7 +2419,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 			var templ_7745c5c3_Var119 string
 			templ_7745c5c3_Var119, templ_7745c5c3_Err = templruntime.NewAttributeExpression("msg-reaction-text-" + roomIDText(d.Message.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 425, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 426, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var119)
 			if templ_7745c5c3_Err != nil {
@@ -2428,7 +2432,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 			var templ_7745c5c3_Var120 string
 			templ_7745c5c3_Var120, templ_7745c5c3_Err = templruntime.NewAttributeExpression("msg-reaction-text-" + roomIDText(d.Message.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 427, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 428, Col: 59}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var120)
 			if templ_7745c5c3_Err != nil {
@@ -2441,7 +2445,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 			var templ_7745c5c3_Var121 string
 			templ_7745c5c3_Var121, templ_7745c5c3_Err = templruntime.NewAttributeExpression(d.Typed).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 430, Col: 22}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 431, Col: 22}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var121)
 			if templ_7745c5c3_Err != nil {
@@ -2459,7 +2463,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 				var templ_7745c5c3_Var122 string
 				templ_7745c5c3_Var122, templ_7745c5c3_Err = templruntime.NewAttributeExpression("msg-reaction-text-" + roomIDText(d.Message.ID) + "-error").Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 436, Col: 85}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 437, Col: 85}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var122)
 				if templ_7745c5c3_Err != nil {
@@ -2482,7 +2486,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 				var templ_7745c5c3_Var123 string
 				templ_7745c5c3_Var123, templ_7745c5c3_Err = templruntime.NewAttributeExpression("msg-reaction-text-" + roomIDText(d.Message.ID) + "-error").Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 441, Col: 93}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 442, Col: 93}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var123)
 				if templ_7745c5c3_Err != nil {
@@ -2495,7 +2499,7 @@ func MessageReactionPicker(d MessageReactionsData) templ.Component {
 				var templ_7745c5c3_Var124 string
 				templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.JoinStringErrs(d.Problem)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 441, Col: 120}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 442, Col: 120}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var124))
 				if templ_7745c5c3_Err != nil {
@@ -2545,7 +2549,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 		var templ_7745c5c3_Var126 string
 		templ_7745c5c3_Var126, templ_7745c5c3_Err = templruntime.NewAttributeExpression(MessageContentID(d.Message.Message.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 453, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 454, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var126)
 		if templ_7745c5c3_Err != nil {
@@ -2558,7 +2562,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 		var templ_7745c5c3_Var127 string
 		templ_7745c5c3_Var127, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessageActionPath(d.Message.Message.ID, "edit"))).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 454, Col: 119}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 455, Col: 119}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var127)
 		if templ_7745c5c3_Err != nil {
@@ -2571,7 +2575,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 		var templ_7745c5c3_Var128 string
 		templ_7745c5c3_Var128, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(MessageActionPath(d.Message.Message.ID, "edit"))).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 454, Col: 196}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 455, Col: 196}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var128)
 		if templ_7745c5c3_Err != nil {
@@ -2592,7 +2596,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 		var templ_7745c5c3_Var129 string
 		templ_7745c5c3_Var129, templ_7745c5c3_Err = templruntime.NewAttributeExpression("msg-edit-body-" + roomIDText(d.Message.Message.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 456, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 457, Col: 91}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var129)
 		if templ_7745c5c3_Err != nil {
@@ -2605,7 +2609,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 		var templ_7745c5c3_Var130 string
 		templ_7745c5c3_Var130, templ_7745c5c3_Err = templruntime.NewAttributeExpression("msg-edit-body-" + roomIDText(d.Message.Message.ID)).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 458, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 459, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var130)
 		if templ_7745c5c3_Err != nil {
@@ -2623,7 +2627,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 			var templ_7745c5c3_Var131 string
 			templ_7745c5c3_Var131, templ_7745c5c3_Err = templruntime.NewAttributeExpression("msg-edit-body-" + roomIDText(d.Message.Message.ID) + "-error").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 463, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 464, Col: 86}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var131)
 			if templ_7745c5c3_Err != nil {
@@ -2641,7 +2645,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 		var templ_7745c5c3_Var132 string
 		templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.JoinStringErrs(d.Body)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 465, Col: 12}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 466, Col: 12}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var132))
 		if templ_7745c5c3_Err != nil {
@@ -2659,7 +2663,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 			var templ_7745c5c3_Var133 string
 			templ_7745c5c3_Var133, templ_7745c5c3_Err = templruntime.NewAttributeExpression("msg-edit-body-" + roomIDText(d.Message.Message.ID) + "-error").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 467, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 468, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var133)
 			if templ_7745c5c3_Err != nil {
@@ -2672,7 +2676,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 			var templ_7745c5c3_Var134 string
 			templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.JoinStringErrs(d.Errors.Fields["body"])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 467, Col: 135}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 468, Col: 135}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var134))
 			if templ_7745c5c3_Err != nil {
@@ -2690,7 +2694,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 		var templ_7745c5c3_Var135 string
 		templ_7745c5c3_Var135, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ConversationPath(d.Message.Message.ConversationID) + "#" + MessageElementID(d.Message.Message.ID))).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 471, Col: 146}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 472, Col: 146}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var135)
 		if templ_7745c5c3_Err != nil {
@@ -2703,7 +2707,7 @@ func MessageEdit(d MessageEditData) templ.Component {
 		var templ_7745c5c3_Var136 string
 		templ_7745c5c3_Var136, templ_7745c5c3_Err = templruntime.NewAttributeExpression(getAction(MessageActionPath(d.Message.Message.ID, "view"))).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 471, Col: 232}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 472, Col: 232}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var136)
 		if templ_7745c5c3_Err != nil {
@@ -2789,7 +2793,7 @@ func MessageComposerForm(d ComposerData) templ.Component {
 		var templ_7745c5c3_Var139 string
 		templ_7745c5c3_Var139, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ConversationPath(d.ConversationID))).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 496, Col: 166}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 497, Col: 166}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var139)
 		if templ_7745c5c3_Err != nil {
@@ -2802,7 +2806,7 @@ func MessageComposerForm(d ComposerData) templ.Component {
 		var templ_7745c5c3_Var140 string
 		templ_7745c5c3_Var140, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(ConversationPath(d.ConversationID))).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 496, Col: 230}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 497, Col: 230}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var140)
 		if templ_7745c5c3_Err != nil {
@@ -2828,7 +2832,7 @@ func MessageComposerForm(d ComposerData) templ.Component {
 			var templ_7745c5c3_Var141 string
 			templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.JoinStringErrs(d.Errors.Fields["replyTo"])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 500, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 501, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var141))
 			if templ_7745c5c3_Err != nil {
@@ -2846,7 +2850,7 @@ func MessageComposerForm(d ComposerData) templ.Component {
 		var templ_7745c5c3_Var142 string
 		templ_7745c5c3_Var142, templ_7745c5c3_Err = templruntime.NewAttributeExpression(sendOnEnter).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 509, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 510, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var142)
 		if templ_7745c5c3_Err != nil {
@@ -2869,7 +2873,7 @@ func MessageComposerForm(d ComposerData) templ.Component {
 		var templ_7745c5c3_Var143 string
 		templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.JoinStringErrs(d.Body)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 514, Col: 12}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 515, Col: 12}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var143))
 		if templ_7745c5c3_Err != nil {
@@ -2887,7 +2891,7 @@ func MessageComposerForm(d ComposerData) templ.Component {
 			var templ_7745c5c3_Var144 string
 			templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.JoinStringErrs(d.Errors.Fields["body"])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 516, Col: 89}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 517, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var144))
 			if templ_7745c5c3_Err != nil {
@@ -2920,7 +2924,7 @@ func MessageComposerForm(d ComposerData) templ.Component {
 			var templ_7745c5c3_Var145 string
 			templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.JoinStringErrs(d.Errors.Fields["attachments"])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 532, Col: 97}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 533, Col: 97}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var145))
 			if templ_7745c5c3_Err != nil {
@@ -2931,7 +2935,15 @@ func MessageComposerForm(d ComposerData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 247, "</div><div class=\"post-editor-actions\"><button type=\"submit\">Send</button></div></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 247, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = GroupMentionConfirm(GroupMentionConfirmData{ID: composerConfirmID, Count: d.ConfirmCount, SendPath: GroupMentionSendPath(ConversationPath(d.ConversationID))}).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 248, "<div class=\"post-editor-actions\"><button type=\"submit\">Send</button></div></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2960,95 +2972,95 @@ func MessageReplySlot(q *app.MessageQuote, convID uint64) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 248, "<div id=\"message-reply\" class=\"message-reply\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 249, "<div id=\"message-reply\" class=\"message-reply\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if q != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 249, "<input type=\"hidden\" name=\"reply_to\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 250, "<input type=\"hidden\" name=\"reply_to\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var147 string
 			templ_7745c5c3_Var147, templ_7745c5c3_Err = templruntime.NewAttributeExpression(roomIDText(q.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 548, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 550, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var147)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 250, "\"><blockquote class=\"message-quote composer-quote\" data-quoted=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 251, "\"><blockquote class=\"message-quote composer-quote\" data-quoted=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var148 string
 			templ_7745c5c3_Var148, templ_7745c5c3_Err = templruntime.NewAttributeExpression(roomIDText(q.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 549, Col: 82}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 551, Col: 82}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var148)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 251, "\"><span class=\"quote-label\">Replying to</span> <span class=\"quote-author\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 252, "\"><span class=\"quote-label\">Replying to</span> <span class=\"quote-author\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var149 string
 			templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.JoinStringErrs(q.Author.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 551, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 553, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var149))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 252, "</span> <span class=\"quote-preview\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 253, "</span> <span class=\"quote-preview\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var150 string
 			templ_7745c5c3_Var150, templ_7745c5c3_Err = templ.JoinStringErrs(q.Preview)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 552, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 554, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var150))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 253, "</span> <a class=\"quote-cancel\" href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 254, "</span> <a class=\"quote-cancel\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var151 string
 			templ_7745c5c3_Var151, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ConversationPath(convID))).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 553, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 555, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var151)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 254, "\" title=\"Cancel the reply\" aria-label=\"Cancel the reply\" data-on:click__prevent=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 255, "\" title=\"Cancel the reply\" aria-label=\"Cancel the reply\" data-on:click__prevent=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var152 string
 			templ_7745c5c3_Var152, templ_7745c5c3_Err = templruntime.NewAttributeExpression(clearReplyAction).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 553, Col: 173}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `messages.templ`, Line: 555, Col: 173}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var152)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 255, "\">×</a></blockquote>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 256, "\">×</a></blockquote>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 256, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 257, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

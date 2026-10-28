@@ -1164,3 +1164,54 @@ func TestLastAdminSurvivesChangesAtTheSameTime(t *testing.T) {
 		})
 	}
 }
+
+func TestSignUpReservedUsernames(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		username string
+		reserved bool
+	}{
+		{"room", true},
+		{"all", true},
+		{"here", true},
+		{"ROOM", true},
+		{"  Here  ", true},
+		{"roomy", false},
+		{"allan", false},
+		{"my-room", false},
+		{"here2", false},
+		{"the_all", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.username, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t)
+			inv, err := e.svc.CreateSystemInvitation(t.Context(), store.RoleMember)
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, err := e.svc.SignUp(t.Context(), inv.Token, tt.username, "Someone", goodPassword)
+			if !tt.reserved {
+				if err != nil {
+					t.Fatalf("SignUp: %+v", err)
+				}
+				if u.ID == 0 {
+					t.Errorf("user = %+v", u)
+				}
+				return
+			}
+			appErr := requireTag(t, err, app.TagInvalidInput, "Accounts.SignUp.InvalidInput")
+			fields := fieldsOf(t, appErr)
+			if len(fields) != 1 || fields[app.FieldUsername] != "This username is reserved." {
+				t.Errorf("fields = %v, want only the reserved username", fields)
+			}
+			// The invitation is not used up and nobody is made.
+			if err := e.svc.InvitationValid(t.Context(), inv.Token); err != nil {
+				t.Errorf("the invitation was used up: %+v", err)
+			}
+			if users, err := e.st.ListUsers(t.Context()); err != nil || len(users) != 0 {
+				t.Errorf("users = %v, %v; want none", users, err)
+			}
+		})
+	}
+}

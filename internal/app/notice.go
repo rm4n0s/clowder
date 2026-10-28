@@ -53,6 +53,20 @@ type Notice struct {
 	Browser bool
 }
 
+// OthersText is the text that follows the name of the actor of a reply
+// notification that took in others more people (SPEC §7.15): " and 2 others",
+// " and 1 other", or nothing for none.
+func OthersText(others int) string {
+	switch {
+	case others <= 0:
+		return ""
+	case others == 1:
+		return " and 1 other"
+	default:
+		return " and " + strconv.Itoa(others) + " others"
+	}
+}
+
 // ThreadTitle makes the name of a thread out of the body of its first post: the
 // start of the first line that has text, without the marks of markdown that
 // open a line (#, >, -, *), up to 40 characters, with an ellipsis when it was
@@ -129,7 +143,7 @@ func (p *Prefs) noticeOfNotification(ctx context.Context, actor Actor, id uint64
 	}
 	room := "#" + r.RoomName
 	switch r.Kind {
-	case NotificationMention:
+	case NotificationMention, NotificationGroupMention, NotificationKeyword:
 		n.Text = who + " mentioned you in " + room
 	case NotificationReply:
 		title := ""
@@ -143,6 +157,7 @@ func (p *Prefs) noticeOfNotification(ctx context.Context, actor Actor, id uint64
 				title = ThreadTitle(root.Body)
 			}
 		}
+		who += OthersText(r.Others)
 		if title == "" {
 			n.Text = who + " replied in " + room
 		} else {

@@ -173,6 +173,9 @@ func TestRoutesOfTheErrorsOfTheAPI(t *testing.T) {
 			_, err := postInput(postRequest{Tasks: &[]taskRequest{{Title: "t", DueDate: str("soon")}}}, nil)
 			return err
 		}, "tasks"},
+		{"a format that is not text or markdown", tagFormatInvalid, "formatParam.FormatInvalid", func() error { _, err := formatParam(query("format=html")); return err }, "format"},
+		{"user IDs that are text", tagUserIDsInvalid, "userIDsParam.UserIDsInvalid", func() error { _, err := userIDsParam(query("user_ids=1,x")); return err }, "user_ids"},
+		{"a user ID of zero", tagUserIDsInvalid, "userIDsParam.UserIDsInvalid", func() error { _, err := userIDsParam(query("user_ids=0")); return err }, "user_ids"},
 		{"attachments to keep on a new post", tagKeepOnCreate, "postInput.KeepOnCreate", func() error {
 			_, err := postInput(postRequest{AttachmentIDs: &[]uint64{3}}, nil)
 			return err

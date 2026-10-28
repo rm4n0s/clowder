@@ -350,7 +350,7 @@
         ],
         "summary": "Change my settings",
         "operationId": "updateSettings",
-        "description": "Changes the settings that are in the body and keeps the others (a missing or null setting stays), and returns the settings. A body with no setting is 422, and so is a theme that is not system, light or dark, a notify that is not all, mentions or nothing, a sound_name that is not purr, chirp, bell or meow, and a replies that is not following or direct. The user's connections get a settings.changed event.",
+        "description": "Changes the settings that are in the body and keeps the others (a missing or null setting stays), and returns the settings. A body with no setting is 422, and so is a theme that is not system, light or dark, a notify that is not all, mentions or nothing, a sound_name that is not purr, chirp, bell or meow, a replies that is not following or direct, and keywords that break the rules (field keywords). The user's connections get a settings.changed event.",
         "requestBody": {
           "required": true,
           "description": "The settings to change.",
@@ -4039,6 +4039,257 @@
           }
         }
       }
+    },
+    "/rooms/{id}/group-mention-count": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Count the people a group mention would notify in a room",
+        "operationId": "getRoomGroupMentionCount",
+        "description": "Says how many people the @room, @all and @here of a body would notify if the user posted it (or commented) in the room (SPEC 7.15). A client calls it before it sends a body that has one, to ask its own user 'This will notify 14 people. Send anyway?' when the count is above 5; the API itself never asks. The count is of the other members of the room, except those who turned the group mentions off (settings) or ignore them in this room; @here counts those of them who are online now. A body without a group mention, or with one only inside code, counts 0. Only members post: a visible room the user has not joined is 403, and a private room the user may not read, admins included, is 404. A format that is not text or markdown is 422.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "body",
+            "in": "query",
+            "required": false,
+            "description": "The text of the post, comment or message, as typed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "How the body is written: markdown (the default) or text. Mentions inside code do not count in markdown.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "text"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMentionCount"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/group-mention-count": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Count the people a group mention would notify in a conversation",
+        "operationId": "getConversationGroupMentionCount",
+        "description": "Says how many people the @room, @all and @here of a message body would notify if the user sent it in the group conversation (SPEC 7.15); see the same route of a room. A message is plain text, so format is accepted and ignored. A direct conversation has no group mentions: it always counts 0. A conversation the user is no member of is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "body",
+            "in": "query",
+            "required": false,
+            "description": "The text of the post, comment or message, as typed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "How the body is written: markdown (the default) or text. Mentions inside code do not count in markdown.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "text"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupMentionCount"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/posts/{id}/follow": {
+      "put": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Follow a post",
+        "operationId": "followPost",
+        "description": "Makes the user follow the post, so that with replies set to following every comment by someone else in its thread notifies them with a reply (SPEC 7.15). On a comment it acts on the top-level post of its thread. Following a post that is followed is not an error, and it brings back a follow the user removed. Writing a post, commenting under it or being mentioned in it follows it automatically (a group mention or a keyword does not). A post the user cannot read, a missing post and a deleted one are 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The user follows the post."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "posts"
+        ],
+        "summary": "Unfollow a post",
+        "operationId": "unfollowPost",
+        "description": "Makes the user stop following the post (the top-level post of a comment). An automatic follow does not bring the follow back; a comment directly under the user's own post or comment still notifies them. Unfollowing a post that is not followed is not an error. A post the user cannot read, a missing post and a deleted one are 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the post or comment.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The user does not follow the post."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me/presence": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Who is online",
+        "operationId": "getPresence",
+        "description": "Says which of the given users are online now: a page or a client of theirs is connected, in any process (SPEC 7.15). Presence is not private: any logged-in user may ask about any users. Disabled users are never online. More than 100 IDs, or an ID that is not a positive number, is 422 with the field user_ids.",
+        "parameters": [
+          {
+            "name": "user_ids",
+            "in": "query",
+            "required": false,
+            "description": "The IDs of the users, separated by commas; at most 100.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The users who are online.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Presence"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4861,6 +5112,10 @@
           "can_delete": {
             "type": "boolean",
             "description": "True when the user may delete it: its author or an admin."
+          },
+          "following": {
+            "type": "boolean",
+            "description": "True when the user follows the post, so that every comment in its thread notifies them (SPEC 7.15); for a comment, whether the user follows the top-level post of its thread. False for a deleted post."
           }
         },
         "required": [
@@ -4881,7 +5136,8 @@
           "edited_at",
           "deleted",
           "can_edit",
-          "can_delete"
+          "can_delete",
+          "following"
         ],
         "additionalProperties": false
       },
@@ -5462,9 +5718,11 @@
               "mention",
               "reply",
               "assigned",
-              "added_to_room"
+              "added_to_room",
+              "group_mention",
+              "keyword"
             ],
-            "description": "Why the user is notified: an @mention, a comment under their post or comment, a task assigned to them, or their addition to a room by someone else."
+            "description": "Why the user is notified: an @mention; a comment under their post or comment, or in a thread they follow; a task assigned to them; their addition to a room by someone else; an @room, @all or @here that reached them (group_mention); or one of their keywords (keyword). group_mention and keyword are shown as mentions."
           },
           "actor": {
             "oneOf": [
@@ -5512,6 +5770,11 @@
           "read": {
             "type": "boolean",
             "description": "True when the user has marked it read."
+          },
+          "others": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "For a reply: the number of other people who replied in the same thread within the minute after the first reply and were folded into this notification, so that it reads 'Bob and 2 others replied'. The actor is the latest of them. 0 for a single actor and for every other kind."
           }
         },
         "required": [
@@ -5522,7 +5785,8 @@
           "post_id",
           "task_id",
           "created_at",
-          "read"
+          "read",
+          "others"
         ],
         "additionalProperties": false
       },
@@ -6449,7 +6713,7 @@
       },
       "WsEvent": {
         "type": "object",
-        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections. place_prefs.changed on user:<id>: the PlacePrefs of the room (room_id) or conversation (conversation_id), after the user changed them. post.created and message.created on user:<id> (not to be confused with the same kinds on room:<id>, post:<id> and conversation:<id>, whose data is the Post and the Message) are sent only to a user the post or message rings for, with ring true, and have the WsNotice as data; notification.created, on a notification that rings for the user, has ring true as well. ring, sound and browser are the server's decision from the preferences of the user (SPEC 7.15): the client plays the sound and, when browser is true, shows a notification of the system, if it has no window with the focus and the place is not the one the user is looking at.",
+        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.changed: the Notification, after a reply was folded into it (it never rings); notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections. place_prefs.changed on user:<id>: the PlacePrefs of the room (room_id) or conversation (conversation_id), after the user changed them. post.created and message.created on user:<id> (not to be confused with the same kinds on room:<id>, post:<id> and conversation:<id>, whose data is the Post and the Message) are sent only to a user the post or message rings for, with ring true, and have the WsNotice as data; notification.created, on a notification that rings for the user, has ring true as well. ring, sound and browser are the server's decision from the preferences of the user (SPEC 7.15): the client plays the sound and, when browser is true, shows a notification of the system, if it has no window with the focus and the place is not the one the user is looking at.",
         "properties": {
           "type": {
             "const": "event"
@@ -6474,6 +6738,7 @@
               "member.joined",
               "member.left",
               "notification.created",
+              "notification.changed",
               "notification.read",
               "message.created",
               "message.updated",
@@ -6678,7 +6943,21 @@
               "following",
               "direct"
             ],
-            "description": "Which comments notify the user: every comment under a post they follow (the default), or only a comment under their own post or comment. Until posts can be followed, following acts like direct."
+            "description": "Which comments notify the user: every comment under a post they follow (the default), or only a comment under their own post or comment."
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "maxItems": 10,
+            "description": "The mention keywords (SPEC 7.15): up to 10 words or phrases of 1 to 32 characters, unique ignoring case. A post, comment or message that holds one as a whole word, ignoring case, outside code, mentions the user. [] for none (the default)."
+          },
+          "group_mentions": {
+            "type": "boolean",
+            "description": "True when @room, @all and @here reach the user (the default)."
           }
         },
         "required": [
@@ -6687,7 +6966,9 @@
           "browser_notifications",
           "notify",
           "sound_name",
-          "replies"
+          "replies",
+          "keywords",
+          "group_mentions"
         ],
         "additionalProperties": false
       },
@@ -6760,6 +7041,23 @@
               null
             ],
             "description": "The new value of replies."
+          },
+          "keywords": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "The new list of mention keywords; [] clears it. Each is trimmed and its inner white space made one space. A blank one, one of more than 32 characters, a duplicate ignoring case and a list of more than 10 are 422 with the field keywords."
+          },
+          "group_mentions": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The new value of group_mentions."
           }
         },
         "additionalProperties": false
@@ -6929,6 +7227,41 @@
           "text",
           "place_name",
           "author"
+        ],
+        "additionalProperties": false
+      },
+      "GroupMentionCount": {
+        "type": "object",
+        "description": "How many people the group mentions of a body would notify.",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of people the @room, @all and @here of the body would notify if the user sent it: the other members of the place except those who turned the group mentions off or ignore them in the place; for @here, those of them who are online now. 0 when the body has no group mention. A client asks its own user 'This will notify 14 people. Send anyway?' when it is above 5; the API never asks."
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "Presence": {
+        "type": "object",
+        "description": "Who is online.",
+        "properties": {
+          "online": {
+            "type": "object",
+            "description": "The users who are online now, by ID: each maps to true. A user who is offline, disabled or unknown is not there. A user is online while a page or a WebSocket of theirs is open, in any process.",
+            "additionalProperties": {
+              "type": "boolean",
+              "enum": [
+                true
+              ]
+            }
+          }
+        },
+        "required": [
+          "online"
         ],
         "additionalProperties": false
       }

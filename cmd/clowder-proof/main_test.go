@@ -87,6 +87,14 @@ func TestParseFlags(t *testing.T) {
 			},
 		},
 		{
+			name: "the second user stays online",
+			args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-other-hold"},
+			want: options{
+				page: "/", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond,
+				other: script{user: "alice", page: "/"}, otherHold: true,
+			},
+		},
+		{
 			name: "clicks are made in order",
 			args: []string{
 				"-o", "x.png", "-as", "bob", "-click", "summary", "-click", "button.pick",
@@ -132,6 +140,7 @@ func TestParseFlags(t *testing.T) {
 		{name: "other-fill without other", args: []string{"-o", "x.png", "-other-fill", "#a=b"}, wantTag: tagFlagsInvalid},
 		{name: "other-click without other", args: []string{"-o", "x.png", "-other-click", "button"}, wantTag: tagFlagsInvalid},
 		{name: "click without a selector", args: []string{"-o", "x.png", "-click", ""}, wantTag: tagFlagsInvalid},
+		{name: "other-hold without other", args: []string{"-o", "x.png", "-other-hold"}, wantTag: tagFlagsInvalid},
 		{name: "other without as", args: []string{"-o", "x.png", "-other", "alice"}, wantTag: tagFlagsInvalid},
 		{name: "other-page without slash", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-other-page", "rooms"}, wantTag: tagFlagsInvalid},
 		{name: "post placeholder without a user", args: []string{"-o", "x.png", "-page", "{post:Quick question}"}, wantTag: tagFlagsInvalid},

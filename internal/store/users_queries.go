@@ -418,3 +418,20 @@ func (s *Store) MarkPasswordResetUsed(ctx context.Context, id uint64) error {
 	}
 	return nil
 }
+
+// EnabledUserSet returns, of the users userIDs, the set of those who exist and
+// are not disabled.
+func (s *Store) EnabledUserSet(ctx context.Context, userIDs []uint64) (map[uint64]bool, error) {
+	out := map[uint64]bool{}
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	var ids []uint64
+	if err := s.db(ctx).Model(&User{}).Where("id IN ? AND disabled_at IS NULL", userIDs).Pluck("id", &ids).Error; err != nil {
+		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "enabledUserSet")
+	}
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}

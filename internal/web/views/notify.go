@@ -82,6 +82,18 @@ type NotifyPrefsData struct {
 	Errors FormErrors
 	// Saved is true right after a submit that worked.
 	Saved bool
+	// KeywordsTyped is what the person typed in the keywords field when the
+	// submit failed, to put it back; nil when the field shows the saved list.
+	KeywordsTyped *string
+}
+
+// KeywordsText is the text of the keywords field: what was typed, or the
+// saved keywords separated by commas.
+func (d NotifyPrefsData) KeywordsText() string {
+	if d.KeywordsTyped != nil {
+		return *d.KeywordsTyped
+	}
+	return strings.Join(d.Settings.Keywords, ", ")
 }
 
 // PlaceListItem is a room or a conversation that has preferences of its own,

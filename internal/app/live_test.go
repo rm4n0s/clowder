@@ -290,6 +290,9 @@ func TestLivePostsPublish(t *testing.T) {
 			p := e.write("bob", "lobby", "post")
 			c1 := e.say("admin", p.ID, "one")
 			c2 := e.say("bob", c1.ID, "two")
+			// bob's notification of the first comment is older than a minute,
+			// so this reply is a new notification and not a fold into it.
+			e.clk.Advance(2 * time.Minute)
 			e.rec.Reset()
 			c3, err := e.posts.Reply(e.t.Context(), e.as("admin"), c2.ID, textInput("three"))
 			want := append(commentEvts(live.KindCommentCreated, e.lobby.ID, p.ID, c3.ID), notifEvt(e.uid("bob"), e.lobby.ID, c3.ID))

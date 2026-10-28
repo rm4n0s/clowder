@@ -99,13 +99,29 @@ type Reaction struct {
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:RESTRICT"`
 }
 
-// Mention is an "@username" in the body of a post. The application rebuilds a
+// MentionKind says how a user is mentioned in a post (SPEC §7.15): by name,
+// by a group mention, or by one of their keywords.
+type MentionKind string
+
+const (
+	// MentionUser is an "@username": it is shown as a link in the body.
+	MentionUser MentionKind = "user"
+	// MentionGroup is an @room, @all or @here that reached the user.
+	MentionGroup MentionKind = "group"
+	// MentionKeyword is a keyword of the user found in the body.
+	MentionKeyword MentionKind = "keyword"
+)
+
+// Mention is a user who is mentioned in the body of a post: by "@username",
+// by a group mention or by a keyword (Kind). The application rebuilds a
 // post's mentions when the post is edited.
 type Mention struct {
 	ID        uint64
 	CreatedAt time.Time
 	PostID    uint64 `gorm:"not null;uniqueIndex:uq_mentions_post_user,priority:1"`
 	UserID    uint64 `gorm:"not null;uniqueIndex:uq_mentions_post_user,priority:2"`
+	// Kind says how the user is mentioned; the default is MentionUser.
+	Kind MentionKind `gorm:"not null;default:user"`
 
 	// Relations: declared so that GORM creates the foreign keys.
 	Post *Post `gorm:"foreignKey:PostID;constraint:OnDelete:CASCADE"`

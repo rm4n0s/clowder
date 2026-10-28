@@ -689,6 +689,9 @@ type RoomData struct {
 	Room app.Room
 	// Members are the members of the room.
 	Members []app.Member
+	// Online is the set of the members who are online when the page loads
+	// (SPEC §7.15); the dots are not live.
+	Online map[uint64]bool
 	// Candidates are the users the viewer can add; empty for a viewer who is
 	// not a member.
 	Candidates []app.User
@@ -860,7 +863,7 @@ func RoomMemberCount(d RoomData) templ.Component {
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(memberCountText(d.Room.MemberCount))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 230, Col: 97}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 233, Col: 97}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
@@ -902,7 +905,7 @@ func RoomHeader(d RoomData) templ.Component {
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(d.Room.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 240, Col: 20}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 243, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
@@ -947,7 +950,7 @@ func RoomHeader(d RoomData) templ.Component {
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(d.Room.Description)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 249, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 252, Col: 51}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -982,7 +985,7 @@ func RoomHeader(d RoomData) templ.Component {
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(RoomPath(d.Room.ID) + "/leave")).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 256, Col: 109}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 259, Col: 109}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 			if templ_7745c5c3_Err != nil {
@@ -995,7 +998,7 @@ func RoomHeader(d RoomData) templ.Component {
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPostConfirm(RoomPath(d.Room.ID)+"/leave", "Leave this room?")).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 256, Col: 194}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 259, Col: 194}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 			if templ_7745c5c3_Err != nil {
@@ -1019,7 +1022,7 @@ func RoomHeader(d RoomData) templ.Component {
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(RoomPath(d.Room.ID) + "/delete")).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 263, Col: 111}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 266, Col: 111}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 			if templ_7745c5c3_Err != nil {
@@ -1032,7 +1035,7 @@ func RoomHeader(d RoomData) templ.Component {
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPostConfirm(RoomPath(d.Room.ID)+"/delete", "Delete this room and everything in it? This cannot be undone.")).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 263, Col: 242}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 266, Col: 242}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 			if templ_7745c5c3_Err != nil {
@@ -1098,7 +1101,7 @@ func RoomEditForm(d RoomData) templ.Component {
 		var templ_7745c5c3_Var43 string
 		templ_7745c5c3_Var43, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(RoomPath(d.Room.ID) + "/rename")).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 280, Col: 115}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 283, Col: 115}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
 		if templ_7745c5c3_Err != nil {
@@ -1111,7 +1114,7 @@ func RoomEditForm(d RoomData) templ.Component {
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(RoomPath(d.Room.ID) + "/rename")).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 280, Col: 176}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 283, Col: 176}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 		if templ_7745c5c3_Err != nil {
@@ -1191,7 +1194,7 @@ func MembersPanel(d RoomData) templ.Component {
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templruntime.NewAttributeExpression("member-" + roomIDText(m.UserID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 308, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 311, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var46)
 			if templ_7745c5c3_Err != nil {
@@ -1204,7 +1207,7 @@ func MembersPanel(d RoomData) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templruntime.NewAttributeExpression(m.Username).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 308, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 311, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var47)
 			if templ_7745c5c3_Err != nil {
@@ -1218,6 +1221,10 @@ func MembersPanel(d RoomData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			templ_7745c5c3_Err = OnlineDot(d.Online[m.UserID]).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "<span class=\"member-name\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1225,7 +1232,7 @@ func MembersPanel(d RoomData) templ.Component {
 			var templ_7745c5c3_Var48 string
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(m.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 310, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 314, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 			if templ_7745c5c3_Err != nil {
@@ -1238,7 +1245,7 @@ func MembersPanel(d RoomData) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs("@" + m.Username)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 311, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 315, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -1256,7 +1263,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var50 string
 				templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(m.AddedByDisplayName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 314, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 318, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 				if templ_7745c5c3_Err != nil {
@@ -1280,7 +1287,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var51 string
 				templ_7745c5c3_Var51, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(MessagesPath)).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 320, Col: 90}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 324, Col: 90}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var51)
 				if templ_7745c5c3_Err != nil {
@@ -1293,7 +1300,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var52 string
 				templ_7745c5c3_Var52, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(MessagesPath)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 320, Col: 132}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 324, Col: 132}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var52)
 				if templ_7745c5c3_Err != nil {
@@ -1306,7 +1313,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var53 string
 				templ_7745c5c3_Var53, templ_7745c5c3_Err = templruntime.NewAttributeExpression(m.Username).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 321, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 325, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 				if templ_7745c5c3_Err != nil {
@@ -1319,7 +1326,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var54 string
 				templ_7745c5c3_Var54, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FromRoomPrefix + roomIDText(d.Room.ID)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 322, Col: 86}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 326, Col: 86}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var54)
 				if templ_7745c5c3_Err != nil {
@@ -1332,7 +1339,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var55 string
 				templ_7745c5c3_Var55, templ_7745c5c3_Err = templruntime.NewAttributeExpression("Send " + m.DisplayName + " a message").Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 323, Col: 93}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 327, Col: 93}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var55)
 				if templ_7745c5c3_Err != nil {
@@ -1351,7 +1358,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var56 string
 				templ_7745c5c3_Var56, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(memberRemovePath(d.Room.ID, m.UserID))).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 327, Col: 102}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 331, Col: 102}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
 				if templ_7745c5c3_Err != nil {
@@ -1364,7 +1371,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var57 string
 				templ_7745c5c3_Var57, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPostConfirm(memberRemovePath(d.Room.ID, m.UserID), "Remove this member from the room?")).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 327, Col: 213}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 331, Col: 213}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var57)
 				if templ_7745c5c3_Err != nil {
@@ -1398,7 +1405,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var58 string
 				templ_7745c5c3_Var58, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(RoomPath(d.Room.ID) + "/members")).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 338, Col: 120}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 342, Col: 120}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var58)
 				if templ_7745c5c3_Err != nil {
@@ -1411,7 +1418,7 @@ func MembersPanel(d RoomData) templ.Component {
 				var templ_7745c5c3_Var59 string
 				templ_7745c5c3_Var59, templ_7745c5c3_Err = templruntime.NewAttributeExpression(FormPost(RoomPath(d.Room.ID) + "/members")).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 338, Col: 182}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 342, Col: 182}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 				if templ_7745c5c3_Err != nil {
@@ -1429,7 +1436,7 @@ func MembersPanel(d RoomData) templ.Component {
 					var templ_7745c5c3_Var60 string
 					templ_7745c5c3_Var60, templ_7745c5c3_Err = templruntime.NewAttributeExpression(roomIDText(u.ID)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 343, Col: 39}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 347, Col: 39}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
 					if templ_7745c5c3_Err != nil {
@@ -1442,7 +1449,7 @@ func MembersPanel(d RoomData) templ.Component {
 					var templ_7745c5c3_Var61 string
 					templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(u.DisplayName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 343, Col: 57}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 347, Col: 57}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 					if templ_7745c5c3_Err != nil {
@@ -1455,7 +1462,7 @@ func MembersPanel(d RoomData) templ.Component {
 					var templ_7745c5c3_Var62 string
 					templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs("@" + u.Username)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 343, Col: 79}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `rooms.templ`, Line: 347, Col: 79}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 					if templ_7745c5c3_Err != nil {
@@ -1483,6 +1490,36 @@ func MembersPanel(d RoomData) templ.Component {
 // memberRemovePath returns the path that removes a user from a room.
 func memberRemovePath(roomID, userID uint64) string {
 	return RoomPath(roomID) + "/members/" + roomIDText(userID) + "/remove"
+}
+
+// OnlineDot is the small dot next to a member who is online (SPEC §7.15); it
+// draws nothing for one who is not. It is drawn when the page loads and not
+// updated live.
+func OnlineDot(online bool) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		ctx = templ.ClearChildren(ctx)
+		if online {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "<span class=\"online-dot\" role=\"img\" aria-label=\"Online\" title=\"Online\"></span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		return nil
+	})
 }
 
 var _ = templruntime.GeneratedTemplate

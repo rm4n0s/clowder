@@ -37,6 +37,11 @@ var demoUsers = []struct {
 	{"alice", "Alice", store.RoleMember},
 	{"bob", "Bob", store.RoleMember},
 	{"carol", "Carol", store.RoleMember},
+	// Dave, Erin and Frank make #general large enough that @room asks before
+	// it notifies more than 5 people (SPEC §7.15).
+	{"dave", "Dave", store.RoleMember},
+	{"erin", "Erin", store.RoleMember},
+	{"frank", "Frank", store.RoleMember},
 }
 
 // runDemo prepares the data directory of the demo. The directory is made if it
@@ -363,6 +368,10 @@ var demoComments = []struct {
 	{"b2", 2, "b1", "carol", app.FormatText, "Done, thanks!", "", ""},
 	{"b3", 2, "b2", "alice", app.FormatText, "Can we have a script for it?", "", ""},
 	{"b4", 2, "b3", "bob", app.FormatMarkdown, "I can write one on `Friday`.", "", ""},
+	// A third person in the thread, within the minute of the others: carol
+	// follows her checklist, so her notification of the replies reads "Dave
+	// and 2 others replied" (SPEC §7.15).
+	{"b5", 2, "b4", "dave", app.FormatText, "Count me in for the Friday script.", "", ""},
 }
 
 // makeDemoComments writes the comments of the demo through the posts service,

@@ -153,6 +153,11 @@ type Post struct {
 	// CanReact is true when the asking actor may react to the post: a member
 	// of its room, if the post is not deleted.
 	CanReact bool
+	// Following is true when the asking actor follows the post, so that its
+	// comments notify them (SPEC §7.15). Only a top-level post can be
+	// followed: for a comment it says whether the actor follows the
+	// top-level post of its thread.
+	Following bool
 }
 
 // FeedPage is a page of the feed of a room.
@@ -203,6 +208,8 @@ type Posts struct {
 	cfg     PostsConfig
 	cleaner fileCleaner
 	pub     Publisher
+	// presence tells who is online, for @here.
+	presence live.Presence
 }
 
 // NewPosts makes the service. The clock times the edits and deletions; the
@@ -211,7 +218,8 @@ type Posts struct {
 // events of the changes, after they are committed; nil publishes nothing.
 func NewPosts(st *store.Store, clk clock.Clock, md *markdown.Renderer, fs *files.Store, cfg PostsConfig, pub Publisher) *Posts {
 	cfg = cfg.withDefaults()
-	return &Posts{st: st, clk: clk, md: md, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger), pub: orNop(pub)}
+	return &Posts{st: st, clk: clk, md: md, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger), pub: orNop(pub),
+		presence: orMemoryPresence(cfg.Presence)}
 }
 
 // ParseTags splits the tags field of the editor on spaces and commas. It
@@ -281,8 +289,16 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 			return err
 		}
 		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
-		mentioned, err := p.syncMentions(ctx, tx, room, created.ID, clean.Format, clean.Body)
+		recipients, err := tx.RoomMemberRecipients(ctx, room.ID, actor.UserID)
 		if err != nil {
+			return err
+		}
+		mentions, mentioned, err := p.syncMentions(ctx, tx, room, created.ID, clean.Format, clean.Body, recipients)
+		if err != nil {
+			return err
+		}
+		// The author follows their post, and so does everyone it names.
+		if err := tx.AutoFollow(ctx, created.ID, append([]uint64{actor.UserID}, mentionedByName(mentions)...)); err != nil {
 			return err
 		}
 		details := map[string]any{
@@ -310,16 +326,15 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 			return err
 		}
 		notified, err := notify(ctx, tx, actor, room, created.ID,
-			append(assignedNotices(assigned), mentionNotices(mentioned)...))
+			append(assignedNotices(assigned), mentionNoticesOf(mentioned)...))
 		if err != nil {
 			return err
 		}
 		events = append(events, notified...)
 		// The members whose choice for the room is All hear of the post, but
 		// not twice: those who were notified of it have the notification.
-		rung, err := postRingEvents(ctx, tx, room.ID, created.ID, actor.UserID, usersOf(notified))
-		events = append(events, rung...)
-		return err
+		events = append(events, postRingEvents(recipients, room.ID, created.ID, usersOf(notified))...)
+		return nil
 	})
 	if err != nil {
 		p.cleaner.discard(ctx, p.st, in.Uploads)
@@ -402,7 +417,19 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 			return err
 		}
 		events = postEvents(refOf(created), live.KindPostCreated, live.KindCommentCreated)
-		mentioned, err := p.syncMentions(ctx, tx, room, created.ID, clean.Format, clean.Body)
+		recipients, err := tx.RoomMemberRecipients(ctx, room.ID, actor.UserID)
+		if err != nil {
+			return err
+		}
+		mentions, mentioned, err := p.syncMentions(ctx, tx, room, created.ID, clean.Format, clean.Body, recipients)
+		if err != nil {
+			return err
+		}
+		// Whoever comments in a thread follows it, and so does everyone named.
+		if err := tx.AutoFollow(ctx, rootID, append([]uint64{actor.UserID}, mentionedByName(mentions)...)); err != nil {
+			return err
+		}
+		followers, err := tx.ThreadFollowers(ctx, rootID, actor.UserID)
 		if err != nil {
 			return err
 		}
@@ -433,7 +460,12 @@ func (p *Posts) Reply(ctx context.Context, actor Actor, parentID uint64, in Post
 			return err
 		}
 		notices := append(assignedNotices(assigned), notice{userID: parent.AuthorID, kind: NotificationReply})
-		notified, err := notify(ctx, tx, actor, room, created.ID, append(notices, mentionNotices(mentioned)...))
+		// Every follower of the thread hears of the comment as a reply, in a
+		// burst of a minute as one notification (SPEC §7.15).
+		for _, id := range followers {
+			notices = append(notices, notice{userID: id, kind: NotificationReply, foldRoot: rootID})
+		}
+		notified, err := notify(ctx, tx, actor, room, created.ID, append(notices, mentionNoticesOf(mentioned)...))
 		events = append(events, notified...)
 		return err
 	})
@@ -569,9 +601,17 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 		}
 		removedKeys = storageKeys(removed)
 		events = postEvents(refOf(row), live.KindPostUpdated, live.KindCommentUpdated)
-		var mentioned []uint64
+		var mentioned []store.MentionedUser
 		if bodyChanged || formatChanged {
-			if mentioned, err = p.syncMentions(ctx, tx, room, row.ID, clean.Format, clean.Body); err != nil {
+			recipients, err := tx.RoomMemberRecipients(ctx, room.ID, actor.UserID)
+			if err != nil {
+				return err
+			}
+			var mentions []store.MentionedUser
+			if mentions, mentioned, err = p.syncMentions(ctx, tx, room, row.ID, clean.Format, clean.Body, recipients); err != nil {
+				return err
+			}
+			if err := tx.AutoFollow(ctx, followRootOf(row), mentionedByName(mentions)); err != nil {
 				return err
 			}
 		}
@@ -598,7 +638,7 @@ func (p *Posts) Edit(ctx context.Context, actor Actor, postID uint64, in PostInp
 			}
 		}
 		notified, err := notify(ctx, tx, actor, room, row.ID,
-			append(assignedNotices(assigned), mentionNotices(mentioned)...))
+			append(assignedNotices(assigned), mentionNoticesOf(mentioned)...))
 		events = append(events, notified...)
 		return err
 	})
@@ -837,13 +877,17 @@ func (p *Posts) Thread(ctx context.Context, actor Actor, postID uint64) (Thread,
 	if err != nil {
 		return Thread{}, err
 	}
+	following, err := p.st.FollowingPosts(ctx, actor.UserID, []uint64{root.ID})
+	if err != nil {
+		return Thread{}, err
+	}
 	count := 0
 	for _, r := range rows {
 		if r.DeletedAt == nil {
 			count++
 		}
 	}
-	extras := postExtras{tags: tags, atts: atts, reacts: reacts, tasks: tasks, mentions: mentions, member: member}
+	extras := postExtras{tags: tags, atts: atts, reacts: reacts, tasks: tasks, mentions: mentions, member: member, following: following}
 	rootExtras := extras
 	rootExtras.counts = map[uint64]int{root.ID: count}
 	rootView, err := p.buildViews(actor, room, []store.Post{root}, rootExtras)
@@ -909,42 +953,13 @@ func (p *Posts) Preview(_ context.Context, actor Actor, format Format, body stri
 	return p.md.Render(markdown.Format(format), body)
 }
 
-// syncMentions rebuilds the mentions of the post postID of the room from its
-// body: the usernames of the body that belong to enabled users who can read
-// the room (every user for a visible room, the members of a private one, D26).
-// A mention of anybody else is not saved. It returns the IDs of the users who
-// were not mentioned before, in the order of the body, for the caller to
-// notify. The author may mention themselves; the caller does not notify them.
-func (p *Posts) syncMentions(ctx context.Context, tx *store.Store, room store.Room, postID uint64, format Format, body string) ([]uint64, error) {
-	names := p.md.Mentions(markdown.Format(format), body)
-	users, err := tx.EnabledUsersByUsername(ctx, room.ID, room.Visibility == VisibilityPrivate, names)
-	if err != nil {
-		return nil, err
+// followRootOf is the top-level post of the thread that row belongs to: the
+// post that is followed.
+func followRootOf(row store.Post) uint64 {
+	if row.RootID != nil {
+		return *row.RootID
 	}
-	byName := make(map[string]uint64, len(users))
-	for _, u := range users {
-		byName[u.Username] = u.ID
-	}
-	ids := make([]uint64, 0, len(users))
-	for _, name := range names {
-		if id, ok := byName[name]; ok {
-			ids = append(ids, id)
-		}
-	}
-	before, err := tx.MentionedUserIDs(ctx, postID)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.ReplacePostMentions(ctx, postID, ids); err != nil {
-		return nil, err
-	}
-	var added []uint64
-	for _, id := range ids {
-		if !slices.Contains(before, id) {
-			added = append(added, id)
-		}
-	}
-	return added, nil
+	return row.ID
 }
 
 // viewOne reads the post postID, which is in room, and makes its view.
@@ -996,7 +1011,17 @@ func (p *Posts) postViews(ctx context.Context, st *store.Store, actor Actor, roo
 	if err != nil {
 		return nil, err
 	}
-	return p.buildViews(actor, room, rows, postExtras{tags: tags, atts: atts, counts: counts, reacts: reacts, tasks: tasks, mentions: mentions, member: member})
+	followIDs := ids
+	for _, row := range rows {
+		if row.RootID != nil {
+			followIDs = append(followIDs, *row.RootID)
+		}
+	}
+	following, err := st.FollowingPosts(ctx, actor.UserID, followIDs)
+	if err != nil {
+		return nil, err
+	}
+	return p.buildViews(actor, room, rows, postExtras{tags: tags, atts: atts, counts: counts, reacts: reacts, tasks: tasks, mentions: mentions, member: member, following: following})
 }
 
 // postExtras is what hangs on a set of posts of one room, read by the caller
@@ -1015,6 +1040,8 @@ type postExtras struct {
 	counts map[uint64]int
 	// member is true when the actor is a member of the room.
 	member bool
+	// following is the set of the top-level posts the actor follows.
+	following map[uint64]bool
 }
 
 // buildViews makes the views of posts of one room for the actor, in the order
@@ -1051,6 +1078,7 @@ func (p *Posts) buildViews(actor Actor, room store.Room, rows []store.Post, x po
 			v.Tasks = taskCards(x.tasks[row.ID], today)
 			v.Reactions = reactionCounts(x.reacts[row.ID], actor.UserID)
 			v.CanReact = x.member
+			v.Following = x.following[followRootOf(row)]
 			if row.Author != nil {
 				v.Author = UserRef{ID: row.Author.ID, Username: row.Author.Username, DisplayName: row.Author.DisplayName, AvatarKey: row.Author.AvatarKey}
 			}

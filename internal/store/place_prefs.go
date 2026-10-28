@@ -65,7 +65,7 @@ type PlacePref struct {
 	// Sound is the choice of the sound in this place.
 	Sound PlaceSound `gorm:"not null;default:default;check:chk_place_prefs_sound,sound IN ('default','on','off')"`
 	// IgnoreGroupMentions is true when @room, @all and @here are ignored in
-	// this place (used from step 18.4).
+	// this place (SPEC §7.15).
 	IgnoreGroupMentions bool `gorm:"not null;default:false"`
 	// MarkUnread is what the unread count of a room counts; for rooms only.
 	MarkUnread MarkUnread `gorm:"not null;default:all;check:chk_place_prefs_mark_unread,mark_unread IN ('all','mentions')"`
@@ -205,6 +205,8 @@ type recipientRow struct {
 	SSoundName           *string
 	SBrowserNotification *bool
 	SReplies             *string
+	SKeywords            *string
+	SGroupMentionsOff    *bool
 	PNotify              *string
 	PSound               *string
 	PIgnoreGroup         *bool
@@ -214,7 +216,7 @@ type recipientRow struct {
 
 const recipientColumns = `users.id AS user_id, users.username AS username,
 user_settings.notify AS s_notify, user_settings.sound AS s_sound, user_settings.sound_name AS s_sound_name,
-user_settings.browser_notifications AS s_browser_notification, user_settings.replies AS s_replies,
+user_settings.browser_notifications AS s_browser_notification, user_settings.replies AS s_replies, user_settings.keywords AS s_keywords, user_settings.group_mentions_off AS s_group_mentions_off,
 place_prefs.notify AS p_notify, place_prefs.sound AS p_sound, place_prefs.ignore_group_mentions AS p_ignore_group,
 place_prefs.mark_unread AS p_mark_unread, place_prefs.muted AS p_muted`
 
@@ -235,6 +237,12 @@ func (r recipientRow) recipient(place PlaceKey) Recipient {
 	}
 	if r.SReplies != nil {
 		settings.Replies = RepliesMode(*r.SReplies)
+	}
+	if r.SKeywords != nil {
+		settings.KeywordsJSON = *r.SKeywords
+	}
+	if r.SGroupMentionsOff != nil {
+		settings.GroupMentionsOff = *r.SGroupMentionsOff
 	}
 	pref := DefaultPlacePref(r.UserID, place)
 	if r.PNotify != nil {

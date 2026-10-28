@@ -28,45 +28,69 @@ func (s *Store) EnabledUsersByUsername(ctx context.Context, roomID uint64, priva
 	return users, nil
 }
 
-// MentionedUserIDs returns the IDs of the users the post mentions, in the
-// order the mentions were saved.
-func (s *Store) MentionedUserIDs(ctx context.Context, postID uint64) ([]uint64, error) {
-	var ids []uint64
-	err := s.db(ctx).Model(&Mention{}).Where("post_id = ?", postID).Order("id ASC").Pluck("user_id", &ids).Error
-	if err != nil {
-		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "mentionedUserIDs", "postID", postID)
-	}
-	return ids, nil
+// MentionedUser is a user mentioned in a post, and how.
+type MentionedUser struct {
+	// UserID is the user.
+	UserID uint64
+	// Kind says how the user is mentioned.
+	Kind MentionKind
 }
 
-// ReplacePostMentions makes userIDs the mentions of the post: the mentions of
-// other users are deleted and the missing ones are added; those that stay are
-// not touched. The IDs must be without duplicates. It fails with
+// PostMentions returns the users the post mentions, with how, in the order
+// the mentions were saved.
+func (s *Store) PostMentions(ctx context.Context, postID uint64) ([]MentionedUser, error) {
+	var rows []Mention
+	err := s.db(ctx).Where("post_id = ?", postID).Order("id ASC").Find(&rows).Error
+	if err != nil {
+		return nil, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "postMentions", "postID", postID)
+	}
+	out := make([]MentionedUser, len(rows))
+	for i, r := range rows {
+		out[i] = MentionedUser{UserID: r.UserID, Kind: r.Kind}
+	}
+	return out, nil
+}
+
+// ReplacePostMentions makes mentioned the mentions of the post: the mentions
+// of other users are deleted, the missing ones are added and a user who stays
+// gets the new kind. The users must be without duplicates. It fails with
 // TagQueryFailed when a user does not exist.
-func (s *Store) ReplacePostMentions(ctx context.Context, postID uint64, userIDs []uint64) error {
+func (s *Store) ReplacePostMentions(ctx context.Context, postID uint64, mentioned []MentionedUser) error {
 	del := s.db(ctx).Where("post_id = ?", postID)
-	if len(userIDs) > 0 {
-		del = del.Where("user_id NOT IN ?", userIDs)
+	if len(mentioned) > 0 {
+		ids := make([]uint64, len(mentioned))
+		for i, m := range mentioned {
+			ids[i] = m.UserID
+		}
+		del = del.Where("user_id NOT IN ?", ids)
 	}
 	if err := del.Delete(&Mention{}).Error; err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "replacePostMentions", "postID", postID)
 	}
-	if len(userIDs) == 0 {
+	if len(mentioned) == 0 {
 		return nil
 	}
-	rows := make([]Mention, len(userIDs))
-	for i, id := range userIDs {
-		rows[i] = Mention{PostID: postID, UserID: id}
+	rows := make([]Mention, len(mentioned))
+	for i, m := range mentioned {
+		kind := m.Kind
+		if kind == "" {
+			kind = MentionUser
+		}
+		rows[i] = Mention{PostID: postID, UserID: m.UserID, Kind: kind}
 	}
-	err := s.db(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
+	err := s.db(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "post_id"}, {Name: "user_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"kind"}),
+	}).Create(&rows).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "replacePostMentions", "postID", postID)
 	}
 	return nil
 }
 
-// MentionedUsernamesOfPosts returns the usernames mentioned in each of the
-// posts, in the order the mentions were saved, with one query. A post without
+// MentionedUsernamesOfPosts returns the usernames mentioned by "@username" in
+// each of the posts (not those reached by a group mention or a keyword), in
+// the order the mentions were saved, with one query. A post without
 // mentions has no key in the map.
 func (s *Store) MentionedUsernamesOfPosts(ctx context.Context, postIDs []uint64) (map[uint64][]string, error) {
 	out := map[uint64][]string{}
@@ -80,7 +104,7 @@ func (s *Store) MentionedUsernamesOfPosts(ctx context.Context, postIDs []uint64)
 	err := s.db(ctx).Table("mentions").
 		Select("mentions.post_id AS post_id, users.username AS username").
 		Joins("JOIN users ON users.id = mentions.user_id").
-		Where("mentions.post_id IN ?", postIDs).
+		Where("mentions.post_id IN ? AND mentions.kind = ?", postIDs, string(MentionUser)).
 		Order("mentions.id ASC").
 		Scan(&rows).Error
 	if err != nil {
@@ -130,6 +154,8 @@ type NotificationRow struct {
 	// TaskID and TaskTitle are the task of an assignment.
 	TaskID    uint64
 	TaskTitle string
+	// Others is the number of other people folded into a reply notification.
+	Others int
 	// ReadAt is when the user read it; nil while unread.
 	ReadAt *time.Time
 }
@@ -151,7 +177,7 @@ notifications.actor_id AS actor_id, actors.username AS actor_username, actors.di
 rooms.id AS room_id, rooms.name AS room_name,
 COALESCE(notifications.post_id, 0) AS post_id, COALESCE(posts.root_id, posts.id, 0) AS root_id,
 COALESCE(notifications.task_id, 0) AS task_id, COALESCE(tasks.title, '') AS task_title,
-notifications.read_at AS read_at`).
+notifications.others AS others, notifications.read_at AS read_at`).
 		Joins("JOIN users actors ON actors.id = notifications.actor_id").
 		Joins("JOIN rooms ON rooms.id = notifications.room_id").
 		Joins("LEFT JOIN posts ON posts.id = notifications.post_id").

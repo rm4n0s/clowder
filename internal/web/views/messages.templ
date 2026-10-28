@@ -163,6 +163,7 @@ templ ConversationMembers(d MembersPanelData) {
 			for _, m := range d.Header.Members {
 				<li id={ "conversation-member-" + roomIDText(m.User.ID) } data-username={ m.User.Username }>
 					@Avatar(m.User.ID, m.User.DisplayName, m.User.AvatarURL())
+					@OnlineDot(d.Online[m.User.ID])
 					<span class="member-name">{ m.User.DisplayName }</span>
 					<span class="member-username">{ "@" + m.User.Username }</span>
 					if m.Disabled {
@@ -532,6 +533,7 @@ templ MessageComposerForm(d ComposerData) {
 				<p class="field-error" id="message-files-error" role="alert">{ d.Errors.Fields["attachments"] }</p>
 			}
 		</div>
+		@GroupMentionConfirm(GroupMentionConfirmData{ID: composerConfirmID, Count: d.ConfirmCount, SendPath: GroupMentionSendPath(ConversationPath(d.ConversationID))})
 		<div class="post-editor-actions">
 			<button type="submit">Send</button>
 		</div>

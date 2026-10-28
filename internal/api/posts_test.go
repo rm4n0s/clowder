@@ -217,7 +217,11 @@ func TestCreatePost(t *testing.T) {
 		if got["can_edit"] != false || got["can_delete"] != false {
 			t.Errorf("as carol: %v", got)
 		}
-		got["can_edit"], got["can_delete"] = true, true
+		// Bob follows the post he wrote; carol does not.
+		if got["following"] != false || p["following"] != true {
+			t.Errorf("following: carol %v, bob %v", got["following"], p["following"])
+		}
+		got["can_edit"], got["can_delete"], got["following"] = true, true, true
 		if !reflect.DeepEqual(got, p) {
 			t.Errorf("GET differs from the created post:\n%v\n%v", got, p)
 		}

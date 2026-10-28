@@ -249,6 +249,8 @@ type Messages struct {
 	// md finds the @username mentions of a message, for the decision whether
 	// it rings (SPEC §7.15).
 	md *markdown.Renderer
+	// presence tells who is online, for @here.
+	presence live.Presence
 }
 
 // NewMessages makes the service. The clock times the edits, deletions and
@@ -257,7 +259,8 @@ type Messages struct {
 // publishes nothing.
 func NewMessages(st *store.Store, clk clock.Clock, fs *files.Store, cfg MessagesConfig, pub Publisher) *Messages {
 	cfg = cfg.withDefaults()
-	return &Messages{st: st, clk: clk, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger), pub: orNop(pub), md: markdown.New()}
+	return &Messages{st: st, clk: clk, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger), pub: orNop(pub), md: markdown.New(),
+		presence: orMemoryPresence(cfg.Presence)}
 }
 
 // StartDirect returns the ID of the direct conversation between the actor and

@@ -57,6 +57,9 @@ type postJSON struct {
 	Deleted      bool             `json:"deleted"`
 	CanEdit      bool             `json:"can_edit"`
 	CanDelete    bool             `json:"can_delete"`
+	// Following is true when the user follows the post (for a comment: the
+	// top-level post of its thread).
+	Following bool `json:"following"`
 }
 
 // attachmentURL is the path a client downloads an attachment from.
@@ -81,6 +84,7 @@ func postOf(p app.Post) postJSON {
 		Deleted:      p.Deleted,
 		CanEdit:      p.CanEdit,
 		CanDelete:    p.CanDelete,
+		Following:    p.Following,
 	}
 	if out.RootID == 0 {
 		out.RootID = p.ID

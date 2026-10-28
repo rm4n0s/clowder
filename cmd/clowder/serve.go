@@ -73,6 +73,11 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		return err
 	}
 	defer closeBridge()
+	livePresence, closePresence, err := newPresence(ctx, cfg.RedisURL, logger, openPresence)
+	if err != nil {
+		return err
+	}
+	defer closePresence()
 	limiter, closeLimiter, err := newLimiter(ctx, cfg.RedisURL, clock.Real(), logger, openCounter)
 	if err != nil {
 		return err
@@ -90,6 +95,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
+		Presence:          livePresence,
 	}
 	notifications := app.NewNotifications(st, pub)
 	prefs := app.NewPrefs(st, pub)
@@ -105,10 +111,11 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	board := app.NewBoard(st, clock.Real(), pub)
 	search := app.NewSearch(st)
 	audit := app.NewAudit(st)
+	presence := app.NewPresence(st, livePresence)
 	apiServer, err := api.New(api.Options{
 		Services: api.Services{
 			Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts,
-			Board: board, Search: search, Audit: audit, Prefs: prefs, Hub: hub,
+			Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: presence, Hub: hub,
 		},
 		Logger:        logger,
 		NoteUser:      web.NoteUser,
@@ -131,6 +138,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Hub:           hub,
 		Notifications: notifications,
 		Prefs:         prefs,
+		Presence:      presence,
 		Posts:         posts,
 		Messages:      messages,
 	})
@@ -177,6 +185,46 @@ func newPublisher(ctx context.Context, redisURL string, hub *live.Hub, logger *s
 	return bridge, func() {
 		if closeErr := bridge.Close(); closeErr != nil {
 			logger.Error("closing the Redis bridge failed", "err", closeErr)
+		}
+	}, nil
+}
+
+// presenceCloser is the live.Presence of the process when it runs with Redis:
+// it also has to be closed. *cluster.Presence is one.
+type presenceCloser interface {
+	live.Presence
+	Close() error
+}
+
+// presenceOpener opens the presence in Redis; openPresence is the real one and
+// tests pass a fake.
+type presenceOpener func(ctx context.Context, redisURL string, logger *slog.Logger) (presenceCloser, error)
+
+// openPresence opens a cluster.Presence.
+func openPresence(ctx context.Context, redisURL string, logger *slog.Logger) (presenceCloser, error) {
+	p, err := cluster.NewPresence(ctx, redisURL, logger)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// newPresence makes the presence of the process: counted in memory when
+// redisURL is empty, else kept in Redis, so that "who is online" covers every
+// process (SPEC §7.15, §8.1). The returned function stops what must be stopped
+// (the refresher of the Redis one) and does nothing for the in-memory one.
+func newPresence(ctx context.Context, redisURL string, logger *slog.Logger, open presenceOpener) (live.Presence, func(), error) {
+	if redisURL == "" {
+		return live.NewMemoryPresence(), func() {}, nil
+	}
+	p, err := open(ctx, redisURL, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	logger.Info("presence is kept in Redis", "redis", config.RedactURL(redisURL))
+	return p, func() {
+		if closeErr := p.Close(); closeErr != nil {
+			logger.Error("closing the presence in Redis failed", "err", closeErr)
 		}
 	}, nil
 }

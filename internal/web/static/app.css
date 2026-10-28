@@ -1368,3 +1368,19 @@ li.muted { opacity: 0.6; }
 .settings-section h3 { margin-top: 1.5rem; }
 
 .conversation-link > .muted-icon { grid-column: 2; grid-row: 2; justify-self: end; margin-left: 0; }
+
+/* A small dot next to a member who is online when the page loads (SPEC 7.15). */
+.online-dot {
+  display: inline-block;
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* The question of a group mention that would notify many people. */
+.group-mention-confirm:empty { display: none; }
+.group-mention-question { margin: 0.5rem 0 0.25rem; font-weight: 600; }
+.notification-others { font-weight: 600; }

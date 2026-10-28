@@ -77,6 +77,9 @@ type Services struct {
 	// Prefs is the service of the notification preferences of a user in a
 	// room or a conversation, and of the notices their streams carry.
 	Prefs *app.Prefs
+	// Presence tells who is online and is told when a stream opens or closes
+	// (SPEC §7.15). Nil counts nobody.
+	Presence *app.Presence
 	// Health answers the health check, GET /healthz (SPEC D40). Nil makes
 	// the check answer 503.
 	Health HealthChecker
@@ -220,6 +223,8 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "GET /posts/{id}/reply", handler: http.HandlerFunc(s.postReplyForm)},
 		{pattern: "POST /posts/{id}/replies", handler: http.HandlerFunc(s.postReply)},
 		{pattern: "POST /posts/{id}/reactions", handler: http.HandlerFunc(s.postReact)},
+		{pattern: "POST /posts/{id}/follow", handler: http.HandlerFunc(s.postFollow)},
+		{pattern: "POST /posts/{id}/unfollow", handler: http.HandlerFunc(s.postUnfollow)},
 		{pattern: "POST /preview", handler: http.HandlerFunc(s.postPreview)},
 		{pattern: "GET /files/{id}/{name}", handler: http.HandlerFunc(s.fileDownload)},
 		{pattern: "GET " + views.MessagesPath, handler: http.HandlerFunc(s.messagesPage)},

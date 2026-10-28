@@ -70,6 +70,10 @@ type PostEditorData struct {
 	// room and, when a post is edited, the former members who are assigned to
 	// one of its tasks (see WithMembers).
 	Assignable []AssigneeOption
+	// ConfirmCount, when it is not 0, is the number of people a group mention
+	// of the body would notify, and the editor asks "This will notify N
+	// people. Send anyway?" (SPEC §7.15).
+	ConfirmCount int
 	// assigned are the people assigned to the tasks the post has now, with
 	// their names, so that WithMembers can keep those who left the room.
 	assigned []app.UserRef

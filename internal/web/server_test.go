@@ -103,6 +103,9 @@ type testEnv struct {
 	prefs    *app.Prefs
 	msgs     *app.Messages
 	hub      *live.Hub
+	// presence is the presence the services and the server share; a test
+	// connects users to it.
+	presence *live.MemoryPresence
 	st       *store.Store
 	clk      *clock.Fake
 	// filesDir is the directory of the files of the attachments.
@@ -123,6 +126,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	}
 	hub := live.New()
 	t.Cleanup(hub.Close)
+	presence := live.NewMemoryPresence()
 	avatarStore, err := files.New(filepath.Join(t.TempDir(), "avatars"))
 	if err != nil {
 		t.Fatalf("files.New: %+v", err)
@@ -145,6 +149,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
+		Presence:          presence,
 	}, hub)
 	search := app.NewSearch(st)
 	notifs := app.NewNotifications(st, hub)
@@ -153,9 +158,11 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
+		Presence:          presence,
 	}, hub)
+	online := app.NewPresence(st, presence)
 	apiServer, err := api.New(api.Options{
-		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search, Audit: audit, Prefs: prefs, Hub: hub},
+		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: online, Hub: hub},
 		Logger:        logger,
 		NoteUser:      NoteUser,
 		ClientIP:      ClientIPFunc(cfg.TrustProxyHeaders),
@@ -164,11 +171,11 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	if err != nil {
 		t.Fatalf("api.New: %+v", err)
 	}
-	s, err := newServer(cfg, logger, Services{API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
+	s, err := newServer(cfg, logger, Services{API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Presence: online, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, search: search, notifs: notifs, prefs: prefs, msgs: msgs, hub: hub, st: st, clk: clk, filesDir: filesDir}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, search: search, notifs: notifs, prefs: prefs, msgs: msgs, hub: hub, presence: presence, st: st, clk: clk, filesDir: filesDir}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

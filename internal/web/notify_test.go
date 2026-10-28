@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -98,18 +99,18 @@ func TestSettingsNotificationsSave(t *testing.T) {
 	}{
 		{name: "datastar saves", form: all, opts: []reqOpt{asDatastar()}, wantCode: http.StatusOK,
 			want:   []string{`id="notifications"`, `<p class="saved" role="status">Saved</p>`, `name="notify" value="all" checked`, `name="soundName" value="meow" checked`},
-			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, BrowserNotifications: true, Notify: app.NotifyAll, SoundName: app.SoundMeow, Replies: app.RepliesDirect}},
+			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, BrowserNotifications: true, Notify: app.NotifyAll, SoundName: app.SoundMeow, Replies: app.RepliesDirect, Keywords: []string{}}},
 		{name: "plain redirects back", form: all, wantCode: http.StatusSeeOther,
-			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, BrowserNotifications: true, Notify: app.NotifyAll, SoundName: app.SoundMeow, Replies: app.RepliesDirect}},
+			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, BrowserNotifications: true, Notify: app.NotifyAll, SoundName: app.SoundMeow, Replies: app.RepliesDirect, Keywords: []string{}}},
 		{name: "a checkbox that is not there is off", form: url.Values{"notify": {"nothing"}, "soundName": {"bell"}, "replies": {"following"}},
 			opts: []reqOpt{asDatastar()}, wantCode: http.StatusOK, want: []string{`name="notify" value="nothing" checked`},
-			stored: app.Settings{Theme: app.ThemeSystem, Notify: app.NotifyNothing, SoundName: app.SoundBell, Replies: app.RepliesFollowing}},
+			stored: app.Settings{Theme: app.ThemeSystem, Notify: app.NotifyNothing, SoundName: app.SoundBell, Replies: app.RepliesFollowing, Keywords: []string{}}},
 		{name: "datastar unknown notify", form: url.Values{"notify": {"some"}, "sound": {"on"}}, opts: []reqOpt{asDatastar()}, wantCode: http.StatusOK,
 			want:   []string{`id="notifications"`, "Choose all new activity, mentions or nothing."},
-			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, Notify: app.NotifyMentions, SoundName: app.SoundPurr, Replies: app.RepliesFollowing}},
+			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, Notify: app.NotifyMentions, SoundName: app.SoundPurr, Replies: app.RepliesFollowing, Keywords: []string{}, GroupMentions: true}},
 		{name: "plain unknown sound shows the page", form: url.Values{"soundName": {"moo"}, "sound": {"on"}}, wantCode: http.StatusUnprocessableEntity,
 			want:   []string{"<title>Settings · Clowder</title>", "Choose Purr, Chirp, Bell or Meow."},
-			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, Notify: app.NotifyMentions, SoundName: app.SoundPurr, Replies: app.RepliesFollowing}},
+			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, Notify: app.NotifyMentions, SoundName: app.SoundPurr, Replies: app.RepliesFollowing, Keywords: []string{}, GroupMentions: true}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -124,7 +125,7 @@ func TestSettingsNotificationsSave(t *testing.T) {
 				t.Errorf("Location = %q", rec.Header().Get("Location"))
 			}
 			got, err := e.accounts.Settings(t.Context(), e.actor(e.bob))
-			if err != nil || got != tt.stored {
+			if err != nil || !reflect.DeepEqual(got, tt.stored) {
 				t.Errorf("settings = %+v, %v; want %+v", got, err, tt.stored)
 			}
 		})

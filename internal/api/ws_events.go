@@ -212,6 +212,8 @@ func (ws *wsSession) onUserEvent(ctx context.Context, ev live.Event) error {
 		return ws.sendEvent(ctx, ev, settingsOf(settings))
 	case live.KindNotificationCreated:
 		return ws.notificationCreated(ctx, ev)
+	case live.KindNotificationChanged:
+		return ws.notificationChanged(ctx, ev)
 	case live.KindPlacePrefsChanged:
 		return ws.placePrefsChanged(ctx, ev)
 	case live.KindPostCreated, live.KindMessageCreated:
@@ -265,6 +267,23 @@ func (ws *wsSession) counts(ctx context.Context) (wsCountsJSON, error) {
 		return wsCountsJSON{}, err
 	}
 	return wsCountsJSON{UnreadNotifications: notifications, UnreadConversations: conversations}, nil
+}
+
+// notificationChanged handles a notification.changed event: a reply was folded
+// into a notification the user has, which now names a newer actor and counts
+// more people. The event carries the notification as GET /notifications
+// returns it, and never rings. A notification that is gone, or of a room the
+// user can no longer read, sends nothing.
+func (ws *wsSession) notificationChanged(ctx context.Context, ev live.Event) error {
+	// The newest notification with an ID below ID+1 is the notification itself.
+	page, err := ws.s.svc.Notifications.List(ctx, ws.actor, ev.NotificationID+1, 1)
+	if err != nil {
+		return err
+	}
+	if len(page.Notifications) == 0 || page.Notifications[0].ID != ev.NotificationID {
+		return nil
+	}
+	return ws.sendEvent(ctx, ev, notificationOf(page.Notifications[0]))
 }
 
 // notificationCreated handles a notification.created event. The event does not

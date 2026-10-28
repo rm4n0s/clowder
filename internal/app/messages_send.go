@@ -86,13 +86,16 @@ func (m *Messages) Send(ctx context.Context, actor Actor, convID uint64, in Mess
 			changedEvents(convID, userIDsOf(rows[convID])...)...)
 		// The members whose choice for the conversation covers the message
 		// hear it ring.
-		mentioned := map[string]bool{}
-		for _, name := range m.md.Mentions(markdown.FormatText, body) {
-			mentioned[name] = true
+		recipients, err := tx.ConversationRecipients(ctx, convID, actor.UserID)
+		if err != nil {
+			return err
 		}
-		rung, err := messageRingEvents(ctx, tx, conv, created.ID, actor.UserID, mentioned)
-		events = append(events, rung...)
-		return err
+		mentioned, err := m.mentionedMembers(ctx, conv, body, recipients)
+		if err != nil {
+			return err
+		}
+		events = append(events, messageRingEvents(conv, recipients, created.ID, mentioned)...)
+		return nil
 	})
 	if err != nil {
 		m.cleaner.discard(ctx, m.st, in.Uploads)
@@ -533,4 +536,60 @@ func messageReactionRows(rows []store.MessageReactionRow) []store.ReactionRow {
 		out[i] = store.ReactionRow{ID: r.ID, PostID: r.MessageID, UserID: r.UserID, Emoji: r.Emoji, Username: r.Username, DisplayName: r.DisplayName}
 	}
 	return out
+}
+
+// mentionedMembers returns the set of the recipients whom a message mentions
+// (SPEC §7.15): by @username, by @room, @all or @here (in a group
+// conversation only: a direct conversation has no group mentions) and by one
+// of their keywords. A message makes no notification; the set only decides
+// whether a member on "Mentions" rings for it.
+func (m *Messages) mentionedMembers(ctx context.Context, conv store.Conversation, body string, recipients []store.Recipient) (map[uint64]bool, error) {
+	scan := scanBody(m.md, markdown.FormatText, body)
+	out := map[uint64]bool{}
+	for _, name := range scan.usernames {
+		for _, r := range recipients {
+			if strings.EqualFold(r.Username, name) {
+				out[r.UserID] = true
+			}
+		}
+	}
+	reached, err := groupAndKeywordMentions(ctx, m.presence, scan, recipients, conv.Kind != ConversationDirect)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range reached {
+		out[r.UserID] = true
+	}
+	return out, nil
+}
+
+// GroupMentionCount says how many people the group mentions of a message body
+// would notify if the actor sent it in the conversation: the other members
+// except those who turned the group mentions off or ignore them there, all of
+// them for @room and @all, those online now for @here. It is 0 when the body
+// holds no group mention, and always 0 in a direct conversation, which has none.
+// A page asks it before a message is sent, to put the question "This will
+// notify 14 people. Send anyway?" when it is above GroupMentionConfirmAbove. A
+// conversation the actor is no member of fails with TagNotFound, a disabled or
+// missing account with TagUnauthenticated.
+func (m *Messages) GroupMentionCount(ctx context.Context, actor Actor, convID uint64, body string) (int, error) {
+	if _, err := checkActive(ctx, m.st, actor); err != nil {
+		return 0, err
+	}
+	conv, _, err := loadConversation(ctx, m.st, actor, convID)
+	if err != nil {
+		return 0, err
+	}
+	if conv.Kind == ConversationDirect {
+		return 0, nil
+	}
+	scan := scanBody(m.md, markdown.FormatText, body)
+	if !scan.hasGroup() {
+		return 0, nil
+	}
+	recipients, err := m.st.ConversationRecipients(ctx, convID, actor.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return countGroupMentions(ctx, m.presence, scan, recipients)
 }

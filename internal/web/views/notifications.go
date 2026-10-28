@@ -72,13 +72,15 @@ func NotificationPath(n app.Notification) string {
 }
 
 // NotificationSentence is what the actor did, up to the room: "mentioned you
-// in", "replied to you in", `assigned you "<task>" in` or "added you to".
+// in", "replied in", `assigned you "<task>" in` or "added you to". A reply
+// says "replied in" whether it answers the user or comes from a followed
+// thread (SPEC §7.15).
 func NotificationSentence(n app.Notification) string {
 	switch n.Kind {
-	case app.NotificationMention:
+	case app.NotificationMention, app.NotificationGroupMention, app.NotificationKeyword:
 		return "mentioned you in"
 	case app.NotificationReply:
-		return "replied to you in"
+		return "replied in"
 	case app.NotificationAssigned:
 		return "assigned you \"" + n.TaskTitle + "\" in"
 	case app.NotificationAddedToRoom:
@@ -86,6 +88,12 @@ func NotificationSentence(n app.Notification) string {
 	default:
 		return "notified you in"
 	}
+}
+
+// NotificationOthers is what follows the name of the actor of a reply that
+// took in more people: " and 2 others", empty for none.
+func NotificationOthers(n app.Notification) string {
+	return app.OthersText(n.Others)
 }
 
 // NotificationElementID is the id of the element of a notification.

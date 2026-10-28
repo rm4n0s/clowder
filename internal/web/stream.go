@@ -274,6 +274,9 @@ type eventHandler func(ctx context.Context, ev live.Event) (end bool, err error)
 // the session of the user is still valid. It returns when the stream is over.
 func (ls *liveStream) run(sub *live.Subscription, handle eventHandler) {
 	ctx := ls.r.Context()
+	// The person is online while a stream of theirs is open (SPEC §7.15).
+	ls.s.svc.Presence.Connect(ls.actor.UserID)
+	defer ls.s.svc.Presence.Disconnect(ls.actor.UserID)
 	ticker := time.NewTicker(ls.s.pingInterval)
 	defer ticker.Stop()
 	for {

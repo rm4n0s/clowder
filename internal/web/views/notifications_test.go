@@ -101,7 +101,7 @@ func TestNotificationItem(t *testing.T) {
 		},
 		{
 			name: "reply, read", n: with(func(n *app.Notification) { n.Kind, n.Read = app.NotificationReply, true }),
-			want:    []string{`class="notification" data-kind="reply"`, actor + "replied to you in" + room, `href="/posts/10#post-11"`},
+			want:    []string{`class="notification" data-kind="reply"`, actor + "replied in" + room, `href="/posts/10#post-11"`},
 			notWant: []string{"unread", "notification-mark", "data-class", "data-show"},
 		},
 		{

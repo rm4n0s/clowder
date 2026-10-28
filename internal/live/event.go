@@ -46,6 +46,12 @@ const (
 	// NotificationID the notification. Ring, Sound and Browser say whether it
 	// rings for that user.
 	KindNotificationCreated = "notification.created"
+	// KindNotificationChanged says a notification of a user changed: a reply
+	// was folded into it, so that it names a newer actor and counts more
+	// people (SPEC §7.15). It is published on UserTopic of that user; UserID
+	// is the user, RoomID the room, PostID the post of the notification and
+	// NotificationID the notification. It never rings.
+	KindNotificationChanged = "notification.changed"
 	// KindNotificationRead says a user marked notifications as read. It is
 	// published on UserTopic of that user; UserID is the user.
 	KindNotificationRead = "notification.read"

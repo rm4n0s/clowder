@@ -25,6 +25,7 @@ func allModels() []any {
 		&Message{},
 		&ConversationMember{},
 		&PlacePref{},
+		&PostFollow{},
 		&MessageAttachment{},
 		&MessageReaction{},
 		&AuditEvent{},

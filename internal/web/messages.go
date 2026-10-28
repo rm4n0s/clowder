@@ -156,7 +156,7 @@ func (s *Server) conversationView(ctx context.Context, actor app.Actor, id, befo
 		ViewerID: actor.UserID, Header: h, Messages: items,
 		HasOlder: page.HasOlder, NextBefore: page.NextBefore, Before: before,
 		Composer: views.ComposerData{ConversationID: id, CanSend: h.CanSend},
-		Members:  views.MembersPanelData{Header: h, ViewerID: actor.UserID},
+		Members:  views.MembersPanelData{Header: h, ViewerID: actor.UserID, Online: s.onlineSet(ctx, actor, memberIDsOf(h))},
 		Prefs:    prefs,
 	}, nil
 }
@@ -453,6 +453,14 @@ func (s *Server) messageSend(w http.ResponseWriter, r *http.Request) {
 	actor, _ := actorFrom(r.Context())
 	var msg app.Message
 	if err == nil {
+		body := r.PostFormValue("body")
+		if n := s.groupMentionToConfirm(r, body, func() (int, error) {
+			return s.svc.Messages.GroupMentionCount(r.Context(), actor, id, body)
+		}); n > 0 {
+			s.svc.Messages.DiscardUploads(r.Context(), actor, uploads)
+			s.messageSendAsk(w, r, id, n)
+			return
+		}
 		msg, err = s.svc.Messages.Send(r.Context(), actor, id, app.MessageInput{
 			Body: r.PostFormValue("body"), ReplyToID: idOfText(r.PostFormValue("reply_to")), Uploads: uploads,
 		})
@@ -483,6 +491,27 @@ func (s *Server) messageSend(w http.ResponseWriter, r *http.Request) {
 		options:   []datastar.PatchElementOption{datastar.WithSelector(composerFormSelector), datastar.WithModeReplace()},
 	})
 	s.patchAll(w, r, ops...)
+}
+
+// messageSendAsk asks "This will notify n people. Send anyway?" instead of
+// sending the message: a Datastar request gets the question in the composer,
+// which keeps what was typed and the files chosen; a plain post gets the
+// conversation page with the composer holding what was typed and the question.
+func (s *Server) messageSendAsk(w http.ResponseWriter, r *http.Request, id uint64, n int) {
+	if isDatastar(r) {
+		s.patch(w, r, views.GroupMentionConfirm(views.ComposerConfirm(id, n)))
+		return
+	}
+	actor, _ := actorFrom(r.Context())
+	reply := s.replyQuote(r.Context(), actor, id, idOfText(r.PostFormValue("reply_to")))
+	d, ok := s.conversationPageData(w, r, id, 0, nil)
+	if !ok {
+		return
+	}
+	d.Composer = views.ComposerData{
+		ConversationID: id, CanSend: true, Body: r.PostFormValue("body"), Reply: reply, ConfirmCount: n,
+	}
+	s.render(w, r, http.StatusOK, views.ConversationPage(d))
 }
 
 // messageSendFailed shows the problems of a message that was not sent. A
@@ -518,7 +547,16 @@ func (s *Server) membersPanelFor(ctx context.Context, actor app.Actor, id uint64
 	if err != nil {
 		return views.MembersPanelData{}, err
 	}
-	return views.MembersPanelData{Header: h, ViewerID: actor.UserID}, nil
+	return views.MembersPanelData{Header: h, ViewerID: actor.UserID, Online: s.onlineSet(ctx, actor, memberIDsOf(h))}, nil
+}
+
+// memberIDsOf lists the IDs of the members of a conversation.
+func memberIDsOf(h app.ConversationHeader) []uint64 {
+	ids := make([]uint64, len(h.Members))
+	for i, m := range h.Members {
+		ids[i] = m.User.ID
+	}
+	return ids
 }
 
 // groupChanged answers a successful change of a group: a Datastar request gets

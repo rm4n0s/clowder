@@ -98,7 +98,7 @@ func (cs *conversationStream) connect(ctx context.Context) (start, error) {
 			return start{}, err
 		}
 		ops = append(ops, sidebar)
-		ops = append(ops, cs.headerOps(h)...)
+		ops = append(ops, cs.headerOps(ctx, h)...)
 	}
 	if cs.before != 0 {
 		return start{ops: ops}, nil
@@ -141,10 +141,10 @@ func newestMessage(ms []app.Message) *app.Message {
 
 // headerOps are the patches of the header of the conversation and, for a
 // group, of its members panel.
-func (cs *conversationStream) headerOps(h app.ConversationHeader) []patchOp {
+func (cs *conversationStream) headerOps(ctx context.Context, h app.ConversationHeader) []patchOp {
 	ops := []patchOp{{component: views.ConversationHeader(views.ConversationData{Header: h, ViewerID: cs.actor.UserID})}}
 	if h.IsGroup {
-		ops = append(ops, patchOp{component: views.ConversationMembers(views.MembersPanelData{Header: h, ViewerID: cs.actor.UserID})})
+		ops = append(ops, patchOp{component: views.ConversationMembers(views.MembersPanelData{Header: h, ViewerID: cs.actor.UserID, Online: cs.s.onlineSet(ctx, cs.actor, memberIDsOf(h))})})
 	}
 	return ops
 }
@@ -280,7 +280,7 @@ func (cs *conversationStream) updated(ctx context.Context) (end bool, err error)
 	if err != nil {
 		return cs.goneTo(err)
 	}
-	for _, op := range cs.headerOps(h) {
+	for _, op := range cs.headerOps(ctx, h) {
 		if err := cs.patch(op.component, op.options...); err != nil {
 			return false, err
 		}

@@ -171,6 +171,9 @@ type RoomData struct {
 	Room app.Room
 	// Members are the members of the room.
 	Members []app.Member
+	// Online is the set of the members who are online when the page loads
+	// (SPEC §7.15); the dots are not live.
+	Online map[uint64]bool
 	// Candidates are the users the viewer can add; empty for a viewer who is
 	// not a member.
 	Candidates []app.User
@@ -307,6 +310,7 @@ templ MembersPanel(d RoomData) {
 			for _, m := range d.Members {
 				<li id={ "member-" + roomIDText(m.UserID) } data-username={ m.Username }>
 					@Avatar(m.UserID, m.DisplayName, m.AvatarURL())
+					@OnlineDot(d.Online[m.UserID])
 					<span class="member-name">{ m.DisplayName }</span>
 					<span class="member-username">{ "@" + m.Username }</span>
 					<span class="hint member-added">
@@ -353,4 +357,13 @@ templ MembersPanel(d RoomData) {
 // memberRemovePath returns the path that removes a user from a room.
 func memberRemovePath(roomID, userID uint64) string {
 	return RoomPath(roomID) + "/members/" + roomIDText(userID) + "/remove"
+}
+
+// OnlineDot is the small dot next to a member who is online (SPEC §7.15); it
+// draws nothing for one who is not. It is drawn when the page loads and not
+// updated live.
+templ OnlineDot(online bool) {
+	if online {
+		<span class="online-dot" role="img" aria-label="Online" title="Online"></span>
+	}
 }

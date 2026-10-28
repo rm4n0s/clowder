@@ -584,7 +584,7 @@ func TestRunDemoMakesTheDemoUsers(t *testing.T) {
 	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, hasher); err != nil {
 		t.Fatalf("demo: %+v", err)
 	}
-	for _, line := range []string{"admin  admin  Admin", "alice  member Alice", "bob    member Bob", "carol  member Carol"} {
+	for _, line := range []string{"admin  admin  Admin", "alice  member Alice", "bob    member Bob", "carol  member Carol", "dave   member Dave", "erin   member Erin", "frank  member Frank"} {
 		if !strings.Contains(stdout.String(), line) {
 			t.Errorf("stdout lacks %q:\n%s", line, stdout.String())
 		}
@@ -599,7 +599,7 @@ func TestRunDemoMakesTheDemoUsers(t *testing.T) {
 	for _, u := range admin {
 		got = append(got, u.Username)
 	}
-	if want := "admin,alice,bob,carol"; strings.Join(got, ",") != want {
+	if want := "admin,alice,bob,carol,dave,erin,frank"; strings.Join(got, ",") != want {
 		t.Fatalf("users = %v, want %s", got, want)
 	}
 	for _, d := range demoUsers {
@@ -670,7 +670,7 @@ func TestRunDemoMakesTheDemoRooms(t *testing.T) {
 		}
 		return out
 	}
-	general := row{"general", app.VisibilityVisible, 4}
+	general := row{"general", app.VisibilityVisible, 7}
 	random := row{"random", app.VisibilityVisible, 3}
 	secret := row{"secret", app.VisibilityPrivate, 2}
 	tests := []struct {
@@ -1038,7 +1038,7 @@ func TestRunDemoMakesTheDemoThreads(t *testing.T) {
 	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
 		t.Fatalf("demo: %+v", err)
 	}
-	if !strings.Contains(stdout.String(), "demo comments: 9 (1 deleted)") {
+	if !strings.Contains(stdout.String(), "demo comments: 10 (1 deleted)") {
 		t.Errorf("stdout lacks the number of comments:\n%s", stdout.String())
 	}
 
@@ -1091,8 +1091,8 @@ func TestRunDemoMakesTheDemoThreads(t *testing.T) {
 			want: []shape{{"alice", 1, false}, {"bob", 2, false}, {"carol", 3, false}, {"", 1, true}, {"alice", 2, false}},
 		},
 		{
-			name: "the checklist", post: checklist, comments: 4,
-			want: []shape{{"bob", 1, false}, {"carol", 2, false}, {"alice", 3, false}, {"bob", 4, false}},
+			name: "the checklist", post: checklist, comments: 5,
+			want: []shape{{"bob", 1, false}, {"carol", 2, false}, {"alice", 3, false}, {"bob", 4, false}, {"dave", 5, false}},
 		},
 	}
 	for _, tt := range tests {
@@ -1784,5 +1784,100 @@ func TestRunDemoGivesAliceNotificationPreferences(t *testing.T) {
 				t.Errorf("%s in secret: %+v, %v; want notify %s, sound %s", tt.user, got, err, tt.wantNotify, tt.wantSound)
 			}
 		}
+	}
+}
+
+// fakePresence is a live.Presence that is closed, as the one over Redis is.
+type fakePresence struct {
+	*live.MemoryPresence
+	closed   int
+	closeErr error
+}
+
+func (f *fakePresence) Close() error {
+	f.closed++
+	return f.closeErr
+}
+
+func TestNewPresence(t *testing.T) {
+	t.Run("without a Redis URL it counts in memory", func(t *testing.T) {
+		opened := false
+		p, closePresence, err := newPresence(t.Context(), "", newLogger("info", &syncBuffer{}),
+			func(context.Context, string, *slog.Logger) (presenceCloser, error) {
+				opened = true
+				return nil, nil
+			})
+		if err != nil || p == nil {
+			t.Fatalf("presence = %v, err = %v", p, err)
+		}
+		if opened {
+			t.Error("the Redis presence was opened without a Redis URL")
+		}
+		if _, ok := p.(*live.MemoryPresence); !ok {
+			t.Errorf("presence = %T, want the in-memory one", p)
+		}
+		closePresence() // does nothing
+	})
+	t.Run("with a Redis URL it is the one over Redis, closed at the end", func(t *testing.T) {
+		fake := &fakePresence{MemoryPresence: live.NewMemoryPresence()}
+		var logs syncBuffer
+		var gotURL string
+		p, closePresence, err := newPresence(t.Context(), "redis://:hunter2@redis:6379/0", newLogger("info", &logs),
+			func(_ context.Context, url string, _ *slog.Logger) (presenceCloser, error) {
+				gotURL = url
+				return fake, nil
+			})
+		if err != nil || p != live.Presence(fake) {
+			t.Fatalf("presence = %v, err = %v", p, err)
+		}
+		if gotURL != "redis://:hunter2@redis:6379/0" {
+			t.Errorf("opened with %q", gotURL)
+		}
+		out := logs.String()
+		if !strings.Contains(out, "presence is kept in Redis") || !strings.Contains(out, "redis://:xxxxx@redis:6379/0") || strings.Contains(out, "hunter2") {
+			t.Errorf("log line with the redacted URL missing:\n%s", out)
+		}
+		closePresence()
+		if fake.closed != 1 {
+			t.Errorf("Close was called %d times, want 1", fake.closed)
+		}
+	})
+	t.Run("a failure to close is logged", func(t *testing.T) {
+		var logs syncBuffer
+		fake := &fakePresence{MemoryPresence: live.NewMemoryPresence(), closeErr: errors.New("RedisCloseFailed", "boom")}
+		_, closePresence, err := newPresence(t.Context(), "redis://redis", newLogger("info", &logs),
+			func(context.Context, string, *slog.Logger) (presenceCloser, error) { return fake, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		closePresence()
+		if !strings.Contains(logs.String(), "closing the presence in Redis failed") {
+			t.Errorf("not logged:\n%s", logs.String())
+		}
+	})
+	t.Run("the error of the opener is returned as it is", func(t *testing.T) {
+		_, _, err := newPresence(t.Context(), "redis://redis", newLogger("info", &syncBuffer{}),
+			func(context.Context, string, *slog.Logger) (presenceCloser, error) {
+				return nil, errors.New("RedisPingFailed", "no server")
+			})
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != "RedisPingFailed" || !appErr.HasRoute("newPresence") {
+			t.Errorf("err = %v", err)
+		}
+	})
+}
+
+func TestOpenPresenceWithoutAServer(t *testing.T) {
+	// Nothing listens on port 1.
+	p, err := openPresence(t.Context(), "redis://:hunter2@127.0.0.1:1/0", newLogger("info", &syncBuffer{}))
+	if p != nil {
+		t.Errorf("presence = %v, want nil", p)
+	}
+	appErr, ok := errors.FromError(err)
+	if !ok || !appErr.HasRoute("openPresence->NewPresence->openRedis.RedisPingFailed") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(appErr.Error(), "hunter2") || strings.Contains(fmt.Sprint(appErr.Metadata), "hunter2") {
+		t.Errorf("the error holds the password: %v", appErr)
 	}
 }

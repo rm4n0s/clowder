@@ -14,6 +14,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -181,7 +183,7 @@ func TestSettings(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Settings: %+v", err)
 			}
-			if got != (settingsDefaults) {
+			if !reflect.DeepEqual(got, settingsDefaults) {
 				t.Errorf("defaults = %+v, want system, sound on, browser notifications off", got)
 			}
 		})
@@ -196,6 +198,7 @@ func fmtRoute(pattern, method string) string {
 // settingsDefaults are the settings of a user who saved none.
 var settingsDefaults = app.Settings{
 	Theme: app.ThemeSystem, Sound: true, Notify: app.NotifyMentions, SoundName: app.SoundPurr, Replies: app.RepliesFollowing,
+	Keywords: []string{}, GroupMentions: true,
 }
 
 // settingsWith returns base changed by change.
@@ -239,14 +242,14 @@ func TestUpdateSettings(t *testing.T) {
 			if err != nil {
 				t.Fatalf("UpdateSettings: %+v", err)
 			}
-			if got != tt.want {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("settings = %+v, want %+v", got, tt.want)
 			}
 			again, err := p.svc.Settings(t.Context(), actor(p.alice))
-			if err != nil || again != tt.want {
+			if err != nil || !reflect.DeepEqual(again, tt.want) {
 				t.Errorf("Settings = %+v, %v; want %+v", again, err, tt.want)
 			}
-			changed := tt.want != (settingsDefaults)
+			changed := !reflect.DeepEqual(tt.want, settingsDefaults)
 			ev := p.rec.Events()
 			if changed {
 				if len(ev) != 1 || ev[0].Kind != live.KindSettingsChanged || ev[0].Topic != live.UserTopic(p.alice.ID) {
@@ -257,7 +260,7 @@ func TestUpdateSettings(t *testing.T) {
 			}
 			// Another user keeps the defaults.
 			other, err := p.svc.Settings(t.Context(), actor(p.bob))
-			if err != nil || other != (settingsDefaults) {
+			if err != nil || !reflect.DeepEqual(other, settingsDefaults) {
 				t.Errorf("another user's settings = %+v, %v", other, err)
 			}
 		})
@@ -962,6 +965,227 @@ func TestAvatarURL(t *testing.T) {
 			}
 			if got := (app.Member{UserID: tt.id, AvatarKey: tt.key}).AvatarURL(); got != tt.want {
 				t.Errorf("Member.AvatarURL = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUpdateSettingsKeywords(t *testing.T) {
+	t.Parallel()
+	rep := func(s string, n int) string { return strings.Repeat(s, n) }
+	many := func(n int) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = "word" + strings.Repeat("x", i)
+		}
+		return out
+	}
+	tests := []struct {
+		name string
+		// before is the list that is saved first; nil saves none.
+		before []string
+		update *[]string
+		want   []string
+		// wantInvalid is true when the update must fail with a message under
+		// FieldKeywords.
+		wantInvalid bool
+		// wantEvent says whether settings.changed is published by the update.
+		wantEvent bool
+	}{
+		{name: "one keyword", update: &[]string{"deploy"}, want: []string{"deploy"}, wantEvent: true},
+		{name: "the case is kept", update: &[]string{"Feeder"}, want: []string{"Feeder"}, wantEvent: true},
+		{name: "trimmed and inner spaces made one", update: &[]string{"  Feeder \t  schedule\n", " deploy"},
+			want: []string{"Feeder schedule", "deploy"}, wantEvent: true},
+		{name: "the order is kept", update: &[]string{"b", "a", "c"}, want: []string{"b", "a", "c"}, wantEvent: true},
+		{name: "a phrase", update: &[]string{"on call"}, want: []string{"on call"}, wantEvent: true},
+		{name: "32 characters", update: &[]string{rep("a", 32)}, want: []string{rep("a", 32)}, wantEvent: true},
+		{name: "32 characters that take 64 bytes", update: &[]string{rep("é", 32)}, want: []string{rep("é", 32)}, wantEvent: true},
+		{name: "32 characters after the spaces are folded", update: &[]string{rep("a", 16) + "      " + rep("b", 15)},
+			want: []string{rep("a", 16) + " " + rep("b", 15)}, wantEvent: true},
+		{name: "33 characters", update: &[]string{rep("a", 33)}, wantInvalid: true},
+		{name: "33 characters that take 66 bytes", update: &[]string{rep("é", 33)}, wantInvalid: true},
+		{name: "one bad keyword among good ones", update: &[]string{"ok", rep("a", 40), "fine"}, wantInvalid: true},
+		{name: "empty", update: &[]string{""}, wantInvalid: true},
+		{name: "only spaces", update: &[]string{" \t "}, wantInvalid: true},
+		{name: "a blank one among good ones", update: &[]string{"ok", "  "}, wantInvalid: true},
+		{name: "a duplicate", update: &[]string{"deploy", "deploy"}, wantInvalid: true},
+		{name: "a duplicate ignoring case", update: &[]string{"Deploy", "deploy"}, wantInvalid: true},
+		{name: "a duplicate once the spaces are folded", update: &[]string{"on  call", "On call"}, wantInvalid: true},
+		{name: "a duplicate in Greek", update: &[]string{"Άλικη", "άλικη"}, wantInvalid: true},
+		{name: "10 keywords", update: ptr(many(10)), want: many(10), wantEvent: true},
+		{name: "11 keywords", update: ptr(many(11)), wantInvalid: true},
+		{name: "100 keywords", update: ptr(many(100)), wantInvalid: true},
+		{name: "clearing with an empty list", before: []string{"a", "b"}, update: &[]string{}, want: []string{}, wantEvent: true},
+		{name: "clearing with a nil slice", before: []string{"a"}, update: ptr([]string(nil)), want: []string{}, wantEvent: true},
+		{name: "an empty list when there is none", update: &[]string{}, want: []string{}},
+		{name: "a nil pointer keeps the list", before: []string{"a", "b"}, update: nil, want: []string{"a", "b"}},
+		{name: "the same list publishes nothing", before: []string{"a", "b"}, update: &[]string{"a", "b"}, want: []string{"a", "b"}},
+		{name: "the same list, written with other spaces, publishes nothing", before: []string{"on call", "b"}, update: &[]string{" on   call ", "b"}, want: []string{"on call", "b"}},
+		{name: "another order is a change", before: []string{"a", "b"}, update: &[]string{"b", "a"}, want: []string{"b", "a"}, wantEvent: true},
+		{name: "a bad list keeps the saved one", before: []string{"a", "b"}, update: &[]string{"a", "a"}, want: []string{"a", "b"}, wantInvalid: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := newProfileEnv(t)
+			if tt.before != nil {
+				if _, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), app.SettingsUpdate{Keywords: &tt.before}); err != nil {
+					t.Fatalf("UpdateSettings before: %+v", err)
+				}
+			}
+			p.rec.Reset()
+			// A valid change of another field goes with the keywords: when
+			// the keywords are bad nothing of it is saved.
+			dark := app.ThemeDark
+			got, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), app.SettingsUpdate{Keywords: tt.update, Theme: &dark})
+			if tt.wantInvalid {
+				appErr := requireTag(t, err, app.TagInvalidInput, "Accounts.UpdateSettings.InvalidInput")
+				if f := fieldsOf(t, appErr); f[app.FieldKeywords] == "" || len(f) != 1 {
+					t.Errorf("fields = %v, want only %s", f, app.FieldKeywords)
+				}
+				if ev := p.rec.Events(); len(ev) != 0 {
+					t.Errorf("a refused change published %+v", ev)
+				}
+				saved, serr := p.svc.Settings(t.Context(), actor(p.alice))
+				if serr != nil || saved.Theme != app.ThemeSystem || !slices.Equal(saved.Keywords, tt.want) {
+					t.Errorf("settings after a refusal = %+v, %v; want the theme and %v untouched", saved, serr, tt.want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("UpdateSettings: %+v", err)
+			}
+			if got.Keywords == nil || !slices.Equal(got.Keywords, tt.want) {
+				t.Errorf("keywords = %#v, want %#v", got.Keywords, tt.want)
+			}
+			again, err := p.svc.Settings(t.Context(), actor(p.alice))
+			if err != nil || again.Keywords == nil || !slices.Equal(again.Keywords, tt.want) || again.Theme != app.ThemeDark {
+				t.Errorf("Settings = %+v, %v; want keywords %#v and the dark theme", again, err, tt.want)
+			}
+			// The theme changed in every case, so one event is always there;
+			// the keywords alone are tested below.
+			if ev := p.rec.Events(); len(ev) != 1 || ev[0].Kind != live.KindSettingsChanged {
+				t.Errorf("events = %+v, want one settings.changed", ev)
+			}
+			if other, err := p.svc.Settings(t.Context(), actor(p.bob)); err != nil || len(other.Keywords) != 0 {
+				t.Errorf("another user's keywords = %+v, %v", other.Keywords, err)
+			}
+		})
+	}
+	// The keywords alone: the event follows the change.
+	for _, tt := range tests {
+		if tt.wantInvalid {
+			continue
+		}
+		t.Run("event/"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := newProfileEnv(t)
+			if tt.before != nil {
+				if _, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), app.SettingsUpdate{Keywords: &tt.before}); err != nil {
+					t.Fatalf("UpdateSettings before: %+v", err)
+				}
+			}
+			p.rec.Reset()
+			if _, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), app.SettingsUpdate{Keywords: tt.update}); err != nil {
+				t.Fatalf("UpdateSettings: %+v", err)
+			}
+			ev := p.rec.Events()
+			if tt.wantEvent {
+				if len(ev) != 1 || ev[0].Kind != live.KindSettingsChanged || ev[0].Topic != live.UserTopic(p.alice.ID) {
+					t.Errorf("events = %+v, want one settings.changed on the user's topic", ev)
+				}
+			} else if len(ev) != 0 {
+				t.Errorf("an unchanged list published %+v", ev)
+			}
+		})
+	}
+}
+
+func TestSettingsKeywordsAreNeverNil(t *testing.T) {
+	t.Parallel()
+	p := newProfileEnv(t)
+	got, err := p.svc.Settings(t.Context(), actor(p.alice))
+	if err != nil || got.Keywords == nil || len(got.Keywords) != 0 {
+		t.Errorf("default keywords = %#v, %v; want an empty list that is not nil", got.Keywords, err)
+	}
+	set, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), app.SettingsUpdate{Keywords: &[]string{"a"}})
+	if err != nil || !slices.Equal(set.Keywords, []string{"a"}) {
+		t.Fatalf("UpdateSettings = %+v, %v", set, err)
+	}
+	cleared, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), app.SettingsUpdate{Keywords: &[]string{}})
+	if err != nil || cleared.Keywords == nil || len(cleared.Keywords) != 0 {
+		t.Errorf("cleared keywords = %#v, %v; want an empty list that is not nil", cleared.Keywords, err)
+	}
+	kept, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), app.SettingsUpdate{})
+	if err != nil || kept.Keywords == nil {
+		t.Errorf("keywords after an empty update = %#v, %v", kept.Keywords, err)
+	}
+	if app.FieldKeywords != "keywords" {
+		t.Errorf("FieldKeywords = %q, want keywords", app.FieldKeywords)
+	}
+}
+
+func TestUpdateSettingsGroupMentions(t *testing.T) {
+	t.Parallel()
+	p := newProfileEnv(t)
+	got, err := p.svc.Settings(t.Context(), actor(p.alice))
+	if err != nil || !got.GroupMentions {
+		t.Fatalf("default = %+v, %v; want group mentions on", got, err)
+	}
+	tests := []struct {
+		name      string
+		update    app.SettingsUpdate
+		want      bool
+		wantEvent bool
+	}{
+		{"off", app.SettingsUpdate{GroupMentions: ptr(false)}, false, true},
+		{"off again publishes nothing", app.SettingsUpdate{GroupMentions: ptr(false)}, false, false},
+		{"another field keeps it off", app.SettingsUpdate{Sound: ptr(false)}, false, true},
+		{"nil keeps it off", app.SettingsUpdate{}, false, false},
+		{"back on", app.SettingsUpdate{GroupMentions: ptr(true)}, true, true},
+		{"on again publishes nothing", app.SettingsUpdate{GroupMentions: ptr(true)}, true, false},
+	}
+	for _, tt := range tests {
+		p.rec.Reset()
+		got, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), tt.update)
+		if err != nil {
+			t.Fatalf("%s: %+v", tt.name, err)
+		}
+		if got.GroupMentions != tt.want {
+			t.Errorf("%s: GroupMentions = %v, want %v", tt.name, got.GroupMentions, tt.want)
+		}
+		if again, err := p.svc.Settings(t.Context(), actor(p.alice)); err != nil || again.GroupMentions != tt.want {
+			t.Errorf("%s: Settings = %+v, %v", tt.name, again, err)
+		}
+		if ev := p.rec.Events(); tt.wantEvent != (len(ev) == 1 && ev[0].Kind == live.KindSettingsChanged) || len(ev) > 1 {
+			t.Errorf("%s: events = %+v, want an event: %v", tt.name, ev, tt.wantEvent)
+		}
+	}
+	if other, err := p.svc.Settings(t.Context(), actor(p.bob)); err != nil || !other.GroupMentions {
+		t.Errorf("another user's group mentions = %+v, %v; want on", other, err)
+	}
+	// The keywords and the switch are independent.
+	if got, err := p.svc.UpdateSettings(t.Context(), actor(p.alice), app.SettingsUpdate{Keywords: &[]string{"x"}}); err != nil || !got.GroupMentions || !slices.Equal(got.Keywords, []string{"x"}) {
+		t.Errorf("keywords changed the switch: %+v, %v", got, err)
+	}
+}
+
+func TestUpdateSettingsKeywordsPermissions(t *testing.T) {
+	t.Parallel()
+	for _, c := range callers() {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			p := newProfileEnv(t)
+			_, err := p.svc.UpdateSettings(t.Context(), actor(c.user(p)), app.SettingsUpdate{Keywords: &[]string{"a"}, GroupMentions: ptr(false)})
+			if c.wantRoute != "" {
+				_ = requireTag(t, err, app.TagUnauthenticated, "Accounts.UpdateSettings.func1->Accounts.activeUserOn.Unauthenticated")
+				if ev := p.rec.Events(); len(ev) != 0 {
+					t.Errorf("a refused change published %+v", ev)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("UpdateSettings: %+v", err)
 			}
 		})
 	}

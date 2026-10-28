@@ -179,6 +179,22 @@ type ComposerData struct {
 	// Errors are the problems of the last submit; the fields are named body,
 	// attachments and replyTo.
 	Errors FormErrors
+	// ConfirmCount, when it is not 0, is the number of people a group mention
+	// of the body would notify, and the composer asks "This will notify N
+	// people. Send anyway?" (SPEC §7.15).
+	ConfirmCount int
+}
+
+// composerConfirmID is the ID of the composer in the id of the place of its
+// group mention question.
+const composerConfirmID = "composer"
+
+// ComposerConfirm is the data of the question of the composer of the
+// conversation: n people would be notified.
+func ComposerConfirm(conversationID uint64, n int) GroupMentionConfirmData {
+	return GroupMentionConfirmData{
+		ID: composerConfirmID, Count: n, SendPath: GroupMentionSendPath(ConversationPath(conversationID)),
+	}
 }
 
 // NewConversationData is the form that starts a conversation.
@@ -209,6 +225,9 @@ type MembersPanelData struct {
 	Header app.ConversationHeader
 	// ViewerID is the ID of the person who looks at the page.
 	ViewerID uint64
+	// Online is the set of the members who are online when the page loads
+	// (SPEC §7.15); the dots are not live.
+	Online map[uint64]bool
 	// AddUsers is the text in the field of the people to add.
 	AddUsers string
 	// RenameTo is the text in the name field when RenameOpen is set; the

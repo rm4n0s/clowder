@@ -41,6 +41,9 @@ type settingsPatch struct {
 	Notify               *string `json:"notify"`
 	SoundName            *string `json:"sound_name"`
 	Replies              *string `json:"replies"`
+	// Keywords replaces the list of mention keywords; [] clears it.
+	Keywords      *[]string `json:"keywords"`
+	GroupMentions *bool     `json:"group_mentions"`
 }
 
 // passwordRequest is the body of POST /me/password.
@@ -98,11 +101,12 @@ func checkProfilePatch(body profilePatch) error {
 // body with none of them fails with tagSettingsEmpty.
 func checkSettingsPatch(body settingsPatch) error {
 	if body.Theme == nil && body.Sound == nil && body.BrowserNotifications == nil &&
-		body.Notify == nil && body.SoundName == nil && body.Replies == nil {
+		body.Notify == nil && body.SoundName == nil && body.Replies == nil && body.Keywords == nil && body.GroupMentions == nil {
 		return errors.New(tagSettingsEmpty, "the change has no setting",
 			"fields", map[string]string{
 				"theme": messageSettingsEmpty, "sound": messageSettingsEmpty, "browser_notifications": messageSettingsEmpty,
 				"notify": messageSettingsEmpty, "sound_name": messageSettingsEmpty, "replies": messageSettingsEmpty,
+				"keywords": messageSettingsEmpty, "group_mentions": messageSettingsEmpty,
 			})
 	}
 	return nil
@@ -134,7 +138,10 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	update := app.SettingsUpdate{Sound: body.Sound, BrowserNotifications: body.BrowserNotifications}
+	update := app.SettingsUpdate{
+		Sound: body.Sound, BrowserNotifications: body.BrowserNotifications,
+		Keywords: body.Keywords, GroupMentions: body.GroupMentions,
+	}
 	if body.Theme != nil {
 		theme := app.Theme(*body.Theme)
 		update.Theme = &theme

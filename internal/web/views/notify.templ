@@ -100,10 +100,36 @@ templ NotifyPrefsSection(d NotifyPrefsData) {
 						{ c.Label }
 					</label>
 				}
-				// TODO(step 18.4): until posts can be followed, "Threads I follow" acts like "Only direct replies".
 				if d.Errors.Fields["replies"] != "" {
 					<p class="field-error" role="alert">{ d.Errors.Fields["replies"] }</p>
 				}
+			</fieldset>
+			<fieldset class="mention-keywords">
+				<legend>Mention keywords</legend>
+				<label class="notify-choice" for="notify-group-mentions">
+					<input id="notify-group-mentions" type="checkbox" name="groupMentions" value="on" checked?={ d.Settings.GroupMentions }/>
+					{ "@room, @all and @here" }
+				</label>
+				<div class="field">
+					<label for="notify-keywords">Keywords</label>
+					<input
+						id="notify-keywords"
+						type="text"
+						name="keywords"
+						value={ d.KeywordsText() }
+						autocomplete="off"
+						placeholder="deploy, feeder, your first name"
+						if d.Errors.Fields["keywords"] != "" {
+							aria-invalid="true"
+							aria-describedby="notify-keywords-error"
+						}
+					/>
+					if d.Errors.Fields["keywords"] != "" {
+						<p class="field-error" id="notify-keywords-error" role="alert">{ d.Errors.Fields["keywords"] }</p>
+					} else {
+						<p class="hint">Separate them with commas: up to 10 words or phrases of at most 32 characters. A keyword matches whole words, ignoring case, outside code, and notifies you like a mention.</p>
+					}
+				</div>
 			</fieldset>
 			<button type="submit">Save</button>
 		</form>

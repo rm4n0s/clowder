@@ -206,6 +206,14 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 	actor, _ := actorFrom(r.Context())
 	var post app.Post
 	if err == nil {
+		if n := s.groupMentionToConfirm(r, in.Body, func() (int, error) {
+			return s.svc.Posts.GroupMentionCount(r.Context(), actor, id, in.Format, in.Body)
+		}); n > 0 {
+			// The files are sent again with the form when the person agrees.
+			s.svc.Posts.DiscardUploads(r.Context(), actor, in.Uploads)
+			s.postCreateAsk(w, r, id, n)
+			return
+		}
 		post, err = s.svc.Posts.Create(r.Context(), actor, id, in)
 	}
 	if err != nil {
@@ -233,6 +241,26 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 			options:   []datastar.PatchElementOption{datastar.WithSelector("#post-editor-new"), datastar.WithModeReplace()},
 		},
 	)
+}
+
+// postCreateAsk asks "This will notify n people. Send anyway?" instead of
+// writing the post: a Datastar request gets the question in the editor, which
+// keeps what was typed and the files chosen; a plain post gets the room page
+// with the editor holding what was typed and the question.
+func (s *Server) postCreateAsk(w http.ResponseWriter, r *http.Request, id uint64, n int) {
+	actor, _ := actorFrom(r.Context())
+	editor := typedInto(s.editorFor(r.Context(), actor, id, views.NewPostEditorData(id)), r)
+	editor.ConfirmCount = n
+	if isDatastar(r) {
+		s.patch(w, r, views.GroupMentionConfirm(confirmOfEditor(editor)))
+		return
+	}
+	base, ok := s.roomPageData(w, r, id, 0)
+	if !ok {
+		return
+	}
+	base.Editor = editor
+	s.render(w, r, http.StatusOK, views.RoomPage(base))
 }
 
 // postCreateFailed shows the problems of a post that was not written. A room
@@ -681,6 +709,17 @@ func (s *Server) postReply(w http.ResponseWriter, r *http.Request) {
 	actor, _ := actorFrom(r.Context())
 	var comment app.Post
 	if err == nil {
+		if n := s.groupMentionToConfirm(r, in.Body, func() (int, error) {
+			parent, err := s.svc.Posts.Get(r.Context(), actor, id)
+			if err != nil {
+				return 0, err
+			}
+			return s.svc.Posts.GroupMentionCount(r.Context(), actor, parent.RoomID, in.Format, in.Body)
+		}); n > 0 {
+			s.svc.Posts.DiscardUploads(r.Context(), actor, in.Uploads)
+			s.postReplyAsk(w, r, id, n)
+			return
+		}
 		comment, err = s.svc.Posts.Reply(r.Context(), actor, id, in)
 	}
 	if err != nil {
@@ -692,6 +731,28 @@ func (s *Server) postReply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.patchThread(w, r, comment.RootID, comment.RoomID)
+}
+
+// postReplyAsk asks "This will notify n people. Send anyway?" instead of
+// writing the comment; see postCreateAsk.
+func (s *Server) postReplyAsk(w http.ResponseWriter, r *http.Request, id uint64, n int) {
+	actor, _ := actorFrom(r.Context())
+	editorBase := views.ReplyEditorData(id)
+	if parent, err := s.svc.Posts.Get(r.Context(), actor, id); err == nil {
+		editorBase = s.editorFor(r.Context(), actor, parent.RoomID, editorBase)
+	}
+	editor := typedInto(editorBase, r)
+	editor.ConfirmCount = n
+	if isDatastar(r) {
+		s.patch(w, r, views.GroupMentionConfirm(confirmOfEditor(editor)))
+		return
+	}
+	d, ok := s.postPageData(w, r, id)
+	if !ok {
+		return
+	}
+	d.ActiveID, d.Replying, d.Editor = id, true, editor
+	s.render(w, r, http.StatusOK, views.PostPage(d))
 }
 
 // postReplyFailed shows the problems of a comment that was not written. A post

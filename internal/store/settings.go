@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/rm4n0s/errors"
@@ -82,10 +83,45 @@ type UserSettings struct {
 	SoundName SoundName `gorm:"not null;default:purr;check:chk_user_settings_sound_name,sound_name IN ('purr','chirp','bell','meow')"`
 	// Replies says which comments notify the user (default following).
 	Replies RepliesMode `gorm:"not null;default:following;check:chk_user_settings_replies,replies IN ('following','direct')"`
+	// KeywordsJSON is the list of the mention keywords as JSON text (default
+	// "[]"); use Keywords and SetKeywords.
+	KeywordsJSON string `gorm:"column:keywords;not null;default:[]"`
+	// GroupMentionsOff is true when the user turned off @room, @all and @here
+	// (default false). It is stored inverted because GORM replaces a false
+	// value by the column default when it is true; use GroupMentions.
+	GroupMentionsOff bool `gorm:"not null;default:false"`
 
 	// Relation: declared so that GORM creates the foreign key.
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:RESTRICT"`
 }
+
+// Keywords returns the mention keywords of the user, in the order they were
+// saved. A damaged list is no keywords.
+func (u UserSettings) Keywords() []string {
+	var out []string
+	if u.KeywordsJSON == "" || json.Unmarshal([]byte(u.KeywordsJSON), &out) != nil {
+		return nil
+	}
+	return out
+}
+
+// SetKeywords sets the mention keywords. The caller has checked them.
+func (u *UserSettings) SetKeywords(keywords []string) {
+	if len(keywords) == 0 {
+		u.KeywordsJSON = "[]"
+		return
+	}
+	// A list of strings always encodes.
+	raw, _ := json.Marshal(keywords)
+	u.KeywordsJSON = string(raw)
+}
+
+// GroupMentions reports whether @room, @all and @here reach the user (default
+// true).
+func (u UserSettings) GroupMentions() bool { return !u.GroupMentionsOff }
+
+// SetGroupMentions turns the group mentions on or off.
+func (u *UserSettings) SetGroupMentions(on bool) { u.GroupMentionsOff = !on }
 
 // DefaultUserSettings returns the settings of a user who saved none: the
 // theme System, the sound on (Purr), the browser notifications off, notify
@@ -93,7 +129,7 @@ type UserSettings struct {
 func DefaultUserSettings(userID uint64) UserSettings {
 	return UserSettings{
 		UserID: userID, Theme: ThemeSystem, Sound: true,
-		Notify: NotifyMentions, SoundName: SoundPurr, Replies: RepliesFollowing,
+		Notify: NotifyMentions, SoundName: SoundPurr, Replies: RepliesFollowing, KeywordsJSON: "[]",
 	}
 }
 
@@ -117,7 +153,7 @@ func (s *Store) UserSettingsOf(ctx context.Context, userID uint64) (UserSettings
 func (s *Store) SaveUserSettings(ctx context.Context, in *UserSettings) error {
 	err := s.db(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"theme", "sound", "browser_notifications", "notify", "sound_name", "replies"}),
+		DoUpdates: clause.AssignmentColumns([]string{"theme", "sound", "browser_notifications", "notify", "sound_name", "replies", "keywords", "group_mentions_off"}),
 	}).Create(in).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "saveUserSettings")
