@@ -80,6 +80,9 @@ type Services struct {
 	// Presence tells who is online and is told when a stream opens or closes
 	// (SPEC §7.15). Nil counts nobody.
 	Presence *app.Presence
+	// SSHKeys is the service of the SSH keys of a user and of what the
+	// settings page shows of the SSH server (SPEC §7.16).
+	SSHKeys *app.SSHKeys
 	// Health answers the health check, GET /healthz (SPEC D40). Nil makes
 	// the check answer 503.
 	Health HealthChecker
@@ -177,6 +180,8 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST " + views.SettingsPasswordPath, handler: http.HandlerFunc(s.settingsPassword)},
 		{pattern: "POST " + views.SettingsAppearancePath, handler: http.HandlerFunc(s.settingsAppearance)},
 		{pattern: "POST " + views.SettingsNotificationsPath, handler: http.HandlerFunc(s.settingsNotifications)},
+		{pattern: "POST " + views.SettingsSSHKeysPath, handler: http.HandlerFunc(s.settingsSSHKeyAdd)},
+		{pattern: "POST " + views.SettingsSSHKeysPath + "/{id}/remove", handler: http.HandlerFunc(s.settingsSSHKeyRemove)},
 		{pattern: "GET /avatars/{userID}", handler: http.HandlerFunc(s.avatarFile)},
 		{pattern: "POST /me/sessions/{id}/end", handler: http.HandlerFunc(s.sessionEnd)},
 		{pattern: "GET /admin/users", handler: http.HandlerFunc(s.adminUsers)},

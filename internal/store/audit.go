@@ -60,6 +60,10 @@ const (
 	// ActionUserPasswordReset is a user who set a new password with a reset
 	// link.
 	ActionUserPasswordReset AuditAction = "user.password_reset"
+	// ActionUserSSHKeyAdded is a user who registered an SSH key (SPEC §7.16).
+	ActionUserSSHKeyAdded AuditAction = "user.ssh_key_added"
+	// ActionUserSSHKeyRemoved is a user who removed an SSH key.
+	ActionUserSSHKeyRemoved AuditAction = "user.ssh_key_removed"
 )
 
 // AuditEvent records a change to a post, task, column, membership, room or

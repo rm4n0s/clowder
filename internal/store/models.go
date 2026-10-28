@@ -8,6 +8,8 @@ func allModels() []any {
 		&UserSettings{},
 		&Invitation{},
 		&PasswordReset{},
+		&SSHKey{},
+		&SSHCode{},
 		&Session{},
 		&Room{},
 		&RoomMember{},

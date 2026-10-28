@@ -40,6 +40,7 @@ var auditActions = []app.AuditAction{
 	app.ActionMemberJoined, app.ActionMemberAdded, app.ActionMemberLeft, app.ActionMemberRemoved,
 	app.ActionRoomCreated, app.ActionRoomRenamed, app.ActionRoomDeleted,
 	app.ActionUserPasswordChanged, app.ActionUserResetLinkCreated, app.ActionUserPasswordReset,
+	app.ActionUserSSHKeyAdded, app.ActionUserSSHKeyRemoved,
 }
 
 // adminUserPatch is the body of PATCH /admin/users/{id}: a field that is not

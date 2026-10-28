@@ -67,7 +67,8 @@ func TestSettingsPage(t *testing.T) {
 		`value="system" checked`, `value="light"`, `value="dark"`,
 		`<span class="avatar avatar-lg avatar-c`, `>A</span>`,
 		`href="#sessions"`, `id="live-stream"`,
-	}, "Saved", `data-theme`, "TODO", "avatar-remove-form", "Sign-in")
+		`<section id="signin" class="settings-section">`, `<a href="#signin">Sign-in</a>`,
+	}, "Saved", `data-theme`, "TODO", "avatar-remove-form")
 	// Alice has no avatar: no remove button. With saved=profile the section says so.
 	rec = e.send(get("/me/settings?saved=password", withCookie(e.token)))
 	requireBody(t, rec, []string{`<p class="saved" role="status">Saved</p>`})

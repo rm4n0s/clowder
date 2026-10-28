@@ -50,6 +50,9 @@ type Services struct {
 	// WebSocket opens or closes (SPEC §7.15). It must be the one of the
 	// server of internal/web. Nil counts nobody.
 	Presence *app.Presence
+	// SSHKeys is the service of the SSH keys of the logged-in user and of what
+	// is shown of the SSH server (SPEC §7.16).
+	SSHKeys *app.SSHKeys
 	// Hub is the hub the services publish to; the WebSocket (SPEC §7.13)
 	// subscribes to it. It must be the hub of the server of internal/web,
 	// which closes it when the server stops. Nil makes a hub that nothing
@@ -187,6 +190,7 @@ func (s *Server) defineRoutes() []Route {
 	routes = append(routes, s.authRoutes()...)
 	routes = append(routes, s.meRoutes()...)
 	routes = append(routes, s.settingsRoutes()...)
+	routes = append(routes, s.sshKeyRoutes()...)
 	routes = append(routes, s.userRoutes()...)
 	routes = append(routes, s.roomRoutes()...)
 	routes = append(routes, s.prefsRoutes()...)

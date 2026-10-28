@@ -94,9 +94,19 @@ func (n *noteLog) all() []uint64 {
 	return append([]uint64(nil), n.ids...)
 }
 
+// testSSHServer is the SSH server that the API of a test env shows.
+var testSSHServer = app.SSHServerInfo{Addr: ":2222", PublicHost: "chat.example.org", HostFingerprint: "SHA256:testhostkeyfingerprint"}
+
 // newTestEnv makes a testEnv. mutate changes the options before the server is
 // made.
 func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
+	t.Helper()
+	return newTestEnvSSH(t, mutate, testSSHServer)
+}
+
+// newTestEnvSSH is newTestEnv with the SSH server that the API shows: the zero
+// value is a Clowder whose SSH server is off.
+func newTestEnvSSH(t *testing.T, mutate func(*Options), sshServer app.SSHServerInfo) *testEnv {
 	t.Helper()
 	buf := &syncBuffer{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -129,7 +139,7 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 	board := app.NewBoard(st, clk, pub)
 	noted := &noteLog{}
 	opts := Options{
-		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Prefs: app.NewPrefs(st, pub), Presence: app.NewPresence(st, presence), Hub: hub},
+		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Prefs: app.NewPrefs(st, pub), Presence: app.NewPresence(st, presence), SSHKeys: app.NewSSHKeys(st, clk, accounts, sshServer), Hub: hub},
 		Logger:        logger,
 		NoteUser:      func(_ *http.Request, id uint64) { noted.add(id) },
 		MaxUploadSize: 1 << 20,

@@ -13,6 +13,10 @@
 # directly, that Caddy gives requests to both, and that a post written on one
 # process arrives live in the stream of a page served by the other.
 #
+# It also checks that the SSH server of the sign-in codes answers on its port
+# with an SSH banner (SSH-2.0-); with -cluster, that only the first Clowder
+# process runs it.
+#
 # It never touches the compose project of a developer: it uses its own project
 # name, its own image tag, a free port and a temporary env file with a random
 # password.
@@ -55,17 +59,27 @@ build_tail=${SMOKE_BUILD_TAIL:-15}
 wait_seconds=${SMOKE_WAIT:-180}
 
 # A free port: the first random one in 20000-39999 that nothing listens on.
-port=
-for _ in $(seq 1 50); do
-	candidate=$((20000 + RANDOM % 20000))
-	if ! (exec 3<>"/dev/tcp/127.0.0.1/$candidate") 2>/dev/null; then
-		port=$candidate
-		break
-	fi
-done
-if [[ -z $port ]]; then
+free_port() {
+	local candidate
+	for _ in $(seq 1 50); do
+		candidate=$((20000 + RANDOM % 20000))
+		if ! (exec 3<>"/dev/tcp/127.0.0.1/$candidate") 2>/dev/null; then
+			echo "$candidate"
+			return 0
+		fi
+	done
+	return 1
+}
+port=$(free_port) || {
 	echo "compose-smoke.sh: no free port found" >&2
 	exit 2
+}
+ssh_port=$(free_port) || {
+	echo "compose-smoke.sh: no free port found" >&2
+	exit 2
+}
+if [[ $ssh_port == "$port" ]]; then
+	ssh_port=$((port + 1))
 fi
 base_url="http://localhost:$port"
 password=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
@@ -73,6 +87,7 @@ password=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
 cat >"$tmp/env" <<ENV
 CLOWDER_DB_PASSWORD=$password
 CLOWDER_PORT=$port
+CLOWDER_SSH_PORT=$ssh_port
 CLOWDER_BASE_URL=$base_url
 ENV
 # The compose project builds its own tag, so that clowder:local of a developer
@@ -193,7 +208,26 @@ echo "$health" | tr -d '\r' | sed -n '1p;/^[Cc]ontent-[Tt]ype/p;/^[Cc]ache-[Cc]o
 grep -q '^HTTP/[0-9.]* 200' <<<"$health" || fail "/healthz did not answer 200"
 tr -d '\r' <<<"$health" | grep -qx 'ok' || fail "/healthz did not say ok"
 
+step "the SSH server answers on port $ssh_port with an SSH banner"
+banner=
+for _ in $(seq 1 20); do
+	if exec 3<>"/dev/tcp/127.0.0.1/$ssh_port" 2>/dev/null; then
+		IFS= read -r -t 5 banner <&3 || true
+		exec 3<&- 3>&-
+		[[ $banner == SSH-2.0-* ]] && break
+	fi
+	sleep 0.5
+done
+echo "banner: ${banner%$'\r'}"
+[[ $banner == SSH-2.0-* ]] || fail "the SSH port did not answer with an SSH banner"
+
 if $cluster; then
+	step "only the first Clowder process runs the SSH server"
+	dc logs --no-color clowder 2>&1 | grep -q 'the SSH server is listening' || fail "clowder logged no SSH server"
+	if dc logs --no-color clowder2 2>&1 | grep -q 'the SSH server is listening'; then
+		fail "clowder2 runs an SSH server"
+	fi
+	echo "clowder runs the SSH server, clowder2 does not"
 	token=$(awk '$6 == "clowder_session" { print $7 }' "$jar")
 	[[ -n $token ]] || fail "no session token in the cookie jar"
 

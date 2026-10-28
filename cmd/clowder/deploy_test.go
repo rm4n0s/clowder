@@ -124,10 +124,22 @@ func TestComposePublishesOnlyWhatItShould(t *testing.T) {
 			t.Errorf("compose.cluster.yaml publishes %s", name)
 		}
 	}
-	for _, name := range []string{"clowder", "clowder2"} {
-		if !strings.Contains(service(cluster, name), "ports: !reset []") {
-			t.Errorf("compose.cluster.yaml still publishes %s", name)
-		}
+	// The web port is Caddy's. The first process publishes the SSH port of the
+	// sign-in codes (SPEC §7.16) and nothing else; the second runs no SSH
+	// server and publishes nothing.
+	if !strings.Contains(service(cluster, "clowder2"), "ports: !reset []") {
+		t.Error("compose.cluster.yaml still publishes clowder2")
+	}
+	first := service(cluster, "clowder")
+	if !strings.Contains(first, "ports: !override") || !strings.Contains(first, `"${CLOWDER_SSH_PORT:-2222}:2222"`) ||
+		strings.Contains(first, "8080:8080") {
+		t.Errorf("compose.cluster.yaml: the first process must publish only the SSH port:\n%s", first)
+	}
+	if !strings.Contains(service(cluster, "clowder2"), `CLOWDER_SSH_ADDR: ""`) {
+		t.Error("compose.cluster.yaml does not turn the SSH server of clowder2 off")
+	}
+	if !strings.Contains(compose, `CLOWDER_SSH_ADDR: ":2222"`) || !strings.Contains(service(compose, "clowder"), `"${CLOWDER_SSH_PORT:-2222}:2222"`) {
+		t.Error("compose.yaml does not run and publish the SSH server on 2222")
 	}
 	if !ports.MatchString(service(cluster, "caddy")) {
 		t.Error("compose.cluster.yaml does not publish caddy")

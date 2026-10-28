@@ -98,6 +98,7 @@ type testEnv struct {
 	audit    *app.Audit
 	posts    *app.Posts
 	board    *app.Board
+	sshKeys  *app.SSHKeys
 	search   *app.Search
 	notifs   *app.Notifications
 	prefs    *app.Prefs
@@ -111,6 +112,10 @@ type testEnv struct {
 	// filesDir is the directory of the files of the attachments.
 	filesDir string
 }
+
+// testHostFingerprint is the fingerprint of the host key that the SSH server
+// of a test env shows, when cfg.SSHAddr turns it on.
+const testHostFingerprint = "SHA256:testhostkeyfingerprint"
 
 // newTestEnv makes a testEnv. mutate changes the configuration before the
 // server is made; extra routes are added to the server's.
@@ -161,8 +166,14 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		Presence:          presence,
 	}, hub)
 	online := app.NewPresence(st, presence)
+	// The SSH server is off unless a test sets cfg.SSHAddr.
+	var sshInfo app.SSHServerInfo
+	if cfg.SSHAddr != "" {
+		sshInfo = app.SSHServerInfo{Addr: cfg.SSHAddr, PublicHost: cfg.SSHPublicHostOrDefault(), HostFingerprint: testHostFingerprint}
+	}
+	sshKeys := app.NewSSHKeys(st, clk, accounts, sshInfo)
 	apiServer, err := api.New(api.Options{
-		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: online, Hub: hub},
+		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: online, SSHKeys: sshKeys, Hub: hub},
 		Logger:        logger,
 		NoteUser:      NoteUser,
 		ClientIP:      ClientIPFunc(cfg.TrustProxyHeaders),
@@ -171,11 +182,11 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	if err != nil {
 		t.Fatalf("api.New: %+v", err)
 	}
-	s, err := newServer(cfg, logger, Services{API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Presence: online, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
+	s, err := newServer(cfg, logger, Services{API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Presence: online, SSHKeys: sshKeys, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, search: search, notifs: notifs, prefs: prefs, msgs: msgs, hub: hub, presence: presence, st: st, clk: clk, filesDir: filesDir}
+	return &testEnv{t: t, srv: s, log: buf, sshKeys: sshKeys, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, search: search, notifs: notifs, prefs: prefs, msgs: msgs, hub: hub, presence: presence, st: st, clk: clk, filesDir: filesDir}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

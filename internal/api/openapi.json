@@ -512,6 +512,145 @@
         }
       }
     },
+    "/me/ssh-keys": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "List my SSH keys",
+        "operationId": "listSSHKeys",
+        "description": "Lists the SSH public keys of the user, oldest first, and what is known of the SSH server (SPEC 7.16): whether it runs on this Clowder, the SHA-256 fingerprint of its host key and the ssh command that fetches a sign-in code. The keys themselves are never sent back, only their fingerprints. When the server is off, server.enabled is false and the other two fields are empty.",
+        "responses": {
+          "200": {
+            "description": "The keys and the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSHKeyList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Add an SSH key",
+        "operationId": "addSSHKey",
+        "description": "Registers an SSH public key of the user, after it checks the current password, and returns it. public_key is the line of a .pub file; the types ssh-ed25519, ecdsa-sha2-nistp256, -nistp384 and -nistp521, sk-ssh-ed25519@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com and ssh-rsa of at least 3,072 bits are accepted. A key belongs to one user only, and a user has 10 keys at most. The audit log records user.ssh_key_added with the name and the fingerprint, never the key. A wrong current_password is 422 on current_password and counts as a failed login of the username in the limiter, which answers 429 once it blocks. A name outside 1 to 40 characters is 422 on name; a line that is not one public key, a type that is not accepted (ssh-dss and certificates among them) and an RSA key of fewer than 3,072 bits are 422 on public_key. A fingerprint that is registered already, by anyone, and the eleventh key are 409 conflict, with the message in fields.public_key; the answer does not say whose key it is.",
+        "requestBody": {
+          "required": true,
+          "description": "The name of the key, the line of the public key and the current password.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SSHKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The key is added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSHKey"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/me/ssh-keys/{id}": {
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Remove an SSH key",
+        "operationId": "removeSSHKey",
+        "description": "Removes an SSH key of the user, after it checks the current password, which comes as a JSON body. The codes the key fetched stop working with it. The audit log records user.ssh_key_removed. A wrong current_password is 422 on current_password and counts as a failed login of the username in the limiter, which answers 429 once it blocks. A key that does not exist and a key of someone else are both 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the key.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The current password.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SSHKeyRemoveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The key is gone."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/avatars/{id}": {
       "get": {
         "tags": [
@@ -3932,7 +4071,9 @@
                 "room.deleted",
                 "user.password_changed",
                 "user.reset_link_created",
-                "user.password_reset"
+                "user.password_reset",
+                "user.ssh_key_added",
+                "user.ssh_key_removed"
               ]
             }
           },
@@ -6421,7 +6562,9 @@
               "room.deleted",
               "user.password_changed",
               "user.reset_link_created",
-              "user.password_reset"
+              "user.password_reset",
+              "user.ssh_key_added",
+              "user.ssh_key_removed"
             ],
             "description": "What happened."
           },
@@ -7095,6 +7238,135 @@
         "required": [
           "current_password",
           "new_password"
+        ],
+        "additionalProperties": false
+      },
+      "SSHKey": {
+        "type": "object",
+        "description": "A public key of the user that may fetch sign-in codes from the SSH server. The key itself is never sent back.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the key, for DELETE /me/ssh-keys/{id}."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name the user gave the key, 1 to 40 characters."
+          },
+          "type": {
+            "type": "string",
+            "description": "The type of the key, such as ssh-ed25519."
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The SHA-256 fingerprint, as ssh-keygen -l writes it: SHA256:<base64>."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the key was added."
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the key last fetched a code; null until then."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "fingerprint",
+          "created_at",
+          "last_used_at"
+        ],
+        "additionalProperties": false
+      },
+      "SSHServer": {
+        "type": "object",
+        "description": "What is known of the SSH server of the sign-in codes.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "True when the SSH server runs on this Clowder."
+          },
+          "host_fingerprint": {
+            "type": "string",
+            "description": "The SHA-256 fingerprint of the host key of the server; empty when it is off."
+          },
+          "command": {
+            "type": "string",
+            "description": "The ssh command that fetches a code, such as ssh -p 2222 alice@chat.example.org; empty when the server is off."
+          }
+        },
+        "required": [
+          "enabled",
+          "host_fingerprint",
+          "command"
+        ],
+        "additionalProperties": false
+      },
+      "SSHKeyList": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "description": "The SSH keys of the user, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/SSHKey"
+            }
+          },
+          "server": {
+            "$ref": "#/components/schemas/SSHServer"
+          }
+        },
+        "required": [
+          "keys",
+          "server"
+        ],
+        "additionalProperties": false
+      },
+      "SSHKeyRequest": {
+        "type": "object",
+        "description": "The key to add.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "A name for the key, 1 to 40 characters."
+          },
+          "public_key": {
+            "type": "string",
+            "description": "The line of the .pub file of the key."
+          },
+          "current_password": {
+            "type": "string",
+            "description": "The password the user has now."
+          }
+        },
+        "required": [
+          "name",
+          "public_key",
+          "current_password"
+        ],
+        "additionalProperties": false
+      },
+      "SSHKeyRemoveRequest": {
+        "type": "object",
+        "description": "The current password.",
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "description": "The password the user has now."
+          }
+        },
+        "required": [
+          "current_password"
         ],
         "additionalProperties": false
       },

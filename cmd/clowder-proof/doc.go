@@ -19,6 +19,10 @@
 // the session stays: the page of the sessions (/me/sessions) shows it as an App
 // next to the browser's.
 //
+// With -ssh the server also runs its SSH server of the sign-in codes (SPEC
+// §7.16) on a free port of 127.0.0.1, so that the Sign-in section of the
+// settings page shows the ssh command.
+//
 // With -other a second user acts in a second browser while the first one
 // watches. With -cluster the tool starts two servers on one new PostgreSQL
 // database, one Redis and one data directory, as compose.cluster.yaml does

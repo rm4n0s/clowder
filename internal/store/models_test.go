@@ -86,6 +86,15 @@ func TestModelsRoundTrip(t *testing.T) {
 		{"PasswordReset made by the command line", "password_resets", func(f *fix) any {
 			return &PasswordReset{UserID: f.user().ID, TokenHash: "h2", CreatedBy: nil, ExpiresAt: day(24 * time.Hour)}
 		}},
+		{"SSHKey", "ssh_keys", func(f *fix) any {
+			return &SSHKey{UserID: f.user().ID, Name: "laptop", Type: "ssh-ed25519", Fingerprint: "SHA256:a", PublicKey: "ssh-ed25519 AAAA", LastUsedAt: ptr(day(time.Hour))}
+		}},
+		{"SSHCode", "ssh_codes", func(f *fix) any {
+			u := f.user()
+			k := &SSHKey{UserID: u.ID, Name: "k", Type: "ssh-ed25519", Fingerprint: "SHA256:b", PublicKey: "ssh-ed25519 BBBB"}
+			f.create(k)
+			return &SSHCode{UserID: u.ID, KeyID: k.ID, CodeHash: "c", ExpiresAt: day(time.Minute), UsedAt: ptr(day(time.Second)), Replaced: true}
+		}},
 		{"Session", "sessions", func(f *fix) any {
 			return &Session{TokenHash: "h1", UserID: f.user().ID, ExpiresAt: day(48 * time.Hour), LastSeenAt: day(time.Minute)}
 		}},
@@ -246,8 +255,8 @@ func TestEveryModelIsMigrated(t *testing.T) {
 			t.Errorf("no table for %T", m)
 		}
 	}
-	if got := len(allModels()); got != 25 {
-		t.Errorf("%d models, want the 25 of SPEC §6.3", got)
+	if got := len(allModels()); got != 27 {
+		t.Errorf("%d models, want the 27 of SPEC §6.3", got)
 	}
 }
 
@@ -270,6 +279,11 @@ func TestUniqueConstraints(t *testing.T) {
 			u := f.user()
 			return &PasswordReset{UserID: u.ID, TokenHash: "h", ExpiresAt: day(time.Hour)},
 				&PasswordReset{UserID: u.ID, TokenHash: "h", ExpiresAt: day(time.Hour)}
+		}},
+		{"ssh_keys.fingerprint", func(f *fix) (any, any) {
+			a, b := f.user(), f.user()
+			return &SSHKey{UserID: a.ID, Name: "a", Type: "ssh-ed25519", Fingerprint: "SHA256:x", PublicKey: "ssh-ed25519 AAAA"},
+				&SSHKey{UserID: b.ID, Name: "b", Type: "ssh-ed25519", Fingerprint: "SHA256:x", PublicKey: "ssh-ed25519 AAAA"}
 		}},
 		{"sessions.token_hash", func(f *fix) (any, any) {
 			u := f.user()
@@ -625,6 +639,9 @@ func TestForeignKeyActions(t *testing.T) {
 		{"user_settings", "user_id", "users", restrict},
 		{"password_resets", "user_id", "users", restrict},
 		{"password_resets", "created_by", "users", restrict},
+		{"ssh_keys", "user_id", "users", restrict},
+		{"ssh_codes", "user_id", "users", restrict},
+		{"ssh_codes", "key_id", "ssh_keys", cascade},
 	}
 
 	f := newFix(t)
@@ -673,6 +690,10 @@ func TestIndexes(t *testing.T) {
 		"uq_invitations_token_hash":                 {"invitations", true, "token_hash"},
 		"uq_password_resets_token_hash":             {"password_resets", true, "token_hash"},
 		"idx_password_resets_user_id":               {"password_resets", false, "user_id"},
+		"uq_ssh_keys_fingerprint":                   {"ssh_keys", true, "fingerprint"},
+		"idx_ssh_keys_user_id":                      {"ssh_keys", false, "user_id"},
+		"idx_ssh_codes_user_id":                     {"ssh_codes", false, "user_id"},
+		"idx_ssh_codes_created_at":                  {"ssh_codes", false, "created_at"},
 		"uq_sessions_token_hash":                    {"sessions", true, "token_hash"},
 		"idx_sessions_user_id":                      {"sessions", false, "user_id"},
 		"uq_rooms_name":                             {"rooms", true, "name"},
@@ -1041,6 +1062,11 @@ func TestDeleteUserIsRefused(t *testing.T) {
 		{"password reset creator", func(f *fix) *User {
 			u := f.user()
 			f.create(&PasswordReset{UserID: f.user().ID, TokenHash: "h", CreatedBy: &u.ID, ExpiresAt: day(time.Hour)})
+			return u
+		}},
+		{"ssh key", func(f *fix) *User {
+			u := f.user()
+			f.create(&SSHKey{UserID: u.ID, Name: "k", Type: "ssh-ed25519", Fingerprint: "SHA256:z", PublicKey: "ssh-ed25519 ZZZZ"})
 			return u
 		}},
 		{"reaction", func(f *fix) *User {

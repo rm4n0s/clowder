@@ -74,13 +74,15 @@ type SettingsData struct {
 	Password      PasswordData
 	Appearance    AppearanceData
 	Notifications NotifyPrefsData
+	// SignIn is the Sign-in section: the SSH keys and the SSH server.
+	SignIn SignInData
 	// Sessions are the live sessions of the user, the newest first.
 	Sessions []app.SessionInfo
 }
 
 // SettingsPage is the settings page of the user: the sections Profile,
-// Password, Appearance, Notifications and Sessions, each of which saves on its
-// own.
+// Password, Appearance, Notifications, Sign-in and Sessions, each of which
+// saves on its own.
 templ SettingsPage(d SettingsData) {
 	@Layout("Settings", Sidebar(d.Sidebar)) {
 		<h1>Settings</h1>
@@ -89,13 +91,14 @@ templ SettingsPage(d SettingsData) {
 			<a href="#password">Password</a>
 			<a href="#appearance">Appearance</a>
 			<a href="#notifications">Notifications</a>
-			// TODO(step 19.1): the Sign-in section (SSH keys and the sign-in code).
+			<a href="#signin">Sign-in</a>
 			<a href="#sessions">Sessions</a>
 		</nav>
 		@ProfileSection(d.Profile)
 		@PasswordSection(d.Password)
 		@AppearanceSection(d.Appearance)
 		@NotifyPrefsSection(d.Notifications)
+		@SignInSection(d.SignIn)
 		@SessionsSection(d.Sessions)
 		@liveStream(MeStreamPath)
 	}

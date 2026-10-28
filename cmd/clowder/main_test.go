@@ -8,6 +8,7 @@ import (
 	_ "image/png" // the decoder for TestDemoFile
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,8 +24,10 @@ import (
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
+	"github.com/rm4n0s/clowder/internal/sshcode"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
+	"golang.org/x/crypto/ssh"
 )
 
 // openFiles opens the files directory of the data directory dir.
@@ -243,6 +246,33 @@ func TestParseServeConfig(t *testing.T) {
 			}(),
 		},
 		{
+			name: "SSH settings from the environment",
+			env: map[string]string{
+				"CLOWDER_SSH_ADDR":        ":2222",
+				"CLOWDER_SSH_PUBLIC_HOST": "chat.example.org",
+			},
+			want: func() config.Config {
+				c := def
+				c.SSHAddr = ":2222"
+				c.SSHPublicHost = "chat.example.org"
+				return c
+			}(),
+		},
+		{
+			name: "SSH settings: flags beat the environment",
+			args: []string{"-ssh-addr", "127.0.0.1:2200", "-ssh-public-host", "flag.example.org"},
+			env: map[string]string{
+				"CLOWDER_SSH_ADDR":        ":2222",
+				"CLOWDER_SSH_PUBLIC_HOST": "env.example.org",
+			},
+			want: func() config.Config {
+				c := def
+				c.SSHAddr = "127.0.0.1:2200"
+				c.SSHPublicHost = "flag.example.org"
+				return c
+			}(),
+		},
+		{
 			name: "Redis URL: flag beats environment",
 			args: []string{"-database-url", "postgres://db/clowder", "-redis-url", "rediss://flag:6380"},
 			env:  map[string]string{"CLOWDER_REDIS_URL": "redis://env:6379"},
@@ -376,6 +406,25 @@ func TestParseServeConfigErrors(t *testing.T) {
 			wantTag:   config.TagRedisNeedsPostgres,
 			wantRoute: "parseServeConfig->Config.Validate.RedisNeedsPostgres",
 			wantMeta:  map[string]any{"redisURL": "redis://:xxxxx@redis:6379/0"},
+		},
+		{
+			name:      "invalid config: SSH address from the environment",
+			env:       map[string]string{"CLOWDER_SSH_ADDR": "localhost"},
+			wantTag:   config.TagSSHAddrInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.SSHAddrInvalid",
+			wantMeta:  map[string]any{"sshAddr": "localhost"},
+		},
+		{
+			name:      "invalid config: SSH host key in a missing directory",
+			args:      []string{"-ssh-host-key", "/no/such/dir/key"},
+			wantTag:   config.TagSSHHostKeyDirMissing,
+			wantRoute: "parseServeConfig->Config.Validate.SSHHostKeyDirMissing",
+		},
+		{
+			name:      "invalid config: SSH public host with a scheme",
+			args:      []string{"-ssh-public-host", "ssh://chat.example.org"},
+			wantTag:   config.TagSSHPublicHostInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.SSHPublicHostInvalid",
 		},
 		{
 			name:      "invalid config: session lifetime",
@@ -1880,4 +1929,146 @@ func TestOpenPresenceWithoutAServer(t *testing.T) {
 	if strings.Contains(appErr.Error(), "hunter2") || strings.Contains(fmt.Sprint(appErr.Metadata), "hunter2") {
 		t.Errorf("the error holds the password: %v", appErr)
 	}
+}
+
+// sshBanner reads the banner of the SSH server at addr.
+func sshBanner(t *testing.T, addr string) string {
+	t.Helper()
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		return ""
+	}
+	buf := make([]byte, 8)
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		return ""
+	}
+	return string(buf)
+}
+
+// freeAddr returns a local address that nothing listens on.
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func TestServeRunsTheSSHServer(t *testing.T) {
+	dataDir := t.TempDir()
+	sshAddr := freeAddr(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var stderr syncBuffer
+	done := make(chan error, 1)
+	go func() {
+		done <- runServe(ctx, []string{"-data", dataDir, "-addr", "127.0.0.1:0", "-ssh-addr", sshAddr}, mapEnv(nil), &stderr)
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for sshBanner(t, sshAddr) != "SSH-2.0-" {
+		select {
+		case err := <-done:
+			t.Fatalf("serve ended early: %+v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the SSH server did not answer; stderr:\n%s", stderr.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// The host key was made in the data directory, readable by its owner only,
+	// and its fingerprint is in the log.
+	keyPath := filepath.Join(dataDir, "ssh_host_ed25519_key")
+	info, err := os.Stat(keyPath)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("host key = %v, %v; want a file of mode 0600", info, err)
+	}
+	signer, err := sshcode.LoadHostKey(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), ssh.FingerprintSHA256(signer.PublicKey())) {
+		t.Errorf("the fingerprint of the host key is not in the log:\n%s", stderr.String())
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serve returned %+v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("serve did not stop")
+	}
+	if sshBanner(t, sshAddr) != "" {
+		t.Error("the SSH port still answers after serve returned")
+	}
+}
+
+func TestServeWithoutSSHAddrRunsNoSSHServer(t *testing.T) {
+	dataDir := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var stderr syncBuffer
+	done := make(chan error, 1)
+	go func() {
+		done <- runServe(ctx, []string{"-data", dataDir, "-addr", "127.0.0.1:0"}, mapEnv(nil), &stderr)
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for !strings.Contains(stderr.String(), "server listening") {
+		if time.Now().After(deadline) {
+			t.Fatalf("serve did not start; stderr:\n%s", stderr.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "ssh_host_ed25519_key")); !os.IsNotExist(err) {
+		t.Errorf("a host key was made with the SSH server off: %v", err)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("serve returned %+v", err)
+	}
+}
+
+func TestStartSSHFailures(t *testing.T) {
+	dataDir := t.TempDir()
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = busy.Close() }()
+	badKey := filepath.Join(dataDir, "bad_key")
+	if err := os.WriteFile(badKey, []byte("not a key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		cfg       config.Config
+		wantRoute string
+	}{
+		{"a port in use", config.Config{SSHAddr: busy.Addr().String(), DataDir: dataDir}, "startSSH.SSHListenFailed"},
+		{"a host key that is not a key", config.Config{SSHAddr: "127.0.0.1:0", DataDir: dataDir, SSHHostKey: badKey}, "startSSH->LoadHostKey->readHostKey.HostKeyInvalid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := startSSH(t.Context(), tt.cfg, nil, nil, slog.New(slog.DiscardHandler))
+			appErr, ok := errors.FromError(err)
+			if !ok || !appErr.HasRoute(tt.wantRoute) {
+				t.Errorf("err = %v, want the route %s", err, tt.wantRoute)
+			}
+		})
+	}
+	stop, info, err := startSSH(t.Context(), config.Config{DataDir: dataDir}, nil, nil, slog.New(slog.DiscardHandler))
+	if err != nil || info != (app.SSHServerInfo{}) {
+		t.Errorf("an empty address: %+v, %v; want the server off", info, err)
+	}
+	stop()
 }

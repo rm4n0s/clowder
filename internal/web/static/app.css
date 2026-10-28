@@ -1384,3 +1384,33 @@ li.muted { opacity: 0.6; }
 .group-mention-confirm:empty { display: none; }
 .group-mention-question { margin: 0.5rem 0 0.25rem; font-weight: 600; }
 .notification-others { font-weight: 600; }
+
+/* The Sign-in section of the settings page: the SSH keys (SPEC 7.16). */
+table.ssh-keys { width: 100%; margin: 0 0 1.5rem; border-collapse: collapse; }
+
+table.ssh-keys th, table.ssh-keys td {
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+}
+
+table.ssh-keys th { font-size: 0.875rem; color: var(--fg-muted); }
+
+table.ssh-keys td.fingerprint code { word-break: break-all; }
+
+#signin.settings-section { max-width: none; }
+
+#signin form#ssh-key-add-form { max-width: 32rem; }
+
+form.ssh-key-remove { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; margin: 0; }
+
+form.ssh-key-remove input { width: 11rem; margin: 0; }
+
+form.ssh-key-remove button { padding: 0.25rem 0.625rem; font-size: 0.875rem; }
+
+.ssh-command { display: inline-block; padding: 0.375rem 0.625rem; border: 1px solid var(--border); border-radius: 6px; user-select: all; }
+
+@media (max-width: 40rem) {
+  #ssh-keys-panel { overflow-x: auto; }
+}

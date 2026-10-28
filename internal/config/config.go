@@ -1,7 +1,11 @@
 package config
 
 import (
+	"net"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,6 +64,44 @@ type Config struct {
 	// Empty means one process with in-process events. It needs DatabaseURL
 	// (PostgreSQL) and may hold a password: print it only through RedactURL.
 	RedisURL string
+	// SSHAddr is the address of the SSH server of the sign-in codes (SPEC
+	// §7.16, D52), as host:port, such as ":2222". Empty means the server is
+	// off.
+	SSHAddr string
+	// SSHHostKey is the path of the host key of the SSH server. Empty means
+	// ssh_host_ed25519_key in DataDir; see SSHHostKeyPath. The key is made on
+	// the first start when the file does not exist.
+	SSHHostKey string
+	// SSHPublicHost is the host shown in the ssh command of the settings
+	// page: a host name or an IP address, without a scheme or a path. Empty
+	// means the host of BaseURL; see SSHPublicHostOrDefault.
+	SSHPublicHost string
+}
+
+// DefaultSSHHostKeyFile is the name of the host key inside the data directory
+// when SSHHostKey is empty.
+const DefaultSSHHostKeyFile = "ssh_host_ed25519_key"
+
+// SSHHostKeyPath returns the path of the host key: SSHHostKey, or
+// ssh_host_ed25519_key in the data directory.
+func (c Config) SSHHostKeyPath() string {
+	if c.SSHHostKey != "" {
+		return c.SSHHostKey
+	}
+	return filepath.Join(c.DataDir, DefaultSSHHostKeyFile)
+}
+
+// SSHPublicHostOrDefault returns the host of the ssh command: SSHPublicHost,
+// or the host name of the base URL.
+func (c Config) SSHPublicHostOrDefault() string {
+	if c.SSHPublicHost != "" {
+		return c.SSHPublicHost
+	}
+	u, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }
 
 // Default returns the configuration with every setting at its default.
@@ -154,6 +196,26 @@ func (c Config) Validate() error {
 				"redisURL", RedactURL(c.RedisURL))
 		}
 	}
+	if c.SSHAddr != "" {
+		_, port, err := net.SplitHostPort(c.SSHAddr)
+		if n, convErr := strconv.Atoi(port); err != nil || convErr != nil || n < 0 || n > 65535 {
+			return errors.New(TagSSHAddrInvalid, "the SSH address must be host:port, such as :2222",
+				"sshAddr", c.SSHAddr)
+		}
+	}
+	if c.SSHHostKey != "" {
+		// Only a key the person named is checked: the default is in the data
+		// directory, which serve makes.
+		if info, err := os.Stat(filepath.Dir(c.SSHHostKey)); err != nil || !info.IsDir() {
+			return errors.New(TagSSHHostKeyDirMissing, "the directory of the SSH host key does not exist",
+				"sshHostKey", c.SSHHostKey)
+		}
+	}
+	if c.SSHPublicHost != "" && !validPublicHost(c.SSHPublicHost) {
+		return errors.New(TagSSHPublicHostInvalid,
+			"the public SSH host must be a host name or an IP address, without a scheme, a port or a path",
+			"sshPublicHost", c.SSHPublicHost)
+	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":
 	default:
@@ -161,6 +223,22 @@ func (c Config) Validate() error {
 			"value", c.LogLevel)
 	}
 	return nil
+}
+
+// validPublicHost reports whether host is an IP address or a host name made of
+// letters, digits, dots and hyphens: what an ssh command can use.
+func validPublicHost(host string) bool {
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	for _, r := range host {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-':
+		default:
+			return false
+		}
+	}
+	return !strings.HasPrefix(host, ".") && !strings.HasPrefix(host, "-")
 }
 
 // RedactedPassword replaces a password in the output of RedactURL.
@@ -204,6 +282,12 @@ func RedactURL(raw string) string {
 }
 
 const (
+	// TagSSHAddrInvalid is the tag of an SSH address that is not host:port.
+	TagSSHAddrInvalid = "SSHAddrInvalid"
+	// TagSSHHostKeyDirMissing is the tag of an SSH host key path in a directory that does not exist.
+	TagSSHHostKeyDirMissing = "SSHHostKeyDirMissing"
+	// TagSSHPublicHostInvalid is the tag of a public SSH host that is not a host name or an IP address.
+	TagSSHPublicHostInvalid = "SSHPublicHostInvalid"
 	// TagRedisURLInvalid is the tag of a Redis URL that is not empty and not a redis:// or rediss:// URL with a host.
 	TagRedisURLInvalid = "RedisURLInvalid"
 	// TagRedisNeedsPostgres is the tag of a Redis URL given without a PostgreSQL database URL.

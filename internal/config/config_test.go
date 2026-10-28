@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -93,6 +95,31 @@ func TestValidate(t *testing.T) {
 		}, TagRedisURLInvalid},
 		{"redis URL with SQLite", func(c *Config) { c.RedisURL = "redis://localhost:6379/0" }, TagRedisNeedsPostgres},
 		{"invalid redis URL is reported before the missing PostgreSQL", func(c *Config) { c.RedisURL = "http://localhost" }, TagRedisURLInvalid},
+		{"ssh address with a port", func(c *Config) { c.SSHAddr = ":2222" }, ""},
+		{"ssh address with a host", func(c *Config) { c.SSHAddr = "127.0.0.1:2222" }, ""},
+		{"ssh address of an IPv6 host", func(c *Config) { c.SSHAddr = "[::1]:2222" }, ""},
+		{"ssh address without a port", func(c *Config) { c.SSHAddr = "localhost" }, TagSSHAddrInvalid},
+		{"ssh address with only a number", func(c *Config) { c.SSHAddr = "2222" }, TagSSHAddrInvalid},
+		{"ssh address with a word for a port", func(c *Config) { c.SSHAddr = ":ssh" }, TagSSHAddrInvalid},
+		{"ssh address with a port too large", func(c *Config) { c.SSHAddr = ":65536" }, TagSSHAddrInvalid},
+		{"ssh address that is a URL", func(c *Config) { c.SSHAddr = "ssh://host:22" }, TagSSHAddrInvalid},
+		{"ssh host key in the data directory", func(c *Config) { c.SSHHostKey = filepath.Join(t.TempDir(), "key") }, ""},
+		{"ssh host key in a missing directory", func(c *Config) { c.SSHHostKey = filepath.Join(t.TempDir(), "missing", "key") }, TagSSHHostKeyDirMissing},
+		{"ssh host key in a file, not a directory", func(c *Config) {
+			f := filepath.Join(t.TempDir(), "file")
+			if err := os.WriteFile(f, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			c.SSHHostKey = filepath.Join(f, "key")
+		}, TagSSHHostKeyDirMissing},
+		{"ssh public host", func(c *Config) { c.SSHPublicHost = "chat.example.org" }, ""},
+		{"ssh public host that is an IP", func(c *Config) { c.SSHPublicHost = "192.0.2.7" }, ""},
+		{"ssh public host that is an IPv6 address", func(c *Config) { c.SSHPublicHost = "2001:db8::1" }, ""},
+		{"ssh public host with a scheme", func(c *Config) { c.SSHPublicHost = "ssh://chat.example.org" }, TagSSHPublicHostInvalid},
+		{"ssh public host with a path", func(c *Config) { c.SSHPublicHost = "chat.example.org/ssh" }, TagSSHPublicHostInvalid},
+		{"ssh public host with a port", func(c *Config) { c.SSHPublicHost = "chat.example.org:2222" }, TagSSHPublicHostInvalid},
+		{"ssh public host with a user", func(c *Config) { c.SSHPublicHost = "alice@chat.example.org" }, TagSSHPublicHostInvalid},
+		{"ssh public host with a space", func(c *Config) { c.SSHPublicHost = "chat example" }, TagSSHPublicHostInvalid},
 		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }, TagLogLevelUnknown},
 		{"empty log level", func(c *Config) { c.LogLevel = "" }, TagLogLevelUnknown},
 	}
@@ -232,6 +259,34 @@ func TestRedactURL(t *testing.T) {
 			}
 			if strings.Contains(got, "hunter2") {
 				t.Errorf("RedactURL(%q) = %q leaks the password", tt.in, got)
+			}
+		})
+	}
+}
+
+func TestSSHDefaults(t *testing.T) {
+	tests := []struct {
+		name         string
+		mutate       func(*Config)
+		wantKey      string
+		wantHostName string
+	}{
+		{"defaults", func(*Config) {}, filepath.Join("./data", "ssh_host_ed25519_key"), "localhost"},
+		{"another data directory", func(c *Config) { c.DataDir = "/var/lib/clowder" }, "/var/lib/clowder/ssh_host_ed25519_key", "localhost"},
+		{"a named key", func(c *Config) { c.SSHHostKey = "/etc/clowder/host_key" }, "/etc/clowder/host_key", "localhost"},
+		{"the host of the base URL", func(c *Config) { c.BaseURL = "https://chat.example.org:8443/x" }, filepath.Join("./data", "ssh_host_ed25519_key"), "chat.example.org"},
+		{"a named public host", func(c *Config) { c.SSHPublicHost = "ssh.example.org" }, filepath.Join("./data", "ssh_host_ed25519_key"), "ssh.example.org"},
+		{"a base URL that does not parse", func(c *Config) { c.BaseURL = "http://exa mple.com/%zz" }, filepath.Join("./data", "ssh_host_ed25519_key"), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Default()
+			tt.mutate(&cfg)
+			if got := cfg.SSHHostKeyPath(); got != tt.wantKey {
+				t.Errorf("SSHHostKeyPath() = %q, want %q", got, tt.wantKey)
+			}
+			if got := cfg.SSHPublicHostOrDefault(); got != tt.wantHostName {
+				t.Errorf("SSHPublicHostOrDefault() = %q, want %q", got, tt.wantHostName)
 			}
 		})
 	}

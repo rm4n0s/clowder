@@ -35,7 +35,7 @@ const (
 )
 
 // settingsPage answers GET /me/settings: the settings page with its sections
-// Profile, Password, Appearance and Sessions. The query "saved" (profile,
+// Profile, Password, Appearance, Notifications, Sign-in and Sessions. The query "saved" (profile,
 // password or appearance) shows "Saved" under that section, which is where a
 // form posted without JavaScript comes back to.
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +53,8 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		d.Appearance.Saved = true
 	case sectionNotifications:
 		d.Notifications.Saved = true
+	case sectionSignIn:
+		d.SignIn.Saved = true
 	}
 	s.render(w, r, http.StatusOK, views.SettingsPage(d))
 }
@@ -77,11 +79,16 @@ func (s *Server) settingsData(ctx context.Context) (views.SettingsData, error) {
 	if err != nil {
 		return views.SettingsData{}, err
 	}
+	signIn, err := s.signInData(ctx, actor)
+	if err != nil {
+		return views.SettingsData{}, err
+	}
 	return views.SettingsData{
 		Sidebar:       sb,
 		Profile:       views.ProfileData{User: user, DisplayName: user.DisplayName},
 		Appearance:    views.AppearanceData{Theme: settings.Theme},
 		Notifications: notifications,
+		SignIn:        signIn,
 		Sessions:      sessions,
 	}, nil
 }
@@ -110,6 +117,9 @@ func (s *Server) settingsFailed(w http.ResponseWriter, r *http.Request, err erro
 				if n, err := s.notifyPrefs(ctx, actorOf(ctx), settings); err == nil {
 					d.Notifications = n
 				}
+			}
+			if signIn, err := s.signInData(ctx, actorOf(ctx)); err == nil {
+				d.SignIn = signIn
 			}
 			change(&d, problems)
 			return section(d).Render(ctx, out)
@@ -257,7 +267,7 @@ func (s *Server) settingsPassword(w http.ResponseWriter, r *http.Request) {
 		}, func(d views.SettingsData) templ.Component { return views.PasswordSection(d.Password) })
 		return
 	}
-	s.settingsSaved(w, r, sectionPassword, views.PasswordSection(views.PasswordData{Saved: true}), "")
+	s.settingsSaved(w, r, sectionPassword, views.PasswordSection(views.PasswordData{Saved: true}), resetFormJS("password-form"))
 }
 
 // settingsAppearance answers POST /me/settings/appearance: it saves the theme
@@ -277,6 +287,13 @@ func (s *Server) settingsAppearance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.settingsSaved(w, r, sectionAppearance, views.AppearanceSection(views.AppearanceData{Theme: settings.Theme, Saved: true}), themeJS(settings.Theme))
+}
+
+// resetFormJS is the JavaScript that empties the form id after it was saved:
+// the morph of Datastar keeps what the user typed in a field whose new markup
+// has no value, so a saved password or key would stay on the page.
+func resetFormJS(id string) string {
+	return "document.getElementById(" + jsString(id) + ").reset()"
 }
 
 // themeJS is the JavaScript that sets the theme on the page: data-theme on the

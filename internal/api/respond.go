@@ -85,7 +85,9 @@ type problem struct {
 //
 //   - app.TagNotFound 404 not_found, app.TagForbidden 403 forbidden,
 //     app.TagInvalidInput 422 invalid_input with the field errors of the
-//     metadata "fields" (named in snake_case), app.TagConflict 409 conflict,
+//     metadata "fields" (named in snake_case; so do app.TagSSHKeyTypeRefused
+//     and app.TagSSHKeyTooShort), app.TagConflict 409 conflict (with the
+//     "fields" it carries, if any),
 //     app.TagRateLimited 429 rate_limited with Retry-After, app.TagTooLarge
 //     413 too_large;
 //   - app.TagUnauthenticated and a missing or malformed bearer header 401
@@ -116,7 +118,7 @@ func problemOf(err error) (problem, bool) {
 		return problem{status: http.StatusNotFound, object: errorObject{Code: codeNotFound, Message: messageNotFound}}, false
 	case app.TagForbidden:
 		return problem{status: http.StatusForbidden, object: errorObject{Code: codeForbidden, Message: messageForbidden}}, false
-	case app.TagInvalidInput:
+	case app.TagInvalidInput, app.TagSSHKeyTypeRefused, app.TagSSHKeyTooShort:
 		fields, _ := appErr.Metadata["fields"].(map[string]string)
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, apiFieldName)}}, false
@@ -127,7 +129,11 @@ func problemOf(err error) (problem, bool) {
 		return problem{status: http.StatusUnprocessableEntity,
 			object: errorObject{Code: codeInvalidInput, Message: messageInvalidInput, Fields: renamedFields(fields, snakeCase)}}, false
 	case app.TagConflict:
-		return problem{status: http.StatusConflict, object: errorObject{Code: codeConflict, Message: messageConflict}}, false
+		// A conflict may say what clashes, with the messages of "fields" (an
+		// SSH key that is registered, the limit of keys).
+		fields, _ := appErr.Metadata["fields"].(map[string]string)
+		return problem{status: http.StatusConflict,
+			object: errorObject{Code: codeConflict, Message: messageConflict, Fields: renamedFields(fields, apiFieldName)}}, false
 	case app.TagRateLimited:
 		return problem{status: http.StatusTooManyRequests,
 			object: errorObject{Code: codeRateLimited, Message: messageRateLimited},

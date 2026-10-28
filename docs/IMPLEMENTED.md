@@ -1249,3 +1249,55 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Following is not audited and publishes no event.
   - With Redis unreadable, `@here` and the dots count nobody else as online, and `GET /me/presence` answers 500.
   - The notifications page names the room without the thread's name or "#", as it has since 1.0. The redesign of M21 can align it with the browser notification texts.
+
+## 19.1 SSH keys and the SSH server
+- **Date:** 2026-10-28
+- **Branch:** feat/step-19.1-ssh-server
+- **Summary:**
+  - `ssh_keys` and `ssh_codes`:
+    - a fingerprint is unique over all users;
+    - a new code marks the older ones as replaced, so the limit of 10 codes in 15 minutes is a count of rows that works across processes;
+    - rows older than 24 hours are pruned when a code is issued;
+    - `ConsumeSSHCode` (a conditional update) is ready for 19.2;
+    - on PostgreSQL a row lock on the user holds the limits of 10 keys and 10 codes across processes.
+  - `SSHKeys.Add`, `Remove` and `List` need the current password and accept the key types of §7.16 (RSA from 3,072 bits). They write `user.ssh_key_added` and `user.ssh_key_removed`, which carry the fingerprint and never the key.
+  - `SignIn.KeyAllowed` answers only yes or no. `SignIn.IssueCode` makes 8 characters of Crockford base32 that last 60 s. `NormalizeCode` accepts dashes, lower case, and I, L and O.
+  - `internal/sshcode` is the server (`x/crypto/ssh`, no new module):
+    - only public-key authentication, 3 attempts, a 10 s handshake and 30 s per connection, at most 64 connections;
+    - an address blocked by the limiter is closed at accept;
+    - the host key is Ed25519, written to a temporary file and linked into place, so that two processes starting together share one key;
+    - the code is written for a shell, or as JSON for the command `json`;
+    - other commands and subsystems are refused with "This server only gives sign-in codes." and exit status 1;
+    - a PTY, `env` and `x11` are refused without closing the session, because OpenSSH in a terminal asks for a PTY before the shell;
+    - the log has the user, the fingerprint and the address, never the code.
+  - A connection that offered a public key and failed counts as one failed login of its address, however many keys it offered. A connection that offered none (a port scan, a banner check, a password) is not counted. The manager changed the worker's version, which counted every unauthenticated connection and could lock web logins behind a shared address. §7.16 has the note.
+  - Configuration: `-ssh-addr`, `-ssh-host-key` and `-ssh-public-host`, with their variables and validation.
+    - Compose publishes `CLOWDER_SSH_PORT` (2222), and in the cluster file only on the first process.
+    - The smoke script checks the SSH banner.
+  - Settings › Sign-in lists the keys and has Remove (with the password) and an Add form. It shows the command and the host fingerprint, or that the server is not running.
+  - API: `GET`, `POST /me/ssh-keys` and `DELETE /me/ssh-keys/{id}`, with `current_password` as for `/me/password` (a wrong one is 422 as there). A refused key is 422, a duplicate or the eleventh key 409. The apicheck has a new scenario `sshkeys`.
+  - `clowder-proof -ssh` starts the SSH server of the proof.
+  - The manager's fix to 18.1: the password form and the key form are emptied after a save. Datastar's morph kept what was typed in fields with no `value`, so a saved password stayed on the page.
+- **Main files:** `internal/sshcode/{server,hostkey}.go`, `internal/app/{sshkeys,signin,accounts}.go`, `internal/store/ssh.go`, `internal/config`, `cmd/clowder/serve.go`, `internal/web/{signin,settings}.go`, `internal/web/views/signin.templ`, `internal/api` (the key routes), `openapi.json`, `compose.yaml`, `compose.cluster.yaml`, `scripts/compose-smoke.sh`, `cmd/clowder-apicheck`, `cmd/clowder-proof`.
+- **Tests:** about 280 table cases, plus one browser test. They cover:
+  - every accepted and refused key type, RSA 2,048 and 3,072, duplicates, the limit, a wrong password, and the audit events;
+  - the permission tables;
+  - a real `x/crypto/ssh` client against the server: codes through shell and `json`, refused keys, users and methods, PTY, `env`, commands, subsystems and forwarding, the deadlines, the cap, the limiter (one failure per connection that offered a key, none for one that offered no key), and no goroutine left on shutdown;
+  - concurrent host-key creation;
+  - the code's format, expiry, single use, replacement, limit and pruning;
+  - the configuration's route tests;
+  - the OpenAPI parity test.
+
+  Two tags could not be triggered in a test (a failing random source, a failing host-key write).
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅ · scripts/compose-smoke.sh ✅
+- **Proof:**
+  [19.1 ssh](implemented-proof-images/19.1-ssh.txt) · [19.1 keys](implemented-proof-images/19.1-keys.png)
+  - The real OpenSSH client against `clowder serve -ssh-addr` on demo data:
+    - a code, plain and with `json`;
+    - refused: an unregistered key, alice's key as bob, a password, `-tt` and `ls -la`;
+    - the host key with mode 0600, and the log without codes.
+  - The Sign-in section with a key and the command.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The second process of the cluster file runs no SSH server, so its settings page says the server is not running. A process with no SSH server must not skip the code at login, so step 19.2 gives every process of the cluster the same `-ssh-addr` (the host key is shared through the data volume) and publishes the port from the first only.
+  - With `ssh -tt` the client closes at the refused PTY. The shell request it had already sent still makes a code that it never shows.

@@ -81,6 +81,10 @@ const (
 	// ActionUserPasswordReset is a user who set a new password with a reset
 	// link.
 	ActionUserPasswordReset = store.ActionUserPasswordReset
+	// ActionUserSSHKeyAdded is a user who registered an SSH key.
+	ActionUserSSHKeyAdded = store.ActionUserSSHKeyAdded
+	// ActionUserSSHKeyRemoved is a user who removed an SSH key.
+	ActionUserSSHKeyRemoved = store.ActionUserSSHKeyRemoved
 )
 
 // AuditFilter narrows Audit.Events (SPEC §7.10). A zero field does not

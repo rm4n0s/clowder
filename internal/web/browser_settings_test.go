@@ -5,9 +5,12 @@ package web_test
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"image"
 	"image/color"
 	"image/png"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/rm4n0s/clowder/internal/browsertest"
+	"golang.org/x/crypto/ssh"
 )
 
 // openSettings opens the settings page and waits for it.
@@ -194,6 +198,10 @@ func TestSettingsPasswordEndsTheOtherBrowser(t *testing.T) {
 	if err := waitFor(first, `document.querySelector('#password .saved') !== null`); err != nil {
 		t.Fatalf("the password section does not say Saved: %v", err)
 	}
+	// The passwords do not stay in the form (the morph alone would keep them).
+	if err := waitFor(first, `['password-current', 'password-new', 'password-confirm'].every(id => document.getElementById(id).value === '')`); err != nil {
+		t.Errorf("the passwords stay in the form: %v", err)
+	}
 	// The page navigates, which destroys the context a poll runs in: ask for
 	// the location again until it is the login page.
 	loggedOut := false
@@ -212,5 +220,108 @@ func TestSettingsPasswordEndsTheOtherBrowser(t *testing.T) {
 	// The first one still works.
 	if err := chromedp.Do(first, chromedp.Navigate(srv.URL+"/rooms"), chromedp.WaitVisible("#sidebar-user")); err != nil {
 		t.Fatalf("the browser that changed the password was logged out: %v", err)
+	}
+}
+
+// TestSettingsSSHKeys adds an SSH key as carol on the Sign-in section, sees it
+// in the table without a reload with the command of the server, is refused a
+// wrong password and a key of a type that is not accepted, and removes the key
+// with her password.
+func TestSettingsSSHKeys(t *testing.T) {
+	srv := browsertest.StartWith(t, browsertest.Options{SSH: true})
+	carol := secondBrowser(t, srv, "carol")
+	openSettings(t, carol, srv)
+	runJS(t, carol, `window.notReloaded = true; true`)
+
+	// The server runs: the section shows the command with the port it got.
+	host, port, err := net.SplitHostPort(srv.SSHAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := textOf(t, carol, "#ssh-command"), "ssh -p "+port+" carol@127.0.0.1"; got != want || host != "127.0.0.1" {
+		t.Errorf("command = %q, want %q", got, want)
+	}
+	if got := textOf(t, carol, "#ssh-host-fingerprint"); !strings.HasPrefix(got, "SHA256:") {
+		t.Errorf("host fingerprint = %q", got)
+	}
+
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := ssh.NewPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key))) + " carol@laptop"
+	add := func(name, text, password string) {
+		t.Helper()
+		err := chromedp.Do(carol,
+			browsertest.Fill("#ssh-key-name", name),
+			browsertest.Fill("#ssh-key-public", text),
+			browsertest.Fill("#ssh-key-password", password),
+			chromedp.Click(`#ssh-key-add-form button[type="submit"]`),
+		)
+		if err != nil {
+			t.Fatalf("add the key: %v", err)
+		}
+	}
+
+	add("laptop", line, "not the password")
+	if err := waitFor(carol, `document.getElementById('ssh-key-password-error') !== null`); err != nil {
+		t.Fatalf("no error for a wrong password: %v", err)
+	}
+	if got := valueOf(t, carol, "#ssh-key-public"); got != line {
+		t.Errorf("the key was not kept in the form: %q", got)
+	}
+	add("laptop", "ssh-dss AAAAB3NzaC1kc3MAAAAA nope", browsertest.DemoPassword)
+	if err := waitFor(carol, `document.getElementById('ssh-key-public-error') !== null`); err != nil {
+		t.Fatalf("no error for a key that is not accepted: %v", err)
+	}
+
+	add("laptop", line, browsertest.DemoPassword)
+	if err := waitFor(carol, `document.querySelector('#signin .saved') !== null && document.querySelector('#ssh-keys-panel table.ssh-keys tbody tr') !== null`); err != nil {
+		t.Fatalf("the key is not in the table: %v", err)
+	}
+	if got := textOf(t, carol, "#ssh-keys-panel td.name"); got != "laptop" {
+		t.Errorf("name = %q", got)
+	}
+	if got := textOf(t, carol, "#ssh-keys-panel td.fingerprint"); got != ssh.FingerprintSHA256(key) {
+		t.Errorf("fingerprint = %q, want %q", got, ssh.FingerprintSHA256(key))
+	}
+	// The form is empty again.
+	if got := valueOf(t, carol, "#ssh-key-name"); got != "" {
+		t.Errorf("the name stays in the form: %q", got)
+	}
+	if got := valueOf(t, carol, `#ssh-key-add-form input[name="currentPassword"]`); got != "" {
+		t.Error("the password stays in the form")
+	}
+	if got := valueOf(t, carol, "#ssh-key-public"); got != "" {
+		t.Errorf("the key stays in the form: %q", got)
+	}
+
+	// Remove it: the wrong password first.
+	err = chromedp.Do(carol,
+		browsertest.Fill(`#ssh-keys-panel input[name="currentPassword"]`, "not the password"),
+		chromedp.Click(`#ssh-keys-panel form.ssh-key-remove button[type="submit"]`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitFor(carol, `document.querySelector('#ssh-keys-panel .field-error') !== null`); err != nil {
+		t.Fatalf("no error for a wrong password on Remove: %v", err)
+	}
+	err = chromedp.Do(carol,
+		browsertest.Fill(`#ssh-keys-panel input[name="currentPassword"]`, browsertest.DemoPassword),
+		chromedp.Click(`#ssh-keys-panel form.ssh-key-remove button[type="submit"]`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitFor(carol, `document.getElementById('ssh-keys-empty') !== null`); err != nil {
+		t.Fatalf("the key is still listed: %v", err)
+	}
+	if notReloaded, err := chromedp.Run(carol, chromedp.Evaluate[bool](`window.notReloaded === true`)); err != nil || !notReloaded {
+		t.Errorf("the page was reloaded (%v)", err)
 	}
 }

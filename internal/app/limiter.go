@@ -121,6 +121,23 @@ func (l *LoginLimiter) Fail(ctx context.Context, username, ip string) {
 	}
 }
 
+// AllowAddr reports whether a client address may go on, for the attempts that
+// have no username to count, such as an SSH connection that offers keys. It is
+// false when the address already failed the maximum number of times within the
+// window (the failures of logins from the same address count too). An empty
+// address is allowed. When the counter fails it is true.
+func (l *LoginLimiter) AllowAddr(ctx context.Context, ip string) bool {
+	return ip == "" || l.recent(ctx, CounterIP, limiterKey(ip), l.clk.Now()) < l.maxFailures
+}
+
+// FailAddr records a failed attempt of a client address that has no username
+// to count. An empty address is not counted.
+func (l *LoginLimiter) FailAddr(ctx context.Context, ip string) {
+	if ip != "" {
+		l.add(ctx, CounterIP, limiterKey(ip), l.clk.Now())
+	}
+}
+
 // Reset forgets the failures of username, after a successful login. The
 // failures of the client address stay: one right password does not make the
 // address trustworthy.

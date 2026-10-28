@@ -168,11 +168,18 @@ Each setting is a flag of `clowder serve` or a `CLOWDER_*` environment variable.
 | `-session-lifetime` | `CLOWDER_SESSION_LIFETIME` | `720h` | How long a login lasts from its last use (30 days). |
 | `-invitation-lifetime` | `CLOWDER_INVITATION_LIFETIME` | `168h` | How long an invitation link is valid (7 days). |
 | `-log-level` | `CLOWDER_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. Logs are JSON lines on stderr. |
+| `-ssh-addr` | `CLOWDER_SSH_ADDR` | empty | Address of the SSH server of the sign-in codes, as `host:port`, such as `:2222`. Empty: the server is off. |
+| `-ssh-host-key` | `CLOWDER_SSH_HOST_KEY` | `ssh_host_ed25519_key` in the data directory | The PEM file of the host key of the SSH server. It is made on the first start (Ed25519, mode 0600) when it does not exist; several processes on one data directory share it. |
+| `-ssh-public-host` | `CLOWDER_SSH_PUBLIC_HOST` | the host of `-base-url` | The host the settings page shows in the `ssh` command: a host name or an IP address, without a scheme, a port or a path. |
 | `-trust-proxy` | `CLOWDER_TRUST_PROXY` | `false` | Take the client address, which the login limiter counts, from the last entry of `X-Forwarded-For`. Turn it on only behind your own reverse proxy. |
 
 Durations are written the way Go reads them: `720h`, `90m`. `clowder invite` reads `-data`, `-database-url`, `-base-url` and `-invitation-lifetime` (and their variables); `clowder demo` reads `-data`, `-database-url` and `-size`. `clowder healthcheck -addr host:port` asks `GET /healthz` of a running server and exits 0 when it answers 200 and 1 otherwise; the Docker image runs it as its health check.
 
 The log has one entry per request (method, route pattern, status, duration, user ID). It never has passwords, tokens, post bodies or query strings.
+
+## SSH sign-in codes
+
+With `-ssh-addr :2222` Clowder runs a small SSH server that gives one-time sign-in codes. A user adds a public key in Settings › Sign-in (it needs the password) and then runs `ssh -p 2222 alice@chat.example.org`, which prints a code that works for 60 seconds, once (`ssh -p 2222 alice@chat.example.org json` prints it as JSON). The server accepts public keys only; it has no shell, no forwarding and no other command. Check the host key against the fingerprint that the Sign-in section shows (the first connection asks you to trust it). The code is not asked for at login yet. The compose files publish `CLOWDER_SSH_PORT` (2222); in the cluster composition only the first Clowder process runs the server, and any process takes a code that it gave. A client that fails to authenticate counts as a failed login of its address in the same limiter as the web login, so five failed connections block the address for 15 minutes.
 
 ## Running behind a TLS reverse proxy
 

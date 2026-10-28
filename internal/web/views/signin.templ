@@ -1,0 +1,145 @@
+package views
+
+import (
+	"strconv"
+
+	"github.com/rm4n0s/clowder/internal/app"
+)
+
+// The paths of the Sign-in section of the settings page.
+const (
+	// SettingsSSHKeysPath adds an SSH key.
+	SettingsSSHKeysPath = SettingsPath + "/ssh-keys"
+	// SettingsSignInPath is the Sign-in section of the settings page.
+	SettingsSignInPath = SettingsPath + "#signin"
+)
+
+// SSHKeyRemovePath is the path that removes the SSH key with the id.
+func SSHKeyRemovePath(id uint64) string {
+	return SettingsSSHKeysPath + "/" + strconv.FormatUint(id, 10) + "/remove"
+}
+
+// SignInData is what the Sign-in section shows (SPEC §7.16).
+type SignInData struct {
+	// Keys are the SSH keys of the user, oldest first.
+	Keys []app.SSHKey
+	// Server is what the section shows of the SSH server.
+	Server app.SSHServer
+	// Add holds the Add form: the values kept from a submit that failed and
+	// its problems under the fields "name", "publicKey" and
+	// "currentPassword".
+	Add SSHKeyAddData
+	// RemoveKeyID is the key whose Remove form has the problems in
+	// RemoveErrors; 0 for none.
+	RemoveKeyID uint64
+	// RemoveErrors are the problems of the last Remove, under the field
+	// "currentPassword".
+	RemoveErrors FormErrors
+	// Saved is true right after a key was added or removed.
+	Saved bool
+}
+
+// SSHKeyAddData is the Add form of the Sign-in section.
+type SSHKeyAddData struct {
+	// Name is the name typed in the form, kept after a failed submit.
+	Name string
+	// PublicKey is the key typed in the form, kept after a failed submit.
+	PublicKey string
+	// Errors are the problems of the last submit. Passwords are never put
+	// back.
+	Errors FormErrors
+}
+
+// SignInSection is the Sign-in section: the SSH keys with Remove, the form
+// that adds one, and what the user needs to fetch a code (the command and the
+// fingerprint of the host key) or the note that the server is off. The server
+// sends it alone as a Datastar patch after a submit.
+templ SignInSection(d SignInData) {
+	<section id="signin" class="settings-section">
+		<h2>Sign-in</h2>
+		<p class="hint">Register an SSH public key to fetch a one-time sign-in code from this server.</p>
+		<h3>SSH keys</h3>
+		<div id="ssh-keys-panel">
+			if len(d.Keys) == 0 {
+				<p class="hint" id="ssh-keys-empty">You have no SSH keys.</p>
+			} else {
+				<table class="ssh-keys">
+					<thead>
+						<tr>
+							<th scope="col">Name</th>
+							<th scope="col">Type</th>
+							<th scope="col">Fingerprint</th>
+							<th scope="col">Added</th>
+							<th scope="col">Last used</th>
+							<th scope="col">Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, k := range d.Keys {
+							@sshKeyRow(k, d)
+						}
+					</tbody>
+				</table>
+			}
+		</div>
+		<h3>Add a key</h3>
+		<form id="ssh-key-add-form" method="post" action={ templ.SafeURL(SettingsSSHKeysPath) } data-on:submit={ FormPost(SettingsSSHKeysPath) }>
+			@formProblem(d.Add.Errors.Form)
+			@inputField(formField{ID: "ssh-key-name", Name: "name", Label: "Name", Type: "text", Value: d.Add.Name, Error: d.Add.Errors.Fields["name"], Hint: "1 to 40 characters, such as laptop."})
+			@textareaField("ssh-key-public", "publicKey", "Public key", d.Add.PublicKey, d.Add.Errors.Fields["publicKey"])
+			@inputField(formField{ID: "ssh-key-password", Name: "currentPassword", Label: "Current password", Type: "password", Autocomplete: "current-password", Error: d.Add.Errors.Fields["currentPassword"]})
+			<button type="submit">Add key</button>
+		</form>
+		@savedNote(d.Saved)
+		<h3>Fetch a code</h3>
+		if d.Server.Enabled {
+			<p>Run this command to get a code:</p>
+			<p><code id="ssh-command" class="ssh-command">{ d.Server.Command }</code></p>
+			<p class="hint">Host key fingerprint: <code id="ssh-host-fingerprint">{ d.Server.HostFingerprint }</code></p>
+		} else {
+			<p class="hint" id="ssh-server-off">The SSH server is not running on this Clowder.</p>
+		}
+		// TODO(step 19.2): the switch "Ask for an SSH code when I log in".
+	</section>
+}
+
+// sshKeyRow is one row of the table of keys, with the small form that removes
+// it: Remove asks for the current password.
+templ sshKeyRow(k app.SSHKey, d SignInData) {
+	<tr id={ "ssh-key-" + strconv.FormatUint(k.ID, 10) }>
+		<td class="name">{ k.Name }</td>
+		<td class="type"><code>{ k.Type }</code></td>
+		<td class="fingerprint"><code>{ k.Fingerprint }</code></td>
+		<td><time class="post-time" datetime={ postTimeStamp(k.CreatedAt) } title={ postTimeStamp(k.CreatedAt) }>{ postTimeText(k.CreatedAt) }</time></td>
+		<td>
+			if k.LastUsedAt != nil {
+				<time class="post-time" datetime={ postTimeStamp(*k.LastUsedAt) } title={ postTimeStamp(*k.LastUsedAt) }>{ postTimeText(*k.LastUsedAt) }</time>
+			} else {
+				<span class="hint">Never</span>
+			}
+		</td>
+		<td class="actions">
+			<form id={ "ssh-key-remove-form-" + strconv.FormatUint(k.ID, 10) } class="ssh-key-remove" method="post" action={ templ.SafeURL(SSHKeyRemovePath(k.ID)) } data-on:submit={ FormPost(SSHKeyRemovePath(k.ID)) }>
+				<label class="visually-hidden" for={ "ssh-key-remove-password-" + strconv.FormatUint(k.ID, 10) }>Current password</label>
+				<input
+					id={ "ssh-key-remove-password-" + strconv.FormatUint(k.ID, 10) }
+					name="currentPassword"
+					type="password"
+					autocomplete="current-password"
+					placeholder="Current password"
+					required
+					if d.RemoveKeyID == k.ID && d.RemoveErrors.Fields["currentPassword"] != "" {
+						aria-invalid="true"
+					}
+				/>
+				<button type="submit" class="secondary">Remove</button>
+				if d.RemoveKeyID == k.ID {
+					@formProblem(d.RemoveErrors.Form)
+					if d.RemoveErrors.Fields["currentPassword"] != "" {
+						<p class="field-error" role="alert">{ d.RemoveErrors.Fields["currentPassword"] }</p>
+					}
+				}
+			</form>
+		</td>
+	</tr>
+}

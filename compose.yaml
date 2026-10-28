@@ -31,10 +31,14 @@ services:
       CLOWDER_BASE_URL: ${CLOWDER_BASE_URL:-http://localhost:8080}
       CLOWDER_TRUST_PROXY: ${CLOWDER_TRUST_PROXY:-false}
       CLOWDER_LOG_LEVEL: ${CLOWDER_LOG_LEVEL:-info}
+      # The SSH server of the sign-in codes (SPEC §7.16). Its host key is
+      # made in /data on the first start.
+      CLOWDER_SSH_ADDR: ":2222"
     volumes:
       - clowderdata:/data
     ports:
       - "${CLOWDER_PORT:-8080}:8080"
+      - "${CLOWDER_SSH_PORT:-2222}:2222"
     restart: unless-stopped
 
 volumes:

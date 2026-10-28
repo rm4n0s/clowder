@@ -635,6 +635,8 @@ func (sc *scope) postPaths() map[string]string {
 		"POST /me/settings/password":                       "/me/settings/password",
 		"POST /me/settings/appearance":                     "/me/settings/appearance",
 		"POST /me/settings/notifications":                  "/me/settings/notifications",
+		"POST /me/settings/ssh-keys":                       "/me/settings/ssh-keys",
+		"POST /me/settings/ssh-keys/{id}/remove":           "/me/settings/ssh-keys/99999/remove",
 		"POST /rooms/{id}/notifications":                   "/rooms/" + g + "/notifications",
 		"POST /messages/{id}/notifications":                "/messages/" + cv + "/notifications",
 	}

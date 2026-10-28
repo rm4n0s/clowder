@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,8 +20,10 @@ import (
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
+	"github.com/rm4n0s/clowder/internal/sshcode"
 	"github.com/rm4n0s/clowder/internal/web"
 	"github.com/rm4n0s/errors"
+	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -112,10 +115,16 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	search := app.NewSearch(st)
 	audit := app.NewAudit(st)
 	presence := app.NewPresence(st, livePresence)
+	stopSSH, sshInfo, err := startSSH(ctx, cfg, app.NewSignIn(st, clock.Real(), logger), limiter, logger)
+	if err != nil {
+		return err
+	}
+	defer stopSSH()
+	sshKeys := app.NewSSHKeys(st, clock.Real(), accounts, sshInfo)
 	apiServer, err := api.New(api.Options{
 		Services: api.Services{
 			Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts,
-			Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: presence, Hub: hub,
+			Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: presence, SSHKeys: sshKeys, Hub: hub,
 		},
 		Logger:        logger,
 		NoteUser:      web.NoteUser,
@@ -141,11 +150,52 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Presence:      presence,
 		Posts:         posts,
 		Messages:      messages,
+		SSHKeys:       sshKeys,
 	})
 	if err != nil {
 		return err
 	}
 	return srv.Run(ctx)
+}
+
+// startSSH starts the SSH server of the sign-in codes (SPEC §7.16, D52) when
+// cfg.SSHAddr is set: it loads or makes the host key, listens and serves in a
+// goroutine that the returned function stops and waits for. It returns what
+// the pages and the API show of the server (the zero value when it is off).
+// The server stops when ctx is done too. An error here (a port in use, a host
+// key that cannot be read) stops serve before anything else runs.
+func startSSH(ctx context.Context, cfg config.Config, signIn sshcode.SignIn, limiter sshcode.Limiter, logger *slog.Logger) (func(), app.SSHServerInfo, error) {
+	if cfg.SSHAddr == "" {
+		return func() {}, app.SSHServerInfo{}, nil
+	}
+	hostKey, err := sshcode.LoadHostKey(cfg.SSHHostKeyPath())
+	if err != nil {
+		return nil, app.SSHServerInfo{}, err
+	}
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", cfg.SSHAddr)
+	if err != nil {
+		return nil, app.SSHServerInfo{}, errors.NewErr(tagSSHListenFailed, err).SetMetadata("addr", cfg.SSHAddr)
+	}
+	srv := sshcode.New(sshcode.Config{HostKey: hostKey}, signIn, limiter, logger)
+	sshCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := srv.Serve(sshCtx, ln); err != nil {
+			logger.Error("the SSH server stopped", "err", err)
+		}
+	}()
+	info := app.SSHServerInfo{
+		// The listener's address, so that ":0" shows the port it got.
+		Addr:            ln.Addr().String(),
+		PublicHost:      cfg.SSHPublicHostOrDefault(),
+		HostFingerprint: ssh.FingerprintSHA256(hostKey.PublicKey()),
+	}
+	return func() {
+		cancel()
+		<-done
+	}, info, nil
 }
 
 // publisherCloser is the Publisher of the services when events go through
@@ -321,6 +371,12 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		"how long an invitation is valid (CLOWDER_INVITATION_LIFETIME)")
 	fs.StringVar(&cfg.LogLevel, "log-level", envString(env, "CLOWDER_LOG_LEVEL", def.LogLevel),
 		"log level: debug, info, warn or error (CLOWDER_LOG_LEVEL)")
+	fs.StringVar(&cfg.SSHAddr, "ssh-addr", envString(env, "CLOWDER_SSH_ADDR", def.SSHAddr),
+		"address of the SSH server of the sign-in codes, such as :2222; empty: off (CLOWDER_SSH_ADDR)")
+	fs.StringVar(&cfg.SSHHostKey, "ssh-host-key", envString(env, "CLOWDER_SSH_HOST_KEY", def.SSHHostKey),
+		"path of the SSH host key; made on the first start; default: ssh_host_ed25519_key in the data directory (CLOWDER_SSH_HOST_KEY)")
+	fs.StringVar(&cfg.SSHPublicHost, "ssh-public-host", envString(env, "CLOWDER_SSH_PUBLIC_HOST", def.SSHPublicHost),
+		"host shown in the ssh command of the settings page; default: the host of the base URL (CLOWDER_SSH_PUBLIC_HOST)")
 	fs.BoolVar(&cfg.TrustProxyHeaders, "trust-proxy", trustProxy,
 		"take the client address from the last X-Forwarded-For entry; only behind our own reverse proxy (CLOWDER_TRUST_PROXY)")
 	if err := fs.Parse(args); err != nil {
@@ -438,4 +494,5 @@ const (
 	tagEnvValueInvalid     = "EnvValueInvalid"
 	tagFlagsInvalid        = "FlagsInvalid"
 	tagDataDirCreateFailed = "DataDirCreateFailed"
+	tagSSHListenFailed     = "SSHListenFailed"
 )

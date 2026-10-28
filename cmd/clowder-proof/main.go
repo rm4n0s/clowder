@@ -201,6 +201,10 @@ type options struct {
 	postgresURL string
 	// redisURL is the Redis server of -cluster; empty: CLOWDER_TEST_REDIS.
 	redisURL string
+	// ssh starts the server with its SSH server of the sign-in codes on a free
+	// port of the loopback address, so that the Sign-in section shows the
+	// command.
+	ssh bool
 	// apiLogin is the client name of a session that the -as user starts
 	// through the API before the page is opened; empty for none.
 	apiLogin string
@@ -281,7 +285,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 // startOne starts the one server of a run and returns the function that stops
 // it.
 func startOne(ctx context.Context, opts options) (servers, func() error, error) {
-	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite, ResetUser: opts.reset})
+	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite, ResetUser: opts.reset, SSH: opts.ssh})
 	if err != nil {
 		return servers{}, nil, err
 	}
@@ -356,6 +360,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.BoolVar(&o.cluster, "cluster", false, "start two servers on one new PostgreSQL database, one Redis and one data directory (as compose.cluster.yaml runs them); the -other user acts on the first one and the screenshot is taken on the second one, so it shows a change that came through Redis; needs -other, a PostgreSQL server (-postgres-url or CLOWDER_TEST_POSTGRES) and a Redis (-redis-url or CLOWDER_TEST_REDIS), and prints both addresses")
 	fs.StringVar(&o.postgresURL, "postgres-url", "", "with -cluster: the PostgreSQL server where the new database is made, postgres://user:password@host:port/postgres; the user may create and drop databases (default: CLOWDER_TEST_POSTGRES)")
 	fs.StringVar(&o.redisURL, "redis-url", "", "with -cluster: the Redis server, redis://host:port/0 (default: CLOWDER_TEST_REDIS)")
+	fs.BoolVar(&o.ssh, "ssh", false, "start the server with its SSH server of the sign-in codes on a free port of 127.0.0.1, so that the Sign-in section of the settings page shows the ssh command (not with -cluster)")
 	fs.StringVar(&o.apiLogin, "api-login", "", "client name: the -as user also logs in through POST /api/v1/auth/login as a client of that name before the page opens, and the session stays, so that the page of the sessions shows it (needs -as)")
 	fs.Var(&o.other.clicks, "other-click", "CSS selector of an element the -other user clicks after the -other-fill flags (repeatable, in order)")
 	if err := fs.Parse(args); err != nil {
@@ -396,6 +401,8 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "-cluster needs -other: the second user acts on the other server while the first one watches", "flag", "cluster")
 	case o.cluster && o.invite:
 		return options{}, errors.New(tagFlagsInvalid, "-cluster and -invite cannot be used together", "flag", "cluster")
+	case o.cluster && o.ssh:
+		return options{}, errors.New(tagFlagsInvalid, "-cluster and -ssh cannot be used together", "flag", "cluster")
 	case o.cluster && o.reset != "":
 		return options{}, errors.New(tagFlagsInvalid, "-cluster and -reset cannot be used together", "flag", "cluster")
 	case !o.cluster && (o.postgresURL != "" || o.redisURL != ""):

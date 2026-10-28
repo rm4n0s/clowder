@@ -8,6 +8,11 @@
 # balances the requests round-robin between the two. The processes are not
 # published any more: people reach Clowder through Caddy only.
 #
+# The SSH server of the sign-in codes (SPEC §7.16) runs in the first process
+# only, which publishes CLOWDER_SSH_PORT itself: Caddy balances HTTP, and the
+# codes are kept in the database, so any process takes a code that this one
+# gave. The second process runs no SSH server.
+#
 # The first admin: docker compose -f compose.yaml -f compose.cluster.yaml run --rm clowder invite -admin
 
 # What both Clowder processes get besides the settings of compose.yaml: the
@@ -40,7 +45,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    ports: !reset []
+    # Only the SSH port: the web port is Caddy's.
+    ports: !override
+      - "${CLOWDER_SSH_PORT:-2222}:2222"
 
   # The second process: the service clowder of compose.yaml (same image,
   # database, base URL and data volume), with the settings above.
@@ -48,7 +55,10 @@ services:
     extends:
       file: compose.yaml
       service: clowder
-    environment: *cluster-environment
+    environment:
+      <<: *cluster-environment
+      # No SSH server in this process: an empty address turns it off.
+      CLOWDER_SSH_ADDR: ""
     depends_on:
       redis:
         condition: service_healthy

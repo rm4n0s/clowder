@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"runtime/debug"
 
+	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
 
@@ -96,3 +97,28 @@ func (a *Accounts) verify(ctx context.Context, password, hash string) (bool, err
 // tagHashWaitCanceled marks a request that ended while it waited for its turn
 // to hash a password.
 const tagHashWaitCanceled = "HashWaitCanceled"
+
+// checkPassword checks the current password of user the way the password
+// change does, for the services that need it before a sensitive change. It
+// asks the login limiter first: allowed is false when the username or the
+// address clientIP has failed too many times lately, and then the password is
+// not looked at. Otherwise the password is verified through the hashing gate,
+// match says whether it is right and a wrong one counts as a failed login of
+// the username and the address. The caller makes the errors, so that their
+// routes end in the failing function (an error comes back only for a failed or
+// canceled hashing).
+func (a *Accounts) checkPassword(ctx context.Context, user store.User, password, clientIP string) (allowed, match bool, err error) {
+	if !a.limiter.Allow(ctx, user.Username, clientIP) {
+		return false, false, nil
+	}
+	if len(password) <= passwordMaxBytes {
+		match, err = a.verify(ctx, password, user.PasswordHash)
+		if err != nil {
+			return true, false, err
+		}
+	}
+	if !match {
+		a.limiter.Fail(ctx, user.Username, clientIP)
+	}
+	return true, match, nil
+}

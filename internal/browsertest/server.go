@@ -95,6 +95,10 @@ type Options struct {
 	// database and a data directory that already hold the demo data or that a
 	// test fills itself.
 	SkipDemo bool
+	// SSH starts the server with its SSH server of the sign-in codes on a
+	// free port of the loopback address; Server.SSHAddr says which. A proof
+	// of the Sign-in section sets it.
+	SSH bool
 }
 
 // Server is a running clowder server on a temporary data directory. Make it
@@ -113,6 +117,9 @@ type Server struct {
 	// ResetToken is the token of the reset link made by Options.ResetUser, the
 	// last part of the link /reset/<token>. It is empty without the option.
 	ResetToken string
+	// SSHAddr is the host:port of the SSH server started by Options.SSH, empty
+	// without the option.
+	SSHAddr string
 
 	tmpDir      string
 	stopTimeout time.Duration
@@ -261,6 +268,15 @@ func launch(ctx context.Context, opts Options, bin, dataDir string) (srv *Server
 	if opts.RedisURL != "" {
 		args = append(args, "-redis-url", opts.RedisURL)
 	}
+	sshAddr := ""
+	if opts.SSH {
+		sshPort, err := freePort(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		sshAddr = net.JoinHostPort(listenHost, strconv.Itoa(sshPort))
+		args = append(args, "-ssh-addr", sshAddr)
+	}
 	cmd := exec.Command(bin, args...)
 	cmd.Stderr = w
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -273,6 +289,7 @@ func launch(ctx context.Context, opts Options, bin, dataDir string) (srv *Server
 		stopTimeout = defaultStopTimeout
 	}
 	srv = &Server{
+		SSHAddr:     sshAddr,
 		stopTimeout: stopTimeout,
 		cmd:         cmd,
 		done:        make(chan struct{}),

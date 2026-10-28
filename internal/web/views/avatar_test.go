@@ -130,8 +130,8 @@ func TestSettingsPageSections(t *testing.T) {
 	if regexp.MustCompile(`type="password"[^>]*value=`).MatchString(html) || regexp.MustCompile(`value="[^"]*"[^>]*type="password"`).MatchString(html) {
 		t.Error("a password input has a value")
 	}
-	if got := strconv.Itoa(strings.Count(html, "<section id=")); got != "5" {
-		t.Errorf("%s sections, want 5", got)
+	if got := strconv.Itoa(strings.Count(html, "<section id=")); got != "6" {
+		t.Errorf("%s sections, want 6", got)
 	}
 }
 

@@ -1,0 +1,83 @@
+# The server, started with: clowder serve -ssh-addr 127.0.0.1:<ssh port> (demo data, a temporary data directory)
+$ grep 'SSH server' server.log
+{"level": "INFO", "msg": "the SSH server is listening", "addr": "127.0.0.1:50323", "hostKey": "SHA256:Q2j0yRhvptFLfREN0OZrsolvLy4lgJE7Cdfq5BAhII0"}
+
+# The host key was made in the data directory with mode 0600
+$ stat -c '%a %n' <tmp>/data/ssh_host_ed25519_key
+600 <tmp>/data/ssh_host_ed25519_key
+$ ssh-keygen -lf <tmp>/data/ssh_host_ed25519_key.pub   (the fingerprint the log and the settings page show)
+256 SHA256:Q2j0yRhvptFLfREN0OZrsolvLy4lgJE7Cdfq5BAhII0 no comment (ED25519)
+
+# Register the key of alice through the API: log in, then POST /api/v1/me/ssh-keys
+$ curl -X POST /api/v1/me/ssh-keys -d {name: laptop, public_key: <alice.pub>, current_password: <password>}
+HTTP/1.1 201 Created
+Content-Type: application/json; charset=utf-8
+
+{"id":1,"name":"laptop","type":"ssh-ed25519","fingerprint":"SHA256:haT9WOozzTW9GK7Ngm6WV2jVTydh1x2HMGOhPsJfSEU","created_at":"2026-10-28T04:10:35Z","last_used_at":null}
+
+$ curl /api/v1/me/ssh-keys
+{
+    "keys": [
+        {
+            "id": 1,
+            "name": "laptop",
+            "type": "ssh-ed25519",
+            "fingerprint": "SHA256:haT9WOozzTW9GK7Ngm6WV2jVTydh1x2HMGOhPsJfSEU",
+            "created_at": "2026-10-28T04:10:35Z",
+            "last_used_at": null
+        }
+    ],
+    "server": {
+        "enabled": true,
+        "host_fingerprint": "SHA256:Q2j0yRhvptFLfREN0OZrsolvLy4lgJE7Cdfq5BAhII0",
+        "command": "ssh -p 50323 alice@127.0.0.1"
+    }
+}
+
+# 1. plain: ssh with the registered key
+$ ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=<tmp>/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p 50323 -i <tmp>/keys/alice alice@127.0.0.1
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Warning: Permanently added '[127.0.0.1]:50323' (ED25519) to the list of known hosts.
+Your Clowder sign-in code: <code> (valid for 60 seconds)
+Connection to 127.0.0.1 closed by remote host.
+[exit status 0]
+
+# 2. the command json
+$ ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=<tmp>/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p 50323 -i <tmp>/keys/alice alice@127.0.0.1 json
+{"code":"<code>","expires_at":"2026-10-28T04:11:35Z"}
+Connection to 127.0.0.1 closed by remote host.
+[exit status 0]
+
+# 3. a key that is not registered
+$ ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=<tmp>/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p 50323 -i <tmp>/keys/stranger alice@127.0.0.1
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+alice@127.0.0.1: Permission denied (publickey).
+[exit status 255]
+
+# 4. the key of alice under another user's name
+$ ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=<tmp>/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p 50323 -i <tmp>/keys/alice bob@127.0.0.1
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+bob@127.0.0.1: Permission denied (publickey).
+[exit status 255]
+
+# 5. a password instead of a key
+$ ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=<tmp>/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p 50323 -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive alice@127.0.0.1
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+alice@127.0.0.1: Permission denied (publickey).
+[exit status 255]
+
+# 6. a PTY is refused (-tt forces one)
+$ ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=<tmp>/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p 50323 -tt -i <tmp>/keys/alice alice@127.0.0.1
+PTY allocation request failed on channel 0
+[exit status 255]
+
+# 7. any other command is refused
+$ ssh -F /dev/null -o IdentitiesOnly=yes -o IdentityAgent=none -o UserKnownHostsFile=<tmp>/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes -p 50323 -i <tmp>/keys/alice alice@127.0.0.1 ls -la
+This server only gives sign-in codes.
+exec request failed on channel 0
+[exit status 255]
+
+# The log of the server for these connections: the user, the fingerprint and the address; never the code
+{"level": "INFO", "msg": "an SSH sign-in code was issued", "user": "alice", "fingerprint": "SHA256:haT9WOozzTW9GK7Ngm6WV2jVTydh1x2HMGOhPsJfSEU", "addr": "127.0.0.1:51096"}
+{"level": "INFO", "msg": "an SSH sign-in code was issued", "user": "alice", "fingerprint": "SHA256:haT9WOozzTW9GK7Ngm6WV2jVTydh1x2HMGOhPsJfSEU", "addr": "127.0.0.1:51104"}
+{"level": "INFO", "msg": "an SSH sign-in code was issued", "user": "alice", "fingerprint": "SHA256:haT9WOozzTW9GK7Ngm6WV2jVTydh1x2HMGOhPsJfSEU", "addr": "127.0.0.1:51136"}

@@ -45,7 +45,7 @@ func statusOf(err error) int {
 		return http.StatusNotFound
 	case app.TagForbidden:
 		return http.StatusForbidden
-	case app.TagInvalidInput:
+	case app.TagInvalidInput, app.TagSSHKeyTypeRefused, app.TagSSHKeyTooShort:
 		return http.StatusUnprocessableEntity
 	case app.TagConflict:
 		return http.StatusConflict
@@ -114,7 +114,8 @@ type formView struct {
 // kept and the problems are shown:
 //
 //   - TagInvalidInput shows the messages of the metadata "fields" next to
-//     their inputs, and the one named FieldForm above the form;
+//     their inputs, and the one named FieldForm above the form; so do the tags
+//     of a refused SSH key and a TagConflict that has such messages;
 //   - TagTooLarge shows "Each file can be at most N MB." next to the files;
 //   - TagRateLimited shows messageRateLimited above the form;
 //   - TagForbidden and TagConflict show messageForbidden and messageConflict;
@@ -131,7 +132,11 @@ func (s *Server) formFailed(w http.ResponseWriter, r *http.Request, err error, b
 	case status == http.StatusFound:
 		s.redirectToLogin(w, r)
 		return
-	case isTag(err, app.TagInvalidInput), isTag(err, app.TagTooLarge):
+	case isTag(err, app.TagInvalidInput), isTag(err, app.TagTooLarge), isTag(err, app.TagSSHKeyTypeRefused), isTag(err, app.TagSSHKeyTooShort):
+		problems = formErrorsOf(err)
+	case isTag(err, app.TagConflict) && hasFields(err):
+		// A conflict that says what clashes (a key that is registered, the
+		// limit of keys) shows its message next to the field.
 		problems = formErrorsOf(err)
 	case isTag(err, app.TagRateLimited):
 		problems.Form = messageRateLimited
@@ -151,6 +156,16 @@ func (s *Server) formFailed(w http.ResponseWriter, r *http.Request, err error, b
 		return
 	}
 	s.render(w, r, status, v.page)
+}
+
+// hasFields reports whether err carries messages for fields in its metadata.
+func hasFields(err error) bool {
+	appErr, ok := errors.FromError(err)
+	if !ok {
+		return false
+	}
+	fields, _ := appErr.Metadata["fields"].(map[string]string)
+	return len(fields) > 0
 }
 
 // formErrorsOf reads the metadata "fields" of a TagInvalidInput error: the

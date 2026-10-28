@@ -88,11 +88,12 @@ func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
 		Posts: app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{
 			MaxAttachmentSize: 1 << 20, MaxAttachments: 2,
 		}, hub),
-		Board:  app.NewBoard(st, clk, hub),
-		Search: app.NewSearch(st),
-		Audit:  app.NewAudit(st),
-		Prefs:  app.NewPrefs(st, hub),
-		Hub:    listen,
+		Board:   app.NewBoard(st, clk, hub),
+		Search:  app.NewSearch(st),
+		Audit:   app.NewAudit(st),
+		Prefs:   app.NewPrefs(st, hub),
+		SSHKeys: app.NewSSHKeys(st, clk, accounts, app.SSHServerInfo{Addr: ":2222", PublicHost: "chat.example.org", HostFingerprint: "SHA256:testhostkey"}),
+		Hub:     listen,
 	}, MaxUploadSize: 1 << 20, BaseURL: "http://clowder.example.com"})
 	if err != nil {
 		t.Fatal(err)
@@ -839,6 +840,32 @@ func TestSettingsScenario(t *testing.T) {
 	var out2, err2 bytes.Buffer
 	if code := run(t.Context(), []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "session"}, func(string) string { return "" }, &out2, &err2); code != 0 {
 		t.Fatalf("the password was not put back: exit %d\n%s\n%s", code, out2.String(), err2.String())
+	}
+}
+
+// TestSSHKeysScenario runs the SSH keys scenario and checks what it prints and
+// that it leaves the user with the keys they had.
+func TestSSHKeysScenario(t *testing.T) {
+	t.Parallel()
+	base := startAPI(t)
+	var out, errOut bytes.Buffer
+	code := run(t.Context(), []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", sshKeysScenarioName},
+		func(string) string { return "" }, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d\n%s\n%s", code, out.String(), errOut.String())
+	}
+	text := out.String()
+	for _, want := range []string{
+		"== sshkeys:", "> GET /api/v1/me/ssh-keys", `"command": "ssh -p 2222 alice@chat.example.org"`, "> POST /api/v1/me/ssh-keys",
+		`"public_key": "ssh-ed25519 `, `"current_password": "<password>"`, "< 201 Created", "< 409 Conflict", "< 422 Unprocessable Entity",
+		"> DELETE /api/v1/me/ssh-keys/", "< 204 No Content", "< 404 Not Found", "ok sshkeys",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the output does not contain %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, testPassword) || strings.Contains(errOut.String(), testPassword) {
+		t.Error("the password is in the output")
 	}
 }
 
