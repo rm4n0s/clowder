@@ -26,6 +26,9 @@ type wireEvent struct {
 	ConversationID uint64 `json:"conversation_id,omitempty"`
 	MessageID      uint64 `json:"message_id,omitempty"`
 	NotificationID uint64 `json:"notification_id,omitempty"`
+	CallID         uint64 `json:"call_id,omitempty"`
+	Microphone     bool   `json:"microphone,omitempty"`
+	Camera         bool   `json:"camera,omitempty"`
 	Ring           bool   `json:"ring,omitempty"`
 	Sound          string `json:"sound,omitempty"`
 	Browser        bool   `json:"browser,omitempty"`
@@ -43,6 +46,9 @@ func wireOf(ev live.Event) wireEvent {
 		ConversationID: ev.ConversationID,
 		MessageID:      ev.MessageID,
 		NotificationID: ev.NotificationID,
+		CallID:         ev.CallID,
+		Microphone:     ev.Microphone,
+		Camera:         ev.Camera,
 		Ring:           ev.Ring,
 		Sound:          ev.Sound,
 		Browser:        ev.Browser,
@@ -61,6 +67,9 @@ func (w wireEvent) event() live.Event {
 		ConversationID: w.ConversationID,
 		MessageID:      w.MessageID,
 		NotificationID: w.NotificationID,
+		CallID:         w.CallID,
+		Microphone:     w.Microphone,
+		Camera:         w.Camera,
 		Ring:           w.Ring,
 		Sound:          w.Sound,
 		Browser:        w.Browser,

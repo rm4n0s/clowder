@@ -192,6 +192,10 @@ The WebSocket carries the live events that the pages receive over server-sent ev
   | `message.reaction` | `conversation:<id>` | `{"reactions": [...]}` |
   | `conversation.updated` | `conversation:<id>` | the conversation (none if you are no longer a member) |
   | `conversation.changed` | `user:<id>` | the conversation (none if you are no longer a member): you were added, or it changed |
+  | `call.ringing` | `user:<id>` | the call, for the callee, when a call to you starts (your clients should ring) |
+  | `call.started` | `user:<id>` | the call, for both, when it starts (`state` is `ringing`) and when it is answered (`active`) |
+  | `call.updated` | `user:<id>` | the call; `user_id`, `microphone` and `camera` say who turned which on or off |
+  | `call.ended` | `user:<id>` | the call, with `state` `ended` and its `end_reason` |
 
 - **Access follows you.** Every event is checked for you before it is sent, with the check the REST route would make; an event you may not see is not sent. If you lose a room or a conversation you are subscribed to (you were removed from a private room, it was deleted, you left the conversation), one `error` of `not_found` without an `id` and with the `topic` is sent for each topic that concerned it, and the topics are dropped.
 - **Pings and closing.** The server sends WebSocket ping frames every 30 seconds and closes a connection that does not answer within 15 seconds; every common WebSocket library answers pings by itself. A write to a client has 10 seconds. The server closes the connection with a code:
@@ -208,6 +212,42 @@ The WebSocket carries the live events that the pages receive over server-sent ev
 
 - **Resync.** If a client reads too slowly (its queue of 64 events is full) or the server lost its link to the other processes of the installation, the server sends `{"type": "resync", "reason": "overflow"}` (or `"reconnect"`) and closes with `1013`. Events were missed: **reconnect, subscribe again, and load again everything the client shows**. The same applies to any connection that was lost: events are not stored, so after a reconnect the client subscribes first and then loads with REST, and nothing falls in between.
 - **Reconnecting.** Wait 1 second after the first failure and double the wait up to about 30 seconds, with some random jitter, so that clients do not return all at the same moment after a restart of the server. Reset the wait when a connection has been up for a while. The server may be restarted for an upgrade at any time.
+
+## Calls
+
+The two users of a **direct** conversation can call each other with audio, or with audio and video (SPEC §7.18). A group conversation has no calls. The media goes through the Clowder server, which forwards it (a small WebRTC server made with pion); the client therefore needs no STUN or TURN server and only has to reach the server's media port. Any WebRTC stack can take part: a browser, a native library such as libwebrtc, pion or aiortc.
+
+- **The routes** (all `Authorization: Bearer <token>`; the call is the one in progress in the conversation, a conversation has at most one):
+
+  | Route | What it does |
+  |---|---|
+  | `GET /conversations/{id}/call` | The call in progress, `404` when there is none. |
+  | `POST /conversations/{id}/call` | Start a call: `{"video": true}` or `false`. `201` with the call and a `Location`. The other user's clients get `call.ringing`. |
+  | `POST /conversations/{id}/call/answer` | The callee answers, `{"video": true}` or `false` (whether this client sends video). `200`. |
+  | `POST /conversations/{id}/call/decline` | The callee declines. `200` with the ended call. |
+  | `POST /conversations/{id}/call/cancel` | The caller cancels the call while it rings. `200`. |
+  | `POST /conversations/{id}/call/hangup` | Either side ends the active call. `200`. |
+  | `GET /conversations/{id}/call/ws` | The signalling WebSocket (below). |
+
+  A call is `{"id", "conversation_id", "caller", "callee", "video", "state", "created_at", "answered_at", "ended_at", "end_reason", "ended_by", "incoming"}`. `state` is `ringing`, `active` or `ended`; `incoming` is true when you are the callee. `end_reason` is `hangup`, `cancelled`, `declined`, `missed` (nobody answered in 45 seconds), `busy`, `failed` (the connection could not be made or was lost), `disabled`, `session_ended` or `server_stopped`; `ended_by` is the user who ended it, `null` when nobody did. Errors: `404` when the conversation is not yours or does not exist; `403` when the caller answers or the callee cancels; `409 conflict` with the reason in `error.fields.form` when the conversation is a group, the other user is disabled or is in another call, you are in another call, the server has calls off (`-media-addr` is empty) or is full, or the call is not in the state the route needs.
+- **Ringing.** The callee's clients get `call.ringing` on `user:<id>` (you are subscribed to your own topic from the start) and should ring until they get `call.started` with `state` `active`, `call.ended`, or 45 seconds have passed. The same event reaches every client of the user: when one of them answers, the others get `call.started` and should stop ringing. A user is in one call at a time.
+- **After the call** the conversation has an entry in its history: a message with `"kind": "call"`, `"body": null`, `"html": null` and `"call": {"id", "video", "outcome", "duration_seconds", "text"}`. `outcome` is `completed`, `declined`, `cancelled`, `missed` or `busy`; `text` is the line to show ("Video call · 12 min"), written for you (the callee sees "Missed video call"). It cannot be edited, deleted or reacted to, and has no search hit. Messages of kind `text` have `"kind": "text"` and `"call": null`.
+- **The signalling WebSocket** `GET /conversations/{id}/call/ws`, with the bearer header, like the user's WebSocket (a wrong token is `401`, an Origin of another site `403`). The caller may open it as soon as the call starts and the callee after answering; before that, or for a call that is over, it is `409`, for someone else `404`. Messages are JSON text frames; the schemas are `CallClientMessage` and `CallServerMessage` in `openapi.json`.
+
+  | Direction | Message | Meaning |
+  |---|---|---|
+  | server to client | `{"type": "offer", "sdp": "..."}` | The server offers: two `sendrecv` transceivers, audio (Opus) and video (VP8). Apply it, add your tracks to the transceivers (`replaceTrack`, or `addTrack` on the transceivers the offer made), answer. The SDP has `b=AS`/`b=TIAS` lines: send at most 2.5 Mbit/s of video. |
+  | client to server | `{"type": "answer", "sdp": "..."}` | Your answer. |
+  | both | `{"type": "candidate", "candidate": "...", "sdpMid": "0", "sdpMLineIndex": 0}` | An ICE candidate (trickle ICE). The server's candidates are `host` candidates on the media port, UDP and TCP; there is no end-of-candidates message. |
+  | client to server | `{"type": "state", "microphone": true, "camera": false}` | Your microphone and camera, for the other side's display. |
+  | server to client | `{"type": "peer-state", "microphone": true, "camera": false}` | The same, about the other side. |
+  | client to server | `{"type": "hangup"}` | Leave: cancel while it rings, hang up when it is active. The server then sends `ended`. |
+  | server to client | `{"type": "ended", "reason": "hangup"}` | The call is over (the `end_reason`), the socket closes next with 1000. |
+  | server to client | `{"type": "error", "code": "...", "message": "..."}` | A message the server could not use. `code` is `invalid_message`, `negotiation_failed`, `wrong_state` or `internal`. The socket stays except after `internal`. |
+
+  The server sends the offer when your socket has joined the call (and only then, so the callee's tracks reach the caller from the first packet). Take part in this order: open the WebSocket, answer the offer, send your candidates as the stack finds them, and apply the server's. Once ICE and DTLS connect, send Opus and VP8 over RTP; you receive the other side's audio and video on the same two transceivers. Ask for a key frame by sending a PLI as usual; the server forwards it. **Sharing a screen** needs no new negotiation: replace the video track of the sender (`RTCRtpSender.replaceTrack`); the server renumbers the packets, so the other side sees one continuous stream.
+- **Close codes** of the signalling socket: 1000 the call is over (after `ended`); 1001 the server is stopping; 1003 a binary frame; 1011 an internal error; 4001 the session ended (do not reconnect); 4002 the role of the user changed (reconnect); 4003 a newer socket of yours (another tab or device) took over. The server pings every 30 seconds. If the socket is lost during an active call, open a new one within 15 seconds: the server sends a new offer and the call goes on; after that the call ends with `failed`. A call fails also when a participant has not answered the first offer within 30 seconds of the answer to the call, or when ICE does not connect within 10 seconds of the answer.
+- **Ports.** The media server listens on `-media-addr` (default off), one UDP and one TCP port with the same number; behind NAT, `-media-public-ip` is the address it announces. A client behind a firewall that blocks UDP uses the TCP candidate.
 
 ## An example session
 

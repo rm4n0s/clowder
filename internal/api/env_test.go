@@ -61,6 +61,9 @@ type testEnv struct {
 	rooms    *app.Rooms
 	posts    *app.Posts
 	board    *app.Board
+	calls    *app.Calls
+	// opts are the options the server was made with.
+	opts Options
 	// filesDir is where the files of the attachments are.
 	filesDir string
 	st       *store.Store
@@ -138,9 +141,10 @@ func newTestEnvSSH(t *testing.T, mutate func(*Options), sshServer app.SSHServerI
 	rooms := app.NewRooms(st, fileStore, logger, pub)
 	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4, Logger: logger, Presence: presence}, pub)
 	board := app.NewBoard(st, clk, pub)
+	callSvc := app.NewCalls(st, clk, app.CallsConfig{ProcessID: "0123456789abcdef", Enabled: true, Logger: logger}, pub)
 	noted := &noteLog{}
 	opts := Options{
-		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Prefs: app.NewPrefs(st, pub), Presence: app.NewPresence(st, presence), SSHKeys: app.NewSSHKeys(st, clk, accounts, sshServer), Hub: hub},
+		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Prefs: app.NewPrefs(st, pub), Presence: app.NewPresence(st, presence), SSHKeys: app.NewSSHKeys(st, clk, accounts, sshServer), Calls: callSvc, Hub: hub},
 		Logger:        logger,
 		NoteUser:      func(_ *http.Request, id uint64) { noted.add(id) },
 		MaxUploadSize: 1 << 20,
@@ -156,7 +160,24 @@ func newTestEnvSSH(t *testing.T, mutate func(*Options), sshServer app.SSHServerI
 	for _, rt := range srv.Routes() {
 		mux.Handle(rt.Pattern, rt.Handler)
 	}
-	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, board: board, filesDir: filesDir, st: st, clk: clk, rec: rec, hub: hub, presence: presence, log: buf, noted: noted}
+	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, board: board, calls: callSvc, opts: opts, filesDir: filesDir, st: st, clk: clk, rec: rec, hub: hub, presence: presence, log: buf, noted: noted}
+}
+
+// remake makes the server again with the options that mutate changes, on the
+// same database and hub.
+func (e *testEnv) remake(mutate func(*Options)) {
+	e.t.Helper()
+	opts := e.opts
+	mutate(&opts)
+	srv, err := New(opts)
+	if err != nil {
+		e.t.Fatalf("New: %+v", err)
+	}
+	mux := http.NewServeMux()
+	for _, rt := range srv.Routes() {
+		mux.Handle(rt.Pattern, rt.Handler)
+	}
+	e.srv, e.handler, e.opts = srv, mux, opts
 }
 
 // fanout is the publisher of the tests: the recorder keeps every event, the

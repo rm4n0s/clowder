@@ -54,8 +54,12 @@ type MessageRow struct {
 	ConversationID uint64
 	// AuthorID is the author.
 	AuthorID uint64
-	// Body is the text; empty for a deleted message.
+	// Body is the text; empty for a deleted message and for a call entry.
 	Body string
+	// Kind says whether the message is text or the entry of a call.
+	Kind MessageKind
+	// CallID is the call of a call entry; nil for a text message.
+	CallID *uint64
 	// ReplyToID is the message that this one quotes; nil for none.
 	ReplyToID *uint64
 	// EditedAt is when the author last edited the message; nil if never.
@@ -105,13 +109,17 @@ type ConversationListItem struct {
 	// LastAttachmentNames are the names of the files of the last message, in
 	// the order they were attached.
 	LastAttachmentNames []string
+	// LastCall is the call of the last message when that message is a call
+	// entry; nil otherwise.
+	LastCall *Call
 	// Members are the current members, in the order they joined.
 	Members []ConversationMemberRow
 }
 
 const (
 	messageRowColumns = `messages.id AS id, messages.created_at AS created_at, messages.conversation_id AS conversation_id,
-messages.author_id AS author_id, messages.body AS body, messages.reply_to_id AS reply_to_id,
+messages.author_id AS author_id, messages.body AS body, messages.kind AS kind, messages.call_id AS call_id,
+messages.reply_to_id AS reply_to_id,
 messages.edited_at AS edited_at, messages.deleted_at AS deleted_at,
 authors.username AS author_username, authors.display_name AS author_display_name, authors.avatar_key AS author_avatar_key`
 	memberRowColumns = `conversation_members.id AS id, conversation_members.conversation_id AS conversation_id,
@@ -379,6 +387,16 @@ COALESCE((SELECT MAX(messages.id) FROM messages WHERE messages.conversation_id =
 	if err != nil {
 		return nil, err
 	}
+	var callIDs []uint64
+	for _, m := range last {
+		if m.CallID != nil {
+			callIDs = append(callIDs, *m.CallID)
+		}
+	}
+	calls, err := s.CallsByIDs(ctx, callIDs)
+	if err != nil {
+		return nil, err
+	}
 	members, err := s.ConversationMembers(ctx, ids, false)
 	if err != nil {
 		return nil, err
@@ -396,6 +414,11 @@ COALESCE((SELECT MAX(messages.id) FROM messages WHERE messages.conversation_id =
 			item.LastMessage = &m
 			for _, a := range attachments[m.ID] {
 				item.LastAttachmentNames = append(item.LastAttachmentNames, a.FileName)
+			}
+			if m.CallID != nil {
+				if c, ok := calls[*m.CallID]; ok {
+					item.LastCall = &c
+				}
 			}
 		}
 		items[i] = item

@@ -466,7 +466,8 @@ func (a *Accounts) SetRole(ctx context.Context, actor Actor, userID uint64, role
 }
 
 // SetDisabled disables or enables a user. Disabling also deletes the sessions
-// and the pending logins of the user, in the same transaction. Only admins may; anyone else gets
+// and the pending logins of the user, and ends the call the user is in (SPEC
+// §7.18), in the same transaction. Only admins may; anyone else gets
 // TagForbidden. It fails with TagInvalidInput (field "user") when an admin
 // disables themselves, with TagNotFound for an unknown user, and with
 // TagConflict when the user is the last active admin.
@@ -479,8 +480,9 @@ func (a *Accounts) SetDisabled(ctx context.Context, actor Actor, userID uint64, 
 			"fields", map[string]string{FieldUser: "You cannot disable your own account."})
 	}
 	changed := false
+	var events []live.Event
 	err := a.st.Tx(ctx, func(tx *store.Store) error {
-		changed = false
+		changed, events = false, nil
 		if err := tx.LockAdmins(ctx); err != nil {
 			return err
 		}
@@ -511,11 +513,17 @@ func (a *Accounts) SetDisabled(ctx context.Context, actor Actor, userID uint64, 
 		if err := tx.DeletePendingLoginsOfUser(ctx, userID); err != nil {
 			return err
 		}
-		return tx.DeleteSessionsOfUser(ctx, userID)
+		if err := tx.DeleteSessionsOfUser(ctx, userID); err != nil {
+			return err
+		}
+		// The call the user is in ends with the account (SPEC §7.18).
+		events, err = endCallsOfUser(ctx, tx, a.clk.Now().UTC(), userID, store.CallDisabled)
+		return err
 	})
 	if err != nil {
 		return err
 	}
+	publishAll(a.pub, events)
 	if changed {
 		// The streams of the user read the session again and end.
 		a.pub.Publish(live.Event{Topic: live.UserTopic(userID), Kind: live.KindUserChanged, UserID: userID})

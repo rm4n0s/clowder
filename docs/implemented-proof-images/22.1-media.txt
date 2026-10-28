@@ -1,0 +1,25 @@
+Step 22.1 proof: the media server and its signalling
+Command: go test -race -v -run 'TestACall|TestScreenShareAndTCP|TestACalleeWhoNeverOpensTheirSocket' ./internal/calls
+Two pion clients, the two users of a direct conversation, call each other through the real handlers of the pages and of the API
+(httptest), the real services on a database and the real media server on loopback. 'got N audio and M video packets' are the RTP
+packets each client received from the other side. Run on 2026-10-28, go1.27.3.
+
+--- PASS: TestAParticipantWhoNeverJoinsFailsTheCall (0.40s)
+    e2e_test.go:347: through the API: alice got 199 audio and 99 video packets, bob got 200 and 100
+    e2e_test.go:367: the entry in alice's history: "Video call · 1 min"
+--- PASS: TestACallThroughTheAPI (4.43s)
+    e2e_test.go:426: through the pages: alice got 100 audio packets, bob got 100
+--- PASS: TestACallThroughThePages (2.58s)
+--- PASS: TestACallThatNobodyAnswers (0.11s)
+--- PASS: TestACallEndsWhenAnAccountChanges (3.42s)
+    --- PASS: TestACallEndsWhenAnAccountChanges/the_callee_is_disabled (1.71s)
+    --- PASS: TestACallEndsWhenAnAccountChanges/the_caller_logs_out (1.71s)
+    e2e_test.go:550: screen share: alice got 120 audio and 59 video packets, bob got 120 and 60
+    e2e_test.go:563: screen share: alice replaced her camera by a screen; bob got 40 more video packets, on 1 SSRC, and alice saw 0 new offers
+    e2e_test.go:550: ICE-TCP only: alice got 120 audio and 60 video packets, bob got 120 and 60
+--- PASS: TestScreenShareAndTCP (7.66s)
+    --- PASS: TestScreenShareAndTCP/screen_share (4.09s)
+    --- PASS: TestScreenShareAndTCP/ICE-TCP_only (3.57s)
+--- PASS: TestACalleeWhoNeverOpensTheirSocket (1.62s)
+PASS
+ok  	github.com/rm4n0s/clowder/internal/calls	21.319s

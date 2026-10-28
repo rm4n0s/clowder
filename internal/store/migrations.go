@@ -22,6 +22,7 @@ func migrationList() []dialectMigration {
 		{ID: "0004_notification_kinds", SQLite: migrationNotificationKindsSQLite, Postgres: migrationNotificationKindsPostgres},
 		{ID: "0005_room_reads", SQLite: migrationRoomReadsSQLite, Postgres: migrationRoomReadsPostgres},
 		{ID: "0006_messages_search", SQLite: migrationMessagesSearchSQLite, Postgres: migrationMessagesSearchPostgres},
+		{ID: "0007_calls_open", SQLite: migrationCallsOpenSQLite, Postgres: migrationCallsOpenPostgres},
 	}
 }
 
@@ -273,4 +274,31 @@ INSERT INTO messages_search (message_id, text)
 SELECT m.id, replace(replace(m.body, chr(57344), ''), chr(57345), '')
 FROM messages m
 WHERE m.deleted_at IS NULL AND m.body <> '';
+`
+
+// migrationCallsOpenSQLite makes the database refuse a second open call for
+// a user (SPEC §7.18, D63): a unique index on the caller and one on the callee
+// of the calls that are ringing or active (a partial index), and an index that
+// finds the calls that are ringing, for the timeout. They are the last guard
+// behind Calls.Start, which checks both users under a lock; the one case they
+// cannot see is a user who is the caller of one call and the callee of
+// another, which only that lock stops. The tables calls and the columns kind
+// and call_id of messages are made by AutoMigrate before this runs; the
+// messages that exist keep the default kind text.
+const migrationCallsOpenSQLite = `
+CREATE UNIQUE INDEX IF NOT EXISTS uq_calls_open_caller ON calls (caller_id) WHERE state IN ('ringing', 'active');
+CREATE UNIQUE INDEX IF NOT EXISTS uq_calls_open_callee ON calls (callee_id) WHERE state IN ('ringing', 'active');
+CREATE INDEX IF NOT EXISTS idx_calls_ringing ON calls (created_at) WHERE state = 'ringing';
+CREATE INDEX IF NOT EXISTS idx_calls_open_home ON calls (home) WHERE state IN ('ringing', 'active');
+`
+
+// migrationCallsOpenPostgres is migrationCallsOpenSQLite for PostgreSQL. The
+// predicate of the partial indexes is state <> 'ended', which is the text of
+// the queries of the store (OpenCallsOfUsers, CountOpenCallsOfHome) that the
+// planner can then match to the index.
+const migrationCallsOpenPostgres = `
+CREATE UNIQUE INDEX IF NOT EXISTS uq_calls_open_caller ON calls (caller_id) WHERE state <> 'ended';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_calls_open_callee ON calls (callee_id) WHERE state <> 'ended';
+CREATE INDEX IF NOT EXISTS idx_calls_ringing ON calls (created_at) WHERE state = 'ringing';
+CREATE INDEX IF NOT EXISTS idx_calls_open_home ON calls (home) WHERE state <> 'ended';
 `

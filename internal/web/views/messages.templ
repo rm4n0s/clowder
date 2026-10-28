@@ -397,8 +397,10 @@ templ MessageSeen(id uint64, seen bool) {
 // MessageContent is a message without its list item: the author and time,
 // "edited", the quote of the message it replies to, the text, the files, the
 // reactions and the Reply, Edit and Delete buttons for the person who may. A
-// deleted message is the placeholder "message deleted". A live update of a
-// message replaces only this part.
+// deleted message is the placeholder "message deleted". The entry of a call is
+// one plain line ("Video call · 12 min"), with nothing to reply to, edit or
+// react to (step 22.2 gives it its look). A live update of a message replaces
+// only this part.
 templ MessageContent(d MessageData) {
 	<div id={ MessageContentID(d.Message.ID) } class="message-content">
 		@formProblem(d.Notice)
@@ -414,6 +416,8 @@ templ MessageContent(d MessageData) {
 		</header>
 		if d.Message.Deleted {
 			<p class="message-deleted-note">{ app.MessageDeletedPreview }</p>
+		} else if d.Message.Call != nil {
+			<p class="message-call-entry" data-call={ roomIDText(d.Message.Call.CallID) }>{ d.Message.Call.Text }</p>
 		} else {
 			if d.Message.ReplyTo != nil {
 				@MessageQuote(*d.Message.ReplyTo)

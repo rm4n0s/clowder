@@ -16,6 +16,13 @@
 # publishes CLOWDER_SSH_PORT: Caddy balances HTTP, and the codes are kept in
 # the database, so the code that either gave works in both.
 #
+# Calls (SPEC §7.18, D64, D65) are off in this composition, in both processes:
+# the media of a call lives in the process that started it, and a browser's
+# signalling socket may land on the other one. The relay of the sockets and
+# the media port per process come with step 22.3; until then the media server
+# is not started here (CLOWDER_MEDIA_ADDR is empty) and the media port is not
+# published. People who want calls run compose.yaml alone.
+#
 # The first admin: docker compose -f compose.yaml -f compose.cluster.yaml run --rm clowder invite -admin
 
 # What both Clowder processes get besides the settings of compose.yaml: the
@@ -24,6 +31,9 @@
 x-cluster-environment: &cluster-environment
   CLOWDER_REDIS_URL: redis://redis:6379/0
   CLOWDER_TRUST_PROXY: "true"
+  # Calls are off here until step 22.3 (see above): an empty address turns the
+  # media server off, whatever compose.yaml sets.
+  CLOWDER_MEDIA_ADDR: ""
 
 services:
   redis:

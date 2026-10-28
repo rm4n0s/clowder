@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/app"
+	"github.com/rm4n0s/clowder/internal/calls"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
@@ -53,6 +54,12 @@ type Services struct {
 	// SSHKeys is the service of the SSH keys of the logged-in user and of what
 	// is shown of the SSH server (SPEC §7.16).
 	SSHKeys *app.SSHKeys
+	// Calls is the service of the one-to-one calls (SPEC §7.18).
+	Calls *app.Calls
+	// Media is the media server of the calls, which runs the signalling
+	// socket of a call. Nil when calls are off (no -media-addr): the socket
+	// is then 409 and the calls service refuses to start a call.
+	Media *calls.Server
 	// Hub is the hub the services publish to; the WebSocket (SPEC §7.13)
 	// subscribes to it. It must be the hub of the server of internal/web,
 	// which closes it when the server stops. Nil makes a hub that nothing
@@ -132,8 +139,8 @@ type Server struct {
 func New(opts Options) (*Server, error) {
 	svc := opts.Services
 	if svc.Accounts == nil || svc.Notifications == nil || svc.Messages == nil || svc.Rooms == nil || svc.Posts == nil ||
-		svc.Board == nil || svc.Search == nil || svc.Audit == nil || svc.Prefs == nil {
-		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications, messages, rooms, prefs, posts, board, search and audit services")
+		svc.Board == nil || svc.Search == nil || svc.Audit == nil || svc.Prefs == nil || svc.Calls == nil {
+		return nil, errors.New(tagServicesMissing, "the API needs the accounts, notifications, messages, rooms, prefs, posts, board, search, audit and calls services")
 	}
 	s := &Server{svc: opts.Services, logger: opts.Logger, noteUser: opts.NoteUser, clientIP: opts.ClientIP,
 		md: opts.Markdown, baseURL: strings.TrimRight(opts.BaseURL, "/"),
@@ -201,6 +208,7 @@ func (s *Server) defineRoutes() []Route {
 	routes = append(routes, s.searchRoutes()...)
 	routes = append(routes, s.notificationRoutes()...)
 	routes = append(routes, s.conversationRoutes()...)
+	routes = append(routes, s.callRoutes()...)
 	routes = append(routes, s.messageRoutes()...)
 	routes = append(routes, s.adminRoutes()...)
 	routes = append(routes, s.wsRoutes()...)

@@ -137,7 +137,9 @@ func problemOf(err error) (problem, bool) {
 		return problem{status: http.StatusUnauthorized,
 			object: errorObject{Code: codeSSHCodeRequired, Message: messageSSHCodeRequired},
 			header: map[string]string{"WWW-Authenticate": wwwAuthenticateChallenge}}, false
-	case app.TagConflict, app.TagSSHServerOff, app.TagSSHCodeNotTried, app.TagSSHCodeNeedsKey:
+	case app.TagConflict, app.TagSSHServerOff, app.TagSSHCodeNotTried, app.TagSSHCodeNeedsKey,
+		app.TagCallGroup, app.TagCallsOff, app.TagCallCalleeDisabled, app.TagCallCallerBusy, app.TagCallCalleeBusy,
+		app.TagCallServerFull, app.TagCallWrongState, app.TagCallNone:
 		// A conflict may say what clashes, with the messages of "fields" (an
 		// SSH key that is registered, the limit of keys).
 		// The SSH code's own refusals say why in the message too: "That

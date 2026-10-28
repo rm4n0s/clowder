@@ -250,7 +250,9 @@ func (a *Accounts) ResetPassword(ctx context.Context, in ResetInput) (LoginResul
 		ClientName: clientName,
 	}
 	var user store.User
+	var events []live.Event
 	err = a.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		pr, u, err := a.usableResetLink(ctx, tx, in.Token)
 		if err != nil {
 			return err
@@ -267,6 +269,11 @@ func (a *Accounts) ResetPassword(ctx context.Context, in ResetInput) (LoginResul
 			return err
 		}
 		if err := tx.DeletePendingLoginsOfUser(ctx, u.ID); err != nil {
+			return err
+		}
+		// The sessions ended, and so does the call the user is in (SPEC
+		// §7.18).
+		if events, err = endCallsOfUser(ctx, tx, now, u.ID, store.CallSessionEnded); err != nil {
 			return err
 		}
 		if err := tx.CreateSession(ctx, sess); err != nil {
@@ -287,6 +294,7 @@ func (a *Accounts) ResetPassword(ctx context.Context, in ResetInput) (LoginResul
 	if err != nil {
 		return LoginResult{}, err
 	}
+	publishAll(a.pub, events)
 	// A person who forgot the password may have failed to log in often; the
 	// new password starts clean.
 	a.limiter.Reset(ctx, user.Username)

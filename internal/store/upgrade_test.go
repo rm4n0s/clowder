@@ -1,12 +1,14 @@
 package store
 
 import (
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/clock"
+	"gorm.io/gorm"
 )
 
 // TestOpenUpgradesTheSessionsOfA10Database checks D46: a SQLite database made
@@ -279,4 +281,114 @@ func TestOpenUpgradesTheDatabaseOf183(t *testing.T) {
 			t.Errorf("FollowingPosts = %v, %v", following, err)
 		}
 	})
+}
+
+// TestOpenUpgradesTheDatabaseOf215 checks that a database made by step 21.5,
+// whose messages have neither a kind nor a call and which has no calls table,
+// is brought up to date by opening it: the messages stay and are text, the
+// table and its indexes are made, a call and its entry can be written, and
+// the database refuses a second open call of a user. On SQLite the 21.5
+// messages table is made again without the two columns (a column that a check
+// names cannot be dropped); on PostgreSQL the columns and the table are
+// dropped and the migration is undone.
+func TestOpenUpgradesTheDatabaseOf215(t *testing.T) {
+	ctx := t.Context()
+	clk := clock.NewFake(fakeStart)
+	var f *fix
+	var reopen func()
+	if onPostgres() {
+		f = newFix(t)
+		reopen = func() {
+			for _, stmt := range []string{
+				"DROP TABLE calls CASCADE", // the foreign key of messages.call_id goes with it
+				"ALTER TABLE messages DROP COLUMN IF EXISTS call_id",
+				"ALTER TABLE messages DROP COLUMN kind",
+				"DELETE FROM schema_migrations WHERE id = '0007_calls_open'",
+			} {
+				f.exec(stmt)
+			}
+			if err := f.s.migrate(ctx, allModels(), rawMigrations(dialectPostgres)); err != nil {
+				t.Fatalf("migrate the 21.5 database: %+v", err)
+			}
+		}
+	} else {
+		path := filepath.Join(t.TempDir(), "clowder.db")
+		s, err := Open(ctx, path, clk, nil)
+		if err != nil {
+			t.Fatalf("Open: %+v", err)
+		}
+		f = &fix{tb: t, ctx: ctx, s: s, clk: clk}
+		reopen = func() {
+			// The table is replaced with foreign keys off, as SQLite's own
+			// guide says, and only the rows of messages are copied.
+			if err := f.s.db(ctx).Connection(func(tx *gorm.DB) error {
+				for _, stmt := range []string{
+					"PRAGMA foreign_keys = OFF",
+					"ALTER TABLE messages RENAME TO messages_215",
+					"CREATE TABLE `messages` (`id` integer PRIMARY KEY AUTOINCREMENT,`created_at` datetime,`conversation_id` integer NOT NULL," +
+						"`author_id` integer NOT NULL,`body` text NOT NULL,`reply_to_id` integer,`edited_at` datetime,`deleted_at` datetime," +
+						"CONSTRAINT `fk_messages_conversation` FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE," +
+						"CONSTRAINT `fk_messages_author` FOREIGN KEY (`author_id`) REFERENCES `users`(`id`) ON DELETE RESTRICT," +
+						"CONSTRAINT `fk_messages_reply_to` FOREIGN KEY (`reply_to_id`) REFERENCES `messages`(`id`) ON DELETE SET NULL)",
+					"INSERT INTO messages (id, created_at, conversation_id, author_id, body, reply_to_id, edited_at, deleted_at) " +
+						"SELECT id, created_at, conversation_id, author_id, body, reply_to_id, edited_at, deleted_at FROM messages_215",
+					"DROP TABLE messages_215",
+					"CREATE INDEX `idx_messages_conversation` ON `messages`(`conversation_id`,`id`)",
+					"DROP TABLE calls",
+					"DELETE FROM schema_migrations WHERE id = '0007_calls_open'",
+					"PRAGMA foreign_keys = ON",
+				} {
+					if err := tx.Exec(stmt).Error; err != nil {
+						return fmt.Errorf("%s: %w", stmt, err)
+					}
+				}
+				return nil
+			}); err != nil {
+				t.Fatalf("make the 21.5 database: %v", err)
+			}
+			if err := f.s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			s, err := Open(ctx, path, clk, nil)
+			if err != nil {
+				t.Fatalf("Open the 21.5 database: %+v", err)
+			}
+			t.Cleanup(func() {
+				if err := s.Close(); err != nil {
+					t.Errorf("Close: %v", err)
+				}
+			})
+			f = &fix{tb: t, ctx: ctx, s: s, clk: clk}
+		}
+	}
+	a, b := f.user(), f.user()
+	conv := f.direct(a, b)
+	old := f.message(conv, a)
+	reopen()
+	s := f.s
+
+	got, err := s.MessageByID(ctx, old.ID)
+	if err != nil || got.Kind != MessageText || got.CallID != nil || got.Body != old.Body {
+		t.Fatalf("the 21.5 message = %+v, %v; want the same text message", got, err)
+	}
+	call := &Call{ConversationID: conv.ID, CallerID: a.ID, CalleeID: b.ID, Video: true, State: CallRinging, Home: "p1"}
+	if err := s.CreateCall(ctx, call); err != nil {
+		t.Fatalf("CreateCall on the upgraded database: %+v", err)
+	}
+	entry := &Message{ConversationID: conv.ID, AuthorID: a.ID, Kind: MessageCall, CallID: &call.ID}
+	if err := s.CreateMessage(ctx, entry); err != nil {
+		t.Fatalf("CreateMessage of a call entry: %+v", err)
+	}
+	second := &Call{ConversationID: conv.ID, CallerID: a.ID, CalleeID: b.ID, State: CallRinging, Home: "p1"}
+	if err := s.CreateCall(ctx, second); err == nil {
+		t.Error("the upgraded database accepted a second open call")
+	}
+	bad := &Message{ConversationID: conv.ID, AuthorID: a.ID, Kind: "poke"}
+	if err := s.db(ctx).Create(bad).Error; err == nil {
+		t.Error("the upgraded database accepted a message of an unknown kind")
+	}
+	// Opening an up-to-date database changes nothing.
+	if err := s.migrate(ctx, allModels(), rawMigrations(s.dialect)); err != nil {
+		t.Errorf("migrate again: %+v", err)
+	}
 }

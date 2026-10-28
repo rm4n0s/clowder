@@ -65,6 +65,10 @@
       "description": "Private conversations and messages."
     },
     {
+      "name": "calls",
+      "description": "One-to-one video and audio calls in direct conversations, and their signalling."
+    },
+    {
       "name": "admin",
       "description": "Users, invitations, rooms and the audit log, for admins."
     },
@@ -4676,6 +4680,412 @@
           }
         }
       }
+    },
+    "/conversations/{id}/call": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Read the call in progress",
+        "operationId": "getCall",
+        "description": "Returns the call of a direct conversation that is ringing or active. For a conversation that does not exist, one the user is not a member of (admins included) and one with no call in progress it is 404; for a group conversation, which has no calls, 409 conflict.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the direct conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Start a call",
+        "operationId": "startCall",
+        "description": "Calls the other user of a direct conversation with video or audio only, and rings them: their pages show the ringing dialog and their clients get call.ringing on the WebSocket. The call rings for 45 seconds. Then open the signalling socket (GET .../call/ws) and answer its offer: the media starts when the callee has answered. 409 conflict, with the reason in the message, for a group conversation, a caller who is in another call, a disabled callee, a server whose calls are off (no -media-addr) or that holds as many calls as -max-calls allows, and a callee who is in another call (\"Bob is in another call\"; the callee then has a missed call in the conversation). For anyone who is not a member of the conversation, admins included, it is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the direct conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Whether to take part with video.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new call, ringing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "The path of the call.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/call/answer": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Answer the ringing call",
+        "operationId": "answerCall",
+        "description": "The callee answers the call, with video or audio only; then open the signalling socket. The caller gets 403. 409 conflict when no call is in progress or it is not ringing.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the direct conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Whether to take part with video.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/call/decline": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Decline the ringing call",
+        "operationId": "declineCall",
+        "description": "The callee refuses the call; it ends as declined and leaves its entry in the conversation. The caller gets 403. 409 conflict when no call is in progress or it is not ringing.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the direct conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/call/cancel": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Cancel the ringing call",
+        "operationId": "cancelCall",
+        "description": "The caller ends the call while it rings; it ends as cancelled and leaves its entry in the conversation (a missed call for the callee). The callee gets 403. 409 conflict when no call is in progress or it is not ringing.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the direct conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/call/hangup": {
+      "post": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Hang up the active call",
+        "operationId": "hangUpCall",
+        "description": "Either side ends the call after it was answered; it ends as hangup and leaves its entry in the conversation with its duration. 409 conflict when no call is in progress or it still rings (use cancel or decline).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the direct conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/call/ws": {
+      "get": {
+        "tags": [
+          "calls"
+        ],
+        "summary": "Open the signalling socket of the call",
+        "operationId": "openCallSocket",
+        "description": "Upgrades the connection to a WebSocket (RFC 6455) that carries the signalling of one participant of the call in progress of a direct conversation, with the bearer token checked before the upgrade like GET /ws. The caller may open it while the call rings or is active; the callee after answering (409 before that). Anyone else, admins included, gets 404; so does a conversation with no call in progress, and a group conversation or a server whose calls are off 409. All messages are JSON text messages with a type: the server sends offer, candidate, peer-state, ended and error (CallServerMessage), the client answer, candidate, state and hangup (CallClientMessage).\n\nHow a client takes part, with any WebRTC stack: (1) open the socket; (2) the server sends an offer at once: apply it, add your audio (Opus) and video (VP8) tracks to its two transceivers, create the answer and send it; (3) send your ICE candidates as candidate messages and apply those of the server (trickle ICE; the server's candidates point at its own media port, UDP or TCP, so the media goes straight to it); (4) the first answer starts a deadline of 10 seconds for ICE to connect, after which the call ends as failed; (5) send state when the microphone or the camera changes; (6) to share a screen replace the video track of the sender (replaceTrack) with no new offer; (7) send hangup, or call the REST route, to end the call. The server asks the sender for a key frame (PLI) when it is needed, limits video to 2.5 Mbit/s with REMB and the SDP bandwidth lines, and sends a new offer only to restart ICE after a failure. A second socket of the same participant replaces the first, with a new PeerConnection, so a client that lost its socket opens a new one and answers the new offer; an active call waits 15 seconds for that before it ends as failed. A transport that stays disconnected or failed for 15 seconds ends the call too. Close codes: 1000 the call ended (after an ended message); 1001 the server stops; 4001 the session ended; 4002 the role of the user changed; 4003 a newer socket of the same participant replaced this one; 1003 a binary message; 1009 a message over 64 KiB; 1011 the socket could not join the call. The server pings every 30 seconds. docs/API.md has an example.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the direct conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "x-client-messages": {
+          "$ref": "#/components/schemas/CallClientMessage"
+        },
+        "x-server-messages": {
+          "$ref": "#/components/schemas/CallServerMessage"
+        },
+        "responses": {
+          "101": {
+            "description": "Switching Protocols: the connection is now a WebSocket."
+          },
+          "400": {
+            "description": "The handshake is not valid. The body is plain text.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "description": "The Origin of the request is another site than the server. The body is plain text.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "426": {
+            "description": "The request is not a WebSocket handshake. The body is plain text.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6501,7 +6911,7 @@
       },
       "Message": {
         "type": "object",
-        "description": "A private message.",
+        "description": "A private message, or the entry of a finished call (kind call).",
         "properties": {
           "id": {
             "type": "integer",
@@ -6513,6 +6923,24 @@
             "minimum": 1,
             "description": "The ID of the conversation."
           },
+          "kind": {
+            "enum": [
+              "text",
+              "call"
+            ],
+            "description": "text for a message a person wrote; call for the entry of a finished call (SPEC 7.18), whose author is the caller and which has call, no body, no html, no files and no reactions."
+          },
+          "call": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CallEntry"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The call of a call entry; null for a text message."
+          },
           "author": {
             "$ref": "#/components/schemas/UserRef"
           },
@@ -6521,14 +6949,14 @@
               "string",
               "null"
             ],
-            "description": "The text as written; null for a deleted message."
+            "description": "The text as written; null for a deleted message and for a call entry."
           },
           "html": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The text rendered safely for display, as for a post of the format text: escaped, line breaks kept, links made, emoji as typed; null for a deleted message. A client needs no renderer."
+            "description": "The text rendered safely for display, as for a post of the format text: escaped, line breaks kept, links made, emoji as typed; null for a deleted message and for a call entry. A client needs no renderer."
           },
           "reply_to": {
             "oneOf": [
@@ -6584,6 +7012,8 @@
         "required": [
           "id",
           "conversation_id",
+          "kind",
+          "call",
           "author",
           "body",
           "html",
@@ -7218,7 +7648,7 @@
       },
       "WsEvent": {
         "type": "object",
-        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.changed: the Notification, after a reply was folded into it (it never rings); notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections. place_prefs.changed on user:<id>: the PlacePrefs of the room (room_id) or conversation (conversation_id), after the user changed them. post.created and message.created on user:<id> (not to be confused with the same kinds on room:<id>, post:<id> and conversation:<id>, whose data is the Post and the Message) are sent only to a user the post or message rings for, with ring true, and have the WsNotice as data; notification.created, on a notification that rings for the user, has ring true as well. ring, sound and browser are the server's decision from the preferences of the user (SPEC 7.15): the client plays the sound and, when browser is true, shows a notification of the system, if it has no window with the focus and the place is not the one the user is looking at. room.unread on user:<id>: the WsRoomUnread, the unread counts of the user in the room (room_id), sent when a post comes or is deleted in a room of the user, a mention comes or is read, or the user's mark moves; it is not sent for a room the user is not a member of.",
+        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.changed: the Notification, after a reply was folded into it (it never rings); notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections. place_prefs.changed on user:<id>: the PlacePrefs of the room (room_id) or conversation (conversation_id), after the user changed them. post.created and message.created on user:<id> (not to be confused with the same kinds on room:<id>, post:<id> and conversation:<id>, whose data is the Post and the Message) are sent only to a user the post or message rings for, with ring true, and have the WsNotice as data; notification.created, on a notification that rings for the user, has ring true as well. ring, sound and browser are the server's decision from the preferences of the user (SPEC 7.15): the client plays the sound and, when browser is true, shows a notification of the system, if it has no window with the focus and the place is not the one the user is looking at. room.unread on user:<id>: the WsRoomUnread, the unread counts of the user in the room (room_id), sent when a post comes or is deleted in a room of the user, a mention comes or is read, or the user's mark moves; it is not sent for a room the user is not a member of. call.ringing, call.started, call.updated and call.ended on user:<id> (SPEC 7.18): the Call as it is when the event is sent. call.ringing goes to the callee when a call begins to ring; call.started to both users when it begins to ring and again when the callee answers (state tells which); call.updated to both users when a participant turns the microphone or the camera on or off (user_id, microphone and camera); call.ended to both users when the call is over, however it ended (the Call has end_reason). A call that ended leaves a message of kind call in the conversation (message.created). The media of a call goes through the signalling socket GET /conversations/{id}/call/ws, not through this connection.",
         "properties": {
           "type": {
             "const": "event"
@@ -7255,7 +7685,11 @@
               "user.updated",
               "settings.changed",
               "place_prefs.changed",
-              "room.unread"
+              "room.unread",
+              "call.ringing",
+              "call.started",
+              "call.updated",
+              "call.ended"
             ],
             "description": "What happened."
           },
@@ -7336,6 +7770,9 @@
               },
               {
                 "$ref": "#/components/schemas/WsRoomUnread"
+              },
+              {
+                "$ref": "#/components/schemas/Call"
               }
             ]
           },
@@ -7356,6 +7793,19 @@
           "browser": {
             "type": "boolean",
             "description": "True when ring is true and the user wants notifications of the system."
+          },
+          "call_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The call concerned."
+          },
+          "microphone": {
+            "type": "boolean",
+            "description": "In call.updated: whether the microphone of the participant user_id is on."
+          },
+          "camera": {
+            "type": "boolean",
+            "description": "In call.updated: whether the camera of the participant user_id is on."
           }
         },
         "required": [
@@ -7948,6 +8398,375 @@
           "unread_mentions"
         ],
         "additionalProperties": false
+      },
+      "Call": {
+        "type": "object",
+        "description": "A call between the two users of a direct conversation (SPEC 7.18). It rings until the callee answers, declines or the caller cancels, or 45 seconds pass; then it is active until one side hangs up or the media fails.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the call."
+          },
+          "conversation_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the direct conversation."
+          },
+          "caller": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "callee": {
+            "$ref": "#/components/schemas/UserRef"
+          },
+          "video": {
+            "type": "boolean",
+            "description": "True when the caller started the call with video. Every call has an audio and a video transceiver; a side that sends no camera sends no video."
+          },
+          "state": {
+            "enum": [
+              "ringing",
+              "active",
+              "ended"
+            ],
+            "description": "Where the call is."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the call began to ring."
+          },
+          "answered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the callee answered; null if never."
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the call ended; null while it is open."
+          },
+          "end_reason": {
+            "oneOf": [
+              {
+                "enum": [
+                  "hangup",
+                  "cancelled",
+                  "declined",
+                  "missed",
+                  "busy",
+                  "failed",
+                  "disabled",
+                  "session_ended",
+                  "server_stopped"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the call ended; null while it is open. hangup: one side ended the active call. cancelled: the caller ended it while it rang. declined: the callee refused it. missed: nobody answered in 45 seconds. busy: the callee was in another call. failed: the media did not connect in 10 seconds, or stayed lost for 15, or a participant did not come back in 15 seconds after their signalling socket closed. disabled: a participant was disabled. session_ended: a session of a participant ended. server_stopped: the server that held the media stopped."
+          },
+          "ended_by": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The ID of the user who ended the call (hung up, cancelled, declined); null when the call ended on its own."
+          },
+          "incoming": {
+            "type": "boolean",
+            "description": "True when the user who asks is the callee."
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "caller",
+          "callee",
+          "video",
+          "state",
+          "created_at",
+          "answered_at",
+          "ended_at",
+          "end_reason",
+          "ended_by",
+          "incoming"
+        ],
+        "additionalProperties": false
+      },
+      "CallRequest": {
+        "type": "object",
+        "description": "Whether the user takes part with video.",
+        "properties": {
+          "video": {
+            "type": "boolean",
+            "description": "True to call (or answer) with video, false for audio only."
+          }
+        },
+        "required": [
+          "video"
+        ],
+        "additionalProperties": false
+      },
+      "CallEntry": {
+        "type": "object",
+        "description": "What a finished call leaves in the history of its conversation: the call of a message of kind call. The author of the message is the caller; it has no body, files or reactions and cannot be edited, deleted or replied to. A missed call raises the unread count of the callee like a message.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of the call."
+          },
+          "video": {
+            "type": "boolean",
+            "description": "True for a call that began with video."
+          },
+          "outcome": {
+            "enum": [
+              "completed",
+              "declined",
+              "cancelled",
+              "missed",
+              "busy"
+            ],
+            "description": "What became of the call. completed: it was answered (the media may have failed later; duration_seconds says how long). declined, cancelled, busy: as end_reason. missed: nobody answered, or the call ended while it rang for another reason."
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How long an answered call lasted, from the answer to the end; 0 for the others."
+          },
+          "text": {
+            "type": "string",
+            "description": "The line the pages show for the user who asks: \"Video call · 12 min\", \"Declined video call\", \"Missed video call\" (the callee), \"No answer\", \"Cancelled video call\" or \"Video call · busy\" (the caller); \"Audio\" for \"Video\" in a call without video."
+          }
+        },
+        "required": [
+          "id",
+          "video",
+          "outcome",
+          "duration_seconds",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "CallOffer": {
+        "type": "object",
+        "description": "Server to client: the offer of the server, sent when the socket joins the call and again when the server restarts ICE. The server is always the offerer. The SDP has an audio and a video section, both sendrecv, with Opus (payload type 111) and VP8 (96) only; the video section has b=AS:2500 and b=TIAS:2500000, the most video the server forwards from a sender (SPEC D64). The client answers with answer, putting its own audio and video on those transceivers.",
+        "properties": {
+          "type": {
+            "const": "offer"
+          },
+          "sdp": {
+            "type": "string",
+            "description": "The SDP of the offer."
+          }
+        },
+        "required": [
+          "type",
+          "sdp"
+        ],
+        "additionalProperties": false
+      },
+      "CallCandidate": {
+        "type": "object",
+        "description": "An ICE candidate, in both directions (trickle ICE): the server sends its own after the offer, the client sends its own after the answer. The fields are those of RTCIceCandidateInit. Candidates the client sends before the server has its answer are kept.",
+        "properties": {
+          "type": {
+            "const": "candidate"
+          },
+          "candidate": {
+            "type": "string",
+            "description": "The candidate line."
+          },
+          "sdpMid": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The media section the candidate belongs to."
+          },
+          "sdpMLineIndex": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The index of that section."
+          }
+        },
+        "required": [
+          "type",
+          "candidate"
+        ],
+        "additionalProperties": false
+      },
+      "CallPeerState": {
+        "type": "object",
+        "description": "Server to client: the other participant's microphone and camera, when they changed, and once when the socket joins if the other side has said. The pages show a mark for a muted microphone or a camera that is off.",
+        "properties": {
+          "type": {
+            "const": "peer-state"
+          },
+          "microphone": {
+            "type": "boolean",
+            "description": "True when the other side's microphone is on."
+          },
+          "camera": {
+            "type": "boolean",
+            "description": "True when the other side's camera is on."
+          }
+        },
+        "required": [
+          "type",
+          "microphone",
+          "camera"
+        ],
+        "additionalProperties": false
+      },
+      "CallEnded": {
+        "type": "object",
+        "description": "Server to client: the call is over. The server closes the socket (1000) right after it. reason is the end_reason of the Call, or server_stopped when the media server itself stops.",
+        "properties": {
+          "type": {
+            "const": "ended"
+          },
+          "reason": {
+            "type": "string",
+            "description": "How the call ended."
+          }
+        },
+        "required": [
+          "type",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "CallError": {
+        "type": "object",
+        "description": "Server to client: a message of the client was not valid (invalid_message), could not be used (negotiation_failed), the call is in a state that does not allow it (wrong_state), or the server failed (internal). The socket stays open unless the problem is that the socket could not join the call.",
+        "properties": {
+          "type": {
+            "const": "error"
+          },
+          "code": {
+            "enum": [
+              "invalid_message",
+              "negotiation_failed",
+              "wrong_state",
+              "internal"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "A message for people."
+          }
+        },
+        "required": [
+          "type",
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "CallServerMessage": {
+        "description": "A message of the server on the signalling socket of a call.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CallOffer"
+          },
+          {
+            "$ref": "#/components/schemas/CallCandidate"
+          },
+          {
+            "$ref": "#/components/schemas/CallPeerState"
+          },
+          {
+            "$ref": "#/components/schemas/CallEnded"
+          },
+          {
+            "$ref": "#/components/schemas/CallError"
+          }
+        ]
+      },
+      "CallAnswer": {
+        "type": "object",
+        "description": "Client to server: the answer to the offer. Add the client's audio and video tracks to the transceivers of the offer before creating it. A screen share replaces the camera on the same transceiver (RTCRtpSender.replaceTrack): no new offer is needed, and the server keeps forwarding. The first answer starts the deadline of 10 seconds for ICE to connect.",
+        "properties": {
+          "type": {
+            "const": "answer"
+          },
+          "sdp": {
+            "type": "string",
+            "description": "The SDP of the answer, at most 32 KiB."
+          }
+        },
+        "required": [
+          "type",
+          "sdp"
+        ],
+        "additionalProperties": false
+      },
+      "CallState": {
+        "type": "object",
+        "description": "Client to server: the state of the client's microphone and camera. The other side receives it as peer-state, and both users get call.updated on their WebSocket. Send it when it changes and once after the answer.",
+        "properties": {
+          "type": {
+            "const": "state"
+          },
+          "microphone": {
+            "type": "boolean",
+            "description": "True when the microphone is on."
+          },
+          "camera": {
+            "type": "boolean",
+            "description": "True when the camera (or the screen) is on."
+          }
+        },
+        "required": [
+          "type",
+          "microphone",
+          "camera"
+        ],
+        "additionalProperties": false
+      },
+      "CallHangup": {
+        "type": "object",
+        "description": "Client to server: end the call. The caller of a call that rings cancels it; either side of an active call hangs up. It does what POST .../call/cancel and .../call/hangup do.",
+        "properties": {
+          "type": {
+            "const": "hangup"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "CallClientMessage": {
+        "description": "A message of the client on the signalling socket of a call. A message that is JSON but not one of these is answered with an invalid_message error and the socket stays; a binary message closes it with 1003; a message over 64 KiB with 1009.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CallAnswer"
+          },
+          {
+            "$ref": "#/components/schemas/CallCandidate"
+          },
+          {
+            "$ref": "#/components/schemas/CallState"
+          },
+          {
+            "$ref": "#/components/schemas/CallHangup"
+          }
+        ]
       }
     },
     "responses": {
@@ -7990,7 +8809,7 @@
         }
       },
       "Conflict": {
-        "description": "The change clashes with one made just now by someone else; try again.",
+        "description": "The change clashes with one made just now by someone else; try again. For the calls the message says why: a conversation of more than two people, a user who is in another call, a disabled callee, calls turned off, too many calls on the server, or a call that is not in the state the change needs.",
         "content": {
           "application/json": {
             "schema": {

@@ -81,6 +81,13 @@ ssh_port=$(free_port) || {
 if [[ $ssh_port == "$port" ]]; then
 	ssh_port=$((port + 1))
 fi
+media_port=$(free_port) || {
+	echo "compose-smoke.sh: no free port found" >&2
+	exit 2
+}
+if [[ $media_port == "$port" || $media_port == "$ssh_port" ]]; then
+	media_port=$((port + 2))
+fi
 base_url="http://localhost:$port"
 password=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
 
@@ -88,6 +95,7 @@ cat >"$tmp/env" <<ENV
 CLOWDER_DB_PASSWORD=$password
 CLOWDER_PORT=$port
 CLOWDER_SSH_PORT=$ssh_port
+CLOWDER_MEDIA_PORT=$media_port
 CLOWDER_BASE_URL=$base_url
 ENV
 # The compose project builds its own tag, so that clowder:local of a developer
@@ -198,8 +206,8 @@ step "GET / (logged in)"
 status=$(curl -sS -b "$jar" -o "$tmp/home.html" -w '%{http_code}' "$local_url/")
 echo "status $status"
 [[ $status == 200 ]] || fail "the home page answered $status"
-grep -o "<title>[^<]*</title>" "$tmp/home.html" | head -n1
-grep -o "<p class=\"sidebar-user\"[^>]*>[^<]*</p>" "$tmp/home.html" | head -n1
+grep -o "<title[^>]*>[^<]*</title>" "$tmp/home.html" | head -n1
+grep -o "<p [^>]*id=\"sidebar-user\"[^>]*>[^<]*</p>" "$tmp/home.html" | head -n1
 grep -q ">$display_name<" "$tmp/home.html" || fail "the home page does not show \"$display_name\""
 
 step "GET /healthz"
@@ -222,6 +230,33 @@ echo "banner: ${banner%$'\r'}"
 [[ $banner == SSH-2.0-* ]] || fail "the SSH port did not answer with an SSH banner"
 
 if $cluster; then
+	step "calls are off in the cluster: no media server and no media port"
+	if dc logs --no-color clowder clowder2 2>&1 | grep -q 'media server listening'; then
+		fail "a process of the cluster started the media server"
+	fi
+	if (exec 3<>"/dev/tcp/127.0.0.1/$media_port") 2>/dev/null; then
+		fail "the media port $media_port is open in the cluster"
+	fi
+	echo "no media server, port $media_port closed"
+else
+	step "the media server listens on port $media_port (TCP, and UDP in the published ports)"
+	media_ok=
+	for _ in $(seq 1 20); do
+		if (exec 3<>"/dev/tcp/127.0.0.1/$media_port") 2>/dev/null; then
+			media_ok=1
+			break
+		fi
+		sleep 0.5
+	done
+	[[ -n $media_ok ]] || fail "the media port $media_port did not accept a TCP connection"
+	dc logs --no-color clowder >"$tmp/clowder.log" 2>&1 || fail "could not read the log of clowder"
+	grep -q 'media server listening' "$tmp/clowder.log" || fail "clowder logged no media server"
+	dc port --protocol udp clowder 7882 >"$tmp/udp-port.txt" || fail "the UDP media port is not published"
+	grep -q ":$media_port" "$tmp/udp-port.txt" || fail "the UDP media port is not published on $media_port: $(cat "$tmp/udp-port.txt")"
+	echo "TCP $media_port accepts; UDP $media_port is published"
+fi
+
+if $cluster; then
 	step "both Clowder processes run the SSH server, and share its host key"
 	dc logs --no-color clowder 2>&1 | grep -q 'the SSH server is listening' || fail "clowder logged no SSH server"
 	dc logs --no-color clowder2 2>&1 | grep -q 'the SSH server is listening' || fail "clowder2 logged no SSH server"
@@ -239,7 +274,7 @@ if $cluster; then
 		dc exec -T caddy wget -qO- --header "Cookie: clowder_session=$token" "http://$svc:8080/" >"$tmp/$svc.html" ||
 			fail "$svc did not answer / for the session"
 		grep -q ">$display_name<" "$tmp/$svc.html" || fail "$svc does not show \"$display_name\" for the session of the other process"
-		echo "$svc /: logged in as $(grep -o "<p class=\"sidebar-user\"[^>]*>[^<]*</p>" "$tmp/$svc.html" | head -n1)"
+		echo "$svc /: logged in as $(grep -o "<p [^>]*id=\"sidebar-user\"[^>]*>[^<]*</p>" "$tmp/$svc.html" | head -n1)"
 	done
 
 	step "Caddy gives the requests to both processes (12 requests of GET /login)"

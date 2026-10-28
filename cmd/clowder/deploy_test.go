@@ -148,6 +148,23 @@ func TestComposePublishesOnlyWhatItShould(t *testing.T) {
 	if !strings.Contains(compose, `CLOWDER_SSH_ADDR: ":2222"`) || !strings.Contains(service(compose, "clowder"), `"${CLOWDER_SSH_PORT:-2222}:2222"`) {
 		t.Error("compose.yaml does not run and publish the SSH server on 2222")
 	}
+	// The media port of the calls (SPEC D64) is published, for UDP and TCP, by
+	// compose.yaml alone: the cluster has no calls until step 22.3, so it
+	// switches the media server off in both processes and publishes no media
+	// port.
+	for _, want := range []string{`CLOWDER_MEDIA_ADDR: ":7882"`, `"${CLOWDER_MEDIA_PORT:-7882}:7882/udp"`, `"${CLOWDER_MEDIA_PORT:-7882}:7882/tcp"`, `CLOWDER_MEDIA_PUBLIC_IP: ${CLOWDER_MEDIA_PUBLIC_IP:-}`} {
+		if !strings.Contains(service(compose, "clowder"), want) {
+			t.Errorf("compose.yaml does not have %s in the service clowder", want)
+		}
+	}
+	if !regexp.MustCompile(`(?m)^  CLOWDER_MEDIA_ADDR: ""$`).MatchString(cluster) {
+		t.Error("compose.cluster.yaml does not switch the media server off in both processes")
+	}
+	for _, name := range []string{"clowder", "clowder2"} {
+		if strings.Contains(service(cluster, name), ":7882") {
+			t.Errorf("compose.cluster.yaml publishes the media port of %s", name)
+		}
+	}
 	if !ports.MatchString(service(cluster, "caddy")) {
 		t.Error("compose.cluster.yaml does not publish caddy")
 	}

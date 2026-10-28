@@ -185,7 +185,7 @@ func (ws *wsSession) sendEvent(ctx context.Context, ev live.Event, data any) err
 	return ws.send(ctx, wsEventMessage{
 		Type: wsEventType, Topic: ev.Topic, Kind: ev.Kind,
 		RoomID: ev.RoomID, PostID: ev.PostID, RootID: ev.RootID, UserID: ev.UserID,
-		ConversationID: ev.ConversationID, MessageID: ev.MessageID,
+		ConversationID: ev.ConversationID, MessageID: ev.MessageID, CallID: ev.CallID,
 		Ring: ev.Ring, Sound: ev.Sound, Browser: ev.Browser,
 		Data: data,
 	})
@@ -229,6 +229,8 @@ func (ws *wsSession) onUserEvent(ctx context.Context, ev live.Event) error {
 		return ws.roomUnread(ctx, ev)
 	case live.KindPostCreated, live.KindMessageCreated:
 		return ws.ringNotice(ctx, ev)
+	case live.KindCallRinging, live.KindCallStarted, live.KindCallUpdated, live.KindCallEnded:
+		return ws.callEvent(ctx, ev)
 	case live.KindNotificationRead, live.KindConversationRead:
 		counts, err := ws.counts(ctx)
 		if err != nil {
@@ -265,6 +267,30 @@ func (ws *wsSession) onUserEvent(ctx context.Context, ev live.Event) error {
 		return ws.recheck(ctx, sameRoom(ev.RoomID))
 	}
 	return nil
+}
+
+// callEvent handles a call.* event of the user's own topic (SPEC §7.18): the
+// data is the call as GET /conversations/{id}/call returns it, read now. A
+// call.updated event also says which participant turned the microphone or the
+// camera on or off. A call the user is not a participant of, which cannot
+// happen, sends nothing.
+func (ws *wsSession) callEvent(ctx context.Context, ev live.Event) error {
+	call, err := ws.s.svc.Calls.Get(ctx, ws.actor, ev.CallID)
+	if err != nil {
+		if isNotFound(err) || isTag(err, app.TagUnauthenticated) {
+			return nil
+		}
+		return err
+	}
+	msg := wsEventMessage{
+		Type: wsEventType, Topic: ev.Topic, Kind: ev.Kind, UserID: ev.UserID,
+		ConversationID: ev.ConversationID, CallID: ev.CallID, Data: callOf(call),
+	}
+	if ev.Kind == live.KindCallUpdated {
+		mic, cam := ev.Microphone, ev.Camera
+		msg.Microphone, msg.Camera = &mic, &cam
+	}
+	return ws.send(ctx, msg)
 }
 
 // counts reads the unread counts of the user.

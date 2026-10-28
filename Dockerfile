@@ -19,7 +19,7 @@ COPY --from=build /out/clowder /clowder
 COPY --from=build --chown=65532:65532 /out/data /data
 ENV CLOWDER_DATA=/data CLOWDER_ADDR=:8080
 VOLUME /data
-EXPOSE 8080 2222
+EXPOSE 8080 2222 7882/udp 7882/tcp
 USER nonroot:nonroot
 # The image has no shell and no curl: the binary asks its own GET /healthz.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 CMD ["/clowder", "healthcheck"]

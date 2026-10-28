@@ -73,19 +73,24 @@ type quoteJSON struct {
 
 // messageJSON is a private message in the answers of the API.
 type messageJSON struct {
-	ID             uint64           `json:"id"`
-	ConversationID uint64           `json:"conversation_id"`
-	Author         userRefJSON      `json:"author"`
-	Body           *string          `json:"body"`
-	HTML           *string          `json:"html"`
-	ReplyTo        *quoteJSON       `json:"reply_to"`
-	Attachments    []attachmentJSON `json:"attachments"`
-	Reactions      []reactionJSON   `json:"reactions"`
-	CreatedAt      string           `json:"created_at"`
-	EditedAt       *string          `json:"edited_at"`
-	Deleted        bool             `json:"deleted"`
-	CanEdit        bool             `json:"can_edit"`
-	CanDelete      bool             `json:"can_delete"`
+	ID             uint64 `json:"id"`
+	ConversationID uint64 `json:"conversation_id"`
+	// Kind is "text", or "call" for the entry a finished call leaves in a
+	// direct conversation (SPEC §7.18): then Call says what it was, and
+	// there are no body, html, files or reactions.
+	Kind        string           `json:"kind"`
+	Call        *callEntryJSON   `json:"call"`
+	Author      userRefJSON      `json:"author"`
+	Body        *string          `json:"body"`
+	HTML        *string          `json:"html"`
+	ReplyTo     *quoteJSON       `json:"reply_to"`
+	Attachments []attachmentJSON `json:"attachments"`
+	Reactions   []reactionJSON   `json:"reactions"`
+	CreatedAt   string           `json:"created_at"`
+	EditedAt    *string          `json:"edited_at"`
+	Deleted     bool             `json:"deleted"`
+	CanEdit     bool             `json:"can_edit"`
+	CanDelete   bool             `json:"can_delete"`
 }
 
 // messageAttachmentURL is the path a client downloads the file of a message
@@ -101,6 +106,7 @@ func (s *Server) messageOf(m app.Message) (messageJSON, error) {
 	out := messageJSON{
 		ID:             m.ID,
 		ConversationID: m.ConversationID,
+		Kind:           string(m.Kind),
 		Author:         userRefOf(m.Author),
 		Attachments:    make([]attachmentJSON, len(m.Attachments)),
 		Reactions:      reactionsOf(m.Reactions),
@@ -116,6 +122,11 @@ func (s *Server) messageOf(m app.Message) (messageJSON, error) {
 	if m.ReplyTo != nil {
 		q := m.ReplyTo
 		out.ReplyTo = &quoteJSON{ID: q.ID, Author: userRefOf(q.Author), Excerpt: q.Preview, Deleted: q.Deleted}
+	}
+	if m.Call != nil {
+		entry := callEntryOf(*m.Call)
+		out.Call = &entry
+		return out, nil
 	}
 	if m.Deleted {
 		return out, nil

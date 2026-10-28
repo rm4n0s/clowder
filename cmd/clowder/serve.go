@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"flag"
 	"io"
 	"log/slog"
@@ -115,6 +116,32 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	// reverse order).
 	stopSweeper := startStagedSweeper(ctx, posts, stagedSweepInterval, logger)
 	defer stopSweeper()
+	processID, err := newProcessID(rand.Reader)
+	if err != nil {
+		return err
+	}
+	callSvc := app.NewCalls(st, clock.Real(), app.CallsConfig{
+		ProcessID: processID,
+		Enabled:   cfg.MediaAddr != "",
+		MaxCalls:  cfg.MaxCalls,
+		Logger:    logger,
+	}, pub)
+	// A run without Redis starts with no call alive: whatever the database says
+	// is open belongs to an earlier run.
+	if err := endCallsAtStart(ctx, callSvc, cfg, logger); err != nil {
+		return err
+	}
+	// The deferred calls run in reverse order: the media server stops (and
+	// closes every socket) before the calls of the process are ended, and both
+	// before the hub and the store close.
+	defer endCallsAtStop(ctx, callSvc, processID, logger)
+	media, stopMedia, err := startMedia(ctx, cfg, callSvc, hub, logger)
+	if err != nil {
+		return err
+	}
+	defer stopMedia()
+	stopExpirer := startCallExpirer(ctx, callSvc, callExpireInterval, logger)
+	defer stopExpirer()
 	board := app.NewBoard(st, clock.Real(), pub)
 	search := app.NewSearch(st)
 	audit := app.NewAudit(st)
@@ -128,7 +155,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	apiServer, err := api.New(api.Options{
 		Services: api.Services{
 			Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts,
-			Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: presence, SSHKeys: sshKeys, Hub: hub,
+			Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: presence, SSHKeys: sshKeys, Calls: callSvc, Media: media, Hub: hub,
 		},
 		Logger:        logger,
 		NoteUser:      web.NoteUser,
@@ -155,6 +182,8 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Posts:         posts,
 		Messages:      messages,
 		SSHKeys:       sshKeys,
+		Calls:         callSvc,
+		Media:         media,
 	})
 	if err != nil {
 		return err
@@ -349,6 +378,10 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 	if err != nil {
 		return config.Config{}, err
 	}
+	maxCalls, err := envInt(env, "CLOWDER_MAX_CALLS", def.MaxCalls)
+	if err != nil {
+		return config.Config{}, err
+	}
 
 	var cfg config.Config
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
@@ -381,6 +414,12 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		"path of the SSH host key; made on the first start; default: ssh_host_ed25519_key in the data directory (CLOWDER_SSH_HOST_KEY)")
 	fs.StringVar(&cfg.SSHPublicHost, "ssh-public-host", envString(env, "CLOWDER_SSH_PUBLIC_HOST", def.SSHPublicHost),
 		"host shown in the ssh command of the settings page; default: the host of the base URL (CLOWDER_SSH_PUBLIC_HOST)")
+	fs.StringVar(&cfg.MediaAddr, "media-addr", envString(env, "CLOWDER_MEDIA_ADDR", def.MediaAddr),
+		"address of the media server of the calls, as host:port, such as :7882: one UDP and one TCP port; empty: calls are off (CLOWDER_MEDIA_ADDR)")
+	fs.StringVar(&cfg.MediaPublicIP, "media-public-ip", envString(env, "CLOWDER_MEDIA_PUBLIC_IP", def.MediaPublicIP),
+		"IP address that browsers reach the media server at, when it runs behind NAT; default: the addresses of the machine (CLOWDER_MEDIA_PUBLIC_IP)")
+	fs.IntVar(&cfg.MaxCalls, "max-calls", maxCalls,
+		"most calls (ringing or in progress) this process holds at once (CLOWDER_MAX_CALLS)")
 	fs.BoolVar(&cfg.TrustProxyHeaders, "trust-proxy", trustProxy,
 		"take the client address from the last X-Forwarded-For entry; only behind our own reverse proxy (CLOWDER_TRUST_PROXY)")
 	if err := fs.Parse(args); err != nil {

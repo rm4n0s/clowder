@@ -47,7 +47,9 @@ func statusOf(err error) int {
 		return http.StatusForbidden
 	case app.TagInvalidInput, app.TagSSHKeyTypeRefused, app.TagSSHKeyTooShort, app.TagSSHCodeWrong:
 		return http.StatusUnprocessableEntity
-	case app.TagConflict, app.TagSSHServerOff, app.TagSSHCodeNotTried, app.TagSSHCodeNeedsKey:
+	case app.TagConflict, app.TagSSHServerOff, app.TagSSHCodeNotTried, app.TagSSHCodeNeedsKey,
+		app.TagCallGroup, app.TagCallsOff, app.TagCallCalleeDisabled, app.TagCallCallerBusy, app.TagCallCalleeBusy,
+		app.TagCallServerFull, app.TagCallWrongState, app.TagCallNone:
 		return http.StatusConflict
 	case app.TagRateLimited:
 		return http.StatusTooManyRequests

@@ -34,11 +34,21 @@ services:
       # The SSH server of the sign-in codes (SPEC §7.16). Its host key is
       # made in /data on the first start.
       CLOWDER_SSH_ADDR: ":2222"
+      # The media server of the calls (SPEC §7.18, D64): one UDP and one TCP
+      # port with this number. CLOWDER_MEDIA_PUBLIC_IP is the address of this
+      # machine as the people who call reach it; without it a call between two
+      # people who are not on this machine's network does not connect.
+      CLOWDER_MEDIA_ADDR: ":7882"
+      CLOWDER_MEDIA_PUBLIC_IP: ${CLOWDER_MEDIA_PUBLIC_IP:-}
     volumes:
       - clowderdata:/data
     ports:
       - "${CLOWDER_PORT:-8080}:8080"
       - "${CLOWDER_SSH_PORT:-2222}:2222"
+      # The media port of the calls: the same number inside and outside,
+      # because the address that the server announces is the one it listens on.
+      - "${CLOWDER_MEDIA_PORT:-7882}:7882/udp"
+      - "${CLOWDER_MEDIA_PORT:-7882}:7882/tcp"
     restart: unless-stopped
 
 volumes:

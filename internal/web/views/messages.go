@@ -163,6 +163,9 @@ func messageClasses(d MessageData) string {
 	if d.Message.Deleted {
 		classes += " message-deleted"
 	}
+	if d.Message.Call != nil {
+		classes += " message-call"
+	}
 	return classes
 }
 

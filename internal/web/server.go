@@ -12,6 +12,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/rm4n0s/clowder/internal/api"
 	"github.com/rm4n0s/clowder/internal/app"
+	"github.com/rm4n0s/clowder/internal/calls"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
@@ -87,6 +88,12 @@ type Services struct {
 	// SSHKeys is the service of the SSH keys of a user and of what the
 	// settings page shows of the SSH server (SPEC §7.16).
 	SSHKeys *app.SSHKeys
+	// Calls is the service of the one-to-one calls (SPEC §7.18). Nil serves no
+	// call socket.
+	Calls *app.Calls
+	// Media is the media server of the calls, which runs the signalling
+	// socket. Nil when calls are off.
+	Media *calls.Server
 	// Health answers the health check, GET /healthz (SPEC D40). Nil makes
 	// the check answer 503.
 	Health HealthChecker
@@ -266,6 +273,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /messages/m/{msgID}/react", handler: http.HandlerFunc(s.messageReact)},
 		{pattern: "GET /messages/m/{msgID}/reply", handler: http.HandlerFunc(s.messageReplySlot)},
 		{pattern: "GET /messages/files/{id}/{name}", handler: http.HandlerFunc(s.messageFileDownload)},
+		{pattern: "GET " + CallSocketPath, handler: http.HandlerFunc(s.callSocket)},
 		{pattern: "GET /search", handler: http.HandlerFunc(s.search)},
 		{pattern: "GET /notifications", handler: http.HandlerFunc(s.notificationsPage)},
 		{pattern: "POST /notifications/read", handler: http.HandlerFunc(s.notificationsMarkRead)},

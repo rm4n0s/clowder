@@ -58,7 +58,7 @@ func (m *Messages) Send(ctx context.Context, actor Actor, convID uint64, in Mess
 					return err
 				}
 				fields[FieldReplyTo] = messageReplyInvalid
-			} else if target.ConversationID != convID || target.DeletedAt != nil {
+			} else if target.ConversationID != convID || target.DeletedAt != nil || target.Kind == store.MessageCall {
 				fields[FieldReplyTo] = messageReplyInvalid
 			}
 		}
@@ -127,6 +127,9 @@ func (m *Messages) Edit(ctx context.Context, actor Actor, msgID uint64, body str
 		if msg.DeletedAt != nil {
 			return errors.New(TagNotFound, "the message is deleted", "reason", "deleted", "messageID", msgID)
 		}
+		if msg.Kind == store.MessageCall {
+			return errors.New(TagForbidden, "the entry of a call cannot be edited", "userID", actor.UserID, "messageID", msgID)
+		}
 		if msg.AuthorID != actor.UserID {
 			return errors.New(TagForbidden, "only the author edits a message",
 				"userID", actor.UserID, "messageID", msgID)
@@ -183,6 +186,9 @@ func (m *Messages) Delete(ctx context.Context, actor Actor, msgID uint64) error 
 		if msg.DeletedAt != nil {
 			return errors.New(TagNotFound, "the message is deleted", "reason", "deleted", "messageID", msgID)
 		}
+		if msg.Kind == store.MessageCall {
+			return errors.New(TagForbidden, "the entry of a call cannot be deleted", "userID", actor.UserID, "messageID", msgID)
+		}
 		if msg.AuthorID != actor.UserID {
 			return errors.New(TagForbidden, "only the author deletes a message",
 				"userID", actor.UserID, "messageID", msgID)
@@ -236,6 +242,9 @@ func (m *Messages) React(ctx context.Context, actor Actor, msgID uint64, emoji s
 		if msg.DeletedAt != nil {
 			return errors.New(TagNotFound, "the message is deleted", "reason", "deleted", "messageID", msgID)
 		}
+		if msg.Kind == store.MessageCall {
+			return errors.New(TagForbidden, "the entry of a call takes no reactions", "userID", actor.UserID, "messageID", msgID)
+		}
 		clean, ok := cleanEmoji(emoji)
 		if !ok {
 			return errors.New(TagInvalidInput, "the reaction is not an emoji",
@@ -276,6 +285,9 @@ func (m *Messages) SetReaction(ctx context.Context, actor Actor, msgID uint64, e
 		}
 		if msg.DeletedAt != nil {
 			return errors.New(TagNotFound, "the message is deleted", "reason", "deleted", "messageID", msgID)
+		}
+		if msg.Kind == store.MessageCall {
+			return errors.New(TagForbidden, "the entry of a call takes no reactions", "userID", actor.UserID, "messageID", msgID)
 		}
 		clean, ok := cleanEmoji(emoji)
 		if !ok {
@@ -426,11 +438,23 @@ func (m *Messages) messageViews(ctx context.Context, actor Actor, rows []store.M
 	if err != nil {
 		return nil, err
 	}
+	var callIDs []uint64
+	for _, r := range rows {
+		if r.CallID != nil {
+			callIDs = append(callIDs, *r.CallID)
+		}
+	}
+	calls, err := m.st.CallsByIDs(ctx, callIDs)
+	if err != nil {
+		return nil, err
+	}
 	views := make([]Message, len(rows))
 	for i, r := range rows {
 		deleted := r.DeletedAt != nil
+		isCall := r.Kind == store.MessageCall
 		v := Message{
 			ID:             r.ID,
+			Kind:           r.Kind,
 			ConversationID: r.ConversationID,
 			Author:         UserRef{ID: r.AuthorID, Username: r.AuthorUsername, DisplayName: r.AuthorDisplayName, AvatarKey: r.AuthorAvatarKey},
 			Body:           r.Body,
@@ -439,9 +463,15 @@ func (m *Messages) messageViews(ctx context.Context, actor Actor, rows []store.M
 			Deleted:        deleted,
 			Attachments:    []AttachmentView{},
 			Reactions:      []ReactionCount{},
-			CanEdit:        !deleted && r.AuthorID == actor.UserID,
-			CanDelete:      !deleted && r.AuthorID == actor.UserID,
-			CanReact:       !deleted,
+			CanEdit:        !deleted && !isCall && r.AuthorID == actor.UserID,
+			CanDelete:      !deleted && !isCall && r.AuthorID == actor.UserID,
+			CanReact:       !deleted && !isCall,
+		}
+		if isCall && r.CallID != nil {
+			if call, ok := calls[*r.CallID]; ok {
+				entry := callEntryOf(call, actor.UserID)
+				v.Call = &entry
+			}
 		}
 		if !deleted {
 			v.Attachments = messageAttachmentViews(attachments[r.ID])

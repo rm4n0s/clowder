@@ -255,13 +255,13 @@ func (s *Store) DeleteSessionsOfUser(ctx context.Context, userID uint64) error {
 
 // DeleteSessionsOfUserExcept deletes every session of the user but the one
 // with the ID keep, which logs the user out everywhere else. It is not an
-// error when there are none.
-func (s *Store) DeleteSessionsOfUserExcept(ctx context.Context, userID, keep uint64) error {
-	err := s.db(ctx).Where("user_id = ? AND id <> ?", userID, keep).Delete(&Session{}).Error
-	if err != nil {
-		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "deleteSessionsOfUserExcept")
+// error when there are none. It returns how many it deleted.
+func (s *Store) DeleteSessionsOfUserExcept(ctx context.Context, userID, keep uint64) (int64, error) {
+	res := s.db(ctx).Where("user_id = ? AND id <> ?", userID, keep).Delete(&Session{})
+	if res.Error != nil {
+		return 0, errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "deleteSessionsOfUserExcept")
 	}
-	return nil
+	return res.RowsAffected, nil
 }
 
 // SessionByTokenHash returns the session whose cookie token has the given

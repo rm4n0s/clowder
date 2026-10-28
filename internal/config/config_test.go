@@ -26,6 +26,7 @@ func TestDefaultValidates(t *testing.T) {
 		InvitationLifetime:    7 * 24 * time.Hour,
 		LogLevel:              "info",
 		TrustProxyHeaders:     false,
+		MaxCalls:              20,
 	}
 	if cfg != want {
 		t.Errorf("Default() = %+v, want %+v", cfg, want)
@@ -120,6 +121,20 @@ func TestValidate(t *testing.T) {
 		{"ssh public host with a port", func(c *Config) { c.SSHPublicHost = "chat.example.org:2222" }, TagSSHPublicHostInvalid},
 		{"ssh public host with a user", func(c *Config) { c.SSHPublicHost = "alice@chat.example.org" }, TagSSHPublicHostInvalid},
 		{"ssh public host with a space", func(c *Config) { c.SSHPublicHost = "chat example" }, TagSSHPublicHostInvalid},
+		{"media address with a port", func(c *Config) { c.MediaAddr = ":7882" }, ""},
+		{"media address with a host", func(c *Config) { c.MediaAddr = "127.0.0.1:7882" }, ""},
+		{"media address with an ephemeral port", func(c *Config) { c.MediaAddr = "127.0.0.1:0" }, ""},
+		{"media address without a port", func(c *Config) { c.MediaAddr = "localhost" }, TagMediaAddrInvalid},
+		{"media address with only a number", func(c *Config) { c.MediaAddr = "7882" }, TagMediaAddrInvalid},
+		{"media address with a port too large", func(c *Config) { c.MediaAddr = ":65536" }, TagMediaAddrInvalid},
+		{"media address that is a URL", func(c *Config) { c.MediaAddr = "udp://host:7882" }, TagMediaAddrInvalid},
+		{"public media IPv4", func(c *Config) { c.MediaPublicIP = "203.0.113.7" }, ""},
+		{"public media IPv6", func(c *Config) { c.MediaPublicIP = "2001:db8::1" }, ""},
+		{"public media IP that is a host name", func(c *Config) { c.MediaPublicIP = "chat.example.org" }, TagMediaPublicIPInvalid},
+		{"public media IP with a port", func(c *Config) { c.MediaPublicIP = "203.0.113.7:7882" }, TagMediaPublicIPInvalid},
+		{"one call at most", func(c *Config) { c.MaxCalls = 1 }, ""},
+		{"no calls at most", func(c *Config) { c.MaxCalls = 0 }, TagMaxCallsInvalid},
+		{"negative calls at most", func(c *Config) { c.MaxCalls = -2 }, TagMaxCallsInvalid},
 		{"unknown log level", func(c *Config) { c.LogLevel = "verbose" }, TagLogLevelUnknown},
 		{"empty log level", func(c *Config) { c.LogLevel = "" }, TagLogLevelUnknown},
 	}

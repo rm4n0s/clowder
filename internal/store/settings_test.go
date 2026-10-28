@@ -129,7 +129,7 @@ func TestProfileQueries(t *testing.T) {
 			TagQueryFailed, "Store.SetUserAvatarKey.QueryFailed", "setUserAvatarKey"},
 		{"canceled password", func() error { return f.s.SetUserPasswordHash(canceled(t), u.ID, "x") },
 			TagQueryFailed, "Store.SetUserPasswordHash.QueryFailed", "setUserPasswordHash"},
-		{"canceled delete of the other sessions", func() error { return f.s.DeleteSessionsOfUserExcept(canceled(t), u.ID, 1) },
+		{"canceled delete of the other sessions", func() error { _, err := f.s.DeleteSessionsOfUserExcept(canceled(t), u.ID, 1); return err },
 			TagQueryFailed, "Store.DeleteSessionsOfUserExcept.QueryFailed", "deleteSessionsOfUserExcept"},
 	}
 	for _, tt := range tests {
@@ -152,7 +152,7 @@ func TestDeleteSessionsOfUserExcept(t *testing.T) {
 	mk(a, "a3")
 	other := mk(b, "b1")
 
-	if err := f.s.DeleteSessionsOfUserExcept(f.ctx, a.ID, keep.ID); err != nil {
+	if _, err := f.s.DeleteSessionsOfUserExcept(f.ctx, a.ID, keep.ID); err != nil {
 		t.Fatalf("DeleteSessionsOfUserExcept: %+v", err)
 	}
 	if n, _ := f.s.CountSessionsOfUser(f.ctx, a.ID); n != 1 {

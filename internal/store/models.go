@@ -26,6 +26,7 @@ func allModels() []any {
 		&TaskAssignee{},
 		&Notification{},
 		&Conversation{},
+		&Call{},
 		&Message{},
 		&ConversationMember{},
 		&PlacePref{},

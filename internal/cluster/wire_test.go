@@ -18,6 +18,7 @@ func TestWireRoundTrip(t *testing.T) {
 		{"every field", eventN("conversation:3", 100)},
 		{"only topic and kind", live.Event{Topic: "user:1", Kind: live.KindUserChanged}},
 		{"a ringing event", live.Event{Topic: "user:4", Kind: live.KindNotificationCreated, UserID: 4, NotificationID: 9, Ring: true, Sound: "meow", Browser: true}},
+		{"a call update", live.Event{Topic: "user:4", Kind: live.KindCallUpdated, UserID: 4, ConversationID: 8, CallID: 5, Microphone: true}},
 		{"largest ids", live.Event{Topic: "room:1", Kind: live.KindPostCreated, RoomID: 1<<64 - 1, MessageID: 1<<64 - 1}},
 	}
 	for _, tt := range tests {

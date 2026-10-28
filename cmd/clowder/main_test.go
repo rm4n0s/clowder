@@ -144,6 +144,9 @@ func TestParseServeConfig(t *testing.T) {
 				"CLOWDER_INVITATION_LIFETIME": "24h",
 				"CLOWDER_LOG_LEVEL":           "debug",
 				"CLOWDER_TRUST_PROXY":         "true",
+				"CLOWDER_MEDIA_ADDR":          ":7000",
+				"CLOWDER_MEDIA_PUBLIC_IP":     "203.0.113.9",
+				"CLOWDER_MAX_CALLS":           "4",
 			},
 			want: config.Config{
 				ListenAddr:            "127.0.0.1:9000",
@@ -155,6 +158,9 @@ func TestParseServeConfig(t *testing.T) {
 				InvitationLifetime:    24 * time.Hour,
 				LogLevel:              "debug",
 				TrustProxyHeaders:     true,
+				MediaAddr:             ":7000",
+				MediaPublicIP:         "203.0.113.9",
+				MaxCalls:              4,
 			},
 		},
 		{
@@ -163,7 +169,7 @@ func TestParseServeConfig(t *testing.T) {
 				"-addr", "127.0.0.1:9001", "-data", "d", "-base-url", "http://x.test",
 				"-max-attachment-size", "10", "-max-attachments", "2",
 				"-session-lifetime", "1h", "-invitation-lifetime", "30m", "-log-level", "warn",
-				"-trust-proxy",
+				"-trust-proxy", "-media-addr", "127.0.0.1:7001", "-media-public-ip", "2001:db8::2", "-max-calls", "2",
 			},
 			want: config.Config{
 				ListenAddr:            "127.0.0.1:9001",
@@ -175,6 +181,9 @@ func TestParseServeConfig(t *testing.T) {
 				InvitationLifetime:    30 * time.Minute,
 				LogLevel:              "warn",
 				TrustProxyHeaders:     true,
+				MediaAddr:             "127.0.0.1:7001",
+				MediaPublicIP:         "2001:db8::2",
+				MaxCalls:              2,
 			},
 		},
 		{
@@ -269,6 +278,22 @@ func TestParseServeConfig(t *testing.T) {
 				c := def
 				c.SSHAddr = "127.0.0.1:2200"
 				c.SSHPublicHost = "flag.example.org"
+				return c
+			}(),
+		},
+		{
+			name: "media settings: flags beat the environment",
+			args: []string{"-media-addr", "127.0.0.1:7100", "-max-calls", "3"},
+			env: map[string]string{
+				"CLOWDER_MEDIA_ADDR":      ":7000",
+				"CLOWDER_MEDIA_PUBLIC_IP": "203.0.113.9",
+				"CLOWDER_MAX_CALLS":       "9",
+			},
+			want: func() config.Config {
+				c := def
+				c.MediaAddr = "127.0.0.1:7100"
+				c.MediaPublicIP = "203.0.113.9"
+				c.MaxCalls = 3
 				return c
 			}(),
 		},
@@ -425,6 +450,32 @@ func TestParseServeConfigErrors(t *testing.T) {
 			args:      []string{"-ssh-public-host", "ssh://chat.example.org"},
 			wantTag:   config.TagSSHPublicHostInvalid,
 			wantRoute: "parseServeConfig->Config.Validate.SSHPublicHostInvalid",
+		},
+		{
+			name:      "malformed maximum number of calls in the environment",
+			env:       map[string]string{"CLOWDER_MAX_CALLS": "many"},
+			wantTag:   tagEnvValueInvalid,
+			wantRoute: "parseServeConfig->envInt.EnvValueInvalid",
+			wantMeta:  map[string]any{"name": "CLOWDER_MAX_CALLS", "value": "many"},
+		},
+		{
+			name:      "invalid config: media address from the environment",
+			env:       map[string]string{"CLOWDER_MEDIA_ADDR": "localhost"},
+			wantTag:   config.TagMediaAddrInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.MediaAddrInvalid",
+			wantMeta:  map[string]any{"mediaAddr": "localhost"},
+		},
+		{
+			name:      "invalid config: public media IP flag",
+			args:      []string{"-media-public-ip", "chat.example.org"},
+			wantTag:   config.TagMediaPublicIPInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.MediaPublicIPInvalid",
+		},
+		{
+			name:      "invalid config: maximum number of calls",
+			args:      []string{"-max-calls", "0"},
+			wantTag:   config.TagMaxCallsInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.MaxCallsInvalid",
 		},
 		{
 			name:      "invalid config: session lifetime",

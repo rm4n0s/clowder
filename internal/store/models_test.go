@@ -187,6 +187,19 @@ func TestModelsRoundTrip(t *testing.T) {
 				EditedAt: ptr(day(time.Hour)), DeletedAt: ptr(day(2 * time.Hour)),
 			}
 		}},
+		{"Message that is a call entry", "messages", func(f *fix) any {
+			a, b := f.user(), f.user()
+			call := f.call(f.direct(a, b), a, b, CallEnded)
+			return &Message{ConversationID: call.ConversationID, AuthorID: a.ID, Kind: MessageCall, CallID: &call.ID}
+		}},
+		{"Call", "calls", func(f *fix) any {
+			a, b := f.user(), f.user()
+			return &Call{
+				ConversationID: f.direct(a, b).ID, CallerID: a.ID, CalleeID: b.ID, Video: true, State: CallEnded,
+				AnsweredAt: ptr(day(time.Minute)), EndedAt: ptr(day(5 * time.Minute)), EndReason: CallDeclined,
+				EndedBy: &b.ID, Home: "0123456789abcdef",
+			}
+		}},
 		{"MessageAttachment", "message_attachments", func(f *fix) any {
 			u := f.user()
 			return &MessageAttachment{
@@ -258,8 +271,8 @@ func TestEveryModelIsMigrated(t *testing.T) {
 			t.Errorf("no table for %T", m)
 		}
 	}
-	if got := len(allModels()); got != 29 {
-		t.Errorf("%d models, want the 29 of SPEC §6.3", got)
+	if got := len(allModels()); got != 30 {
+		t.Errorf("%d models, want the 30 of SPEC §6.3", got)
 	}
 }
 
@@ -482,6 +495,38 @@ func TestCheckConstraints(t *testing.T) {
 		{"group conversation with key", "chk_conversations_direct_key", func(f *fix) any {
 			return &Conversation{Kind: ConversationGroup, CreatedBy: f.user().ID, DirectKey: ptr("1-2")}
 		}},
+		{"message kind", "chk_messages_kind", func(f *fix) any {
+			u := f.user()
+			return &Message{ConversationID: f.group(u).ID, AuthorID: u.ID, Kind: "poke"}
+		}},
+		{"call entry without a call", "chk_messages_call", func(f *fix) any {
+			u := f.user()
+			return &Message{ConversationID: f.group(u).ID, AuthorID: u.ID, Kind: MessageCall}
+		}},
+		{"text message with a call", "chk_messages_call", func(f *fix) any {
+			a, b := f.user(), f.user()
+			call := f.call(f.direct(a, b), a, b, CallEnded)
+			return &Message{ConversationID: call.ConversationID, AuthorID: a.ID, Kind: MessageText, CallID: &call.ID}
+		}},
+		{"call state", "chk_calls_state", func(f *fix) any {
+			a, b := f.user(), f.user()
+			return &Call{ConversationID: f.direct(a, b).ID, CallerID: a.ID, CalleeID: b.ID, State: "dialing", Home: "p"}
+		}},
+		{"call end reason", "chk_calls_end_reason", func(f *fix) any {
+			a, b := f.user(), f.user()
+			return &Call{
+				ConversationID: f.direct(a, b).ID, CallerID: a.ID, CalleeID: b.ID, State: CallEnded,
+				EndedAt: ptr(day(time.Minute)), EndReason: "bored", Home: "p",
+			}
+		}},
+		{"call ended without a time", "chk_calls_ended", func(f *fix) any {
+			a, b := f.user(), f.user()
+			return &Call{ConversationID: f.direct(a, b).ID, CallerID: a.ID, CalleeID: b.ID, State: CallEnded, EndReason: CallHangup, Home: "p"}
+		}},
+		{"call with an end time but open", "chk_calls_ended", func(f *fix) any {
+			a, b := f.user(), f.user()
+			return &Call{ConversationID: f.direct(a, b).ID, CallerID: a.ID, CalleeID: b.ID, State: CallActive, EndedAt: ptr(day(time.Minute)), Home: "p"}
+		}},
 		{"message attachment size", "chk_message_attachments_size", func(f *fix) any {
 			u := f.user()
 			return &MessageAttachment{MessageID: f.message(f.group(u), u).ID, UploaderID: u.ID, Size: -1, StorageKey: "k"}
@@ -638,6 +683,11 @@ func TestForeignKeyActions(t *testing.T) {
 		{"messages", "conversation_id", "conversations", cascade},
 		{"messages", "author_id", "users", restrict},
 		{"messages", "reply_to_id", "messages", setNull},
+		{"messages", "call_id", "calls", cascade},
+		{"calls", "conversation_id", "conversations", cascade},
+		{"calls", "caller_id", "users", restrict},
+		{"calls", "callee_id", "users", restrict},
+		{"calls", "ended_by", "users", restrict},
 		{"message_attachments", "message_id", "messages", cascade},
 		{"message_attachments", "uploader_id", "users", restrict},
 		{"message_reactions", "message_id", "messages", cascade},
@@ -741,6 +791,12 @@ func TestIndexes(t *testing.T) {
 		"uq_place_prefs_user_room":                  {"place_prefs", true, "user_id,room_id"},
 		"uq_place_prefs_user_conversation":          {"place_prefs", true, "user_id,conversation_id"},
 		"idx_messages_conversation":                 {"messages", false, "conversation_id,id"},
+		"idx_messages_call_id":                      {"messages", false, "call_id"},
+		"idx_calls_conversation":                    {"calls", false, "conversation_id"},
+		"uq_calls_open_caller":                      {"calls", true, "caller_id"},
+		"uq_calls_open_callee":                      {"calls", true, "callee_id"},
+		"idx_calls_ringing":                         {"calls", false, "created_at"},
+		"idx_calls_open_home":                       {"calls", false, "home"},
 		"idx_message_attachments_message_id":        {"message_attachments", false, "message_id"},
 		"uq_message_attachments_storage_key":        {"message_attachments", true, "storage_key"},
 		"uq_message_reactions_message_user_emoji":   {"message_reactions", true, "message_id,user_id,emoji"},
@@ -1198,6 +1254,22 @@ func TestDeleteConversationCascades(t *testing.T) {
 	requireCounts(t, f, map[string]int64{
 		"conversations": 1, "conversation_members": 1, "messages": 1, "message_attachments": 1, "message_reactions": 1,
 	})
+}
+
+// TestDeleteConversationRemovesItsCalls checks that a conversation takes its
+// calls and their entries with it.
+func TestDeleteConversationRemovesItsCalls(t *testing.T) {
+	f := newFix(t)
+	a, b, c := f.user(), f.user(), f.user()
+	conv, other := f.direct(a, b), f.direct(a, c)
+	for _, cv := range []*Conversation{conv, other} {
+		call := f.call(cv, a, b, CallEnded)
+		f.create(&Message{ConversationID: cv.ID, AuthorID: a.ID, Kind: MessageCall, CallID: &call.ID})
+	}
+	if err := f.s.db(f.ctx).Delete(&Conversation{}, conv.ID).Error; err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	requireCounts(t, f, map[string]int64{"conversations": 1, "calls": 1, "messages": 1})
 }
 
 func TestForeignKeysRefuseMissingParents(t *testing.T) {

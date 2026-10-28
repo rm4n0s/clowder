@@ -365,7 +365,7 @@ func (a *Accounts) sessionActor(ctx context.Context, token string, kind SessionK
 }
 
 // Logout deletes the session of the cookie token. An unknown token is not an
-// error.
+// error. The call the user is in, if any, ends (session_ended, SPEC §7.18).
 func (a *Accounts) Logout(ctx context.Context, token string) error {
 	if token == "" {
 		return nil
@@ -381,8 +381,33 @@ func (a *Accounts) Logout(ctx context.Context, token string) error {
 	if err := a.st.DeleteSessionByTokenHash(ctx, tokenHash); err != nil {
 		return err
 	}
+	if err := a.endCallsOf(ctx, sess.UserID, store.CallSessionEnded); err != nil {
+		return err
+	}
 	// The other pages that are open with this session notice at once.
 	a.pub.Publish(live.Event{Topic: live.UserTopic(sess.UserID), Kind: live.KindUserChanged, UserID: sess.UserID})
+	return nil
+}
+
+// endCallsOf ends the open calls of the user, in a transaction of their own
+// when there are any, and publishes the events after the commit. A session
+// that ended is not tied to a call in the database, so the call of the user
+// ends whichever session it was (SPEC §7.18).
+func (a *Accounts) endCallsOf(ctx context.Context, userID uint64, reason store.CallEndReason) error {
+	open, err := a.st.OpenCallsOfUsers(ctx, userID)
+	if err != nil || len(open) == 0 {
+		return err
+	}
+	var events []live.Event
+	err = a.st.Tx(ctx, func(tx *store.Store) error {
+		var err error
+		events, err = endCallsOfUser(ctx, tx, a.clk.Now().UTC(), userID, reason)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	publishAll(a.pub, events)
 	return nil
 }
 
@@ -438,9 +463,15 @@ func (a *Accounts) Sessions(ctx context.Context, actor Actor, currentID uint64) 
 // browser or client out. It fails with TagNotFound for a session that does not
 // exist or belongs to someone else, and does not tell the two apart. Like a
 // logout it publishes live.KindUserChanged on the topic of the user, so that
-// the open streams of that session read it again and end (SPEC D37).
+// the open streams of that session read it again and end (SPEC D37). The call
+// the user is in, if any, ends in the same transaction (session_ended, SPEC
+// §7.18): a call is not tied to a session in the database, so it ends
+// whichever session was ended.
 func (a *Accounts) EndSession(ctx context.Context, actor Actor, sessionID uint64) error {
 	if err := a.st.DeleteSessionOfUser(ctx, actor.UserID, sessionID); err != nil {
+		return err
+	}
+	if err := a.endCallsOf(ctx, actor.UserID, store.CallSessionEnded); err != nil {
 		return err
 	}
 	a.pub.Publish(live.Event{Topic: live.UserTopic(actor.UserID), Kind: live.KindUserChanged, UserID: actor.UserID})

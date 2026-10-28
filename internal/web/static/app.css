@@ -2900,6 +2900,9 @@ main:has(> .conversation-top) { max-width: 78rem; }
 
 .message-deleted-note { margin: 0; color: var(--c-text-muted); font-style: italic; }
 
+/* The entry of a finished call: one plain line (step 22.2 gives it its look). */
+.message-call-entry { margin: 0; color: var(--c-text-soft); }
+
 .message-quote {
   display: flex;
   flex-direction: column;

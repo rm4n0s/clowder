@@ -1623,3 +1623,42 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The worker first accepted that, just after an upgrade, the old worker could serve last release's files to the new release's first page. The manager sent it back to version the static URLs, which closes that.
   - The search is a row under the header's buttons, not an icon that opens it, because an icon would need a script.
   - A browser without popovers keeps the stacked layout of 21.1.
+
+## 22.1 The media server and its signalling
+- **Date:** 2026-10-28
+- **Branch:** feat/step-22.1-media-server
+- **Summary:**
+  - `github.com/pion/webrtc/v4` v4.2.25 (D63) with the pion modules it requires: ice/v4, interceptor, logging, rtcp, rtp, sdp/v3, datachannel, dtls/v3, mdns/v2, randutil, sctp, srtp/v3, stun/v4, transport/v5 and turn/v5. It also brings `github.com/wlynxg/anet` v0.0.5 and `golang.org/x/time` v0.14.0, and moves `google/uuid` to 1.6.0. `CGO_ENABLED=0` still builds. Only `internal/calls` imports pion, and it never imports `internal/store`; a test enforces both.
+  - The `calls` table and a `kind` (`text` or `call`) with the call's ID on messages. Partial unique indexes allow one open call per caller and per callee (migration `0007_calls_open`, with its upgrade test). The call entry is a message by the caller, so a missed call raises the callee's unread count. Call entries are not searched.
+  - `app.Calls`:
+    - `Start`, `Answer`, `Decline`, `Cancel`, `HangUp`, `Current`, the timeout (`Expire`, every second from `serve`) and the joins of the media server;
+    - only the two members of a direct conversation (404 for anyone else, admins included), 409 for a group, a busy user, a disabled callee, a full server or calls turned off;
+    - a busy callee gets a missed call;
+    - disabling a user, logging out, ending a session and changing or resetting a password end the user's call;
+    - `call.ringing`, `call.started`, `call.updated` and `call.ended` after the commit, also over Redis.
+  - `internal/calls`, the media server:
+    - one port for UDP and ICE-TCP, with `-media-public-ip` as the host candidate;
+    - Opus and VP8, the server always the offerer with two `sendrecv` transceivers per side, forwarding RTP;
+    - PLI forwarded, and a key frame asked when a connection comes up;
+    - a screen share is the client's `replaceTrack` on the same sender, with no renegotiation;
+    - 2.5 Mbit/s of video per sender (REMB and `b=AS`/`b=TIAS`), the 10-second ICE deadline, the 15-second failed transport, and a 30-second wait for a participant to join;
+    - `-max-calls`. It is owned by `serve` and closes everything on shutdown.
+  - Signalling: `GET /calls/{id}/ws` for pages (the session cookie and the origin check) and `GET /api/v1/conversations/{id}/call/ws` for clients, with trickle ICE and the microphone and camera state. The REST routes are `call`, `call/answer`, `call/decline`, `call/cancel` and `call/hangup`. All are in `openapi.json` and `docs/API.md`, with how a desktop client takes part.
+  - The flags `-media-addr`, `-media-public-ip` and `-max-calls`. `compose.yaml` publishes the media port over UDP and TCP; the cluster composition has calls off until 22.3. A process without Redis ends every open call at start, and every process ends its own calls on shutdown (`server_stopped`).
+- **Main files:** `internal/calls/` (with `callstest`, a pion test client), `internal/app/calls.go`, `internal/store/{calls,migrations,models}.go`, `internal/api/{handlers_calls,types_calls}.go`, `internal/api/openapi.json`, `internal/web/calls.go`, `cmd/clowder/calls.go`, `compose.yaml`, `compose.cluster.yaml`, `.env.example`, `Dockerfile`, `scripts/compose-smoke.sh`, `docs/SPEC.md`, `docs/API.md`.
+- **Tests:**
+  - `internal/calls`: 39, six of them end to end with two pion clients through the real handlers of the pages and the API, a database and the media server on loopback: a call through each, the screen share on one SSRC with no new offer, ICE-TCP alone, nobody answering, a callee disabled and a caller logging out, a participant who never joins;
+  - `internal/app`: the permission tables of every method, the state machine with its entries and events, the race of two calls to one user;
+  - store, API and web handlers, the flags, the migration's upgrade test on both dialects, a route test for every new tag, the OpenAPI parity;
+  - `scripts/compose-smoke.sh` checks the media port (and its absence in the cluster).
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · compose-smoke ✅ (also `-cluster`) · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [22.1 media](implemented-proof-images/22.1-media.txt)
+  - a verbose run: the packets each side received through the API and the pages, the call entry "Video call · 1 min", the screen share with 40 more video packets on one SSRC and no new offer, and ICE-TCP alone.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - VP8 is the only video codec (D63 allowed VP8 or H.264), so the two sides never have to agree on a profile.
+  - Any session that ends ends the user's open call, because the process cannot tell which session the call's page belongs to.
+  - `-max-calls` is a soft limit across PostgreSQL transactions; the unique indexes are the hard rule per user.
+  - `scripts/compose-smoke.sh` had been failing on `main` since M21 changed the page title and the user's element; its checks are fixed.
+  - The internal test harness of `internal/calls` repeats about 300 lines of `callstest`; 22.3 folds it in.

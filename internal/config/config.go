@@ -30,6 +30,9 @@ const (
 	DefaultInvitationLifetime = 7 * 24 * time.Hour
 	// DefaultLogLevel is the log level.
 	DefaultLogLevel = "info"
+	// DefaultMaxCalls is the most calls that one process holds at once (SPEC
+	// D64).
+	DefaultMaxCalls = 20
 )
 
 // Config holds the settings of a Clowder process (SPEC §11).
@@ -76,6 +79,17 @@ type Config struct {
 	// page: a host name or an IP address, without a scheme or a path. Empty
 	// means the host of BaseURL; see SSHPublicHostOrDefault.
 	SSHPublicHost string
+	// MediaAddr is the address of the media server of the calls (SPEC §7.18,
+	// D63, D64), as host:port, such as ":7882": one UDP port and one TCP port
+	// with that number. Empty means calls are off.
+	MediaAddr string
+	// MediaPublicIP is the IP address, IPv4 or IPv6, that the media server
+	// announces as its own to the browsers when it runs behind NAT (D64).
+	// Empty announces the addresses of the machine.
+	MediaPublicIP string
+	// MaxCalls is the most calls (ringing or in progress) that one process
+	// holds at once; at least 1.
+	MaxCalls int
 }
 
 // DefaultSSHHostKeyFile is the name of the host key inside the data directory
@@ -115,6 +129,7 @@ func Default() Config {
 		SessionLifetime:       DefaultSessionLifetime,
 		InvitationLifetime:    DefaultInvitationLifetime,
 		LogLevel:              DefaultLogLevel,
+		MaxCalls:              DefaultMaxCalls,
 	}
 }
 
@@ -216,6 +231,21 @@ func (c Config) Validate() error {
 			"the public SSH host must be a host name or an IP address, without a scheme, a port or a path",
 			"sshPublicHost", c.SSHPublicHost)
 	}
+	if c.MediaAddr != "" {
+		_, port, err := net.SplitHostPort(c.MediaAddr)
+		if n, convErr := strconv.Atoi(port); err != nil || convErr != nil || n < 0 || n > 65535 {
+			return errors.New(TagMediaAddrInvalid, "the media address must be host:port, such as :7882",
+				"mediaAddr", c.MediaAddr)
+		}
+	}
+	if c.MediaPublicIP != "" && net.ParseIP(c.MediaPublicIP) == nil {
+		return errors.New(TagMediaPublicIPInvalid, "the public media IP must be an IPv4 or IPv6 address",
+			"mediaPublicIP", c.MediaPublicIP)
+	}
+	if c.MaxCalls < 1 {
+		return errors.New(TagMaxCallsInvalid, "the maximum number of calls must be at least 1",
+			"value", c.MaxCalls)
+	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":
 	default:
@@ -282,6 +312,12 @@ func RedactURL(raw string) string {
 }
 
 const (
+	// TagMediaAddrInvalid is the tag of a media address that is not host:port.
+	TagMediaAddrInvalid = "MediaAddrInvalid"
+	// TagMediaPublicIPInvalid is the tag of a public media IP that is not an IP address.
+	TagMediaPublicIPInvalid = "MediaPublicIPInvalid"
+	// TagMaxCallsInvalid is the tag of a maximum number of calls below 1.
+	TagMaxCallsInvalid = "MaxCallsInvalid"
 	// TagSSHAddrInvalid is the tag of an SSH address that is not host:port.
 	TagSSHAddrInvalid = "SSHAddrInvalid"
 	// TagSSHHostKeyDirMissing is the tag of an SSH host key path in a directory that does not exist.

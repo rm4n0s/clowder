@@ -117,6 +117,11 @@ type wsEventMessage struct {
 	UserID         uint64 `json:"user_id,omitempty"`
 	ConversationID uint64 `json:"conversation_id,omitempty"`
 	MessageID      uint64 `json:"message_id,omitempty"`
+	CallID         uint64 `json:"call_id,omitempty"`
+	// Microphone and Camera are the state of the participant UserID in a
+	// call.updated event: true when on.
+	Microphone *bool `json:"microphone,omitempty"`
+	Camera     *bool `json:"camera,omitempty"`
 	// Ring is true on an event of the user's own topic that rings for the
 	// user (SPEC §7.15): the client plays Sound, and shows a notification of
 	// the system when Browser is true. The server decided it from the user's

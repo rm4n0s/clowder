@@ -96,10 +96,29 @@ type MessageQuote struct {
 	Deleted bool
 }
 
+// MessageKind says whether a message is text or the entry of a call. It is the
+// store's type.
+type MessageKind = store.MessageKind
+
+// The two kinds of message (SPEC §7.18).
+const (
+	// MessageText is a message that a person wrote.
+	MessageText MessageKind = store.MessageText
+	// MessageCall is the entry that a finished call leaves in the conversation.
+	MessageCall MessageKind = store.MessageCall
+)
+
 // Message is a private message as the services show it to one actor.
 type Message struct {
 	// ID is the ID of the message. Newer messages have larger IDs.
 	ID uint64
+	// Kind is MessageText, or MessageCall for the entry of a call, whose
+	// author is the caller, which has no body, files or reactions and which
+	// nobody can edit, delete or react to.
+	Kind MessageKind
+	// Call is the call of a call entry, as the asking user reads it; nil for a
+	// text message.
+	Call *CallEntry
 	// ConversationID is the conversation of the message.
 	ConversationID uint64
 	// Author is the author.
@@ -608,10 +627,14 @@ func (m *Messages) Conversations(ctx context.Context, actor Actor) ([]Conversati
 			}
 		}
 		if last := it.LastMessage; last != nil {
+			preview := previewOf(last.DeletedAt != nil, last.Body, it.LastAttachmentNames)
+			if it.LastCall != nil {
+				preview = callEntryOf(*it.LastCall, actor.UserID).Text
+			}
 			s.LastMessage = &LastMessage{
 				ID:        last.ID,
 				Author:    UserRef{ID: last.AuthorID, Username: last.AuthorUsername, DisplayName: last.AuthorDisplayName, AvatarKey: last.AuthorAvatarKey},
-				Preview:   previewOf(last.DeletedAt != nil, last.Body, it.LastAttachmentNames),
+				Preview:   preview,
 				Deleted:   last.DeletedAt != nil,
 				CreatedAt: last.CreatedAt,
 			}

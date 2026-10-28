@@ -28,8 +28,8 @@ func messageIndexText(d dialect) string {
 }
 
 // messageIndexable is true for a message (the alias m) that belongs in the
-// index: it is not deleted and has text.
-const messageIndexable = `m.deleted_at IS NULL AND m.body <> ''`
+// index: it is not deleted, has text and is no call entry (SPEC §7.18).
+const messageIndexable = `m.deleted_at IS NULL AND m.body <> '' AND m.kind = 'text'`
 
 // messageSearchIndex names the full-text index table of private messages of a
 // dialect and its column of message IDs: messages_fts(rowid) in SQLite,

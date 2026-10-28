@@ -352,7 +352,8 @@ func (a *Accounts) OpenAvatar(ctx context.Context, actor Actor, userID uint64) (
 // blocks gets TagRateLimited before the password is looked at. In one
 // transaction it stores the new hash, deletes every session of the user but
 // sessionID (browsers and clients alike) and every pending login that waits for
-// an SSH code, and writes the audit event
+// an SSH code, ends the call the user is in when a session was deleted (SPEC
+// §7.18), and writes the audit event
 // user.password_changed; after the commit it publishes live.KindUserChanged,
 // which closes the sockets and streams of the other sessions.
 //
@@ -398,19 +399,29 @@ func (a *Accounts) ChangePassword(ctx context.Context, actor Actor, sessionID ui
 	if err != nil {
 		return err
 	}
+	var events []live.Event
 	err = a.st.Tx(ctx, func(tx *store.Store) error {
+		events = nil
 		if _, err := a.activeUserOn(ctx, tx, actor); err != nil {
 			return err
 		}
 		if err := tx.SetUserPasswordHash(ctx, user.ID, hash); err != nil {
 			return err
 		}
-		if err := tx.DeleteSessionsOfUserExcept(ctx, user.ID, sessionID); err != nil {
+		ended, err := tx.DeleteSessionsOfUserExcept(ctx, user.ID, sessionID)
+		if err != nil {
 			return err
 		}
 		// A login that waits for its SSH code was made with the old password.
 		if err := tx.DeletePendingLoginsOfUser(ctx, user.ID); err != nil {
 			return err
+		}
+		if ended > 0 {
+			// A session ended, and the call is not tied to a session: the
+			// call of the user ends (SPEC §7.18).
+			if events, err = endCallsOfUser(ctx, tx, a.clk.Now().UTC(), user.ID, store.CallSessionEnded); err != nil {
+				return err
+			}
 		}
 		return recordAudit(ctx, tx, auditEntry{
 			ActorID:    user.ID,
@@ -424,6 +435,7 @@ func (a *Accounts) ChangePassword(ctx context.Context, actor Actor, sessionID ui
 	if err != nil {
 		return err
 	}
+	publishAll(a.pub, events)
 	// The other pages and clients that are open read their session again and
 	// end.
 	a.publishUser(user.ID, live.KindUserChanged)

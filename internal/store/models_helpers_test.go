@@ -151,6 +151,28 @@ func (f *fix) group(creator *User) *Conversation {
 	return c
 }
 
+// direct inserts the direct conversation of two users.
+func (f *fix) direct(a, b *User) *Conversation {
+	f.tb.Helper()
+	key := DirectKeyOf(a.ID, b.ID)
+	c := &Conversation{Kind: ConversationDirect, CreatedBy: a.ID, DirectKey: &key}
+	f.create(c)
+	return c
+}
+
+// call inserts a call from caller to callee in their direct conversation c,
+// in the state given (ringing, or ended with reason hangup).
+func (f *fix) call(c *Conversation, caller, callee *User, state CallState) *Call {
+	f.tb.Helper()
+	call := &Call{ConversationID: c.ID, CallerID: caller.ID, CalleeID: callee.ID, State: state, Home: "p1"}
+	if state == CallEnded {
+		call.EndedAt = ptr(f.clk.Now())
+		call.EndReason = CallHangup
+	}
+	f.create(call)
+	return call
+}
+
 func (f *fix) message(c *Conversation, author *User) *Message {
 	f.tb.Helper()
 	m := &Message{ConversationID: c.ID, AuthorID: author.ID, Body: fmt.Sprintf("message%d", f.next())}

@@ -50,7 +50,20 @@ type ConversationMember struct {
 	LastReadMessage *Message      `gorm:"foreignKey:LastReadMessageID;constraint:OnDelete:SET NULL"`
 }
 
-// Message is a message of a conversation. It is plain text.
+// MessageKind says what a message is: text that a person wrote, or the entry
+// that a finished call leaves in the conversation (SPEC §7.18).
+type MessageKind string
+
+const (
+	// MessageText is a message that a person wrote; the default.
+	MessageText MessageKind = "text"
+	// MessageCall is the entry of a finished call: its author is the caller,
+	// its body is empty and CallID names the call.
+	MessageCall MessageKind = "call"
+)
+
+// Message is a message of a conversation. It is plain text, or the entry of a
+// call (Kind).
 type Message struct {
 	// ID orders the messages of a conversation.
 	ID             uint64 `gorm:"primaryKey;index:idx_messages_conversation,priority:2"`
@@ -58,6 +71,12 @@ type Message struct {
 	ConversationID uint64 `gorm:"not null;index:idx_messages_conversation,priority:1"`
 	AuthorID       uint64 `gorm:"not null"`
 	Body           string `gorm:"not null"`
+	// Kind says whether the message is text or the entry of a call. The two
+	// checks keep Kind and CallID in step: a call entry has a call and a text
+	// message has none.
+	Kind MessageKind `gorm:"not null;default:text;check:chk_messages_kind,kind IN ('text','call')"`
+	// CallID is the call of a call entry; nil for a text message.
+	CallID *uint64 `gorm:"index:idx_messages_call_id;check:chk_messages_call,(kind = 'call') = (call_id IS NOT NULL)"`
 	// ReplyToID is the earlier message that this one quotes; nil for none, and
 	// set to nil when that message is deleted.
 	ReplyToID *uint64
@@ -71,6 +90,7 @@ type Message struct {
 	Conversation *Conversation `gorm:"foreignKey:ConversationID;constraint:OnDelete:CASCADE"`
 	Author       *User         `gorm:"foreignKey:AuthorID;constraint:OnDelete:RESTRICT"`
 	ReplyTo      *Message      `gorm:"foreignKey:ReplyToID;constraint:OnDelete:SET NULL"`
+	Call         *Call         `gorm:"foreignKey:CallID;constraint:OnDelete:CASCADE"`
 }
 
 // MessageAttachment is a file uploaded with a message; it has the fields of

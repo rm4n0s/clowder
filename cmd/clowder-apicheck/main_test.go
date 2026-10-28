@@ -111,6 +111,7 @@ func startAPIFull(t *testing.T, listen *live.Hub, sshServer bool) (first, second
 		Audit:   app.NewAudit(st),
 		Prefs:   app.NewPrefs(st, hub),
 		SSHKeys: keys,
+		Calls:   app.NewCalls(st, clk, app.CallsConfig{ProcessID: "0123456789abcdef", Enabled: true}, hub),
 		Hub:     listen,
 	}, MaxUploadSize: 1 << 20, BaseURL: "http://clowder.example.com"})
 	if err != nil {

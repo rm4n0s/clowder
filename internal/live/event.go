@@ -110,6 +110,25 @@ const (
 	// member, MessageID the message), and on UserTopic of the member, which
 	// drives the unread count.
 	KindConversationRead = "conversation.read"
+	// KindCallRinging says a user is being called (SPEC §7.18). It is
+	// published on UserTopic of the callee; CallID is the call and
+	// ConversationID its conversation. The pages show the ringing dialog and
+	// the WebSocket sends the call.
+	KindCallRinging = "call.ringing"
+	// KindCallStarted says a call was started or answered: it is published on
+	// UserTopic of both users when the call begins to ring and again when the
+	// callee answers; the state of the call tells which. CallID and
+	// ConversationID name the call.
+	KindCallStarted = "call.started"
+	// KindCallUpdated says a participant of an active call turned the
+	// microphone or the camera on or off. It is published on UserTopic of both
+	// users; UserID is the participant and Microphone and Camera are their
+	// state.
+	KindCallUpdated = "call.updated"
+	// KindCallEnded says a call is over, however it ended. It is published on
+	// UserTopic of both users; CallID and ConversationID name the call. The
+	// media server closes the call on it.
+	KindCallEnded = "call.ended"
 )
 
 // Event says that something changed. It is a small value and holds no
@@ -137,6 +156,12 @@ type Event struct {
 	// NotificationID is the ID of the notification of a notification.created
 	// event; 0 for the others.
 	NotificationID uint64
+	// CallID is the ID of the call concerned; 0 when none.
+	CallID uint64
+	// Microphone and Camera are the state of the participant UserID in a
+	// call.updated event: true when the microphone is on, true when the camera
+	// is on. They mean nothing for any other kind.
+	Microphone, Camera bool
 	// Ring is true when the event, published on the topic of one user,
 	// rings for that user: the page plays the sound and shows the browser
 	// notification as Sound and Browser say. The server decides it per
