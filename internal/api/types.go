@@ -47,11 +47,17 @@ type settingsJSON struct {
 	Theme                string `json:"theme"`
 	Sound                bool   `json:"sound"`
 	BrowserNotifications bool   `json:"browser_notifications"`
+	Notify               string `json:"notify"`
+	SoundName            string `json:"sound_name"`
+	Replies              string `json:"replies"`
 }
 
 // settingsOf makes the JSON of the settings.
 func settingsOf(s app.Settings) settingsJSON {
-	return settingsJSON{Theme: string(s.Theme), Sound: s.Sound, BrowserNotifications: s.BrowserNotifications}
+	return settingsJSON{
+		Theme: string(s.Theme), Sound: s.Sound, BrowserNotifications: s.BrowserNotifications,
+		Notify: string(s.Notify), SoundName: string(s.SoundName), Replies: string(s.Replies),
+	}
 }
 
 // sessionJSON is a session of the user in the answers of the API: never its

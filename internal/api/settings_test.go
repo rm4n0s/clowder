@@ -107,7 +107,20 @@ func TestSettingsRoutes(t *testing.T) {
 		return decode(t, e.send(request(http.MethodGet, "/api/v1/me/settings", nil, opts...)))
 	}
 	want := func(theme string, sound, browser bool) map[string]any {
-		return map[string]any{"theme": theme, "sound": sound, "browser_notifications": browser}
+		return map[string]any{
+			"theme": theme, "sound": sound, "browser_notifications": browser,
+			"notify": "mentions", "sound_name": "purr", "replies": "following",
+		}
+	}
+	with := func(m map[string]any, kv ...any) map[string]any {
+		out := map[string]any{}
+		for k, v := range m {
+			out[k] = v
+		}
+		for i := 0; i+1 < len(kv); i += 2 {
+			out[kv[i].(string)] = kv[i+1]
+		}
+		return out
 	}
 	sameJSON(t, "defaults", get(alice), want("system", true, false))
 
@@ -124,6 +137,12 @@ func TestSettingsRoutes(t *testing.T) {
 		{"nulls keep the values", `{"theme": null, "sound": true, "browser_notifications": null}`, 200, want("dark", true, true), ""},
 		{"all three", map[string]any{"theme": "light", "sound": false, "browser_notifications": false}, 200, want("light", false, false), ""},
 		{"back to system", map[string]any{"theme": "system"}, 200, want("system", false, false), ""},
+		{"notify", map[string]any{"notify": "all"}, 200, with(want("system", false, false), "notify", "all"), ""},
+		{"the sound name", map[string]any{"sound_name": "meow", "replies": "direct"}, 200, with(want("system", false, false), "notify", "all", "sound_name", "meow", "replies", "direct"), ""},
+		{"back to the defaults", map[string]any{"notify": "mentions", "sound_name": "purr", "replies": "following"}, 200, want("system", false, false), ""},
+		{"an unknown notify", map[string]any{"notify": "some"}, 422, nil, "notify"},
+		{"an unknown sound name", map[string]any{"sound_name": "moo"}, 422, nil, "sound_name"},
+		{"an unknown replies", map[string]any{"replies": "some"}, 422, nil, "replies"},
 		{"an unknown theme", map[string]any{"theme": "neon"}, 422, nil, "theme"},
 		{"an empty theme", map[string]any{"theme": ""}, 422, nil, "theme"},
 		{"no setting", map[string]any{}, 422, nil, "theme"},
@@ -161,8 +180,8 @@ func TestSettingsRoutes(t *testing.T) {
 			}
 		}
 	}
-	if changed != 6 {
-		t.Errorf("%d settings.changed events, want 6", changed)
+	if changed != 9 {
+		t.Errorf("%d settings.changed events, want 9", changed)
 	}
 }
 
@@ -396,7 +415,10 @@ func TestSettingsEventsReachTheWebSocket(t *testing.T) {
 
 	w.ok("alice", http.MethodPatch, "/api/v1/me/settings", map[string]any{"theme": "dark", "sound": false}, http.StatusOK)
 	ev := c.await(own, "settings.changed")
-	sameJSON(t, "settings.changed data", ev["data"], map[string]any{"theme": "dark", "sound": false, "browser_notifications": false})
+	sameJSON(t, "settings.changed data", ev["data"], map[string]any{
+		"theme": "dark", "sound": false, "browser_notifications": false,
+		"notify": "mentions", "sound_name": "purr", "replies": "following",
+	})
 	if ev["user_id"] != float64(w.userID("alice")) {
 		t.Errorf("settings.changed = %v", ev)
 	}

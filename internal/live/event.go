@@ -5,7 +5,10 @@ import "strconv"
 // The kinds of events. A kind says what happened; the topic of the event says
 // where.
 const (
-	// KindPostCreated says a top-level post was written.
+	// KindPostCreated says a top-level post was written. It is also published
+	// on UserTopic of each room member whose preferences make it ring (those
+	// whose choice for the room is All, SPEC §7.15), with Ring and Sound set;
+	// UserID is that member.
 	KindPostCreated = "post.created"
 	// KindPostUpdated says a top-level post changed: it was edited, or its
 	// thread got, lost or changed a comment.
@@ -39,13 +42,17 @@ const (
 	KindMemberLeft = "member.left"
 	// KindNotificationCreated says a notification was made for a user. It is
 	// published on UserTopic of that user; UserID is the user, RoomID the room
-	// of the notification and PostID its post or comment when it has one.
+	// of the notification, PostID its post or comment when it has one and
+	// NotificationID the notification. Ring, Sound and Browser say whether it
+	// rings for that user.
 	KindNotificationCreated = "notification.created"
 	// KindNotificationRead says a user marked notifications as read. It is
 	// published on UserTopic of that user; UserID is the user.
 	KindNotificationRead = "notification.read"
 	// KindMessageCreated says a message was sent in a conversation. It is
-	// published on ConversationTopic; MessageID is the message.
+	// published on ConversationTopic; MessageID is the message. It is also
+	// published on UserTopic of each member whose preferences make the message
+	// ring (SPEC §7.15), with Ring and Sound set; UserID is that member.
 	KindMessageCreated = "message.created"
 	// KindMessageUpdated says a message was edited. It is published on
 	// ConversationTopic; MessageID is the message.
@@ -76,9 +83,16 @@ const (
 	// sidebar; a client of the WebSocket gets the user object.
 	KindUserUpdated = "user.updated"
 	// KindSettingsChanged says the settings of a user changed (the theme, the
-	// sound, the browser notifications). It is published on UserTopic of that
-	// user; UserID is the user. A client of the WebSocket gets the settings.
+	// sound, the browser notifications, what notifies). It is published on
+	// UserTopic of that user; UserID is the user. A client of the WebSocket
+	// gets the settings.
 	KindSettingsChanged = "settings.changed"
+	// KindPlacePrefsChanged says the notification preferences of a user in one
+	// room or conversation changed (SPEC §7.15). It is published on UserTopic
+	// of that user; UserID is the user, RoomID the room or ConversationID the
+	// conversation. The sidebar and the list of conversations refresh, and a
+	// client of the WebSocket gets the preferences.
+	KindPlacePrefsChanged = "place_prefs.changed"
 	// KindConversationRead says a member read a conversation up to a message.
 	// It is published on ConversationTopic, which drives "Seen" (UserID is the
 	// member, MessageID the message), and on UserTopic of the member, which
@@ -108,6 +122,20 @@ type Event struct {
 	ConversationID uint64
 	// MessageID is the ID of the private message concerned; 0 when none.
 	MessageID uint64
+	// NotificationID is the ID of the notification of a notification.created
+	// event; 0 for the others.
+	NotificationID uint64
+	// Ring is true when the event, published on the topic of one user,
+	// rings for that user: the page plays the sound and shows the browser
+	// notification as Sound and Browser say. The server decides it per
+	// recipient from the preferences (SPEC §7.15); the page only obeys.
+	Ring bool
+	// Sound is the name of the sound to play when Ring is true ("purr",
+	// "chirp", "bell" or "meow"); empty for no sound.
+	Sound string
+	// Browser is true when Ring is true and the user wants notifications of
+	// the browser.
+	Browser bool
 }
 
 // RoomTopic is the topic of the feed and the membership of a room.

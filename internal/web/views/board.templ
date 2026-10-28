@@ -34,6 +34,7 @@ templ RoomNav(roomID uint64, current RoomNavCurrent) {
 templ BoardPage(d BoardData) {
 	@Layout("Board of "+d.Board.Room.Name, Sidebar(d.Sidebar)) {
 		@liveStream(BoardStreamPath(d.Board.Room.ID, BoardVersion(d.Board)))
+		@NotifyPlace(PlaceKey(app.RoomRef(d.Board.Room.ID)))
 		<div class="board-page">
 			@BoardHeader(d)
 			<div id="board" class="board">

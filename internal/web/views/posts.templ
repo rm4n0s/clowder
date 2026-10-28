@@ -569,6 +569,7 @@ templ threadItem(d PostPageData, c PostCardData) {
 templ PostPage(d PostPageData) {
 	@Layout(postTitle(d), Sidebar(d.Sidebar)) {
 		@liveStream(PostStreamPath(d.Post.ID, d.NewestID()))
+		@NotifyPlace(PlaceKey(app.RoomRef(d.Post.RoomID)))
 		<p class="post-room hint">in <a href={ templ.SafeURL(RoomPath(d.Post.RoomID)) }>{ d.Post.RoomName }</a></p>
 		@Thread(d)
 	}

@@ -25,6 +25,10 @@ type wireEvent struct {
 	UserID         uint64 `json:"user_id,omitempty"`
 	ConversationID uint64 `json:"conversation_id,omitempty"`
 	MessageID      uint64 `json:"message_id,omitempty"`
+	NotificationID uint64 `json:"notification_id,omitempty"`
+	Ring           bool   `json:"ring,omitempty"`
+	Sound          string `json:"sound,omitempty"`
+	Browser        bool   `json:"browser,omitempty"`
 }
 
 // wireOf converts an event for the wire.
@@ -38,6 +42,10 @@ func wireOf(ev live.Event) wireEvent {
 		UserID:         ev.UserID,
 		ConversationID: ev.ConversationID,
 		MessageID:      ev.MessageID,
+		NotificationID: ev.NotificationID,
+		Ring:           ev.Ring,
+		Sound:          ev.Sound,
+		Browser:        ev.Browser,
 	}
 }
 
@@ -52,6 +60,10 @@ func (w wireEvent) event() live.Event {
 		UserID:         w.UserID,
 		ConversationID: w.ConversationID,
 		MessageID:      w.MessageID,
+		NotificationID: w.NotificationID,
+		Ring:           w.Ring,
+		Sound:          w.Sound,
+		Browser:        w.Browser,
 	}
 }
 

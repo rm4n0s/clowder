@@ -782,6 +782,12 @@ func msgEvt(kind string, conv, msg uint64) live.Event {
 	return live.Event{Topic: live.ConversationTopic(conv), Kind: kind, ConversationID: conv, MessageID: msg}
 }
 
+// msgRing is the event that rings a member for a message: on the member's own
+// topic, with the default sound.
+func msgRing(conv, msg, user uint64) live.Event {
+	return live.Event{Topic: live.UserTopic(user), Kind: live.KindMessageCreated, ConversationID: conv, MessageID: msg, UserID: user, Ring: true, Sound: "purr"}
+}
+
 // permEnv is a group "crew" of alice (who started it), bob and carol, with
 // erin, who joined and left. dave and admin are no members; frank is no member
 // and disabled. alice wrote a message with a file.
@@ -1802,9 +1808,11 @@ func TestMessagesPublishEvents(t *testing.T) {
 			id := e.group("", "alice", "bob", "carol")
 			e.rec.Reset()
 			m, err := e.msgs.Send(t.Context(), e.as("bob"), id, app.MessageInput{Body: "hi"})
+			// Every other member hears it ring: a conversation's default is All.
 			return []live.Event{
 				msgEvt(live.KindMessageCreated, id, m.ID),
 				chgEvt(id, e.uid("alice")), chgEvt(id, e.uid("bob")), chgEvt(id, e.uid("carol")),
+				msgRing(id, m.ID, e.uid("alice")), msgRing(id, m.ID, e.uid("carol")),
 			}, err
 		}},
 		{"Send does not reach a member who left", func(e *msgEnv) ([]live.Event, error) {
@@ -1817,6 +1825,7 @@ func TestMessagesPublishEvents(t *testing.T) {
 			return []live.Event{
 				msgEvt(live.KindMessageCreated, id, m.ID),
 				chgEvt(id, e.uid("alice")), chgEvt(id, e.uid("bob")),
+				msgRing(id, m.ID, e.uid("alice")),
 			}, err
 		}},
 		{"A refused Send publishes nothing", func(e *msgEnv) ([]live.Event, error) {
@@ -1875,7 +1884,7 @@ func TestMessagesPublishAfterTheCommit(t *testing.T) {
 	}
 	seen := 0
 	pr.fn = func(ev live.Event) {
-		if ev.Kind != live.KindMessageCreated {
+		if ev.Kind != live.KindMessageCreated || ev.Topic != live.ConversationTopic(conv) {
 			return
 		}
 		rows, err := e.st.MessageRowsByIDs(readCtx(), []uint64{ev.MessageID})

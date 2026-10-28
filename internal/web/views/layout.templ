@@ -19,12 +19,17 @@ templ Layout(title string, sidebar templ.Component) {
 			<title>{ title } · Clowder</title>
 			<link rel="stylesheet" href="/static/app.css"/>
 			<script type="module" src="/static/datastar.js"></script>
+			if sidebar != nil {
+				<script src="/static/notify.js" defer></script>
+			}
 		</head>
 		<body>
 			if sidebar != nil {
 				<aside id="sidebar">
 					@sidebar
 				</aside>
+				// The streams append here what the script rings for (SPEC §7.15); it is never patched itself.
+				<div id="notify-events" hidden></div>
 			}
 			<main>
 				{ children... }

@@ -1,0 +1,14 @@
+# Browser test log of step 18.3: the ringing decisions of notify.js
+# go test -tags clowder_browser ./internal/web -run 'TestRingsAreOnePerEvent|TestBrowserNotificationsAsk' -v
+# The server's own request log lines ("testing.go:94: server: ...") are left out.
+=== RUN   TestRingsAreOnePerEventAndFollowThePreferences
+    browser_notify_test.go:125: bob chose: all new activity, sound Chirp
+    browser_notify_test.go:148: a post in general, two tabs open: [{Kind:post.created Sound:chirp Notified:false Played:true}]
+    browser_notify_test.go:187: a post in the muted room general: []
+    browser_notify_test.go:204: a message in the direct conversation open in the focused tab: []
+    browser_notify_test.go:211: a message in the group, which is not open: [{Kind:message.created Sound:chirp Notified:false Played:true}]
+--- PASS: TestRingsAreOnePerEventAndFollowThePreferences (9.87s)
+=== RUN   TestBrowserNotificationsAskForThePermission
+--- PASS: TestBrowserNotificationsAskForThePermission (2.10s)
+PASS
+ok  	github.com/rm4n0s/clowder/internal/web	11.980s

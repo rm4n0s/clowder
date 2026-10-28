@@ -126,7 +126,7 @@ func newTestEnv(t *testing.T, mutate func(*Options)) *testEnv {
 	board := app.NewBoard(st, clk, pub)
 	noted := &noteLog{}
 	opts := Options{
-		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Hub: hub},
+		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Prefs: app.NewPrefs(st, pub), Hub: hub},
 		Logger:        logger,
 		NoteUser:      func(_ *http.Request, id uint64) { noted.add(id) },
 		MaxUploadSize: 1 << 20,

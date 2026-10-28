@@ -1,0 +1,221 @@
+package views
+
+import "github.com/rm4n0s/clowder/internal/app"
+
+// NotifyEvent is the element that tells the page script (notify.js) to ring
+// for an event of the user's stream: who did what and where, never the body.
+// The server appends it to #notify-events; the script reads it, decides with
+// the other tabs which one rings, and removes it (SPEC §7.15). The decision
+// whether the event rings is the server's: the element exists only for an
+// event that rings, and carries the sound and whether a browser notification
+// is wanted. The text is in data-notice and not data-text: Datastar runs every
+// data-text attribute it meets as an expression, which stops it from setting up
+// the other elements of the same patch.
+templ NotifyEvent(n app.Notice) {
+	<div
+		id={ notifyEventID(n) }
+		class="notify-event"
+		data-id={ n.ID }
+		data-kind={ n.Kind }
+		data-notice={ n.Text }
+		data-sound={ string(n.Sound) }
+		data-place={ NoticePlaceKey(n) }
+		data-url={ NoticePath(n) }
+		if n.Browser {
+			data-browser="1"
+		}
+	></div>
+}
+
+// NotifyPlace marks the place the page shows (the room, or the conversation),
+// so that the page script stays silent for events of the place the person is
+// looking at. place is a PlaceKey.
+templ NotifyPlace(place string) {
+	<div id="notify-place" hidden data-place={ place }></div>
+}
+
+// mutedIcon is the small crossed bell that marks a muted room or conversation.
+templ mutedIcon() {
+	<svg class="muted-icon" role="img" aria-label="Muted" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+		<path d="M8 1.5a4 4 0 0 0-4 4V8c0 1.1-.5 2-1.2 2.7-.3.3-.1.8.3.8h10.8c.4 0 .6-.5.3-.8C13.5 10 13 9.1 13 8V5.5a4 4 0 0 0-4-4Zm-1.5 12a1.5 1.5 0 0 0 3 0h-3Z"></path>
+		<path d="M2 2.5 14 14.5" stroke="currentColor" stroke-width="1.5" fill="none"></path>
+	</svg>
+}
+
+// NotifyPrefsSection is the Notifications section of the settings: what
+// notifies the user (all, mentions, nothing), the sound with its choice and a
+// Play button each, the browser notifications, the replies, and the list of the
+// rooms and conversations that have preferences of their own. The server
+// sends it alone as a Datastar patch after a submit.
+templ NotifyPrefsSection(d NotifyPrefsData) {
+	<section id="notifications" class="settings-section">
+		<h2>Notifications</h2>
+		<p class="hint">These decide what plays a sound and shows a notification in the browser. The bell always gets your mentions, replies, assignments and additions.</p>
+		<form id="notifications-form" method="post" action={ templ.SafeURL(SettingsNotificationsPath) } data-on:submit={ FormPost(SettingsNotificationsPath) }>
+			@formProblem(d.Errors.Form)
+			<fieldset class="notify-choices">
+				<legend>Notify me about</legend>
+				for _, c := range globalNotifyChoices() {
+					<label class="notify-choice" for={ "notify-" + c.Value }>
+						<input id={ "notify-" + c.Value } type="radio" name="notify" value={ c.Value } checked?={ string(d.Settings.Notify) == c.Value }/>
+						{ c.Label }
+					</label>
+				}
+				if d.Errors.Fields["notify"] != "" {
+					<p class="field-error" role="alert">{ d.Errors.Fields["notify"] }</p>
+				}
+			</fieldset>
+			<fieldset class="sound-choices">
+				<legend>Sound</legend>
+				<label class="notify-choice" for="notify-sound">
+					<input id="notify-sound" type="checkbox" name="sound" value="on" checked?={ d.Settings.Sound }/>
+					Play a sound
+				</label>
+				for _, c := range soundChoices() {
+					<div class="sound-choice">
+						<label for={ "sound-" + c.Value }>
+							<input id={ "sound-" + c.Value } type="radio" name="soundName" value={ c.Value } checked?={ string(d.Settings.SoundName) == c.Value }/>
+							{ c.Label }
+						</label>
+						<button type="button" class="secondary" data-play-sound={ c.Value } aria-label={ "Play " + c.Label }>Play</button>
+					</div>
+				}
+				if d.Errors.Fields["soundName"] != "" {
+					<p class="field-error" role="alert">{ d.Errors.Fields["soundName"] }</p>
+				}
+			</fieldset>
+			<fieldset class="browser-notifications">
+				<legend>Browser notifications</legend>
+				<label class="notify-choice" for="notify-browser">
+					<input id="notify-browser" type="checkbox" name="browserNotifications" value="on" checked?={ d.Settings.BrowserNotifications }/>
+					Show a notification when no Clowder tab has the focus
+				</label>
+				<p class="hint" id="notify-browser-hint">Your browser asks for permission when you turn this on.</p>
+			</fieldset>
+			<fieldset class="replies-choices">
+				<legend>Replies</legend>
+				for _, c := range repliesChoices() {
+					<label class="notify-choice" for={ "replies-" + c.Value }>
+						<input id={ "replies-" + c.Value } type="radio" name="replies" value={ c.Value } checked?={ string(d.Settings.Replies) == c.Value }/>
+						{ c.Label }
+					</label>
+				}
+				// TODO(step 18.4): until posts can be followed, "Threads I follow" acts like "Only direct replies".
+				if d.Errors.Fields["replies"] != "" {
+					<p class="field-error" role="alert">{ d.Errors.Fields["replies"] }</p>
+				}
+			</fieldset>
+			<button type="submit">Save</button>
+		</form>
+		@savedNote(d.Saved)
+		<h3>Rooms and conversations with their own preferences</h3>
+		if len(d.Places) == 0 {
+			<p class="hint" id="notify-places-empty">None. Open the notification preferences of a room or a conversation from its page.</p>
+		} else {
+			<ul class="notify-places" id="notify-places">
+				for _, p := range d.Places {
+					<li>
+						<a href={ templ.SafeURL(p.Path) }>
+							if p.Room {
+								#{ p.Name }
+							} else {
+								{ p.Name }
+							}
+						</a>
+						<span class="hint">{ p.Summary }</span>
+					</li>
+				}
+			</ul>
+		}
+	</section>
+}
+
+// PlacePrefsDialog is the dialog "Notification preferences" of a room page and
+// of a conversation page. It is drawn for a person who has preferences in the
+// place (Action is not empty); a button in the header of the page opens it.
+templ PlacePrefsDialog(d PlacePrefsData) {
+	if d.Action != "" {
+		<dialog id={ PlacePrefsDialogID } class="place-prefs" aria-labelledby="place-prefs-title" data-init="new URLSearchParams(location.search).has('prefs') && !el.open && el.showModal()">
+			<h2 id="place-prefs-title">Notification preferences</h2>
+			<p class="hint">{ d.Title }</p>
+			@PlacePrefsForm(d)
+			<form method="dialog" class="place-prefs-close">
+				<button type="submit" class="secondary">Close</button>
+			</form>
+		</dialog>
+	}
+}
+
+// PlacePrefsButton is the button that opens the dialog; the header of a room
+// and of a conversation have one.
+templ PlacePrefsButton(d PlacePrefsData) {
+	if d.Action != "" {
+		<button type="button" class="secondary" id="place-prefs-open" data-on:click={ "document.getElementById('" + PlacePrefsDialogID + "').showModal()" }>
+			if d.Prefs.Muted {
+				@mutedIcon()
+			}
+			Notification preferences
+		</button>
+	}
+}
+
+// PlacePrefsForm is the form of the dialog. The server sends it alone as a
+// Datastar patch after a submit, so that the dialog stays open.
+templ PlacePrefsForm(d PlacePrefsData) {
+	<form id={ PlacePrefsFormID } method="post" action={ templ.SafeURL(d.Action) } data-on:submit={ FormPost(d.Action) }>
+		@formProblem(d.Errors.Form)
+		<fieldset>
+			<legend>Notify me about</legend>
+			for _, c := range placeNotifyChoices() {
+				<label class="notify-choice" for={ "place-notify-" + c.Value }>
+					<input id={ "place-notify-" + c.Value } type="radio" name="notify" value={ c.Value } checked?={ string(d.Prefs.Notify) == c.Value }/>
+					{ c.Label }
+				</label>
+			}
+			if d.Errors.Fields["notify"] != "" {
+				<p class="field-error" role="alert">{ d.Errors.Fields["notify"] }</p>
+			}
+		</fieldset>
+		<fieldset>
+			<legend>Sound in this place</legend>
+			for _, c := range placeSoundChoices() {
+				<label class="notify-choice" for={ "place-sound-" + c.Value }>
+					<input id={ "place-sound-" + c.Value } type="radio" name="sound" value={ c.Value } checked?={ string(d.Prefs.Sound) == c.Value }/>
+					{ c.Label }
+				</label>
+			}
+			if d.Errors.Fields["sound"] != "" {
+				<p class="field-error" role="alert">{ d.Errors.Fields["sound"] }</p>
+			}
+		</fieldset>
+		if !d.Prefs.Direct {
+			<label class="notify-choice" for="place-ignore">
+				<input id="place-ignore" type="checkbox" name="ignoreGroupMentions" value="on" checked?={ d.Prefs.IgnoreGroupMentions }/>
+				Ignore { "@room, @all and @here" } in this place
+			</label>
+		}
+		if d.Errors.Fields["ignoreGroupMentions"] != "" {
+			<p class="field-error" role="alert">{ d.Errors.Fields["ignoreGroupMentions"] }</p>
+		}
+		if d.Prefs.Place.IsRoom() {
+			<fieldset>
+				<legend>Mark as unread</legend>
+				for _, c := range markUnreadChoices() {
+					<label class="notify-choice" for={ "place-mark-" + c.Value }>
+						<input id={ "place-mark-" + c.Value } type="radio" name="markUnread" value={ c.Value } checked?={ string(d.Prefs.MarkUnread) == c.Value }/>
+						{ c.Label }
+					</label>
+				}
+			</fieldset>
+		}
+		if d.Errors.Fields["markUnread"] != "" {
+			<p class="field-error" role="alert">{ d.Errors.Fields["markUnread"] }</p>
+		}
+		<label class="notify-choice" for="place-muted">
+			<input id="place-muted" type="checkbox" name="muted" value="on" checked?={ d.Prefs.Muted }/>
+			Mute this place: it is dimmed, has no unread count and never rings (mentions still reach the bell)
+		</label>
+		<button type="submit">Save</button>
+		@savedNote(d.Saved)
+	</form>
+}

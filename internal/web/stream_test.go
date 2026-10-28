@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -73,6 +74,10 @@ type streamClient struct {
 	status int
 	header http.Header
 	blocks chan sseBlock
+	// rings holds the patches that tell the page to ring (selector
+	// #notify-events), apart from the others: the tests of the counts and of
+	// the lists do not look at them, the tests of the rings do.
+	rings  chan patch
 	cancel context.CancelFunc
 	// body is the whole body of an answer that is not a stream.
 	body string
@@ -114,7 +119,7 @@ func (ss *streamServer) open(user, path string, opts ...reqOpt) *streamClient {
 		cancel()
 		ss.e.t.Fatalf("GET %s: %v", path, err)
 	}
-	c := &streamClient{t: ss.e.t, status: resp.StatusCode, header: resp.Header, blocks: make(chan sseBlock, 256), cancel: cancel}
+	c := &streamClient{t: ss.e.t, status: resp.StatusCode, header: resp.Header, blocks: make(chan sseBlock, 256), rings: make(chan patch, 256), cancel: cancel}
 	ss.e.t.Cleanup(cancel)
 	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
 		defer cancel()
@@ -144,7 +149,11 @@ func (c *streamClient) read(resp *http.Response) {
 		line := sc.Text()
 		if line == "" {
 			if !empty {
-				c.blocks <- b
+				if isRing(b) {
+					c.rings <- patchOf(c.t, b)
+				} else {
+					c.blocks <- b
+				}
 			}
 			b, empty = sseBlock{}, true
 			continue
@@ -161,6 +170,30 @@ func (c *streamClient) read(resp *http.Response) {
 			b.data = append(b.data, strings.TrimPrefix(line, "data: "))
 		}
 	}
+}
+
+// isRing reports whether the block is the patch that appends a notice to
+// #notify-events.
+func isRing(b sseBlock) bool {
+	return b.event == "datastar-patch-elements" && slices.Contains(b.data, "selector "+notifyEventsSelector)
+}
+
+// ringsWithin returns the notices that arrive within the time, or as soon as n
+// have come.
+func (c *streamClient) ringsWithin(n int, wait time.Duration) []patch {
+	c.t.Helper()
+	var out []patch
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for len(out) < n {
+		select {
+		case p := <-c.rings:
+			out = append(out, p)
+		case <-timer.C:
+			return out
+		}
+	}
+	return out
 }
 
 // next returns the next event, skipping the id that opens the stream and the

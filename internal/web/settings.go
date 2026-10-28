@@ -51,6 +51,8 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		d.Password.Saved = true
 	case sectionAppearance:
 		d.Appearance.Saved = true
+	case sectionNotifications:
+		d.Notifications.Saved = true
 	}
 	s.render(w, r, http.StatusOK, views.SettingsPage(d))
 }
@@ -71,11 +73,16 @@ func (s *Server) settingsData(ctx context.Context) (views.SettingsData, error) {
 	if err != nil {
 		return views.SettingsData{}, err
 	}
+	notifications, err := s.notifyPrefs(ctx, actor, settings)
+	if err != nil {
+		return views.SettingsData{}, err
+	}
 	return views.SettingsData{
-		Sidebar:    sb,
-		Profile:    views.ProfileData{User: user, DisplayName: user.DisplayName},
-		Appearance: views.AppearanceData{Theme: settings.Theme},
-		Sessions:   sessions,
+		Sidebar:       sb,
+		Profile:       views.ProfileData{User: user, DisplayName: user.DisplayName},
+		Appearance:    views.AppearanceData{Theme: settings.Theme},
+		Notifications: notifications,
+		Sessions:      sessions,
 	}, nil
 }
 
@@ -100,6 +107,9 @@ func (s *Server) settingsFailed(w http.ResponseWriter, r *http.Request, err erro
 			d := views.SettingsData{Profile: views.ProfileData{User: user, DisplayName: user.DisplayName}}
 			if settings, err := s.svc.Accounts.Settings(ctx, actorOf(ctx)); err == nil {
 				d.Appearance.Theme = settings.Theme
+				if n, err := s.notifyPrefs(ctx, actorOf(ctx), settings); err == nil {
+					d.Notifications = n
+				}
 			}
 			change(&d, problems)
 			return section(d).Render(ctx, out)

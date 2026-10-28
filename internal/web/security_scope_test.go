@@ -632,6 +632,9 @@ func (sc *scope) postPaths() map[string]string {
 		"POST /me/settings/avatar/remove":                  "/me/settings/avatar/remove",
 		"POST /me/settings/password":                       "/me/settings/password",
 		"POST /me/settings/appearance":                     "/me/settings/appearance",
+		"POST /me/settings/notifications":                  "/me/settings/notifications",
+		"POST /rooms/{id}/notifications":                   "/rooms/" + g + "/notifications",
+		"POST /messages/{id}/notifications":                "/messages/" + cv + "/notifications",
 	}
 }
 

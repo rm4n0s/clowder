@@ -63,7 +63,7 @@ func runLiveCases(t *testing.T, cases []liveCase) {
 			} else {
 				_ = requireTag(t, res.err, res.tag, res.tag)
 			}
-			got := e.rec.Events()
+			got := norm(e.rec.Events())
 			if len(got) == 0 && len(res.want) == 0 {
 				return
 			}
@@ -234,7 +234,21 @@ func commentEvts(kind string, room, root, comment uint64) []live.Event {
 // notifEvt is the event that tells a user of a new notification about the
 // post (0 for none) in the room.
 func notifEvt(user, room, post uint64) live.Event {
-	return live.Event{Topic: live.UserTopic(user), Kind: live.KindNotificationCreated, RoomID: room, PostID: post, UserID: user}
+	return live.Event{Topic: live.UserTopic(user), Kind: live.KindNotificationCreated, RoomID: room, PostID: post, UserID: user, Ring: true, Sound: "purr"}
+}
+
+// norm returns the events with the IDs of their notifications zeroed, which a
+// test cannot know in advance. The input is not changed.
+func norm(events []live.Event) []live.Event {
+	if events == nil {
+		return nil
+	}
+	out := make([]live.Event, len(events))
+	for i, ev := range events {
+		ev.NotificationID = 0
+		out[i] = ev
+	}
+	return out
 }
 
 func textInput(body string) app.PostInput {

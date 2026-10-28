@@ -165,8 +165,15 @@ func (ms *meStream) event(ctx context.Context, ev live.Event) (end bool, err err
 		}
 		return false, nil
 	}
-	// A membership changed: the room list of the sidebar.
-	return false, ms.sidebar(ctx, 0)
+	// A membership or a muted place changed: the room list of the sidebar, and
+	// the list of conversations of the Messages page.
+	if err := ms.sidebar(ctx, 0); err != nil {
+		return false, err
+	}
+	if ms.conversations && ev.Kind == live.KindPlacePrefsChanged {
+		return false, ms.conversationList(ctx)
+	}
+	return false, nil
 }
 
 // conversationList puts the list of conversations of the person on the page.

@@ -324,7 +324,7 @@
         ],
         "summary": "Get my settings",
         "operationId": "getSettings",
-        "description": "Returns the theme, the sound and the browser notifications of the user; the defaults (system, on, off) while none are saved.",
+        "description": "Returns the theme, the sound and its name, the browser notifications, what notifies and the replies choice of the user; the defaults (system, on, purr, off, mentions, following) while none are saved.",
         "responses": {
           "200": {
             "description": "The settings.",
@@ -350,7 +350,7 @@
         ],
         "summary": "Change my settings",
         "operationId": "updateSettings",
-        "description": "Changes the settings that are in the body and keeps the others (a missing or null setting stays), and returns the settings. A body with no setting is 422, and so is a theme that is not system, light or dark. The user's connections get a settings.changed event.",
+        "description": "Changes the settings that are in the body and keeps the others (a missing or null setting stays), and returns the settings. A body with no setting is 422, and so is a theme that is not system, light or dark, a notify that is not all, mentions or nothing, a sound_name that is not purr, chirp, bell or meow, and a replies that is not following or direct. The user's connections get a settings.changed event.",
         "requestBody": {
           "required": true,
           "description": "The settings to change.",
@@ -1192,6 +1192,116 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/notification-prefs": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Get my notification preferences in a room",
+        "operationId": "getRoomNotificationPrefs",
+        "description": "Returns the notification preferences of the user in the room (SPEC 7.15); the defaults while none are saved. Only members have preferences in a room: a visible room the user has not joined is 403, and a private room the user may not read, admins included, is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The preferences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacePrefs"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Change my notification preferences in a room",
+        "operationId": "putRoomNotificationPrefs",
+        "description": "Changes the preferences that are in the body and keeps the others, and returns the preferences. A body with none of them is 422, and so is a value that is not one of its choices, mark_unread mentions in a conversation and ignore_group_mentions in a conversation of two. Preferences that are all defaults again are removed. The user's connections get a place_prefs.changed event. Only members have preferences in a room: a visible room the user has not joined is 403, and a private room the user may not read, admins included, is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The preferences to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlacePrefsPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preferences as changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacePrefs"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -2991,6 +3101,110 @@
         "responses": {
           "204": {
             "description": "The conversation is read."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/conversations/{id}/notification-prefs": {
+      "get": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Get my notification preferences in a conversation",
+        "operationId": "getConversationNotificationPrefs",
+        "description": "Returns the notification preferences of the user in the conversation (SPEC 7.15); the defaults while none are saved. A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The preferences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacePrefs"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Change my notification preferences in a conversation",
+        "operationId": "putConversationNotificationPrefs",
+        "description": "Changes the preferences that are in the body and keeps the others, and returns the preferences. A body with none of them is 422, and so is a value that is not one of its choices, mark_unread mentions in a conversation and ignore_group_mentions in a conversation of two. Preferences that are all defaults again are removed. The user's connections get a place_prefs.changed event. A conversation is private to its members: for anyone else, admins included, and for a member who left, it is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the conversation.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The preferences to change.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlacePrefsPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preferences as changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacePrefs"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -6235,7 +6449,7 @@
       },
       "WsEvent": {
         "type": "object",
-        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections.",
+        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections. place_prefs.changed on user:<id>: the PlacePrefs of the room (room_id) or conversation (conversation_id), after the user changed them. post.created and message.created on user:<id> (not to be confused with the same kinds on room:<id>, post:<id> and conversation:<id>, whose data is the Post and the Message) are sent only to a user the post or message rings for, with ring true, and have the WsNotice as data; notification.created, on a notification that rings for the user, has ring true as well. ring, sound and browser are the server's decision from the preferences of the user (SPEC 7.15): the client plays the sound and, when browser is true, shows a notification of the system, if it has no window with the focus and the place is not the one the user is looking at.",
         "properties": {
           "type": {
             "const": "event"
@@ -6269,7 +6483,8 @@
               "conversation.changed",
               "conversation.read",
               "user.updated",
-              "settings.changed"
+              "settings.changed",
+              "place_prefs.changed"
             ],
             "description": "What happened."
           },
@@ -6341,8 +6556,32 @@
               },
               {
                 "$ref": "#/components/schemas/Settings"
+              },
+              {
+                "$ref": "#/components/schemas/PlacePrefs"
+              },
+              {
+                "$ref": "#/components/schemas/WsNotice"
               }
             ]
+          },
+          "ring": {
+            "type": "boolean",
+            "description": "True on an event of user:<id> that rings for the user; absent otherwise."
+          },
+          "sound": {
+            "type": "string",
+            "enum": [
+              "purr",
+              "chirp",
+              "bell",
+              "meow"
+            ],
+            "description": "The sound to play when ring is true; absent for no sound."
+          },
+          "browser": {
+            "type": "boolean",
+            "description": "True when ring is true and the user wants notifications of the system."
           }
         },
         "required": [
@@ -6395,7 +6634,7 @@
       },
       "Settings": {
         "type": "object",
-        "description": "The preferences of the user (SPEC 7.14): they follow the user to every browser and client.",
+        "description": "The preferences of the user (SPEC 7.14, 7.15): they follow the user to every browser and client.",
         "properties": {
           "theme": {
             "type": "string",
@@ -6413,12 +6652,42 @@
           "browser_notifications": {
             "type": "boolean",
             "description": "True when the user wants notifications of the browser (off by default)."
+          },
+          "notify": {
+            "type": "string",
+            "enum": [
+              "all",
+              "mentions",
+              "nothing"
+            ],
+            "description": "What rings the sound and shows a notification of the browser: all new activity, mentions, replies, assignments, additions and direct and group messages (the default), or nothing. The bell is not affected."
+          },
+          "sound_name": {
+            "type": "string",
+            "enum": [
+              "purr",
+              "chirp",
+              "bell",
+              "meow"
+            ],
+            "description": "Which sound plays (purr by default). The sounds are made by the client."
+          },
+          "replies": {
+            "type": "string",
+            "enum": [
+              "following",
+              "direct"
+            ],
+            "description": "Which comments notify the user: every comment under a post they follow (the default), or only a comment under their own post or comment. Until posts can be followed, following acts like direct."
           }
         },
         "required": [
           "theme",
           "sound",
-          "browser_notifications"
+          "browser_notifications",
+          "notify",
+          "sound_name",
+          "replies"
         ],
         "additionalProperties": false
       },
@@ -6452,6 +6721,45 @@
               "null"
             ],
             "description": "The new value of the browser notifications."
+          },
+          "notify": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "all",
+              "mentions",
+              "nothing",
+              null
+            ],
+            "description": "The new value of notify."
+          },
+          "sound_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "purr",
+              "chirp",
+              "bell",
+              "meow",
+              null
+            ],
+            "description": "The new sound."
+          },
+          "replies": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "following",
+              "direct",
+              null
+            ],
+            "description": "The new value of replies."
           }
         },
         "additionalProperties": false
@@ -6489,6 +6797,138 @@
         "required": [
           "current_password",
           "new_password"
+        ],
+        "additionalProperties": false
+      },
+      "PlacePrefs": {
+        "type": "object",
+        "description": "The notification preferences of the user in one room or conversation (SPEC 7.15). A place the user changed nothing in has the defaults. Leaving the place removes them.",
+        "properties": {
+          "notify": {
+            "type": "string",
+            "enum": [
+              "default",
+              "all",
+              "mentions",
+              "nothing"
+            ],
+            "description": "What the user is notified about in this place: default follows the global setting (in a conversation: every message, unless the global setting is nothing), all new activity, mentions, or nothing."
+          },
+          "sound": {
+            "type": "string",
+            "enum": [
+              "default",
+              "on",
+              "off"
+            ],
+            "description": "The sound in this place: default follows the global setting."
+          },
+          "ignore_group_mentions": {
+            "type": "boolean",
+            "description": "True when @room, @all and @here are ignored in this place (honoured from step 18.4). A direct conversation has no group mentions: true is 422 there."
+          },
+          "mark_unread": {
+            "type": "string",
+            "enum": [
+              "all",
+              "mentions"
+            ],
+            "description": "What the unread count of a room counts: all new posts (the default) or only mentions. A conversation always counts all its messages: mentions is 422 there."
+          },
+          "muted": {
+            "type": "boolean",
+            "description": "True when the place is muted: it is dimmed in the lists, has no unread count, and nothing rings in it. A mention still reaches the bell."
+          }
+        },
+        "required": [
+          "notify",
+          "sound",
+          "ignore_group_mentions",
+          "mark_unread",
+          "muted"
+        ],
+        "additionalProperties": false
+      },
+      "PlacePrefsPatch": {
+        "type": "object",
+        "description": "The preferences to change. A preference that is not there, or is null, keeps its value (so unmuting brings back the other choices as they were); at least one must be there (422 otherwise).",
+        "properties": {
+          "notify": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "default",
+              "all",
+              "mentions",
+              "nothing",
+              null
+            ],
+            "description": "The new value of notify."
+          },
+          "sound": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "default",
+              "on",
+              "off",
+              null
+            ],
+            "description": "The new value of sound."
+          },
+          "ignore_group_mentions": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The new value of ignore_group_mentions."
+          },
+          "mark_unread": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "all",
+              "mentions",
+              null
+            ],
+            "description": "The new value of mark_unread."
+          },
+          "muted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The new value of muted."
+          }
+        },
+        "additionalProperties": false
+      },
+      "WsNotice": {
+        "type": "object",
+        "description": "The data of a post.created or message.created event on user:<id>, which exists only for an event that rings for the user (SPEC 7.15): who did what and where, never the body. The IDs of the post, room, message and conversation are in the envelope.",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text of a notification of the system, for example \"Bob posted in #general\" or \"Bob wrote in Feeder team\"."
+          },
+          "place_name": {
+            "type": "string",
+            "description": "The name of the room, or the title of the conversation."
+          },
+          "author": {
+            "$ref": "#/components/schemas/UserRef"
+          }
+        },
+        "required": [
+          "text",
+          "place_name",
+          "author"
         ],
         "additionalProperties": false
       }

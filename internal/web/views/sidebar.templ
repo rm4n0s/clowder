@@ -65,7 +65,7 @@ templ Sidebar(d SidebarData) {
 		<h2 class="sidebar-heading">Rooms</h2>
 		<ul class="sidebar-room-list">
 			for _, room := range d.Rooms {
-				<li>
+				<li class={ templ.KV("muted", room.Muted) }>
 					<a
 						href={ templ.SafeURL(RoomPath(room.ID)) }
 						class={ templ.KV("current", room.ID == d.CurrentRoomID) }
@@ -78,7 +78,11 @@ templ Sidebar(d SidebarData) {
 							@lockIcon()
 						}
 						{ room.Name }
+						if room.Muted {
+							@mutedIcon()
+						}
 					</a>
+					// TODO(step 20.2): a muted room shows only a badge with its unread mentions.
 				</li>
 			}
 		</ul>

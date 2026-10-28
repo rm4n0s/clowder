@@ -129,6 +129,9 @@ func (s *Server) roomView(ctx context.Context, actor app.Actor, id uint64) (view
 		if d.Candidates, err = s.svc.Rooms.Candidates(ctx, actor, id); err != nil {
 			return views.RoomData{}, err
 		}
+		if d.Prefs, err = s.placePrefsData(ctx, actor, app.RoomRef(id), room.Name); err != nil {
+			return views.RoomData{}, err
+		}
 	}
 	return d, nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -178,6 +179,10 @@ type ConversationSummary struct {
 	// Unread is true when the conversation has a message of someone else,
 	// not deleted, after the last one the actor has read.
 	Unread bool
+	// Muted is true when the actor muted the conversation (SPEC §7.15): the
+	// list dims it and puts it at the end, and it is not in the unread count
+	// of conversations.
+	Muted bool
 	// CanSend is false in a direct conversation whose other user is disabled
 	// (D32), as ConversationHeader.CanSend.
 	CanSend bool
@@ -241,6 +246,9 @@ type Messages struct {
 	cfg     MessagesConfig
 	cleaner fileCleaner
 	pub     Publisher
+	// md finds the @username mentions of a message, for the decision whether
+	// it rings (SPEC §7.15).
+	md *markdown.Renderer
 }
 
 // NewMessages makes the service. The clock times the edits, deletions and
@@ -249,7 +257,7 @@ type Messages struct {
 // publishes nothing.
 func NewMessages(st *store.Store, clk clock.Clock, fs *files.Store, cfg MessagesConfig, pub Publisher) *Messages {
 	cfg = cfg.withDefaults()
-	return &Messages{st: st, clk: clk, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger), pub: orNop(pub)}
+	return &Messages{st: st, clk: clk, files: fs, cfg: cfg, cleaner: newFileCleaner(fs, cfg.Logger), pub: orNop(pub), md: markdown.New()}
 }
 
 // StartDirect returns the ID of the direct conversation between the actor and
@@ -541,6 +549,11 @@ func (m *Messages) Leave(ctx context.Context, actor Actor, convID uint64) error 
 		if err := tx.MarkConversationMemberLeft(ctx, convID, actor.UserID, m.clk.Now()); err != nil {
 			return err
 		}
+		// The preferences of the conversation end with the membership (SPEC
+		// §7.15).
+		if err := tx.DeletePlacePref(ctx, actor.UserID, store.ConversationPlace(convID)); err != nil {
+			return err
+		}
 		rows, err := tx.ConversationMembers(ctx, []uint64{convID}, false)
 		if err != nil {
 			return err
@@ -579,6 +592,7 @@ func (m *Messages) Conversations(ctx context.Context, actor Actor) ([]Conversati
 			Members:      make([]UserRef, len(it.Members)),
 			LastActivity: conv.CreatedAt,
 			Unread:       it.Unread,
+			Muted:        it.Muted,
 			CanSend:      true,
 		}
 		for j, mem := range it.Members {
@@ -609,6 +623,10 @@ func (m *Messages) Conversations(ctx context.Context, actor Actor) ([]Conversati
 	}
 	sort.SliceStable(order, func(a, b int) bool {
 		x, y := order[a], order[b]
+		if out[x].Muted != out[y].Muted {
+			// Muted conversations go to the end of the list (SPEC §7.15).
+			return !out[x].Muted
+		}
 		if !out[x].LastActivity.Equal(out[y].LastActivity) {
 			return out[x].LastActivity.After(out[y].LastActivity)
 		}

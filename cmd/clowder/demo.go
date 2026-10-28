@@ -182,6 +182,9 @@ func fillDemo(ctx context.Context, dataDir, databaseURL string, scale *demoScale
 	if err := makeDemoMessages(ctx, messages, actors, stdout); err != nil {
 		return err
 	}
+	if err := makeDemoPreferences(ctx, app.NewPrefs(st, nil), made, actors, stdout); err != nil {
+		return err
+	}
 	if scale == nil {
 		return nil
 	}
@@ -660,6 +663,19 @@ func makeDemoMessages(ctx context.Context, messages *app.Messages, actors map[st
 	}
 	_, _ = fmt.Fprintf(stdout, "demo messages: %d in %d conversations (%d reactions, 1 edited; bob has %d unread)\n",
 		len(sent), len(conversations), reactions, unread)
+	return nil
+}
+
+// makeDemoPreferences gives alice notification preferences of her own in the
+// private room "secret" (SPEC §7.15): only mentions notify her there, and
+// without a sound. rooms holds the demo rooms by name and actors the demo users
+// by username.
+func makeDemoPreferences(ctx context.Context, prefs *app.Prefs, rooms map[string]app.Room, actors map[string]app.Actor, stdout io.Writer) error {
+	notify, sound := app.PlaceNotifyMentions, app.PlaceSoundOff
+	if _, err := prefs.UpdatePlace(ctx, actors["alice"], app.RoomRef(rooms["secret"].ID), app.PlaceUpdate{Notify: &notify, Sound: &sound}); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(stdout, "demo notification preferences: alice hears only mentions of #secret, without a sound")
 	return nil
 }
 

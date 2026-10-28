@@ -69,16 +69,18 @@ type AppearanceData struct {
 type SettingsData struct {
 	// Sidebar is the sidebar of the page.
 	Sidebar SidebarData
-	// Profile, Password and Appearance are their sections.
-	Profile    ProfileData
-	Password   PasswordData
-	Appearance AppearanceData
+	// Profile, Password, Appearance and Notifications are their sections.
+	Profile       ProfileData
+	Password      PasswordData
+	Appearance    AppearanceData
+	Notifications NotifyPrefsData
 	// Sessions are the live sessions of the user, the newest first.
 	Sessions []app.SessionInfo
 }
 
 // SettingsPage is the settings page of the user: the sections Profile,
-// Password, Appearance and Sessions, each of which saves on its own.
+// Password, Appearance, Notifications and Sessions, each of which saves on its
+// own.
 templ SettingsPage(d SettingsData) {
 	@Layout("Settings", Sidebar(d.Sidebar)) {
 		<h1>Settings</h1>
@@ -86,13 +88,14 @@ templ SettingsPage(d SettingsData) {
 			<a href="#profile">Profile</a>
 			<a href="#password">Password</a>
 			<a href="#appearance">Appearance</a>
-			// TODO(step 18.3): the Notifications section (sound, browser notifications, muted rooms).
+			<a href="#notifications">Notifications</a>
 			// TODO(step 19.1): the Sign-in section (SSH keys and the sign-in code).
 			<a href="#sessions">Sessions</a>
 		</nav>
 		@ProfileSection(d.Profile)
 		@PasswordSection(d.Password)
 		@AppearanceSection(d.Appearance)
+		@NotifyPrefsSection(d.Notifications)
 		@SessionsSection(d.Sessions)
 		@liveStream(MeStreamPath)
 	}

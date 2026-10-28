@@ -1323,3 +1323,48 @@ main:has(> .conversation-body) { max-width: 72rem; }
 .member-list form.message-form button { padding: 0.125rem 0.625rem; font-size: 0.875rem; }
 
 .post-meta .avatar, .message-meta .avatar { margin-right: 0; align-self: center; }
+
+/* Notification preferences (SPEC §7.15). */
+.notify-choices, .sound-choices, .browser-notifications, .replies-choices,
+.place-prefs fieldset { margin: 0 0 1rem; padding: 0; border: 0; }
+
+.notify-choices legend, .sound-choices legend, .browser-notifications legend,
+.replies-choices legend, .place-prefs legend { margin: 0 0 0.25rem; padding: 0; font-weight: 600; }
+
+.notify-choice { display: flex; align-items: center; gap: 0.5rem; font-weight: 400; }
+
+.notify-choice input { width: auto; margin: 0; }
+
+.sound-choice { display: flex; align-items: center; gap: 0.75rem; margin: 0.25rem 0 0.25rem 1.5rem; }
+
+.sound-choice label { display: flex; align-items: center; gap: 0.5rem; font-weight: 400; min-width: 6rem; }
+
+.sound-choice input { width: auto; margin: 0; }
+
+.notify-places { list-style: none; margin: 0; padding: 0; }
+
+.notify-places li { padding: 0.25rem 0; }
+
+.notify-places .hint { margin-left: 0.5rem; }
+
+dialog.place-prefs {
+  max-width: 32rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+dialog.place-prefs::backdrop { background: rgb(0 0 0 / 0.4); }
+
+.place-prefs-close { margin-top: 0.75rem; }
+
+/* A muted room or conversation is dimmed and goes to the end of its list. */
+li.muted { opacity: 0.6; }
+
+.muted-icon { vertical-align: -1px; margin-left: 0.25rem; }
+
+.settings-section h3 { margin-top: 1.5rem; }
+
+.conversation-link > .muted-icon { grid-column: 2; grid-row: 2; justify-self: end; margin-left: 0; }

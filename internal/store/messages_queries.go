@@ -97,6 +97,8 @@ type ConversationListItem struct {
 	// Unread is true when the conversation has a message of someone else,
 	// not deleted, after the last message the user has read.
 	Unread bool
+	// Muted is true when the user muted the conversation (SPEC §7.15).
+	Muted bool
 	// LastMessage is the newest message, deleted ones included; nil when the
 	// conversation has none.
 	LastMessage *MessageRow
@@ -122,6 +124,10 @@ users.username AS username, users.display_name AS display_name, users.avatar_key
 	unreadMessageExists = `EXISTS (SELECT 1 FROM messages WHERE messages.conversation_id = conversation_members.conversation_id
 AND messages.id > COALESCE(conversation_members.last_read_message_id, 0)
 AND messages.author_id <> conversation_members.user_id AND messages.deleted_at IS NULL)`
+	// conversationMuted is true for a membership (conversation_members) of a
+	// conversation that its member muted (SPEC §7.15).
+	conversationMuted = `EXISTS (SELECT 1 FROM place_prefs WHERE place_prefs.user_id = conversation_members.user_id
+AND place_prefs.conversation_id = conversation_members.conversation_id AND place_prefs.muted)`
 )
 
 // UsersByIDs returns the users with these IDs, in no particular order; an ID
@@ -307,12 +313,14 @@ func (s *Store) AdvanceLastRead(ctx context.Context, conversationID, userID, mes
 
 // CountUnreadConversations returns the number of conversations of the user
 // that have a message of someone else, not deleted, after the last message the
-// user read. A conversation the user left is not counted. It is one query.
+// user read. A conversation the user left or muted is not counted (SPEC
+// §7.15). It is one query.
 func (s *Store) CountUnreadConversations(ctx context.Context, userID uint64) (int, error) {
 	var n int64
 	err := s.db(ctx).Model(&ConversationMember{}).
 		Where("user_id = ? AND left_at IS NULL", userID).
 		Where(unreadMessageExists).
+		Where("NOT " + conversationMuted).
 		Count(&n).Error
 	if err != nil {
 		return 0, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "countUnreadConversations", "userID", userID)
@@ -330,6 +338,7 @@ type conversationListRow struct {
 	LastReadMessageID uint64
 	LastMessageID     uint64
 	Unread            bool
+	Muted             bool
 }
 
 // ListConversations returns the conversations the user is a member of, with
@@ -342,7 +351,8 @@ func (s *Store) ListConversations(ctx context.Context, userID uint64) ([]Convers
 conversations.name AS name,
 COALESCE(conversation_members.last_read_message_id, 0) AS last_read_message_id,
 COALESCE((SELECT MAX(messages.id) FROM messages WHERE messages.conversation_id = conversations.id), 0) AS last_message_id,
-`+unreadMessageExists+` AS unread`).
+`+unreadMessageExists+` AS unread,
+`+conversationMuted+` AS muted`).
 		Joins("JOIN conversations ON conversations.id = conversation_members.conversation_id").
 		Where("conversation_members.user_id = ? AND conversation_members.left_at IS NULL", userID).
 		Order("conversations.id ASC").
@@ -379,6 +389,7 @@ COALESCE((SELECT MAX(messages.id) FROM messages WHERE messages.conversation_id =
 			Conversation:      Conversation{ID: r.ID, CreatedAt: r.CreatedAt, Kind: r.Kind, Name: r.Name},
 			LastReadMessageID: r.LastReadMessageID,
 			Unread:            r.Unread,
+			Muted:             r.Muted,
 			Members:           members[r.ID],
 		}
 		if m, ok := last[r.LastMessageID]; ok {

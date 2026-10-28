@@ -152,6 +152,7 @@ func eventN(topic string, n uint64) live.Event {
 	return live.Event{
 		Topic: topic, Kind: live.KindPostCreated,
 		RoomID: n, PostID: n + 1, RootID: n + 2, UserID: n + 3, ConversationID: n + 4, MessageID: n + 5,
+		NotificationID: n + 6, Ring: true, Sound: "chirp", Browser: true,
 	}
 }
 

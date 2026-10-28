@@ -241,7 +241,8 @@ Every table has an integer primary key and `CreatedAt`; times are stored in UTC.
 | Model | Fields (besides ID, CreatedAt) | Notes |
 |---|---|---|
 | `User` | `Username` (unique, lower case), `DisplayName`, `PasswordHash`, `Role` (admin, member), `DisabledAt`, `AvatarKey` (1.2) | `AvatarKey` is the key of the avatar's file in `files/avatars/`, empty for none (§7.14) |
-| `UserSettings` | `UserID` (unique), `Theme` (system, light, dark), `Sound`, `BrowserNotifications` | 1.2; a user has no row until they save a setting, and the defaults are system, on, off (§7.14, D49) |
+| `UserSettings` | `UserID` (unique), `Theme` (system, light, dark), `Sound`, `BrowserNotifications`, `Notify` (all, mentions, nothing), `SoundName` (purr, chirp, bell, meow), `Replies` (following, direct) | 1.2; a user has no row until they save a setting, and the defaults are system, on, off, mentions, purr, following (§7.14, §7.15, D49) |
+| `PlacePref` | `UserID`, `RoomID` or `ConversationID` (exactly one), `Notify` (default, all, mentions, nothing), `Sound` (default, on, off), `IgnoreGroupMentions`, `MarkUnread` (all, mentions), `Muted` | 1.2; unique per (user, room) and (user, conversation); a row exists only while some choice differs from the default; deleted with the room or conversation, and when the user leaves (§7.15, D50) |
 | `Invitation` | `TokenHash` (unique), `Role`, `CreatedBy`, `ExpiresAt`, `UsedBy`, `UsedAt` | one use only |
 | `PasswordReset` | `UserID`, `TokenHash` (unique), `CreatedBy` (null for the command line), `ExpiresAt`, `UsedAt` | 1.2; a password reset link (§7.1, D51); a user has one unused link at most, a newer one replacing the older |
 | `Session` | `TokenHash` (unique), `UserID`, `ExpiresAt`, `LastSeenAt`, `Kind` (browser, api; 1.1), `ClientName` (1.1) | D43 |
@@ -483,6 +484,13 @@ These work the way Mattermost's do (the owner's request, 2026-10-28: "group noti
   - `GET`/`PUT /rooms/{id}/notification-prefs` and `GET`/`PUT /conversations/{id}/notification-prefs` (`notify`, `sound`, `ignore_group_mentions`, `mark_unread`, `muted`);
   - `PUT`/`DELETE /posts/{id}/follow`;
   - `GET /me/presence?user_ids=` (who is online, for the members' list).
+
+- **Decisions of step 18.3** (the worker's, 2026-10-28; the owner may revise):
+  - One function decides whether an event rings (`ringFor`): a mute rings nothing; a place's own *Notify me about* overrides the global one; a conversation whose place choice is *Default* counts as *All* unless the global setting is *Nothing*; *Nothing* covers no event, *Mentions* covers notifications and messages that mention the user, *All* also covers posts and messages. The sound is the place's *On*/*Off*, else the global *Sound*, and its name is the global one (Purr when none).
+  - The server decides per recipient when it fans an event out and puts `ring`, `sound` and `browser` on the event (never the body or its text, which the page reads from the notice it appends to `#notify-events`); `notify.js` obeys the decision and adds only what the browser knows (focus, the open place, the first touch, the 2-second gap, the election between tabs).
+  - `ignore_group_mentions` is stored and returned now; it takes effect with `@room`, `@all` and `@here` in step 18.4. The global `keywords`, `group_mentions` and the follow endpoints come in 18.4 too.
+  - `PUT .../notification-prefs` is partial: a field that is left out keeps its value, and an empty body is 422. There is no endpoint for the global choices other than `PATCH /me/settings`.
+  - A muted room's mention badge in the sidebar waits for step 20.2 (the sidebar rework); until then a muted place has no count and the bell alone shows its mentions. A muted conversation does not count in the unread number.
 
 ### 7.16 SSH sign-in codes (1.2)
 

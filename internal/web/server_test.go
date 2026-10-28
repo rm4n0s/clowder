@@ -100,6 +100,7 @@ type testEnv struct {
 	board    *app.Board
 	search   *app.Search
 	notifs   *app.Notifications
+	prefs    *app.Prefs
 	msgs     *app.Messages
 	hub      *live.Hub
 	st       *store.Store
@@ -147,13 +148,14 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	}, hub)
 	search := app.NewSearch(st)
 	notifs := app.NewNotifications(st, hub)
+	prefs := app.NewPrefs(st, hub)
 	msgs := app.NewMessages(st, clk, fileStore, app.MessagesConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
 	}, hub)
 	apiServer, err := api.New(api.Options{
-		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search, Audit: audit, Hub: hub},
+		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search, Audit: audit, Prefs: prefs, Hub: hub},
 		Logger:        logger,
 		NoteUser:      NoteUser,
 		ClientIP:      ClientIPFunc(cfg.TrustProxyHeaders),
@@ -162,11 +164,11 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	if err != nil {
 		t.Fatalf("api.New: %+v", err)
 	}
-	s, err := newServer(cfg, logger, Services{API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Messages: msgs, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
+	s, err := newServer(cfg, logger, Services{API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Health: app.NewHealth(st), Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, search: search, notifs: notifs, msgs: msgs, hub: hub, st: st, clk: clk, filesDir: filesDir}
+	return &testEnv{t: t, srv: s, log: buf, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, search: search, notifs: notifs, prefs: prefs, msgs: msgs, hub: hub, st: st, clk: clk, filesDir: filesDir}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

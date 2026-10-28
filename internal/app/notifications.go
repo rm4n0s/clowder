@@ -225,12 +225,25 @@ func notify(ctx context.Context, tx *store.Store, actor Actor, room store.Room, 
 	if err != nil {
 		return nil, err
 	}
-	var rows []store.Notification
-	var events []live.Event
+	var present []uint64
 	for _, id := range order {
-		if !readers[id] {
-			continue
+		if readers[id] {
+			present = append(present, id)
 		}
+	}
+	// One query reads the settings and the room preferences of all of them,
+	// for the decision whether their notification rings (SPEC §7.15).
+	recipients, err := tx.RecipientsOf(ctx, store.RoomPlace(room.ID), present)
+	if err != nil {
+		return nil, err
+	}
+	byUser := make(map[uint64]store.Recipient, len(recipients))
+	for _, r := range recipients {
+		byUser[r.UserID] = r
+	}
+	var rows []store.Notification
+	var kept []uint64
+	for _, id := range present {
 		n := best[id]
 		row := store.Notification{UserID: id, Kind: n.kind, RoomID: &room.ID, ActorID: actor.UserID}
 		if postID != 0 {
@@ -240,13 +253,23 @@ func notify(ctx context.Context, tx *store.Store, actor Actor, room store.Room, 
 			row.TaskID = &n.taskID
 		}
 		rows = append(rows, row)
-		events = append(events, live.Event{
-			Topic: live.UserTopic(id), Kind: live.KindNotificationCreated,
-			RoomID: room.ID, PostID: postID, UserID: id,
-		})
+		kept = append(kept, id)
 	}
 	if err := tx.CreateNotifications(ctx, rows); err != nil {
 		return nil, err
+	}
+	events := make([]live.Event, len(rows))
+	for i, id := range kept {
+		ev := live.Event{
+			Topic: live.UserTopic(id), Kind: live.KindNotificationCreated,
+			RoomID: room.ID, PostID: postID, UserID: id, NotificationID: rows[i].ID,
+		}
+		if r, ok := byUser[id]; ok {
+			// Every notification is a mention-like event for the decision;
+			// the bell has it whatever the answer.
+			ringEvent(&ev, ringFor(r.Settings, r.Place, PlaceRoom, EventNotification, true))
+		}
+		events[i] = ev
 	}
 	return events, nil
 }

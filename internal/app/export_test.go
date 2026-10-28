@@ -62,3 +62,6 @@ func (a *Accounts) FillHashSlots(ctx context.Context) func() {
 
 // SnippetSegments gives the tests snippetSegments.
 var SnippetSegments = snippetSegments
+
+// RingFor gives the tests ringFor.
+var RingFor = ringFor

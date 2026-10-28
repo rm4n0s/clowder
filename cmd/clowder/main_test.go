@@ -1745,3 +1745,44 @@ func withoutUsers(reactions []app.ReactionCount) []app.ReactionCount {
 	}
 	return out
 }
+
+func TestRunDemoGivesAliceNotificationPreferences(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	var stdout, stderr bytes.Buffer
+	if err := run(t.Context(), []string{"demo", "-data", dir}, mapEnv(nil), &stdout, &stderr, auth.FastHasher()); err != nil {
+		t.Fatalf("demo: %+v", err)
+	}
+	if !strings.Contains(stdout.String(), "demo notification preferences: alice hears only mentions of #secret, without a sound") {
+		t.Errorf("stdout lacks the preferences line:\n%s", stdout.String())
+	}
+	_, st := openAccounts(t, dir)
+	prefs := app.NewPrefs(st, nil)
+	rooms := app.NewRooms(st, nil, nil, nil)
+	for _, tt := range []struct {
+		user       string
+		wantNotify app.PlaceNotify
+		wantSound  app.PlaceSound
+	}{
+		{"alice", app.PlaceNotifyMentions, app.PlaceSoundOff},
+		{"bob", app.PlaceNotifyDefault, app.PlaceSoundDefault},
+	} {
+		row, err := st.UserByUsername(t.Context(), tt.user)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := app.Actor{UserID: row.ID, Username: row.Username, Role: row.Role}
+		mine, err := rooms.Mine(t.Context(), a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range mine {
+			if r.Name != "secret" {
+				continue
+			}
+			got, err := prefs.Place(t.Context(), a, app.RoomRef(r.ID))
+			if err != nil || got.Notify != tt.wantNotify || got.Sound != tt.wantSound || got.Muted {
+				t.Errorf("%s in secret: %+v, %v; want notify %s, sound %s", tt.user, got, err, tt.wantNotify, tt.wantSound)
+			}
+		}
+	}
+}

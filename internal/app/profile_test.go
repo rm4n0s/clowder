@@ -181,7 +181,7 @@ func TestSettings(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Settings: %+v", err)
 			}
-			if got != (app.Settings{Theme: app.ThemeSystem, Sound: true}) {
+			if got != (settingsDefaults) {
 				t.Errorf("defaults = %+v, want system, sound on, browser notifications off", got)
 			}
 		})
@@ -191,6 +191,17 @@ func TestSettings(t *testing.T) {
 // fmtRoute fills the method name into a route pattern with one %s.
 func fmtRoute(pattern, method string) string {
 	return strings.Replace(pattern, "%s", method, 1)
+}
+
+// settingsDefaults are the settings of a user who saved none.
+var settingsDefaults = app.Settings{
+	Theme: app.ThemeSystem, Sound: true, Notify: app.NotifyMentions, SoundName: app.SoundPurr, Replies: app.RepliesFollowing,
+}
+
+// settingsWith returns base changed by change.
+func settingsWith(base app.Settings, change func(*app.Settings)) app.Settings {
+	change(&base)
+	return base
 }
 
 func TestUpdateSettings(t *testing.T) {
@@ -203,11 +214,11 @@ func TestUpdateSettings(t *testing.T) {
 		want   app.Settings
 		route  string // empty: success
 	}{
-		{"theme only", app.SettingsUpdate{Theme: &dark}, app.Settings{Theme: app.ThemeDark, Sound: true}, ""},
-		{"sound off", app.SettingsUpdate{Sound: &no}, app.Settings{Theme: app.ThemeSystem}, ""},
-		{"browser notifications on", app.SettingsUpdate{BrowserNotifications: &yes}, app.Settings{Theme: app.ThemeSystem, Sound: true, BrowserNotifications: true}, ""},
-		{"all three", app.SettingsUpdate{Theme: &light, Sound: &no, BrowserNotifications: &yes}, app.Settings{Theme: app.ThemeLight, BrowserNotifications: true}, ""},
-		{"nothing", app.SettingsUpdate{}, app.Settings{Theme: app.ThemeSystem, Sound: true}, ""},
+		{"theme only", app.SettingsUpdate{Theme: &dark}, settingsWith(settingsDefaults, func(s *app.Settings) { s.Theme = app.ThemeDark }), ""},
+		{"sound off", app.SettingsUpdate{Sound: &no}, settingsWith(settingsDefaults, func(s *app.Settings) { s.Sound = false }), ""},
+		{"browser notifications on", app.SettingsUpdate{BrowserNotifications: &yes}, settingsWith(settingsDefaults, func(s *app.Settings) { s.BrowserNotifications = true }), ""},
+		{"all three", app.SettingsUpdate{Theme: &light, Sound: &no, BrowserNotifications: &yes}, settingsWith(settingsDefaults, func(s *app.Settings) { s.Theme, s.Sound, s.BrowserNotifications = app.ThemeLight, false, true }), ""},
+		{"nothing", app.SettingsUpdate{}, settingsDefaults, ""},
 		{"unknown theme", app.SettingsUpdate{Theme: &bogus}, app.Settings{}, "Accounts.UpdateSettings.InvalidInput"},
 	}
 	for _, tt := range tests {
@@ -235,7 +246,7 @@ func TestUpdateSettings(t *testing.T) {
 			if err != nil || again != tt.want {
 				t.Errorf("Settings = %+v, %v; want %+v", again, err, tt.want)
 			}
-			changed := tt.want != (app.Settings{Theme: app.ThemeSystem, Sound: true})
+			changed := tt.want != (settingsDefaults)
 			ev := p.rec.Events()
 			if changed {
 				if len(ev) != 1 || ev[0].Kind != live.KindSettingsChanged || ev[0].Topic != live.UserTopic(p.alice.ID) {
@@ -246,7 +257,7 @@ func TestUpdateSettings(t *testing.T) {
 			}
 			// Another user keeps the defaults.
 			other, err := p.svc.Settings(t.Context(), actor(p.bob))
-			if err != nil || other != (app.Settings{Theme: app.ThemeSystem, Sound: true}) {
+			if err != nil || other != (settingsDefaults) {
 				t.Errorf("another user's settings = %+v, %v", other, err)
 			}
 		})

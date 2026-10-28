@@ -1122,3 +1122,75 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - Using a link in a browser that was logged in as someone else ends that session too.
   - `PasswordReset` is created by AutoMigrate on both dialects; no raw migration was needed.
+
+## 18.3 Notification preferences
+- **Date:** 2026-10-28
+- **Branch:** feat/step-18.3-notification-prefs
+- **Summary:**
+  - The global choices are on `user_settings`:
+    - *Notify me about*: all, mentions with direct and group messages (the default), or nothing;
+    - *Sound* (on by default) with its name: Purr, Chirp, Bell or Meow;
+    - *Browser notifications* (off by default);
+    - *Replies*: threads I follow, or only direct replies. Until 18.4 there are no follows, so the first acts like the second.
+  - `place_prefs` holds one row per user and room, or per user and conversation, with CHECK constraints on both dialects:
+    - notify: default, all, mentions or nothing;
+    - sound: default, on or off;
+    - ignore group mentions (used from 18.4);
+    - mark unread (rooms; used from 20.2);
+    - muted.
+
+    A missing row means every default. A row back to all defaults is deleted, and leaving a place, or being removed from it, deletes its row in the same transaction.
+  - `ringFor` in `internal/app/ring.go` is the one pure function that decides whether an event rings, and with which sound. The server computes it per recipient, puts `ring`, `sound` and `browser` in that user's event, and the page only obeys.
+    - A muted place never rings. A mention in it still reaches the bell.
+    - A place's own choice wins over the global one, as in Mattermost.
+    - A conversation left on default rings for every message unless the global choice is Nothing.
+  - A new top-level post rings the members whose choice for the room is All, and a message rings the members of the conversation. The settings and place preferences of all recipients come from one query. The events carry IDs only, never the body.
+  - The `Notice` texts follow §7.15 ("Bob mentioned you in #general", "Bob replied in «…» in #general", "Bob posted in #general", …).
+  - `notify.js` makes the four sounds with Web Audio. It plays at most one sound every 2 s and nothing before the first gesture on the page.
+    - One tab shows each event, elected through `BroadcastChannel("clowder-notify")`.
+    - Nothing rings for the place open in the focused tab, and a click on a browser notification opens the place.
+    - The test hook `window.__clowderNotifyLog` records each decision.
+  - Pages:
+    - the Notifications section of the settings, with Play buttons and the list of places that have their own preferences;
+    - the "Notification preferences" dialog on rooms and conversations;
+    - muted places dimmed, with a bell-off icon and moved to the end, and a muted conversation left out of the unread count of conversations.
+  - API:
+    - `notify`, `sound_name` and `replies` in `/me/settings`;
+    - `GET` and `PUT` on `/rooms/{id}/notification-prefs` and `/conversations/{id}/notification-prefs` (a partial PUT; 404 for a place the user cannot read);
+    - the WebSocket event `place_prefs.changed`, plus `ring`, `sound` and `browser` on the events that ring.
+
+    The apicheck scenario `prefs` exercises them.
+  - Demo data: alice has #secret on Mentions with the sound off.
+- **Main files:** `internal/app/{ring,prefs,notice,notifications,posts,messages,messages_send,rooms}.go`, `internal/store/{place_prefs,settings,models,messages_queries}.go`, `internal/web/{notify,me_stream,settings,rooms,messages}.go`, `internal/web/views/{notify,settings,sidebar,rooms,messages}.templ`, `internal/web/static/notify.js`, `internal/api/{handlers_prefs,handlers_settings,ws_events}.go`, `openapi.json`, `internal/cluster/wire.go`, `cmd/clowder-apicheck/prefs_scenario.go`.
+- **Tests:** 38 new test functions, most of them tables:
+
+  | Package | Functions |
+  |---|---|
+  | store | 5 |
+  | app | 14 |
+  | api | 4 |
+  | web | 8 |
+  | views | 5 |
+  | browser | 2 |
+
+  There are also the apicheck scenario test and a demo test. They cover:
+  - the full ringing table (global × place × mute × kind × mention);
+  - the permission tables of the new methods;
+  - a mention in a muted room reaching the bell without ringing;
+  - a muted conversation leaving the unread count;
+  - the preferences deleted on leave;
+  - the one-query fan-out;
+  - events with no body;
+  - two tabs of bob: one tab rings, with the chosen sound, nothing when muted, and nothing for the open conversation.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [18.3 settings](implemented-proof-images/18.3-notifications.png) · [18.3 place dialog](implemented-proof-images/18.3-place-prefs.png) · [18.3 muted sidebar](implemented-proof-images/18.3-muted-sidebar.png) · [18.3 ring log](implemented-proof-images/18.3-ring.txt)
+  - The Notifications section saved with All and Bell, listing #secret with its own preferences.
+  - The dialog of the "Launch crew" group set to Mentions.
+  - `random` muted in the sidebar and "Launch crew" muted in the list, dimmed and last, changed live from a second browser.
+  - The ring decisions logged by the browser test.
+- **Manual checks:** the sounds themselves have not been listened to by a person; the test hook checks which sound is chosen.
+- **Deviations and follow-ups:**
+  - Datastar evaluates every `data-text` attribute, so the ring element uses `data-notice` instead.
+  - The sidebar badge of mentions in a muted room waits for the unread counts of step 20.2 (`TODO(step 20.2)`).
+  - The muted icon of a conversation sits under its time, because an existing test pins the title's markup.

@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/markdown"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -83,7 +84,15 @@ func (m *Messages) Send(ctx context.Context, actor Actor, convID uint64, in Mess
 		}
 		events = append([]live.Event{messageEvent(live.KindMessageCreated, convID, created.ID)},
 			changedEvents(convID, userIDsOf(rows[convID])...)...)
-		return nil
+		// The members whose choice for the conversation covers the message
+		// hear it ring.
+		mentioned := map[string]bool{}
+		for _, name := range m.md.Mentions(markdown.FormatText, body) {
+			mentioned[name] = true
+		}
+		rung, err := messageRingEvents(ctx, tx, conv, created.ID, actor.UserID, mentioned)
+		events = append(events, rung...)
+		return err
 	})
 	if err != nil {
 		m.cleaner.discard(ctx, m.st, in.Uploads)

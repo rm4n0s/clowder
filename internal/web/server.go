@@ -74,6 +74,9 @@ type Services struct {
 	// Messages is the service of private conversations and messages: their
 	// pages, their streams and the unread count in the sidebar.
 	Messages *app.Messages
+	// Prefs is the service of the notification preferences of a user in a
+	// room or a conversation, and of the notices their streams carry.
+	Prefs *app.Prefs
 	// Health answers the health check, GET /healthz (SPEC D40). Nil makes
 	// the check answer 503.
 	Health HealthChecker
@@ -170,6 +173,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST " + views.SettingsAvatarRemovePath, handler: http.HandlerFunc(s.settingsAvatarRemove)},
 		{pattern: "POST " + views.SettingsPasswordPath, handler: http.HandlerFunc(s.settingsPassword)},
 		{pattern: "POST " + views.SettingsAppearancePath, handler: http.HandlerFunc(s.settingsAppearance)},
+		{pattern: "POST " + views.SettingsNotificationsPath, handler: http.HandlerFunc(s.settingsNotifications)},
 		{pattern: "GET /avatars/{userID}", handler: http.HandlerFunc(s.avatarFile)},
 		{pattern: "POST /me/sessions/{id}/end", handler: http.HandlerFunc(s.sessionEnd)},
 		{pattern: "GET /admin/users", handler: http.HandlerFunc(s.adminUsers)},
@@ -189,6 +193,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "GET /rooms/{id}", handler: http.HandlerFunc(s.roomPage)},
 		{pattern: "POST /rooms/{id}/join", handler: http.HandlerFunc(s.roomJoin)},
 		{pattern: "POST /rooms/{id}/leave", handler: http.HandlerFunc(s.roomLeave)},
+		{pattern: "POST /rooms/{id}/notifications", handler: http.HandlerFunc(s.roomPrefs)},
 		{pattern: "POST /rooms/{id}/rename", handler: http.HandlerFunc(s.roomRename)},
 		{pattern: "POST /rooms/{id}/delete", handler: http.HandlerFunc(s.roomDelete)},
 		{pattern: "POST /rooms/{id}/members", handler: http.HandlerFunc(s.memberAdd)},
@@ -226,6 +231,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /messages/{id}/members", handler: http.HandlerFunc(s.conversationAddMembers)},
 		{pattern: "POST /messages/{id}/rename", handler: http.HandlerFunc(s.conversationRename)},
 		{pattern: "POST /messages/{id}/leave", handler: http.HandlerFunc(s.conversationLeave)},
+		{pattern: "POST /messages/{id}/notifications", handler: http.HandlerFunc(s.conversationPrefs)},
 		{pattern: "GET /messages/m/{msgID}/view", handler: http.HandlerFunc(s.messageView)},
 		{pattern: "GET /messages/m/{msgID}/edit", handler: http.HandlerFunc(s.messageEditForm)},
 		{pattern: "POST /messages/m/{msgID}/edit", handler: http.HandlerFunc(s.messageEditSave)},

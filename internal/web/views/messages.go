@@ -249,6 +249,9 @@ type ConversationData struct {
 	// Notice is the problem of the last action on the conversation, shown in
 	// the header; empty shows none.
 	Notice string
+	// Prefs is the dialog of the notification preferences of the viewer in
+	// the conversation.
+	Prefs PlacePrefsData
 }
 
 // NewestID is the ID of the newest message of the page, 0 for none. The

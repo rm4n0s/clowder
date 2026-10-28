@@ -148,11 +148,16 @@ func (s *Server) conversationView(ctx context.Context, actor app.Actor, id, befo
 	if err != nil {
 		return views.ConversationData{}, err
 	}
+	prefs, err := s.placePrefsData(ctx, actor, app.ConversationRef(id), h.DisplayName)
+	if err != nil {
+		return views.ConversationData{}, err
+	}
 	return views.ConversationData{
 		ViewerID: actor.UserID, Header: h, Messages: items,
 		HasOlder: page.HasOlder, NextBefore: page.NextBefore, Before: before,
 		Composer: views.ComposerData{ConversationID: id, CanSend: h.CanSend},
 		Members:  views.MembersPanelData{Header: h, ViewerID: actor.UserID},
+		Prefs:    prefs,
 	}, nil
 }
 

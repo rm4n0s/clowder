@@ -20,6 +20,46 @@ const (
 	ThemeDark Theme = "dark"
 )
 
+// NotifyLevel says what notifies a user, globally or in one place (SPEC
+// §7.15).
+type NotifyLevel string
+
+const (
+	// NotifyAll notifies about every new post and message.
+	NotifyAll NotifyLevel = "all"
+	// NotifyMentions notifies about mentions, replies, assignments, additions
+	// and (for conversations) every message; it is the global default.
+	NotifyMentions NotifyLevel = "mentions"
+	// NotifyNothing notifies about nothing.
+	NotifyNothing NotifyLevel = "nothing"
+)
+
+// SoundName names one of the four sounds of notify.js (SPEC §7.15).
+type SoundName string
+
+const (
+	// SoundPurr is the default sound: a low, warm rumble.
+	SoundPurr SoundName = "purr"
+	// SoundChirp is two quick rising notes.
+	SoundChirp SoundName = "chirp"
+	// SoundBell is one soft bell.
+	SoundBell SoundName = "bell"
+	// SoundMeow is a sweep up and down.
+	SoundMeow SoundName = "meow"
+)
+
+// RepliesMode says which comments notify a user (SPEC §7.15).
+type RepliesMode string
+
+const (
+	// RepliesFollowing notifies about every new comment under a post the user
+	// follows; it is the default.
+	RepliesFollowing RepliesMode = "following"
+	// RepliesDirect notifies only about a comment under the user's own post or
+	// comment.
+	RepliesDirect RepliesMode = "direct"
+)
+
 // UserSettings holds the preferences of one user (SPEC D49), which follow the
 // user to every browser and client. A user has no row until they save a
 // setting; UserSettingsOf then returns the defaults.
@@ -35,15 +75,26 @@ type UserSettings struct {
 	// BrowserNotifications is true when the user wants notifications of the
 	// browser (default false).
 	BrowserNotifications bool `gorm:"not null"`
+	// Notify is what rings the sound and shows a browser notification: all,
+	// mentions (the default) or nothing. The bell is not affected.
+	Notify NotifyLevel `gorm:"not null;default:mentions;check:chk_user_settings_notify,notify IN ('all','mentions','nothing')"`
+	// SoundName is which sound plays (default purr).
+	SoundName SoundName `gorm:"not null;default:purr;check:chk_user_settings_sound_name,sound_name IN ('purr','chirp','bell','meow')"`
+	// Replies says which comments notify the user (default following).
+	Replies RepliesMode `gorm:"not null;default:following;check:chk_user_settings_replies,replies IN ('following','direct')"`
 
 	// Relation: declared so that GORM creates the foreign key.
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:RESTRICT"`
 }
 
 // DefaultUserSettings returns the settings of a user who saved none: the
-// theme System, the sound on and the browser notifications off.
+// theme System, the sound on (Purr), the browser notifications off, notify
+// about mentions and replies in followed threads.
 func DefaultUserSettings(userID uint64) UserSettings {
-	return UserSettings{UserID: userID, Theme: ThemeSystem, Sound: true}
+	return UserSettings{
+		UserID: userID, Theme: ThemeSystem, Sound: true,
+		Notify: NotifyMentions, SoundName: SoundPurr, Replies: RepliesFollowing,
+	}
 }
 
 // UserSettingsOf returns the settings of the user, or the defaults when the
@@ -60,14 +111,13 @@ func (s *Store) UserSettingsOf(ctx context.Context, userID uint64) (UserSettings
 	return rows[0], nil
 }
 
-// SaveUserSettings writes the theme, the sound and the browser notifications
-// of the settings of in.UserID: it makes the row or replaces its values. It
-// fails with TagQueryFailed when the user does not exist or the theme is not
-// one of the three.
+// SaveUserSettings writes the settings of in.UserID: it makes the row or
+// replaces its values. It fails with TagQueryFailed when the user does not
+// exist or a value is not one of its choices.
 func (s *Store) SaveUserSettings(ctx context.Context, in *UserSettings) error {
 	err := s.db(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"theme", "sound", "browser_notifications"}),
+		DoUpdates: clause.AssignmentColumns([]string{"theme", "sound", "browser_notifications", "notify", "sound_name", "replies"}),
 	}).Create(in).Error
 	if err != nil {
 		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "saveUserSettings")

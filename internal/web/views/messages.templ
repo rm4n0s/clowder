@@ -78,13 +78,16 @@ templ ConversationList(items []app.ConversationSummary, viewerID uint64) {
 		} else {
 			<ul class="conversation-items">
 				for _, c := range items {
-					<li id={ conversationElementID(c.ID) } class={ "conversation", templ.KV("unread", c.Unread) } data-conversation={ roomIDText(c.ID) } data-members={ memberUsernames(c) }>
+					<li id={ conversationElementID(c.ID) } class={ "conversation", templ.KV("unread", c.Unread), templ.KV("muted", c.Muted) } data-conversation={ roomIDText(c.ID) } data-members={ memberUsernames(c) }>
 						<a class="conversation-link" href={ templ.SafeURL(ConversationPath(c.ID)) }>
 							<span class="conversation-title">{ c.DisplayName }</span>
+							if c.Muted {
+								@mutedIcon()
+							}
 							if conversationKindText(c) != "" {
 								<span class="conversation-kind">{ conversationKindText(c) }</span>
 							}
-							if c.Unread {
+							if c.Unread && !c.Muted {
 								<span class="conversation-unread">Unread</span>
 							}
 							<span class="conversation-preview">{ lastMessageText(c.LastMessage, viewerID) }</span>
@@ -103,7 +106,9 @@ templ ConversationList(items []app.ConversationSummary, viewerID uint64) {
 templ ConversationPage(d ConversationData) {
 	@Layout(d.Header.DisplayName, Sidebar(d.Sidebar)) {
 		@liveStream(ConversationStreamPath(d.Header.ID, d.NewestID(), d.Before))
+		@NotifyPlace(PlaceKey(app.ConversationRef(d.Header.ID)))
 		@ConversationHeader(d)
+		@PlacePrefsDialog(d.Prefs)
 		<div class="conversation-body">
 			<section class="conversation-main">
 				if d.Before != 0 {
@@ -142,6 +147,7 @@ templ ConversationHeader(d ConversationData) {
 		<p class="hint conversation-members-line">{ conversationMembersText(d.Header, d.ViewerID) }</p>
 		@formProblem(d.Notice)
 		<p class="hint"><a href={ templ.SafeURL(MessagesPath) }>All conversations</a></p>
+		@PlacePrefsButton(d.Prefs)
 	</header>
 }
 

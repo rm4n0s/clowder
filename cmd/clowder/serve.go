@@ -92,6 +92,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Logger:            logger,
 	}
 	notifications := app.NewNotifications(st, pub)
+	prefs := app.NewPrefs(st, pub)
 	messages := app.NewMessages(st, clock.Real(), fileStore, postsConfig, pub)
 	rooms := app.NewRooms(st, fileStore, logger, pub)
 	md := markdown.New()
@@ -107,7 +108,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	apiServer, err := api.New(api.Options{
 		Services: api.Services{
 			Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts,
-			Board: board, Search: search, Audit: audit, Hub: hub,
+			Board: board, Search: search, Audit: audit, Prefs: prefs, Hub: hub,
 		},
 		Logger:        logger,
 		NoteUser:      web.NoteUser,
@@ -129,6 +130,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		Health:        app.NewHealth(st),
 		Hub:           hub,
 		Notifications: notifications,
+		Prefs:         prefs,
 		Posts:         posts,
 		Messages:      messages,
 	})

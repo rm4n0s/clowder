@@ -1479,7 +1479,7 @@ func TestNotificationEventsPublished(t *testing.T) {
 			e := newNotifEnv(t)
 			tt.run(e)
 			want := tt.want(e)
-			got := e.rec.Events()
+			got := norm(e.rec.Events())
 			if len(got) == 0 && len(want) == 0 {
 				for _, who := range []string{"carol", "dave", "admin"} {
 					if n := e.kinds(who); len(n) != 0 {

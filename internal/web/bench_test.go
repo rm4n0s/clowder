@@ -63,6 +63,7 @@ func newBenchServer(b *testing.B) *benchServer {
 		Board:         app.NewBoard(st, clk, hub),
 		Search:        app.NewSearch(st),
 		Notifications: app.NewNotifications(st, hub),
+		Prefs:         app.NewPrefs(st, hub),
 		Posts:         app.NewPosts(st, clk, markdown.New(), fileStore, postsConfig, hub),
 		Messages:      app.NewMessages(st, clk, fileStore, postsConfig, hub),
 		Hub:           hub,

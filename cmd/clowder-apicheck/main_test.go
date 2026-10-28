@@ -91,6 +91,7 @@ func startAPIWith(t *testing.T, listen *live.Hub) (first, second string) {
 		Board:  app.NewBoard(st, clk, hub),
 		Search: app.NewSearch(st),
 		Audit:  app.NewAudit(st),
+		Prefs:  app.NewPrefs(st, hub),
 		Hub:    listen,
 	}, MaxUploadSize: 1 << 20, BaseURL: "http://clowder.example.com"})
 	if err != nil {
@@ -338,7 +339,7 @@ func TestRunAgainstTheRealAPI(t *testing.T) {
 		{
 			name:     "the list",
 			args:     []string{"-list"},
-			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "admin\t", "watch\t"},
+			wantCode: 0, wantOut: []string{"session\t", "rooms\t", "board\t", "messages\t", "prefs\t", "admin\t", "watch\t"},
 		},
 		{
 			name:     "a server that is not there",
@@ -838,5 +839,26 @@ func TestSettingsScenario(t *testing.T) {
 	var out2, err2 bytes.Buffer
 	if code := run(t.Context(), []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", "session"}, func(string) string { return "" }, &out2, &err2); code != 0 {
 		t.Fatalf("the password was not put back: exit %d\n%s\n%s", code, out2.String(), err2.String())
+	}
+}
+
+// TestPrefsScenario runs the preferences scenario and checks what it prints.
+func TestPrefsScenario(t *testing.T) {
+	t.Parallel()
+	base := startAPI(t)
+	var out, errOut bytes.Buffer
+	code := run(t.Context(), []string{"-base-url", base, "-username", "alice", "-password", testPassword, "-only", prefsScenarioName},
+		func(string) string { return "" }, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d\n%s\n%s", code, out.String(), errOut.String())
+	}
+	text := out.String()
+	for _, want := range []string{
+		"== prefs:", "> GET /api/v1/me/settings", `"sound_name"`, "/notification-prefs", `"notify": "mentions"`,
+		`"muted": true`, "< 422 Unprocessable Entity", "< 404 Not Found", "ok prefs",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the output does not contain %q:\n%s", want, text)
+		}
 	}
 }

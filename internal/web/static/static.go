@@ -5,9 +5,10 @@ package static
 import "embed"
 
 // FS holds the embedded static files: datastar.js, app.css, board.js (the drag
-// and drop of the board), messages.js (the scrolling of a conversation) and the
-// files added to this folder later. Its paths are relative to the folder, for
+// and drop of the board), messages.js (the scrolling of a conversation),
+// notify.js (the sounds and browser notifications of SPEC §7.15) and the files
+// added to this folder later. Its paths are relative to the folder, for
 // example "app.css".
 //
-//go:embed datastar.js app.css board.js messages.js
+//go:embed datastar.js app.css board.js messages.js notify.js
 var FS embed.FS

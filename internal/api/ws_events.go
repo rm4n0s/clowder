@@ -177,6 +177,7 @@ func (ws *wsSession) sendEvent(ctx context.Context, ev live.Event, data any) err
 		Type: wsEventType, Topic: ev.Topic, Kind: ev.Kind,
 		RoomID: ev.RoomID, PostID: ev.PostID, RootID: ev.RootID, UserID: ev.UserID,
 		ConversationID: ev.ConversationID, MessageID: ev.MessageID,
+		Ring: ev.Ring, Sound: ev.Sound, Browser: ev.Browser,
 		Data: data,
 	})
 }
@@ -211,6 +212,10 @@ func (ws *wsSession) onUserEvent(ctx context.Context, ev live.Event) error {
 		return ws.sendEvent(ctx, ev, settingsOf(settings))
 	case live.KindNotificationCreated:
 		return ws.notificationCreated(ctx, ev)
+	case live.KindPlacePrefsChanged:
+		return ws.placePrefsChanged(ctx, ev)
+	case live.KindPostCreated, live.KindMessageCreated:
+		return ws.ringNotice(ctx, ev)
 	case live.KindNotificationRead, live.KindConversationRead:
 		counts, err := ws.counts(ctx)
 		if err != nil {
@@ -281,11 +286,71 @@ func (ws *wsSession) notificationCreated(ctx context.Context, ev live.Event) err
 	// The page is newest first.
 	for i := len(fresh) - 1; i >= 0; i-- {
 		ws.lastNotification = fresh[i].ID
-		if err := ws.sendEvent(ctx, ev, notificationOf(fresh[i])); err != nil {
+		sent := ev
+		if fresh[i].ID != ev.NotificationID {
+			// The decision whether to ring is for the notification the event
+			// is about; one that this connection missed rings for nobody.
+			sent.Ring, sent.Sound, sent.Browser = false, "", false
+		}
+		if err := ws.sendEvent(ctx, sent, notificationOf(fresh[i])); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// wsNoticeJSON is the data of a post.created or message.created event on the
+// user's own topic, which rings (SPEC §7.15): who did what and where, never the
+// body. The IDs of the post, the room, the message and the conversation are in
+// the envelope.
+type wsNoticeJSON struct {
+	// Text is the text of the notification of the system, for example "Bob
+	// posted in #general".
+	Text string `json:"text"`
+	// PlaceName is the name of the room, or the title of the conversation.
+	PlaceName string `json:"place_name"`
+	// Author is the user whose action it is.
+	Author userRefJSON `json:"author"`
+}
+
+// ringNotice handles a post.created or message.created event on the user's own
+// topic. The server sends such an event only to a user it rings for; the
+// connection sends it with the notice (no body) when the post or message is
+// still there and the user may still read it.
+func (ws *wsSession) ringNotice(ctx context.Context, ev live.Event) error {
+	if !ev.Ring {
+		return nil
+	}
+	n, ok, err := ws.s.svc.Prefs.Notice(ctx, ws.actor, ev)
+	if err != nil {
+		if isTag(err, app.TagUnauthenticated) {
+			return nil
+		}
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	return ws.sendEvent(ctx, ev, wsNoticeJSON{Text: n.Text, PlaceName: n.PlaceName, Author: userRefOf(n.Author)})
+}
+
+// placePrefsChanged handles a place_prefs.changed event: the data are the
+// preferences of the room or conversation as GET .../notification-prefs
+// returns them. When the user can no longer have preferences there (they left
+// it) the event is not sent.
+func (ws *wsSession) placePrefsChanged(ctx context.Context, ev live.Event) error {
+	ref := app.RoomRef(ev.RoomID)
+	if ev.RoomID == 0 {
+		ref = app.ConversationRef(ev.ConversationID)
+	}
+	prefs, err := ws.s.svc.Prefs.Place(ctx, ws.actor, ref)
+	if err != nil {
+		if isNotFound(err) || isTag(err, app.TagForbidden) || isTag(err, app.TagUnauthenticated) {
+			return nil
+		}
+		return err
+	}
+	return ws.sendEvent(ctx, ev, placePrefsOf(prefs))
 }
 
 // checkSession reads the session of the token again (SPEC D37). A session that

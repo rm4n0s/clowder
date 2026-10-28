@@ -311,7 +311,14 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 		}
 		notified, err := notify(ctx, tx, actor, room, created.ID,
 			append(assignedNotices(assigned), mentionNotices(mentioned)...))
+		if err != nil {
+			return err
+		}
 		events = append(events, notified...)
+		// The members whose choice for the room is All hear of the post, but
+		// not twice: those who were notified of it have the notification.
+		rung, err := postRingEvents(ctx, tx, room.ID, created.ID, actor.UserID, usersOf(notified))
+		events = append(events, rung...)
 		return err
 	})
 	if err != nil {

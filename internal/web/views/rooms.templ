@@ -186,6 +186,10 @@ type RoomData struct {
 	Editor PostEditorData
 	// Feed is the page of the feed that the page shows.
 	Feed FeedData
+	// Prefs is the dialog of the notification preferences of the viewer in
+	// the room; it has no Action, and is not drawn, for a viewer who is not
+	// a member.
+	Prefs PlacePrefsData
 }
 
 // RoomPage is the page of a room: the header, the editor of a new post (for a
@@ -193,7 +197,9 @@ type RoomData struct {
 templ RoomPage(d RoomData) {
 	@Layout(d.Room.Name, Sidebar(d.Sidebar)) {
 		@liveStream(RoomStreamPath(d.Room.ID, d.Feed.NewestID(), d.Feed.Before))
+		@NotifyPlace(PlaceKey(app.RoomRef(d.Room.ID)))
 		@RoomHeader(d)
+		@PlacePrefsDialog(d.Prefs)
 		<div class="room-body">
 			<section id="room-feed" class="room-feed">
 				<h2>Posts</h2>
@@ -246,6 +252,7 @@ templ RoomHeader(d RoomData) {
 		@formProblem(d.Message)
 		<div class="room-actions">
 			if d.Room.IsMember {
+				@PlacePrefsButton(d.Prefs)
 				<form class="action" id="leave-form" method="post" action={ templ.SafeURL(RoomPath(d.Room.ID) + "/leave") } data-on:submit={ FormPostConfirm(RoomPath(d.Room.ID)+"/leave", "Leave this room?") }>
 					<button type="submit" class="secondary">Leave</button>
 				</form>

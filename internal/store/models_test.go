@@ -185,6 +185,13 @@ func TestModelsRoundTrip(t *testing.T) {
 		{"UserSettings", "user_settings", func(f *fix) any {
 			return &UserSettings{UserID: f.user().ID, Theme: ThemeDark, Sound: false, BrowserNotifications: true}
 		}},
+		{"PlacePref", "place_prefs", func(f *fix) any {
+			u := f.user()
+			return &PlacePref{
+				UserID: u.ID, RoomID: &f.room(u).ID, Notify: PlaceNotifyAll, Sound: PlaceSoundOff,
+				IgnoreGroupMentions: true, MarkUnread: MarkUnreadMentions, Muted: true,
+			}
+		}},
 		{"AuditEvent", "audit_events", func(f *fix) any {
 			return &AuditEvent{
 				ActorID: f.user().ID, Action: ActionRoomRenamed, RoomID: 77, EntityType: EntityRoom, EntityID: 77,
@@ -235,8 +242,8 @@ func TestEveryModelIsMigrated(t *testing.T) {
 			t.Errorf("no table for %T", m)
 		}
 	}
-	if got := len(allModels()); got != 23 {
-		t.Errorf("%d models, want the 23 of SPEC §6.3", got)
+	if got := len(allModels()); got != 24 {
+		t.Errorf("%d models, want the 24 of SPEC §6.3", got)
 	}
 }
 
@@ -318,6 +325,18 @@ func TestUniqueConstraints(t *testing.T) {
 			u := f.user()
 			c := f.group(u)
 			return &ConversationMember{ConversationID: c.ID, UserID: u.ID}, &ConversationMember{ConversationID: c.ID, UserID: u.ID}
+		}},
+		{"place_prefs user,room", func(f *fix) (any, any) {
+			u := f.user()
+			r := f.room(u)
+			return &PlacePref{UserID: u.ID, RoomID: &r.ID, Notify: PlaceNotifyAll, Sound: PlaceSoundOn, MarkUnread: MarkUnreadAll},
+				&PlacePref{UserID: u.ID, RoomID: &r.ID, Notify: PlaceNotifyAll, Sound: PlaceSoundOn, MarkUnread: MarkUnreadAll}
+		}},
+		{"place_prefs user,conversation", func(f *fix) (any, any) {
+			u := f.user()
+			c := f.group(u)
+			return &PlacePref{UserID: u.ID, ConversationID: &c.ID, Notify: PlaceNotifyAll, Sound: PlaceSoundOn, MarkUnread: MarkUnreadAll},
+				&PlacePref{UserID: u.ID, ConversationID: &c.ID, Notify: PlaceNotifyAll, Sound: PlaceSoundOn, MarkUnread: MarkUnreadAll}
 		}},
 		{"message_attachments.storage_key", func(f *fix) (any, any) {
 			u := f.user()
@@ -442,6 +461,35 @@ func TestCheckConstraints(t *testing.T) {
 		{"user settings theme", "chk_user_settings_theme", func(f *fix) any {
 			return &UserSettings{UserID: f.user().ID, Theme: "neon", Sound: true}
 		}},
+		{"user settings notify", "chk_user_settings_notify", func(f *fix) any {
+			return &UserSettings{UserID: f.user().ID, Theme: ThemeSystem, Notify: "some", SoundName: SoundPurr, Replies: RepliesFollowing}
+		}},
+		{"user settings sound name", "chk_user_settings_sound_name", func(f *fix) any {
+			return &UserSettings{UserID: f.user().ID, Theme: ThemeSystem, Notify: NotifyAll, SoundName: "moo", Replies: RepliesFollowing}
+		}},
+		{"user settings replies", "chk_user_settings_replies", func(f *fix) any {
+			return &UserSettings{UserID: f.user().ID, Theme: ThemeSystem, Notify: NotifyAll, SoundName: SoundPurr, Replies: "some"}
+		}},
+		{"place prefs two places", "chk_place_prefs_one_place", func(f *fix) any {
+			u := f.user()
+			c := f.group(u)
+			return &PlacePref{UserID: u.ID, RoomID: &f.room(u).ID, ConversationID: &c.ID, Notify: PlaceNotifyAll, Sound: PlaceSoundOn, MarkUnread: MarkUnreadAll}
+		}},
+		{"place prefs no place", "chk_place_prefs_one_place", func(f *fix) any {
+			return &PlacePref{UserID: f.user().ID, Notify: PlaceNotifyAll, Sound: PlaceSoundOn, MarkUnread: MarkUnreadAll}
+		}},
+		{"place prefs notify", "chk_place_prefs_notify", func(f *fix) any {
+			u := f.user()
+			return &PlacePref{UserID: u.ID, RoomID: &f.room(u).ID, Notify: "some", Sound: PlaceSoundOn, MarkUnread: MarkUnreadAll}
+		}},
+		{"place prefs sound", "chk_place_prefs_sound", func(f *fix) any {
+			u := f.user()
+			return &PlacePref{UserID: u.ID, RoomID: &f.room(u).ID, Notify: PlaceNotifyAll, Sound: "loud", MarkUnread: MarkUnreadAll}
+		}},
+		{"place prefs mark unread", "chk_place_prefs_mark_unread", func(f *fix) any {
+			u := f.user()
+			return &PlacePref{UserID: u.ID, RoomID: &f.room(u).ID, Notify: PlaceNotifyAll, Sound: PlaceSoundOn, MarkUnread: "none"}
+		}},
 		{"audit details not JSON", "chk_audit_events_details_json", func(f *fix) any {
 			return &AuditEvent{ActorID: f.user().ID, Action: ActionRoomCreated, EntityType: EntityRoom, Details: "{"}
 		}},
@@ -551,6 +599,9 @@ func TestForeignKeyActions(t *testing.T) {
 		{"conversation_members", "user_id", "users", restrict},
 		{"conversation_members", "added_by", "users", restrict},
 		{"conversation_members", "last_read_message_id", "messages", setNull},
+		{"place_prefs", "user_id", "users", restrict},
+		{"place_prefs", "room_id", "rooms", cascade},
+		{"place_prefs", "conversation_id", "conversations", cascade},
 		{"messages", "conversation_id", "conversations", cascade},
 		{"messages", "author_id", "users", restrict},
 		{"messages", "reply_to_id", "messages", setNull},
@@ -638,6 +689,8 @@ func TestIndexes(t *testing.T) {
 		"uq_conversations_direct_key":               {"conversations", true, "direct_key"},
 		"uq_conversation_members_conversation_user": {"conversation_members", true, "conversation_id,user_id"},
 		"idx_conversation_members_user_id":          {"conversation_members", false, "user_id"},
+		"uq_place_prefs_user_room":                  {"place_prefs", true, "user_id,room_id"},
+		"uq_place_prefs_user_conversation":          {"place_prefs", true, "user_id,conversation_id"},
 		"idx_messages_conversation":                 {"messages", false, "conversation_id,id"},
 		"idx_message_attachments_message_id":        {"message_attachments", false, "message_id"},
 		"uq_message_attachments_storage_key":        {"message_attachments", true, "storage_key"},

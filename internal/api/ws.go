@@ -117,7 +117,14 @@ type wsEventMessage struct {
 	UserID         uint64 `json:"user_id,omitempty"`
 	ConversationID uint64 `json:"conversation_id,omitempty"`
 	MessageID      uint64 `json:"message_id,omitempty"`
-	Data           any    `json:"data,omitempty"`
+	// Ring is true on an event of the user's own topic that rings for the
+	// user (SPEC §7.15): the client plays Sound, and shows a notification of
+	// the system when Browser is true. The server decided it from the user's
+	// preferences.
+	Ring    bool   `json:"ring,omitempty"`
+	Sound   string `json:"sound,omitempty"`
+	Browser bool   `json:"browser,omitempty"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // wsResyncMessage tells the client that it missed events and must load again

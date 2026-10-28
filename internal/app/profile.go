@@ -27,6 +27,50 @@ const (
 	ThemeDark = store.ThemeDark
 )
 
+// NotifyLevel says what notifies a user, globally or in one place (SPEC
+// §7.15). It is the store's type.
+type NotifyLevel = store.NotifyLevel
+
+// The three global choices of "Notify me about".
+const (
+	// NotifyAll notifies about every new post and message.
+	NotifyAll = store.NotifyAll
+	// NotifyMentions notifies about mentions, replies, assignments, additions
+	// and every message of a direct or group conversation; it is the default.
+	NotifyMentions = store.NotifyMentions
+	// NotifyNothing notifies about nothing.
+	NotifyNothing = store.NotifyNothing
+)
+
+// SoundName names one of the four sounds (SPEC §7.15). It is the store's type.
+type SoundName = store.SoundName
+
+// The four sounds.
+const (
+	// SoundPurr is the default: a low, warm rumble.
+	SoundPurr = store.SoundPurr
+	// SoundChirp is two quick rising notes.
+	SoundChirp = store.SoundChirp
+	// SoundBell is one soft bell.
+	SoundBell = store.SoundBell
+	// SoundMeow is a sweep up and down.
+	SoundMeow = store.SoundMeow
+)
+
+// RepliesMode says which comments notify a user (SPEC §7.15). It is the
+// store's type.
+type RepliesMode = store.RepliesMode
+
+// The two choices for replies.
+const (
+	// RepliesFollowing notifies about every comment under a followed post; it
+	// is the default.
+	RepliesFollowing = store.RepliesFollowing
+	// RepliesDirect notifies only about a comment under the user's own post
+	// or comment.
+	RepliesDirect = store.RepliesDirect
+)
+
 // The names of the fields of the account forms in the metadata "fields" of a
 // TagInvalidInput error.
 const (
@@ -39,6 +83,12 @@ const (
 	FieldNewPasswordConfirm = "newPasswordConfirm"
 	// FieldTheme names the theme of the settings.
 	FieldTheme = "theme"
+	// FieldNotify names the global "Notify me about" of the settings.
+	FieldNotify = "notify"
+	// FieldSoundName names the sound of the settings.
+	FieldSoundName = "soundName"
+	// FieldReplies names the replies choice of the settings.
+	FieldReplies = "replies"
 )
 
 // Settings are the preferences of a user (SPEC §7.14, §7.15), which follow the
@@ -51,6 +101,12 @@ type Settings struct {
 	// BrowserNotifications is true when the user wants notifications of the
 	// browser.
 	BrowserNotifications bool
+	// Notify is what rings the sound and shows a browser notification.
+	Notify NotifyLevel
+	// SoundName is the sound that plays.
+	SoundName SoundName
+	// Replies says which comments notify the user.
+	Replies RepliesMode
 }
 
 // SettingsUpdate is a change of the settings. A nil field keeps the value.
@@ -61,6 +117,12 @@ type SettingsUpdate struct {
 	Sound *bool
 	// BrowserNotifications is the new value of the browser notifications.
 	BrowserNotifications *bool
+	// Notify is the new value of "Notify me about".
+	Notify *NotifyLevel
+	// SoundName is the new sound.
+	SoundName *SoundName
+	// Replies is the new replies choice.
+	Replies *RepliesMode
 }
 
 // PasswordChange is what a person gives to change their password.
@@ -336,8 +398,9 @@ func (a *Accounts) ChangePassword(ctx context.Context, actor Actor, sessionID ui
 }
 
 // Settings returns the settings of the actor: the defaults (the theme System,
-// the sound on, the browser notifications off) while none are saved. A disabled
-// or missing account fails with TagUnauthenticated.
+// the sound on and Purr, the browser notifications off, notify about mentions,
+// replies in followed threads) while none are saved. A disabled or missing
+// account fails with TagUnauthenticated.
 func (a *Accounts) Settings(ctx context.Context, actor Actor) (Settings, error) {
 	if _, err := a.activeUser(ctx, actor); err != nil {
 		return Settings{}, err
@@ -352,16 +415,11 @@ func (a *Accounts) Settings(ctx context.Context, actor Actor) (Settings, error) 
 // UpdateSettings changes the settings of the actor; a nil field of update keeps
 // its value. It returns the settings as they are now and publishes
 // live.KindSettingsChanged when something changed. An unknown theme fails with
-// TagInvalidInput (field "theme"); a disabled or missing account fails with
-// TagUnauthenticated.
+// TagInvalidInput (field "theme", "notify", "soundName" or "replies"); a
+// disabled or missing account fails with TagUnauthenticated.
 func (a *Accounts) UpdateSettings(ctx context.Context, actor Actor, update SettingsUpdate) (Settings, error) {
-	if update.Theme != nil {
-		switch *update.Theme {
-		case ThemeSystem, ThemeLight, ThemeDark:
-		default:
-			return Settings{}, errors.New(TagInvalidInput, "the theme does not exist",
-				"fields", map[string]string{FieldTheme: "Choose System, Light or Dark."})
-		}
+	if fields := checkSettingsUpdate(update); len(fields) > 0 {
+		return Settings{}, errors.New(TagInvalidInput, "the settings have mistakes", "fields", fields)
 	}
 	var row store.UserSettings
 	changed := false
@@ -385,7 +443,16 @@ func (a *Accounts) UpdateSettings(ctx context.Context, actor Actor, update Setti
 		if update.BrowserNotifications != nil {
 			row.BrowserNotifications = *update.BrowserNotifications
 		}
-		if row.Theme == before.Theme && row.Sound == before.Sound && row.BrowserNotifications == before.BrowserNotifications {
+		if update.Notify != nil {
+			row.Notify = *update.Notify
+		}
+		if update.SoundName != nil {
+			row.SoundName = *update.SoundName
+		}
+		if update.Replies != nil {
+			row.Replies = *update.Replies
+		}
+		if row == before {
 			return nil
 		}
 		changed = true
@@ -400,9 +467,47 @@ func (a *Accounts) UpdateSettings(ctx context.Context, actor Actor, update Setti
 	return settingsOf(row), nil
 }
 
+// checkSettingsUpdate returns the problems of a change of the settings, by
+// field; it is empty when the change is valid.
+func checkSettingsUpdate(update SettingsUpdate) map[string]string {
+	fields := map[string]string{}
+	if update.Theme != nil {
+		switch *update.Theme {
+		case ThemeSystem, ThemeLight, ThemeDark:
+		default:
+			fields[FieldTheme] = "Choose System, Light or Dark."
+		}
+	}
+	if update.Notify != nil {
+		switch *update.Notify {
+		case NotifyAll, NotifyMentions, NotifyNothing:
+		default:
+			fields[FieldNotify] = "Choose all new activity, mentions or nothing."
+		}
+	}
+	if update.SoundName != nil {
+		switch *update.SoundName {
+		case SoundPurr, SoundChirp, SoundBell, SoundMeow:
+		default:
+			fields[FieldSoundName] = "Choose Purr, Chirp, Bell or Meow."
+		}
+	}
+	if update.Replies != nil {
+		switch *update.Replies {
+		case RepliesFollowing, RepliesDirect:
+		default:
+			fields[FieldReplies] = "Choose threads I follow or only direct replies."
+		}
+	}
+	return fields
+}
+
 // settingsOf makes the Settings of a row.
 func settingsOf(row store.UserSettings) Settings {
-	return Settings{Theme: row.Theme, Sound: row.Sound, BrowserNotifications: row.BrowserNotifications}
+	return Settings{
+		Theme: row.Theme, Sound: row.Sound, BrowserNotifications: row.BrowserNotifications,
+		Notify: row.Notify, SoundName: row.SoundName, Replies: row.Replies,
+	}
 }
 
 const tagAvatarsUnavailable = "AvatarsUnavailable"

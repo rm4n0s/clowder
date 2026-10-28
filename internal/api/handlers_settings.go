@@ -38,6 +38,9 @@ type settingsPatch struct {
 	Theme                *string `json:"theme"`
 	Sound                *bool   `json:"sound"`
 	BrowserNotifications *bool   `json:"browser_notifications"`
+	Notify               *string `json:"notify"`
+	SoundName            *string `json:"sound_name"`
+	Replies              *string `json:"replies"`
 }
 
 // passwordRequest is the body of POST /me/password.
@@ -94,15 +97,19 @@ func checkProfilePatch(body profilePatch) error {
 // checkSettingsPatch checks that a change of the settings changes something: a
 // body with none of them fails with tagSettingsEmpty.
 func checkSettingsPatch(body settingsPatch) error {
-	if body.Theme == nil && body.Sound == nil && body.BrowserNotifications == nil {
+	if body.Theme == nil && body.Sound == nil && body.BrowserNotifications == nil &&
+		body.Notify == nil && body.SoundName == nil && body.Replies == nil {
 		return errors.New(tagSettingsEmpty, "the change has no setting",
-			"fields", map[string]string{"theme": messageSettingsEmpty, "sound": messageSettingsEmpty, "browser_notifications": messageSettingsEmpty})
+			"fields", map[string]string{
+				"theme": messageSettingsEmpty, "sound": messageSettingsEmpty, "browser_notifications": messageSettingsEmpty,
+				"notify": messageSettingsEmpty, "sound_name": messageSettingsEmpty, "replies": messageSettingsEmpty,
+			})
 	}
 	return nil
 }
 
-// getSettings answers GET /me/settings: the theme, the sound and the browser
-// notifications, with the defaults for a user who saved none.
+// getSettings answers GET /me/settings: the theme, the sound, the browser
+// notifications and what notifies, with the defaults for a user who saved none.
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	c, _ := callerFrom(r.Context())
 	settings, err := s.svc.Accounts.Settings(r.Context(), c.actor)
@@ -131,6 +138,18 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 	if body.Theme != nil {
 		theme := app.Theme(*body.Theme)
 		update.Theme = &theme
+	}
+	if body.Notify != nil {
+		level := app.NotifyLevel(*body.Notify)
+		update.Notify = &level
+	}
+	if body.SoundName != nil {
+		name := app.SoundName(*body.SoundName)
+		update.SoundName = &name
+	}
+	if body.Replies != nil {
+		mode := app.RepliesMode(*body.Replies)
+		update.Replies = &mode
 	}
 	settings, err := s.svc.Accounts.UpdateSettings(r.Context(), c.actor, update)
 	if err != nil {

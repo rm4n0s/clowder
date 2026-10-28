@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -84,6 +85,9 @@ type Room struct {
 	// CanManage is true when the asking actor may rename and delete the room:
 	// an admin, or the creator.
 	CanManage bool
+	// Muted is true when the asking actor muted the room (SPEC §7.15). Only
+	// Mine fills it.
+	Muted bool
 }
 
 // Member is a member of a room as the services show it.
@@ -213,13 +217,35 @@ func (r *Rooms) Visible(ctx context.Context, actor Actor) ([]Room, error) {
 }
 
 // Mine returns the rooms the actor is a member of, visible and private,
-// ordered by name.
+// ordered by name, except that the rooms the actor muted come last (SPEC
+// §7.15) and say so in Muted.
 func (r *Rooms) Mine(ctx context.Context, actor Actor) ([]Room, error) {
 	rows, err := r.st.ListRoomsOfUser(ctx, actor.UserID)
 	if err != nil {
 		return nil, err
 	}
-	return roomViews(ctx, r.st, actor, rows)
+	views, err := roomViews(ctx, r.st, actor, rows)
+	if err != nil {
+		return nil, err
+	}
+	prefs, err := r.st.PlacePrefsOfUser(ctx, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+	muted := map[uint64]bool{}
+	for _, p := range prefs {
+		if p.RoomID != nil && p.Muted {
+			muted[*p.RoomID] = true
+		}
+	}
+	if len(muted) == 0 {
+		return views, nil
+	}
+	for i := range views {
+		views[i].Muted = muted[views[i].ID]
+	}
+	sort.SliceStable(views, func(a, b int) bool { return !views[a].Muted && views[b].Muted })
+	return views, nil
 }
 
 // Get returns a room that the actor may read: a visible room, or a room the
@@ -347,6 +373,10 @@ func (r *Rooms) Leave(ctx context.Context, actor Actor, roomID uint64) error {
 			return err
 		}
 		if err := tx.DeleteRoomMember(ctx, m.ID); err != nil {
+			return err
+		}
+		// The preferences of the room end with the membership (SPEC §7.15).
+		if err := tx.DeletePlacePref(ctx, actor.UserID, store.RoomPlace(room.ID)); err != nil {
 			return err
 		}
 		events = memberEvents(room.ID, actor.UserID, live.KindMemberLeft)
@@ -510,6 +540,9 @@ func (r *Rooms) RemoveMember(ctx context.Context, actor Actor, roomID, userID ui
 			return err
 		}
 		if err := tx.DeleteRoomMember(ctx, m.ID); err != nil {
+			return err
+		}
+		if err := tx.DeletePlacePref(ctx, user.ID, store.RoomPlace(room.ID)); err != nil {
 			return err
 		}
 		events = memberEvents(room.ID, user.ID, live.KindMemberLeft)

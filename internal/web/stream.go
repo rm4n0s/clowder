@@ -216,11 +216,40 @@ func (ls *liveStream) counts(ctx context.Context) error {
 // nothing more to do with it.
 func (ls *liveStream) countsEvent(ctx context.Context, ev live.Event) (handled bool, err error) {
 	switch ev.Kind {
-	case live.KindNotificationCreated, live.KindNotificationRead,
-		live.KindConversationChanged, live.KindConversationRead:
+	case live.KindNotificationCreated:
+		if err := ls.counts(ctx); err != nil {
+			return true, err
+		}
+		return true, ls.ring(ctx, ev)
+	case live.KindPostCreated, live.KindMessageCreated:
+		// Only a user's own topic carries these two, and only when the event
+		// rings for that user (SPEC §7.15).
+		return true, ls.ring(ctx, ev)
+	case live.KindNotificationRead, live.KindConversationChanged, live.KindConversationRead:
 		return true, ls.counts(ctx)
 	}
 	return false, nil
+}
+
+// notifyEventsSelector is the element of every page of a logged-in user that
+// the script notify.js watches: what the stream appends to it rings.
+const notifyEventsSelector = "#notify-events"
+
+// ring tells the page script to ring for an event of the user's topic that
+// rings for the user: it appends the element of the notice to the page (SPEC
+// §7.15). The server decided already that the event rings, from the
+// preferences of the user; the page only obeys. An event that does not ring,
+// and one whose subject is gone or unreadable now, add nothing. The element
+// holds who did what and where, never the body.
+func (ls *liveStream) ring(ctx context.Context, ev live.Event) error {
+	if !ev.Ring {
+		return nil
+	}
+	n, ok, err := ls.s.svc.Prefs.Notice(ctx, ls.actor, ev)
+	if err != nil || !ok {
+		return err
+	}
+	return ls.patch(views.NotifyEvent(n), datastar.WithSelector(notifyEventsSelector), datastar.WithModeAppend())
 }
 
 // gone handles the error of a read that the stream makes for its user. A
