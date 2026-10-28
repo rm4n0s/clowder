@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/errors"
 )
 
 // callEnv is the calls service on the database of msgEnv, with the accounts
@@ -1139,6 +1141,263 @@ func TestCallsEndOpenAndFail(t *testing.T) {
 	if open, _ := e.calls.IsOpen(t.Context(), c.ID); open {
 		t.Error("the call is still open")
 	}
+}
+
+// fakeProcesses is a ProcessDirectory that knows which processes are alive.
+type fakeProcesses struct {
+	mu    sync.Mutex
+	alive map[string]bool
+	err   map[string]error
+	asked []string
+}
+
+func (f *fakeProcesses) Alive(_ context.Context, process string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.asked = append(f.asked, process)
+	if err := f.err[process]; err != nil {
+		return false, err
+	}
+	return f.alive[process], nil
+}
+
+func (f *fakeProcesses) askedAbout() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.asked)
+}
+
+// TestCallsEndOrphans: a call whose home process has had no live key at every
+// check for the grace period is ended as server_stopped, once, by whichever
+// process notices; the calls of live processes, of this one and of a process
+// that cannot be asked about are left alone, and so are the calls of a home
+// whose key is missing for less than the grace or comes back. The method
+// belongs to the system and takes no actor, as Expire and EndOpen do, so it has
+// no table of who may call it (SPEC §12).
+func TestCallsEndOrphans(t *testing.T) {
+	t.Parallel()
+	const dead, live1, flaky = "dddddddddddddddd", "1111111111111111", "ffffffffffffffff"
+	const grace = 20 * time.Second
+	directory := func() *fakeProcesses {
+		return &fakeProcesses{
+			alive: map[string]bool{live1: true},
+			err:   map[string]error{flaky: errors.New("TestRedisDown", "redis is down")},
+		}
+	}
+	config := func(dir *fakeProcesses) app.CallsConfig {
+		return app.CallsConfig{ProcessID: callTestProcess, Enabled: true, Processes: dir, OrphanGrace: grace}
+	}
+	// startOn starts a call as a process with another ID, on the same database.
+	startOn := func(e *callEnv, process, from string, conv uint64) app.Call {
+		t.Helper()
+		other := app.NewCalls(e.st, e.clk, app.CallsConfig{ProcessID: process, Enabled: true}, e.rec)
+		c, err := other.Start(t.Context(), e.as(from), conv, true)
+		if err != nil {
+			t.Fatalf("Start on %s: %+v", process, err)
+		}
+		return c
+	}
+	// pastTheGrace runs the first round, which only notes the missing home, lets
+	// the grace pass and returns what the checks after it did.
+	pastTheGrace := func(e *callEnv, svc *app.Calls) {
+		t.Helper()
+		// The error of a home that cannot be asked about is not the point here.
+		if n, _ := svc.EndOrphans(t.Context()); n != 0 {
+			t.Fatalf("the first EndOrphans ended %d calls, want nothing yet", n)
+		}
+		e.clk.Advance(grace)
+	}
+
+	t.Run("without a directory nothing is done", func(t *testing.T) {
+		t.Parallel()
+		e := newCallEnv(t)
+		startOn(e, dead, "alice", e.ab)
+		e.clk.Advance(time.Hour)
+		if n, err := e.calls.EndOrphans(t.Context()); err != nil || n != 0 {
+			t.Errorf("EndOrphans = %d, %v", n, err)
+		}
+	})
+
+	t.Run("a home missing for less than the grace ends nothing", func(t *testing.T) {
+		t.Parallel()
+		e := newCallEnvWith(t, config(directory()))
+		orphan := startOn(e, dead, "alice", e.ab)
+		for range 5 {
+			if n, err := e.calls.EndOrphans(t.Context()); err != nil || n != 0 {
+				t.Fatalf("EndOrphans = %d, %v", n, err)
+			}
+			e.clk.Advance(grace / 6)
+		}
+		if got, _ := e.calls.Get(t.Context(), e.as("alice"), orphan.ID); got.State == app.CallEnded {
+			t.Errorf("the call was ended before the grace: %+v", got)
+		}
+	})
+
+	t.Run("a key that comes back forgets the time it was missing", func(t *testing.T) {
+		t.Parallel()
+		dir := directory()
+		e := newCallEnvWith(t, config(dir))
+		const flapping = "aaaaaaaaaaaaaaaa"
+		call := startOn(e, flapping, "alice", e.ab)
+		// Redis lost every key: the home is missing for most of the grace...
+		if n, err := e.calls.EndOrphans(t.Context()); err != nil || n != 0 {
+			t.Fatalf("EndOrphans = %d, %v", n, err)
+		}
+		e.clk.Advance(grace - time.Second)
+		if n, _ := e.calls.EndOrphans(t.Context()); n != 0 {
+			t.Fatalf("ended %d calls before the grace", n)
+		}
+		// ... then the process refreshes its key.
+		dir.mu.Lock()
+		dir.alive[flapping] = true
+		dir.mu.Unlock()
+		if n, _ := e.calls.EndOrphans(t.Context()); n != 0 {
+			t.Fatalf("ended %d calls of a live home", n)
+		}
+		// Lost again later: the clock starts over, so a check just after the old
+		// deadline ends nothing.
+		dir.mu.Lock()
+		dir.alive[flapping] = false
+		dir.mu.Unlock()
+		e.clk.Advance(2 * time.Second)
+		if n, _ := e.calls.EndOrphans(t.Context()); n != 0 {
+			t.Fatalf("ended %d calls: the time of the first absence was not forgotten", n)
+		}
+		e.clk.Advance(grace - time.Second)
+		if n, _ := e.calls.EndOrphans(t.Context()); n != 0 {
+			t.Fatalf("ended %d calls before the second grace", n)
+		}
+		if got, _ := e.calls.Get(t.Context(), e.as("alice"), call.ID); got.State == app.CallEnded {
+			t.Errorf("the call was ended: %+v", got)
+		}
+	})
+
+	t.Run("a dead home ends its call once, and the others are left alone", func(t *testing.T) {
+		t.Parallel()
+		dir := directory()
+		e := newCallEnvWith(t, config(dir))
+		orphan := startOn(e, dead, "alice", e.ab)
+		livingCall := startOn(e, live1, "carol", e.cd)
+		ownConv := e.direct("erin", "admin")
+		own := e.start("erin", ownConv, true)
+		pastTheGrace(e, e.calls)
+		e.rec.Reset()
+		n, err := e.calls.EndOrphans(t.Context())
+		if err != nil || n != 1 {
+			t.Fatalf("EndOrphans = %d, %v; want 1", n, err)
+		}
+		got, err := e.calls.Get(t.Context(), e.as("alice"), orphan.ID)
+		if err != nil || got.State != app.CallEnded || got.EndReason != app.CallEndServerStopped || got.EndedBy != 0 {
+			t.Errorf("the orphan = %+v, %v", got, err)
+		}
+		for _, user := range []string{"alice", "bob"} {
+			if entries := e.entries(user, e.ab); len(entries) != 1 {
+				t.Errorf("%s: entries = %d, want 1", user, len(entries))
+			}
+		}
+		if ended := e.eventsOf(live.KindCallEnded); len(ended) != 2 {
+			t.Errorf("call.ended events = %+v, want one for each user", ended)
+		}
+		if still, _ := e.calls.Get(t.Context(), e.as("carol"), livingCall.ID); still.State == app.CallEnded {
+			t.Errorf("the call of a live process was ended: %+v", still)
+		}
+		if still, _ := e.calls.Get(t.Context(), e.as("erin"), own.ID); still.State == app.CallEnded {
+			t.Errorf("the call of this process was ended: %+v", still)
+		}
+		// This process is never asked about.
+		for _, asked := range dir.askedAbout() {
+			if asked == callTestProcess {
+				t.Errorf("asked about this process")
+			}
+		}
+		// A next round has nothing left to do and writes nothing more.
+		e.rec.Reset()
+		if n, err := e.calls.EndOrphans(t.Context()); err != nil || n != 0 {
+			t.Errorf("the next EndOrphans = %d, %v", n, err)
+		}
+		if kinds := e.kinds(); len(kinds) != 0 {
+			t.Errorf("the next round published %v", kinds)
+		}
+	})
+
+	t.Run("a home that cannot be asked about is left alone, and the error is returned", func(t *testing.T) {
+		t.Parallel()
+		dir := directory()
+		e := newCallEnvWith(t, config(dir))
+		unknown := startOn(e, flaky, "alice", e.ab)
+		orphan := startOn(e, dead, "carol", e.cd)
+		pastTheGrace(e, e.calls)
+		n, err := e.calls.EndOrphans(t.Context())
+		if appErr, ok := errors.FromError(err); !ok || appErr.Tag != "TestRedisDown" {
+			t.Fatalf("err = %v, want the error of the directory as it is", err)
+		}
+		if n != 1 {
+			t.Errorf("ended %d, want the call of the dead home only", n)
+		}
+		if got, _ := e.calls.Get(t.Context(), e.as("alice"), unknown.ID); got.State == app.CallEnded {
+			t.Errorf("a call was ended although its home could not be asked about: %+v", got)
+		}
+		if got, _ := e.calls.Get(t.Context(), e.as("carol"), orphan.ID); got.State != app.CallEnded {
+			t.Errorf("the call of the dead home was not ended: %+v", got)
+		}
+	})
+
+	t.Run("a home is asked about once a round for all its calls", func(t *testing.T) {
+		t.Parallel()
+		dir := directory()
+		e := newCallEnvWith(t, config(dir))
+		startOn(e, dead, "alice", e.ab)
+		startOn(e, dead, "carol", e.cd)
+		pastTheGrace(e, e.calls)
+		before := len(dir.askedAbout())
+		if n, err := e.calls.EndOrphans(t.Context()); err != nil || n != 2 {
+			t.Fatalf("EndOrphans = %d, %v; want 2", n, err)
+		}
+		if asked := dir.askedAbout()[before:]; !slices.Equal(asked, []string{dead}) {
+			t.Errorf("asked about %v, want the home once", asked)
+		}
+	})
+
+	t.Run("two processes that run it together end the call once", func(t *testing.T) {
+		t.Parallel()
+		dir := directory()
+		e := newCallEnvWith(t, config(dir))
+		second := app.NewCalls(e.st, e.clk, app.CallsConfig{ProcessID: "2222222222222222", Enabled: true, Processes: dir, OrphanGrace: grace}, e.rec)
+		orphan := startOn(e, dead, "alice", e.ab)
+		// Each process notes the missing home in its own memory.
+		for _, svc := range []*app.Calls{e.calls, second} {
+			if n, err := svc.EndOrphans(t.Context()); err != nil || n != 0 {
+				t.Fatalf("EndOrphans = %d, %v", n, err)
+			}
+		}
+		e.clk.Advance(grace)
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		total := 0
+		for _, svc := range []*app.Calls{e.calls, second, e.calls, second} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				n, err := svc.EndOrphans(t.Context())
+				if err != nil {
+					t.Errorf("EndOrphans: %+v", err)
+				}
+				mu.Lock()
+				total += n
+				mu.Unlock()
+			}()
+		}
+		wg.Wait()
+		if total != 1 {
+			t.Errorf("the processes ended %d calls, want 1", total)
+		}
+		if entries := e.entries("alice", e.ab); len(entries) != 1 {
+			t.Errorf("entries = %d, want 1", len(entries))
+		}
+		if got, _ := e.calls.Get(t.Context(), e.as("alice"), orphan.ID); got.EndReason != app.CallEndServerStopped {
+			t.Errorf("call = %+v", got)
+		}
+	})
 }
 
 func TestCallsSetMedia(t *testing.T) {

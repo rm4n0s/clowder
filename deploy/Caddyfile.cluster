@@ -28,6 +28,14 @@
 		# The live streams are server-sent events: send every write at once.
 		flush_interval -1
 
+		# The signalling WebSockets of the calls (/calls/<id>/ws and
+		# /api/v1/conversations/<id>/call/ws) pass as they are: reverse_proxy
+		# upgrades them by itself, and nothing here touches the Upgrade and
+		# Connection headers. Any process may get a socket: the one that does not
+		# hold the call relays it through Redis (SPEC D65). The media does not
+		# pass through Caddy at all: the browsers connect to the media port of the
+		# process that holds the call, which compose.cluster.yaml publishes.
+
 		# Caddy sets X-Forwarded-For to the address of the client (and does not
 		# trust a value that the client sent), which is what
 		# CLOWDER_TRUST_PROXY=true makes the login limiter count.

@@ -21,6 +21,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/calls"
 	"github.com/rm4n0s/clowder/internal/calls/callstest"
 	"github.com/rm4n0s/clowder/internal/clock"
+	"github.com/rm4n0s/clowder/internal/cluster"
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
@@ -63,29 +64,111 @@ func (c controller) Leave(ctx context.Context, id, user uint64) error {
 	return c.svc.Leave(ctx, app.Actor{UserID: user}, id)
 }
 
-// stack is a whole Clowder with calls: services, handlers, media server.
+// stack is a whole Clowder with calls: services, handlers, media server. Two
+// stacks on one database and one Redis are the two processes of a cluster
+// (cluster_test.go).
 type stack struct {
 	t        *testing.T
 	clk      *clock.Fake
+	st       *storetest.Store
+	hub      *live.Hub
 	accounts *app.Accounts
 	msgs     *app.Messages
 	calls    *app.Calls
 	media    *calls.Server
+	link     *cluster.CallLink
 	ts       *httptest.Server
+	id       string
 	users    map[string]app.User
 	api      map[string]string
 	cookies  map[string]string
+}
+
+// stackOptions choose how newStackWith builds a stack.
+type stackOptions struct {
+	// mediaCfg changes the configuration of the media server.
+	mediaCfg func(*calls.Config)
+	// logger receives the logs of the process; nil discards them.
+	logger *slog.Logger
+	// processID is the ID of the process; empty takes a fixed one.
+	processID string
+	// first is another process of the same cluster: the new stack shares its
+	// database and its users, and makes services, media server and handlers of
+	// its own.
+	first *stack
+	// redisURL, when set, makes the process a part of a cluster: its events go
+	// through the Redis bridge and its calls through the link (the relay, the
+	// key of the process and the check whether another is alive).
+	redisURL string
+	// link changes the configuration of the link of the process.
+	link func(*cluster.CallLinkConfig)
+	// orphanGrace is CallsConfig.OrphanGrace of the process (zero: the default).
+	orphanGrace time.Duration
+	// directory, when set, wraps what the process asks about the other
+	// processes, so that a test can make Redis lose every key.
+	directory func(app.ProcessDirectory) app.ProcessDirectory
+	// silent keeps the process from announcing itself in Redis, as one that
+	// died without a trace.
+	silent bool
 }
 
 // newStack starts everything. mediaCfg changes the configuration of the media
 // server.
 func newStack(t *testing.T, mediaCfg func(*calls.Config)) *stack {
 	t.Helper()
-	logger := slog.New(slog.DiscardHandler)
-	clk := clock.NewFake(epoch)
-	st := storetest.Open(t, clk)
+	return newStackWith(t, stackOptions{mediaCfg: mediaCfg})
+}
+
+// newStackWith starts everything as opts say.
+func newStackWith(t *testing.T, opts stackOptions) *stack {
+	t.Helper()
+	logger := opts.logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+	processID := opts.processID
+	if processID == "" {
+		processID = "0123456789abcdef"
+	}
+	var (
+		clk *clock.Fake
+		st  *storetest.Store
+	)
+	if opts.first != nil {
+		clk, st = opts.first.clk, opts.first.st
+	} else {
+		clk = clock.NewFake(epoch)
+		st = storetest.Open(t, clk)
+	}
 	hub := live.New()
 	t.Cleanup(hub.Close)
+	var pub app.Publisher = hub
+	var link *cluster.CallLink
+	if opts.redisURL != "" {
+		bridge, err := cluster.NewBridge(t.Context(), opts.redisURL, hub, logger)
+		if err != nil {
+			t.Fatalf("NewBridge: %+v", err)
+		}
+		t.Cleanup(func() {
+			if err := bridge.Close(); err != nil {
+				t.Errorf("bridge.Close: %+v", err)
+			}
+		})
+		pub = bridge
+		linkCfg := cluster.CallLinkConfig{RedisURL: opts.redisURL, ProcessID: processID, Logger: logger}
+		if opts.link != nil {
+			opts.link(&linkCfg)
+		}
+		link, err = cluster.NewCallLink(t.Context(), linkCfg)
+		if err != nil {
+			t.Fatalf("NewCallLink: %+v", err)
+		}
+		t.Cleanup(func() {
+			if err := link.Close(); err != nil {
+				t.Errorf("link.Close: %+v", err)
+			}
+		})
+	}
 	avatars, err := files.New(filepath.Join(t.TempDir(), "avatars"))
 	if err != nil {
 		t.Fatalf("files.New: %+v", err)
@@ -95,21 +178,31 @@ func newStack(t *testing.T, mediaCfg func(*calls.Config)) *stack {
 		t.Fatalf("files.New: %+v", err)
 	}
 	accounts := app.NewAccounts(st, clk, auth.FastHasher(), app.AccountsConfig{
-		InvitationLifetime: 7 * 24 * time.Hour, SessionLifetime: 30 * 24 * time.Hour, Publisher: hub, Avatars: avatars,
+		InvitationLifetime: 7 * 24 * time.Hour, SessionLifetime: 30 * 24 * time.Hour, Publisher: pub, Avatars: avatars,
 	})
-	msgs := app.NewMessages(st, clk, fileStore, app.MessagesConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4}, hub)
-	callSvc := app.NewCalls(st, clk, app.CallsConfig{ProcessID: "0123456789abcdef", Enabled: true, Logger: logger}, hub)
-	rooms := app.NewRooms(st, fileStore, logger, hub)
-	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4, Logger: logger}, hub)
-	board := app.NewBoard(st, clk, hub)
+	msgs := app.NewMessages(st, clk, fileStore, app.MessagesConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4}, pub)
+	callsCfg := app.CallsConfig{ProcessID: processID, Enabled: true, Logger: logger, OrphanGrace: opts.orphanGrace}
+	if link != nil {
+		callsCfg.Processes = link
+		if opts.directory != nil {
+			callsCfg.Processes = opts.directory(link)
+		}
+	}
+	callSvc := app.NewCalls(st, clk, callsCfg, pub)
+	rooms := app.NewRooms(st, fileStore, logger, pub)
+	posts := app.NewPosts(st, clk, markdown.New(), fileStore, app.PostsConfig{MaxAttachmentSize: 1 << 20, MaxAttachments: 4, Logger: logger}, pub)
+	board := app.NewBoard(st, clk, pub)
 	search := app.NewSearch(st)
 	audit := app.NewAudit(st)
-	notifs := app.NewNotifications(st, hub)
-	prefs := app.NewPrefs(st, hub)
+	notifs := app.NewNotifications(st, pub)
+	prefs := app.NewPrefs(st, pub)
 	keys := app.NewSSHKeys(st, clk, accounts, app.SSHServerInfo{})
 	cfg := calls.Config{Addr: "127.0.0.1:0", IncludeLoopback: true, Logger: logger}
-	if mediaCfg != nil {
-		mediaCfg(&cfg)
+	if link != nil {
+		cfg.ProcessID, cfg.Relay = processID, link
+	}
+	if opts.mediaCfg != nil {
+		opts.mediaCfg(&cfg)
 	}
 	media, err := calls.New(t.Context(), cfg, controller{svc: callSvc}, hub)
 	if err != nil {
@@ -120,6 +213,12 @@ func newStack(t *testing.T, mediaCfg func(*calls.Config)) *stack {
 			t.Errorf("media.Close: %+v", err)
 		}
 	})
+	if link != nil && !opts.silent {
+		udp, _ := media.Addr()
+		if err := link.Announce(t.Context(), udp.String()); err != nil {
+			t.Fatalf("Announce: %+v", err)
+		}
+	}
 	apiServer, err := api.New(api.Options{
 		Services: api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board,
 			Search: search, Audit: audit, Prefs: prefs, SSHKeys: keys, Calls: callSvc, Media: media, Hub: hub},
@@ -141,8 +240,12 @@ func newStack(t *testing.T, mediaCfg func(*calls.Config)) *stack {
 		ts.CloseClientConnections()
 		ts.Close()
 	})
-	s := &stack{t: t, clk: clk, accounts: accounts, msgs: msgs, calls: callSvc, media: media, ts: ts,
+	s := &stack{t: t, clk: clk, st: st, hub: hub, accounts: accounts, msgs: msgs, calls: callSvc, media: media, link: link, ts: ts, id: processID,
 		users: map[string]app.User{}, api: map[string]string{}, cookies: map[string]string{}}
+	if opts.first != nil {
+		s.users, s.api, s.cookies = opts.first.users, opts.first.api, opts.first.cookies
+		return s
+	}
 	for _, name := range []string{"admin", "alice", "bob", "carol"} {
 		// The roles are untyped constants: this package never imports the store.
 		inv, err := accounts.CreateSystemInvitation(t.Context(), "member")

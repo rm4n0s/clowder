@@ -52,7 +52,13 @@
 // watches. With -cluster the tool starts two servers on one new PostgreSQL
 // database, one Redis and one data directory, as compose.cluster.yaml does
 // (SPEC D41): the -other user acts on the first server and the screenshot is
-// taken on the second, so it shows a change that came through Redis. It needs
+// taken on the second, so it shows a change that came through Redis. With
+// -calls as well, both servers run their media server, each on a port of its
+// own, and a call that the -other user starts on the first has its home there
+// (SPEC D65): the user of the screenshot answers on the second, whose page
+// relays its signalling to the first through Redis, and the screenshot shows
+// the call (-other-click '[data-call-start="video"]', -other-hold, -click
+// '[data-call-answer="video"]' and a -wait of a few seconds). It needs
 // a PostgreSQL server where the user may create databases and a Redis server,
 // from -postgres-url and -redis-url or from CLOWDER_TEST_POSTGRES and
 // CLOWDER_TEST_REDIS (scripts/test-docker.sh starts both), and prints the

@@ -68,6 +68,7 @@ func (s *Server) callSocket(w http.ResponseWriter, r *http.Request) {
 	s.svc.Media.Serve(context.WithoutCancel(ctx), conn, calls.Join{
 		CallID: call.ID, ConversationID: call.ConversationID, CallerID: call.Caller.ID, CalleeID: call.Callee.ID,
 		UserID: user.ID,
+		Home:   call.Home,
 		Session: func(ctx context.Context) (websocket.StatusCode, string) {
 			sess, err := s.svc.Accounts.SessionActor(ctx, token)
 			switch {

@@ -1,0 +1,74 @@
+test-docker.sh: waiting for PostgreSQL on port 33775 and Redis on port 33776
+=== RUN   TestACallAcrossTwoProcesses
+    e2e_cluster_test.go:137: alice (first process) received 200 audio and 100 video packets; bob (second process) received 200 and 100
+    e2e_cluster_test.go:189: alice shares: the other side received 40 more video packets
+    e2e_cluster_test.go:189: bob shares: the other side received 40 more video packets
+    e2e_cluster_test.go:198: bob hung up through his socket; alice and bob were both told: ended (hangup)
+    e2e_cluster_test.go:210: the second process (the edge: bob's socket) logged 15 lines of the relay; the first (the home: the call and the media) 15
+    e2e_cluster_test.go:211: relay log of the second process, the edge (debug level; the types of the messages, never an SDP or a candidate):
+        time=2026-10-28T21:20:20.805+02:00 level=DEBUG msg="relay: join sent" call_id=1 user_id=3 home=e90833532025abed socket=2QTXSMONCBKO6SCK5V52EACUEW
+        time=2026-10-28T21:20:20.808+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=offer
+        time=2026-10-28T21:20:20.808+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.808+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.810+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=answer
+        time=2026-10-28T21:20:20.810+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.811+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.811+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.811+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.812+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:24.816+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=state
+        time=2026-10-28T21:20:27.978+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=hangup
+        time=2026-10-28T21:20:27.995+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=ended
+        time=2026-10-28T21:20:27.996+02:00 level=DEBUG msg="relay: close received" call_id=1 user_id=3 code=1000
+        time=2026-10-28T21:20:27.997+02:00 level=DEBUG msg="relay: leave sent" call_id=1 user_id=3
+    e2e_cluster_test.go:212: relay log of the first process, the home:
+        time=2026-10-28T21:20:20.805+02:00 level=DEBUG msg="relay: join received" call_id=1 user_id=3 edge=92330bc2a5734a7c
+        time=2026-10-28T21:20:20.808+02:00 level=DEBUG msg="relay: server message sent" call_id=1 user_id=3 edge=92330bc2a5734a7c type=offer
+        time=2026-10-28T21:20:20.808+02:00 level=DEBUG msg="relay: server message sent" call_id=1 user_id=3 edge=92330bc2a5734a7c type=candidate
+        time=2026-10-28T21:20:20.808+02:00 level=DEBUG msg="relay: server message sent" call_id=1 user_id=3 edge=92330bc2a5734a7c type=candidate
+        time=2026-10-28T21:20:20.810+02:00 level=DEBUG msg="relay: client message received" call_id=1 user_id=3 type=answer
+        time=2026-10-28T21:20:20.811+02:00 level=DEBUG msg="relay: client message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.811+02:00 level=DEBUG msg="relay: client message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.811+02:00 level=DEBUG msg="relay: client message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.812+02:00 level=DEBUG msg="relay: client message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:20.812+02:00 level=DEBUG msg="relay: client message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:24.816+02:00 level=DEBUG msg="relay: client message received" call_id=1 user_id=3 type=state
+        time=2026-10-28T21:20:27.978+02:00 level=DEBUG msg="relay: client message received" call_id=1 user_id=3 type=hangup
+        time=2026-10-28T21:20:27.994+02:00 level=DEBUG msg="relay: server message sent" call_id=1 user_id=3 edge=92330bc2a5734a7c type=ended
+        time=2026-10-28T21:20:27.996+02:00 level=DEBUG msg="relay: close sent" call_id=1 user_id=3 edge=92330bc2a5734a7c code=1000
+        time=2026-10-28T21:20:27.997+02:00 level=DEBUG msg="relay message dropped" why="the call has ended or is not held here" kind=leave call_id=1 user_id=3 socket=2QTXSMONCBKO6SCK5V52EACUEW from=92330bc2a5734a7c
+--- PASS: TestACallAcrossTwoProcesses (7.52s)
+=== RUN   TestTheHomeStoppingEndsTheCallForBoth
+=== RUN   TestTheHomeStoppingEndsTheCallForBoth/the_process_stops_and_removes_its_key
+    e2e_cluster_test.go:366: the process stops and removes its key: bob, on the second process, was told that the call ended (server_stopped); the loop of the second process ended 1 call; relay log of the second process:
+        time=2026-10-28T21:20:28.223+02:00 level=DEBUG msg="relay: join sent" call_id=1 user_id=3 home=4197b5290e94be54 socket=HAMFBSMZKOYPT3Y575UZ3NY2LQ
+        time=2026-10-28T21:20:28.228+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=offer
+        time=2026-10-28T21:20:28.228+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:28.229+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:28.232+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=answer
+        time=2026-10-28T21:20:28.233+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:28.234+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:28.234+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:28.234+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:28.235+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:29.833+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=ended
+        time=2026-10-28T21:20:29.833+02:00 level=DEBUG msg="relay: close received" call_id=1 user_id=3 code=1000
+        time=2026-10-28T21:20:29.834+02:00 level=DEBUG msg="relay: sending to the home failed" kind=leave call_id=1 err.Tag=CallNobodyListening err.Message="no process listens for the call messages" err.Route=CallLink.Send.CallNobodyListening err.Metadata="map[kind:leave to:4197b5290e94be54]" err.StackFrames="[{FuncName:Send StructName:CallLink PackageName:cluster}]"
+=== RUN   TestTheHomeStoppingEndsTheCallForBoth/the_process_dies_and_its_key_expires
+    e2e_cluster_test.go:366: the process dies and its key expires: bob, on the second process, was told that the call ended (server_stopped); the loop of the second process ended 1 call; relay log of the second process:
+        time=2026-10-28T21:20:30.377+02:00 level=DEBUG msg="relay: join sent" call_id=1 user_id=3 home=050c1fc969c9af6d socket=4DKZQ56ZPRMKX3LBFQTMTEU76O
+        time=2026-10-28T21:20:30.380+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=offer
+        time=2026-10-28T21:20:30.381+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:30.381+02:00 level=DEBUG msg="relay: server message received" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:30.383+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=answer
+        time=2026-10-28T21:20:30.383+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:30.384+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:30.384+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:30.384+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:30.384+02:00 level=DEBUG msg="relay: client message sent" call_id=1 user_id=3 type=candidate
+        time=2026-10-28T21:20:32.557+02:00 level=DEBUG msg="relay: sending to the home failed" kind=leave call_id=1 err.Tag=CallNobodyListening err.Message="no process listens for the call messages" err.Route=CallLink.Send.CallNobodyListening err.Metadata="map[kind:leave to:050c1fc969c9af6d]" err.StackFrames="[{FuncName:Send StructName:CallLink PackageName:cluster}]"
+--- PASS: TestTheHomeStoppingEndsTheCallForBoth (4.93s)
+    --- PASS: TestTheHomeStoppingEndsTheCallForBoth/the_process_stops_and_removes_its_key (2.19s)
+    --- PASS: TestTheHomeStoppingEndsTheCallForBoth/the_process_dies_and_its_key_expires (2.74s)
+PASS
+ok  	github.com/rm4n0s/clowder/internal/calls	13.553s

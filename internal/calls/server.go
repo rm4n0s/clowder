@@ -28,6 +28,10 @@ type Join struct {
 	CallerID uint64
 	CalleeID uint64
 	UserID   uint64
+	// Home is the ID of the process that holds the media of the call (SPEC
+	// D65). When it is not this process (Config.ProcessID) the socket is
+	// relayed to it; empty means this process.
+	Home string
 	// Session checks the session of the socket again, as D44 says. It returns
 	// 0 while the session is good, else the close code that ends the socket
 	// (4001 session ended, 4002 session changed) and its reason. Nil means
@@ -61,6 +65,11 @@ type Server struct {
 	mu     sync.Mutex
 	calls  map[uint64]*call
 	closed bool
+	// edges are the sockets of this process whose call is held by another
+	// one, by socket ID (relay.go).
+	edges map[string]*edgeSocket
+	// relay is Config.Relay, nil when the process runs alone.
+	relay Relay
 }
 
 // New opens the UDP and TCP ports of cfg.Addr, makes the one webrtc.API of the
@@ -70,6 +79,9 @@ type Server struct {
 // when the API cannot be made.
 func New(ctx context.Context, cfg Config, ctl Controller, events Events) (*Server, error) {
 	cfg = cfg.withDefaults()
+	if cfg.Relay != nil && cfg.ProcessID == "" {
+		return nil, errors.New(TagSetupFailed, "a relay needs the ID of the process", "step", "relay")
+	}
 	ports, err := listenMedia(ctx, cfg.Addr, cfg.Logger)
 	if err != nil {
 		return nil, err
@@ -104,11 +116,19 @@ func New(ctx context.Context, cfg Config, ctl Controller, events Events) (*Serve
 		return nil, err
 	}
 	sctx, cancel := context.WithCancel(ctx)
-	return &Server{
+	s := &Server{
 		cfg: cfg, logger: cfg.Logger, ctl: ctl, events: events, api: api,
 		udpMux: ports.udp, tcpMux: ports.tcp, udpAddr: ports.udpAddr, tcpAddr: ports.tcpAddr,
-		ctx: sctx, cancel: cancel, calls: map[uint64]*call{},
-	}, nil
+		ctx: sctx, cancel: cancel, calls: map[uint64]*call{}, edges: map[string]*edgeSocket{}, relay: cfg.Relay,
+	}
+	if s.relay != nil {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.runRelay(s.relay.Messages())
+		}()
+	}
+	return s, nil
 }
 
 // Addr returns the UDP and TCP addresses the server listens on, which differ

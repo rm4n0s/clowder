@@ -50,6 +50,15 @@ type Config struct {
 	// the tests and a local trial on 127.0.0.1 need. A loopback PublicIP does
 	// it as well.
 	IncludeLoopback bool
+	// ProcessID is the ID of this process, the one the service of the calls
+	// records as the home of the calls it starts (SPEC D65). A socket whose
+	// call has another home is relayed to that process (Relay). Empty means a
+	// process that is alone: every call is its own.
+	ProcessID string
+	// Relay carries the signalling of the participants whose socket reached
+	// this process while their call is held by another one (SPEC D65); nil
+	// when the process runs alone. It needs ProcessID.
+	Relay Relay
 	// Logger receives the state changes and the failures; nil logs nothing.
 	// Nothing of the media, no SDP and no candidate is logged at info level.
 	Logger *slog.Logger

@@ -120,7 +120,15 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	if err != nil {
 		return err
 	}
-	callSvc := app.NewCalls(st, clock.Real(), app.CallsConfig{
+	// With Redis the process announces itself and relays the sockets of the
+	// calls that other processes hold (SPEC D65). Its key is removed after the
+	// calls of the process were ended (the deferred calls run in reverse).
+	link, closeLink, err := newCallLink(ctx, cfg.RedisURL, processID, logger, openCallLink)
+	if err != nil {
+		return err
+	}
+	defer closeLink()
+	callsConfig := app.CallsConfig{
 		ProcessID: processID,
 		Enabled:   cfg.MediaAddr != "",
 		MaxCalls:  cfg.MaxCalls,
@@ -128,17 +136,22 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		// hand-made configuration has.
 		RingTimeout: cfg.CallRingTimeout,
 		Logger:      logger,
-	}, pub)
+	}
+	if link != nil {
+		callsConfig.Processes = link
+	}
+	callSvc := app.NewCalls(st, clock.Real(), callsConfig, pub)
 	// A run without Redis starts with no call alive: whatever the database says
 	// is open belongs to an earlier run.
 	if err := endCallsAtStart(ctx, callSvc, cfg, logger); err != nil {
 		return err
 	}
-	// The deferred calls run in reverse order: the media server stops (and
-	// closes every socket) before the calls of the process are ended, and both
-	// before the hub and the store close.
+	// The deferred calls run in reverse order: the expirer and the media server
+	// stop (and close every socket) before the calls of the process are ended,
+	// and those before the key of the process is removed, the hub and the
+	// store close.
 	defer endCallsAtStop(ctx, callSvc, processID, logger)
-	media, stopMedia, err := startMedia(ctx, cfg, callSvc, hub, logger)
+	media, stopMedia, err := startMedia(ctx, cfg, callSvc, hub, processID, link, logger)
 	if err != nil {
 		return err
 	}

@@ -15,7 +15,10 @@
 #
 # It also checks that the SSH server of the sign-in codes answers on its port
 # with an SSH banner (SSH-2.0-); with -cluster, that only the first Clowder
-# process runs it.
+# process runs it, and that the media server of the calls listens on its port
+# (TCP, with the UDP port published); with -cluster, that both processes do, each
+# on a port of its own (7882 and 7883), and that each has announced itself in
+# Redis with the key clowder:process:<id> (SPEC D65).
 #
 # It never touches the compose project of a developer: it uses its own project
 # name, its own image tag, a free port and a temporary env file with a random
@@ -88,6 +91,14 @@ media_port=$(free_port) || {
 if [[ $media_port == "$port" || $media_port == "$ssh_port" ]]; then
 	media_port=$((port + 2))
 fi
+# The second Clowder process of the cluster has a media port of its own.
+media_port2=$(free_port) || {
+	echo "compose-smoke.sh: no free port found" >&2
+	exit 2
+}
+if [[ $media_port2 == "$port" || $media_port2 == "$ssh_port" || $media_port2 == "$media_port" ]]; then
+	media_port2=$((port + 3))
+fi
 base_url="http://localhost:$port"
 password=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
 
@@ -96,6 +107,7 @@ CLOWDER_DB_PASSWORD=$password
 CLOWDER_PORT=$port
 CLOWDER_SSH_PORT=$ssh_port
 CLOWDER_MEDIA_PORT=$media_port
+CLOWDER_MEDIA_PORT2=$media_port2
 CLOWDER_BASE_URL=$base_url
 ENV
 # The compose project builds its own tag, so that clowder:local of a developer
@@ -229,31 +241,52 @@ done
 echo "banner: ${banner%$'\r'}"
 [[ $banner == SSH-2.0-* ]] || fail "the SSH port did not answer with an SSH banner"
 
-if $cluster; then
-	step "calls are off in the cluster: no media server and no media port"
-	if dc logs --no-color clowder clowder2 2>&1 | grep -q 'media server listening'; then
-		fail "a process of the cluster started the media server"
-	fi
-	if (exec 3<>"/dev/tcp/127.0.0.1/$media_port") 2>/dev/null; then
-		fail "the media port $media_port is open in the cluster"
-	fi
-	echo "no media server, port $media_port closed"
-else
-	step "the media server listens on port $media_port (TCP, and UDP in the published ports)"
-	media_ok=
+# media_check SERVICE CONTAINER_PORT HOST_PORT checks that the media server of the
+# service listens: the TCP port accepts, the log says so, and the UDP port is
+# published under the host port.
+media_check() {
+	local svc=$1 container_port=$2 host_port=$3 ok=
 	for _ in $(seq 1 20); do
-		if (exec 3<>"/dev/tcp/127.0.0.1/$media_port") 2>/dev/null; then
-			media_ok=1
+		if (exec 3<>"/dev/tcp/127.0.0.1/$host_port") 2>/dev/null; then
+			ok=1
 			break
 		fi
 		sleep 0.5
 	done
-	[[ -n $media_ok ]] || fail "the media port $media_port did not accept a TCP connection"
-	dc logs --no-color clowder >"$tmp/clowder.log" 2>&1 || fail "could not read the log of clowder"
-	grep -q 'media server listening' "$tmp/clowder.log" || fail "clowder logged no media server"
-	dc port --protocol udp clowder 7882 >"$tmp/udp-port.txt" || fail "the UDP media port is not published"
-	grep -q ":$media_port" "$tmp/udp-port.txt" || fail "the UDP media port is not published on $media_port: $(cat "$tmp/udp-port.txt")"
-	echo "TCP $media_port accepts; UDP $media_port is published"
+	[[ -n $ok ]] || fail "$svc: the media port $host_port did not accept a TCP connection"
+	dc logs --no-color "$svc" >"$tmp/$svc.log" 2>&1 || fail "could not read the log of $svc"
+	grep -q 'media server listening' "$tmp/$svc.log" || fail "$svc logged no media server"
+	dc port --protocol udp "$svc" "$container_port" >"$tmp/$svc-udp-port.txt" || fail "$svc: the UDP media port is not published"
+	grep -q ":$host_port" "$tmp/$svc-udp-port.txt" || fail "$svc: the UDP media port is not published on $host_port: $(cat "$tmp/$svc-udp-port.txt")"
+	echo "$svc: TCP $host_port accepts; UDP $host_port is published"
+}
+
+if $cluster; then
+	step "the media servers of both processes listen, each on a port of its own"
+	[[ $media_port != "$media_port2" ]] || fail "the two media ports are the same: $media_port"
+	media_check clowder 7882 "$media_port"
+	media_check clowder2 7883 "$media_port2"
+
+	step "both processes announced themselves in Redis (clowder:process:<id>, with the media address)"
+	keys=
+	for _ in $(seq 1 20); do
+		keys=$(dc exec -T redis redis-cli --raw keys 'clowder:process:*' | tr -d '\r' | sort || true)
+		[[ $(grep -c . <<<"$keys") == 2 ]] && break
+		sleep 0.5
+	done
+	[[ $(grep -c . <<<"$keys") == 2 ]] || fail "expected two process keys in Redis, found: $keys"
+	for key in $keys; do
+		value=$(dc exec -T redis redis-cli --raw get "$key" | tr -d '\r')
+		ttl=$(dc exec -T redis redis-cli --raw ttl "$key" | tr -d '\r')
+		echo "$key = $value (expires in ${ttl}s)"
+		[[ $value == *:7882 || $value == *:7883 ]] || fail "$key does not hold a media address: $value"
+		((ttl > 0 && ttl <= 15)) || fail "$key has the time to live $ttl, want 1-15"
+	done
+	grep -q ':7882' <<<"$(for k in $keys; do dc exec -T redis redis-cli --raw get "$k"; done)" || fail "no process announced port 7882"
+	grep -q ':7883' <<<"$(for k in $keys; do dc exec -T redis redis-cli --raw get "$k"; done)" || fail "no process announced port 7883"
+else
+	step "the media server listens on port $media_port (TCP, and UDP in the published ports)"
+	media_check clowder 7882 "$media_port"
 fi
 
 if $cluster; then

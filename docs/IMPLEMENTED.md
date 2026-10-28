@@ -1703,3 +1703,38 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - The ring's timeout is a flag, added for the tests; its default is the 45 seconds of §7.18.
   - The tab that clicked the start button, or the one that answered, takes part; other tabs of the conversation only show the call and can hang it up.
   - The manager's fix of a test of 21.5: `TestServiceWorkerCachesOnlyStatic` failed once under load, waiting for the worker to claim the page; the helper now waits for the worker to be active and loads the page again when the claim is late.
+
+## 22.3 Calls across processes
+- **Date:** 2026-10-28
+- **Branch:** feat/step-22.3-cluster-calls
+- **Summary:**
+  - The home of a call (the process that handled `Start`) holds both peer connections. The media of both participants goes straight to the home's own port, and nothing of the media passes through Redis or another process.
+  - `internal/cluster.CallLink`:
+    - the Redis channel `clowder:calls:<process>`;
+    - the key `clowder:process:<id>` with the process's media address, a TTL of 15 s, refreshed every 5 s by a goroutine that `serve` owns, deleted on a graceful shutdown after the process has ended its calls.
+  - **The relay** (`internal/calls/relay.go`, envelopes `join`, `client`, `leave`, `server` and `close`). The process whose socket a participant reached (the edge) keeps the socket, its pings, the session checks and the D44 codes. The home treats that participant like a local one, and `internal/calls` stays free of go-redis.
+    - The edge also follows its user's events: `call.ended` closes the socket, so the participant learns of a home that died.
+    - A message for an ended call, an unknown participant or a replaced socket is dropped and logged at debug.
+  - **Dead homes:** `app.Calls.EndOrphans`, run by every process's expirer every second, ends as `server_stopped` the open calls whose home's key has been missing for longer than a grace period of 20 s, once even with several processes. A Redis that restarts and loses its keys therefore ends no call, because the processes write their keys again within 5 s. A dead home's calls end within about 35 s.
+  - `compose.cluster.yaml` turns calls on in both processes, with the media ports 7882 and 7883 (`CLOWDER_MEDIA_PORT2`) over UDP and TCP. `scripts/compose-smoke.sh -cluster` checks both ports and both keys.
+  - The internal test client of `internal/calls` is folded into `callstest`.
+- **Main files:** `internal/calls/{relay,server,participant}.go`, `internal/cluster/calllink.go`, `internal/app/calls.go`, `cmd/clowder/{calls,serve}.go`, `internal/web/calls.go`, `internal/api/handlers_calls.go`, `compose.cluster.yaml`, `Caddyfile`, `.env.example`, `scripts/compose-smoke.sh`, `docs/SPEC.md`, `docs/API.md`, `README.md`, `CLAUDE.md` (the layout line of `internal/cluster`).
+- **Tests:**
+  - cluster: the link on a fake Redis and on real Redis (delivery, order, failures, malformed messages, the key's life), and a route test for every new tag;
+  - `internal/calls`, on an in-memory relay that always runs: two servers in one call, 13 cases of dropped messages, and the candidates naming the home's port;
+  - real Redis:
+    - a call across two processes with a screen share both ways, one hang-up entry, through the sockets of the API and of the pages;
+    - a role change closing the socket on the edge with 4002;
+    - the home stopping, gracefully and by its key expiring;
+    - a dead home ended once by two loops;
+    - the grace period: a short absence, and all keys lost and written again, end nothing;
+  - `EndOrphans` with two processes, and `serve` making and removing its key;
+  - browser: `TestACallBetweenTwoProcesses` and `TestTheCallEndsForBobWhenItsHomeStops`.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · compose-smoke ✅ (also `-cluster`) · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [cluster call](implemented-proof-images/22.3-cluster-call.png) · [relay log](implemented-proof-images/22.3-cluster-call.txt)
+  - bob's page on the second process in a call with alice on the first; the relay's log of both processes (the join, the messages by type, the hang-up, the end), 200 audio and 100 video packets each way, and the home stopping.
+- **Manual checks:** none. A WebSocket through Caddy was not run; `deploy_test.go` checks that the Caddyfile leaves the upgrade headers alone.
+- **Deviations and follow-ups:**
+  - With Redis, a restarted process no longer ends its old calls at start: they end when the old key has been missing for the grace period, so a user may see "in another call" for up to about 35 s.
+  - The worker first accepted that a Redis that lost its data could end live calls; the manager sent it back to add the grace period.

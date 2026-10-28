@@ -31,6 +31,24 @@ const (
 	closeReplaced websocket.StatusCode = 4003
 )
 
+// signalSocket is the signalling channel of one participant as the call sees
+// it: a WebSocket of this process (socket), or, when the participant reached
+// another process, a relay through Redis to that process (remoteSocket,
+// SPEC D65). The goroutine of the call is the only one that attaches and
+// replaces them.
+type signalSocket interface {
+	// uid is the ID of the user of the participant.
+	uid() uint64
+	// send queues a message for the client; it never blocks.
+	send(m serverMessage)
+	// finish closes the channel after the queued messages are sent, with the
+	// close code and reason for the client. The first call decides.
+	finish(code websocket.StatusCode, reason string)
+	// checkSession reads the session of the socket again and ends it with the
+	// close code of SPEC D44 when it is gone.
+	checkSession(ctx context.Context)
+}
+
 // socket is the signalling WebSocket of one participant. A goroutine writes
 // the messages in order, another pings the client, and the handler of Serve
 // reads; Close of the server waits for all three.
@@ -53,6 +71,9 @@ type socket struct {
 	// writerDone is closed when the writer has closed the connection.
 	writerDone chan struct{}
 }
+
+// uid implements signalSocket.
+func (k *socket) uid() uint64 { return k.userID }
 
 // newSocket makes the socket of a connection; the writer is started by
 // start.

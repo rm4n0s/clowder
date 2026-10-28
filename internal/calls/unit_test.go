@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pion/webrtc/v4"
+	"github.com/rm4n0s/clowder/internal/calls/callstest"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/errors"
 )
@@ -191,22 +192,17 @@ func TestWithDefaults(t *testing.T) {
 func TestPublicIPIsAnnouncedAsTheHostCandidate(t *testing.T) {
 	r := newRig(t, Config{PublicIP: "127.0.0.1"})
 	r.ctl.add(callID, callerID, calleeID, true)
-	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), clientOptions{})
-	waitFor(t, "the server's candidates", 10*time.Second, func() bool {
-		alice.mu.Lock()
-		defer alice.mu.Unlock()
-		return len(alice.candidates) > 0
-	})
-	alice.mu.Lock()
-	defer alice.mu.Unlock()
-	for _, c := range alice.candidates {
+	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
+	callstest.WaitFor(t, "the server's candidates", 10*time.Second, func() bool { return len(alice.Candidates()) > 0 })
+	candidates := alice.Candidates()
+	for _, c := range candidates {
 		if !strings.Contains(c, " 127.0.0.1 ") || !strings.Contains(c, "typ host") {
 			t.Errorf("candidate %q is not the public IP as a host candidate", c)
 		}
 	}
 	_, tcp := r.srv.Addr()
-	if !strings.Contains(strings.Join(alice.candidates, "\n"), strconv.Itoa(tcp.(*net.TCPAddr).Port)) {
-		t.Errorf("candidates %v do not name the media port", alice.candidates)
+	if !strings.Contains(strings.Join(candidates, "\n"), strconv.Itoa(tcp.(*net.TCPAddr).Port)) {
+		t.Errorf("candidates %v do not name the media port", candidates)
 	}
 }
 
@@ -261,10 +257,10 @@ func TestOnlyThisPackageImportsPion(t *testing.T) {
 func TestAttachFailuresAreTagged(t *testing.T) {
 	r := newRig(t, Config{})
 	r.ctl.add(callID, callerID, calleeID, true)
-	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), clientOptions{})
+	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
 	_ = alice
 	var c *call
-	waitFor(t, "the call", 5*time.Second, func() bool {
+	callstest.WaitFor(t, "the call", 5*time.Second, func() bool {
 		r.srv.mu.Lock()
 		defer r.srv.mu.Unlock()
 		c = r.srv.calls[callID]
@@ -292,9 +288,9 @@ func TestAttachFailuresAreTagged(t *testing.T) {
 func TestAnOfferOnAClosedPeerConnectionIsTagged(t *testing.T) {
 	r := newRig(t, Config{})
 	r.ctl.add(callID, callerID, calleeID, true)
-	r.dial("alice", r.url(callID, callerID, calleeID, callerID), clientOptions{})
+	r.dial("alice", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
 	var c *call
-	waitFor(t, "the call", 5*time.Second, func() bool {
+	callstest.WaitFor(t, "the call", 5*time.Second, func() bool {
 		r.srv.mu.Lock()
 		defer r.srv.mu.Unlock()
 		c = r.srv.calls[callID]

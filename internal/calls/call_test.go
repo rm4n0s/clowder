@@ -1,7 +1,6 @@
 package calls
 
 import (
-	"context"
 	"net"
 	"runtime"
 	"strings"
@@ -12,7 +11,7 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
-	"github.com/pion/webrtc/v4/pkg/media"
+	"github.com/rm4n0s/clowder/internal/calls/callstest"
 	"github.com/rm4n0s/clowder/internal/live"
 )
 
@@ -23,7 +22,7 @@ const (
 )
 
 // startCall puts an active call in the rig and joins both clients.
-func startCall(t *testing.T, r *rig, a, b clientOptions) (alice, bob *client) {
+func startCall(t *testing.T, r *rig, a, b callstest.Options) (alice, bob *callstest.Client) {
 	t.Helper()
 	r.ctl.add(callID, callerID, calleeID, true)
 	alice = r.dial("alice", r.url(callID, callerID, calleeID, callerID), a)
@@ -33,39 +32,33 @@ func startCall(t *testing.T, r *rig, a, b clientOptions) (alice, bob *client) {
 
 func TestTwoClientsReceiveEachOthersMedia(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	alice.receiving(t, 25, 15*time.Second)
-	bob.receiving(t, 25, 15*time.Second)
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	alice.Receiving(t, 25, 15*time.Second)
+	bob.Receiving(t, 25, 15*time.Second)
 	t.Logf("alice received audio %d video %d; bob received audio %d video %d",
-		alice.audioIn.Load(), alice.videoIn.Load(), bob.audioIn.Load(), bob.videoIn.Load())
+		alice.AudioIn(), alice.VideoIn(), bob.AudioIn(), bob.VideoIn())
 
 	// Both PeerConnections got the video limit in the offer (SPEC D64).
-	for _, c := range []*client{alice, bob} {
-		offer, _ := c.lastOffer.Load().(string)
+	for _, c := range []*callstest.Client{alice, bob} {
+		offer := c.LastOffer()
 		if !strings.Contains(offer, "b=AS:2500\r\n") || !strings.Contains(offer, "b=TIAS:2500000\r\n") {
-			t.Errorf("%s: the offer has no bandwidth lines:\n%s", c.name, offer)
+			t.Errorf("%s: the offer has no bandwidth lines:\n%s", c.Name(), offer)
 		}
 		if audio := offer[:strings.Index(offer, "m=video")]; strings.Contains(audio, "b=AS") {
-			t.Errorf("%s: the audio section has a bandwidth line", c.name)
+			t.Errorf("%s: the audio section has a bandwidth line", c.Name())
 		}
 		if strings.Contains(offer, "H264") {
-			t.Errorf("%s: the offer has H.264", c.name)
+			t.Errorf("%s: the offer has H.264", c.Name())
 		}
 		if !strings.Contains(offer, "opus/48000/2") || !strings.Contains(offer, "VP8/90000") {
-			t.Errorf("%s: the offer lacks Opus or VP8", c.name)
+			t.Errorf("%s: the offer lacks Opus or VP8", c.Name())
 		}
 	}
 	// And REMB says it on the wire.
-	waitFor(t, "REMB", 10*time.Second, func() bool {
-		alice.mu.Lock()
-		defer alice.mu.Unlock()
-		return len(alice.rembs) > 0
-	})
-	alice.mu.Lock()
-	if got := alice.rembs[0]; got < 2.4e6 || got > 2.6e6 {
+	callstest.WaitFor(t, "REMB", 10*time.Second, func() bool { return len(alice.REMBs()) > 0 })
+	if got := alice.REMBs()[0]; got < 2.4e6 || got > 2.6e6 {
 		t.Errorf("REMB = %v, want about 2.5 Mbit/s", got)
 	}
-	alice.mu.Unlock()
 
 	// Nothing of the media, no SDP and no candidate is logged above debug.
 	for _, line := range strings.Split(r.logs.String(), "\n") {
@@ -78,62 +71,32 @@ func TestTwoClientsReceiveEachOthersMedia(t *testing.T) {
 	}
 }
 
-// videoSender returns the RTPSender of the client's video.
-func videoSender(t *testing.T, c *client) *webrtc.RTPSender {
-	t.Helper()
-	for _, s := range c.pc.GetSenders() {
-		if s.Track() != nil && s.Track().Kind() == webrtc.RTPCodecTypeVideo {
-			return s
-		}
-	}
-	t.Fatalf("%s has no video sender", c.name)
-	return nil
-}
-
 func TestScreenShareKeepsTheOtherSideReceiving(t *testing.T) {
 	tests := []struct {
 		name string
 		// replace puts a screen in place of the camera on the transceiver.
-		replace func(t *testing.T, c *client)
+		replace func(c *callstest.Client) error
 	}{
-		{"a track that goes on numbering the packets, as a browser does", func(t *testing.T, c *client) {
-			screen, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000}, "screen", "alice")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := videoSender(t, c).ReplaceTrack(screen); err != nil {
-				t.Fatalf("ReplaceTrack: %v", err)
-			}
-			c.video.Store(screen)
-		}},
-		{"a track with sequence numbers and timestamps of its own", func(t *testing.T, c *client) {
-			screen, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000}, "screen", "alice")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := videoSender(t, c).ReplaceTrack(screen); err != nil {
-				t.Fatalf("ReplaceTrack: %v", err)
-			}
-			c.videoSample.Store(screen)
-		}},
+		{"a track that goes on numbering the packets, as a browser does", (*callstest.Client).ShareScreenRTP},
+		{"a track with sequence numbers and timestamps of its own", (*callstest.Client).ShareScreenSample},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newRig(t, Config{})
-			alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-			bob.receiving(t, 20, 15*time.Second)
-			offers := alice.offers.Load()
-			tt.replace(t, alice)
-			before := bob.videoIn.Load()
-			waitFor(t, "bob to keep receiving video", 10*time.Second, func() bool { return bob.videoIn.Load()-before >= 40 })
-			if alice.offers.Load() != offers {
-				t.Errorf("the screen share caused %d new offers, want none", alice.offers.Load()-offers)
+			alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+			bob.Receiving(t, 20, 15*time.Second)
+			offers := alice.Offers()
+			if err := tt.replace(alice); err != nil {
+				t.Fatalf("replacing the camera: %v", err)
+			}
+			before := bob.VideoIn()
+			callstest.WaitFor(t, "bob to keep receiving video", 10*time.Second, func() bool { return bob.VideoIn()-before >= 40 })
+			if alice.Offers() != offers {
+				t.Errorf("the screen share caused %d new offers, want none", alice.Offers()-offers)
 			}
 			// The packets of both sources leave the server on one SSRC.
-			bob.mu.Lock()
-			defer bob.mu.Unlock()
-			if len(bob.videoSSRCs) != 1 {
-				t.Errorf("bob saw the video on %d SSRCs, want 1: %v", len(bob.videoSSRCs), bob.videoSSRCs)
+			if got := bob.VideoSSRCs(); len(got) != 1 {
+				t.Errorf("bob saw the video on %d SSRCs, want 1: %v", len(got), got)
 			}
 		})
 	}
@@ -141,73 +104,71 @@ func TestScreenShareKeepsTheOtherSideReceiving(t *testing.T) {
 
 func TestKeyFrameRequestsGoToTheSender(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	alice.receiving(t, 10, 15*time.Second)
-	bob.receiving(t, 10, 15*time.Second)
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	alice.Receiving(t, 10, 15*time.Second)
+	bob.Receiving(t, 10, 15*time.Second)
 	// The server asked both senders for a key frame when the connections came up.
-	waitFor(t, "the key frame request of the connection", 10*time.Second, func() bool { return alice.plis.Load() > 0 && bob.plis.Load() > 0 })
+	callstest.WaitFor(t, "the key frame request of the connection", 10*time.Second, func() bool { return alice.PLIs() > 0 && bob.PLIs() > 0 })
 	// bob's own request for a key frame goes to alice.
-	before := alice.plis.Load()
+	before := alice.PLIs()
 	var ssrc uint32
-	bob.mu.Lock()
-	for s := range bob.videoSSRCs {
+	for s := range bob.VideoSSRCs() {
 		ssrc = s
 	}
-	bob.mu.Unlock()
 	time.Sleep(400 * time.Millisecond) // past the gap between two requests
-	if err := bob.pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}}); err != nil {
+	if err := bob.PC().WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}}); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "alice to get bob's PLI", 10*time.Second, func() bool { return alice.plis.Load() > before })
+	callstest.WaitFor(t, "alice to get bob's PLI", 10*time.Second, func() bool { return alice.PLIs() > before })
 }
 
 func TestAudioOnlyClientsKeepTheCallUp(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{noVideo: true}, clientOptions{noVideo: true})
-	a0, b0 := alice.audioIn.Load(), bob.audioIn.Load()
-	waitFor(t, "audio both ways", 15*time.Second, func() bool {
-		return alice.audioIn.Load()-a0 >= 25 && bob.audioIn.Load()-b0 >= 25
+	alice, bob := startCall(t, r, callstest.Options{NoVideo: true}, callstest.Options{NoVideo: true})
+	a0, b0 := alice.AudioIn(), bob.AudioIn()
+	callstest.WaitFor(t, "audio both ways", 15*time.Second, func() bool {
+		return alice.AudioIn()-a0 >= 25 && bob.AudioIn()-b0 >= 25
 	})
-	if alice.videoIn.Load() != 0 || bob.videoIn.Load() != 0 {
-		t.Errorf("video packets in an audio call: %d %d", alice.videoIn.Load(), bob.videoIn.Load())
+	if alice.VideoIn() != 0 || bob.VideoIn() != 0 {
+		t.Errorf("video packets in an audio call: %d %d", alice.VideoIn(), bob.VideoIn())
 	}
 }
 
 func TestICETCPAlone(t *testing.T) {
 	r := newRig(t, Config{})
 	tcp := []webrtc.NetworkType{webrtc.NetworkTypeTCP4}
-	alice, bob := startCall(t, r, clientOptions{networks: tcp}, clientOptions{networks: tcp})
-	alice.receiving(t, 20, 20*time.Second)
-	bob.receiving(t, 20, 20*time.Second)
+	alice, bob := startCall(t, r, callstest.Options{Networks: tcp}, callstest.Options{Networks: tcp})
+	alice.Receiving(t, 20, 20*time.Second)
+	bob.Receiving(t, 20, 20*time.Second)
 }
 
 func TestICEThatNeverConnectsEndsTheCall(t *testing.T) {
 	r := newRig(t, Config{ICETimeout: 400 * time.Millisecond})
 	r.ctl.add(callID, callerID, calleeID, true)
-	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), clientOptions{noCandidates: true})
+	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), callstest.Options{NoCandidates: true})
 	started := time.Now()
-	waitFor(t, "the call to fail", 10*time.Second, func() bool { return len(r.ctl.failedCalls()) == 1 })
+	callstest.WaitFor(t, "the call to fail", 10*time.Second, func() bool { return len(r.ctl.failedCalls()) == 1 })
 	if took := time.Since(started); took < 300*time.Millisecond {
 		t.Errorf("the call failed after %v, before the deadline", took)
 	}
 	select {
-	case reason := <-alice.ended:
+	case reason := <-alice.Ended():
 		if reason != "failed" {
 			t.Errorf("ended reason = %q, want failed", reason)
 		}
 	case <-time.After(5 * time.Second):
 		t.Error("alice was not told that the call ended")
 	}
-	waitFor(t, "the socket to close", 5*time.Second, func() bool { return alice.closeCode.Load() == int32(websocket.StatusNormalClosure) })
-	waitFor(t, "the server to forget the call", 5*time.Second, func() bool { return r.srv.Calls() == 0 })
+	callstest.WaitFor(t, "the socket to close", 5*time.Second, func() bool { return alice.CloseCode() == int(websocket.StatusNormalClosure) })
+	callstest.WaitFor(t, "the server to forget the call", 5*time.Second, func() bool { return r.srv.Calls() == 0 })
 }
 
 func TestAParticipantWhoNeverJoinsFailsTheCall(t *testing.T) {
 	r := newRig(t, Config{JoinTimeout: 400 * time.Millisecond})
 	r.ctl.add(callID, callerID, calleeID, true)
-	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), clientOptions{})
-	waitFor(t, "the call to fail", 10*time.Second, func() bool { return len(r.ctl.failedCalls()) == 1 })
-	if reason := <-alice.ended; reason != "failed" {
+	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
+	callstest.WaitFor(t, "the call to fail", 10*time.Second, func() bool { return len(r.ctl.failedCalls()) == 1 })
+	if reason := <-alice.Ended(); reason != "failed" {
 		t.Errorf("reason = %q", reason)
 	}
 }
@@ -216,10 +177,10 @@ func TestAJoinTimerStartsWhenTheCallIsAnswered(t *testing.T) {
 	r := newRig(t, Config{JoinTimeout: 500 * time.Millisecond, ICETimeout: 30 * time.Second})
 	// The call rings: nobody is waited for.
 	r.ctl.add(callID, callerID, calleeID, false)
-	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), clientOptions{})
-	waitFor(t, "alice to connect", 10*time.Second, func() bool {
+	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
+	callstest.WaitFor(t, "alice to connect", 10*time.Second, func() bool {
 		select {
-		case <-alice.connected:
+		case <-alice.Connected():
 			return true
 		default:
 			return false
@@ -231,35 +192,35 @@ func TestAJoinTimerStartsWhenTheCallIsAnswered(t *testing.T) {
 	}
 	// Answered, and bob never joins.
 	r.ctl.answer(callID)
-	waitFor(t, "the call to fail", 10*time.Second, func() bool { return len(r.ctl.failedCalls()) == 1 })
+	callstest.WaitFor(t, "the call to fail", 10*time.Second, func() bool { return len(r.ctl.failedCalls()) == 1 })
 }
 
 func TestAClosedSocketGetsTheReconnectGrace(t *testing.T) {
 	t.Run("not opened again", func(t *testing.T) {
 		r := newRig(t, Config{ReconnectGrace: 400 * time.Millisecond})
-		alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-		alice.receiving(t, 10, 15*time.Second)
-		bob.receiving(t, 10, 15*time.Second)
+		alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+		alice.Receiving(t, 10, 15*time.Second)
+		bob.Receiving(t, 10, 15*time.Second)
 		started := time.Now()
-		alice.close()
-		waitFor(t, "the call to fail", 10*time.Second, func() bool { return len(r.ctl.failedCalls()) == 1 })
+		alice.Close()
+		callstest.WaitFor(t, "the call to fail", 10*time.Second, func() bool { return len(r.ctl.failedCalls()) == 1 })
 		if took := time.Since(started); took < 300*time.Millisecond {
 			t.Errorf("failed after %v, before the grace", took)
 		}
-		if reason := <-bob.ended; reason != "failed" {
+		if reason := <-bob.Ended(); reason != "failed" {
 			t.Errorf("bob was told %q", reason)
 		}
 	})
 	t.Run("opened again", func(t *testing.T) {
 		r := newRig(t, Config{ReconnectGrace: 5 * time.Second})
-		alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-		alice.receiving(t, 10, 15*time.Second)
-		bob.receiving(t, 10, 15*time.Second)
-		alice.close()
+		alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+		alice.Receiving(t, 10, 15*time.Second)
+		bob.Receiving(t, 10, 15*time.Second)
+		alice.Close()
 		time.Sleep(300 * time.Millisecond)
-		again := r.dial("alice again", r.url(callID, callerID, calleeID, callerID), clientOptions{})
-		again.receiving(t, 25, 15*time.Second)
-		bob.receiving(t, 25, 15*time.Second)
+		again := r.dial("alice again", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
+		again.Receiving(t, 25, 15*time.Second)
+		bob.Receiving(t, 25, 15*time.Second)
 		time.Sleep(500 * time.Millisecond)
 		if n := len(r.ctl.failedCalls()); n != 0 {
 			t.Errorf("the call failed although alice came back")
@@ -269,12 +230,12 @@ func TestAClosedSocketGetsTheReconnectGrace(t *testing.T) {
 
 func TestASecondSocketReplacesTheFirst(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	alice.receiving(t, 10, 15*time.Second)
-	second := r.dial("alice's other tab", r.url(callID, callerID, calleeID, callerID), clientOptions{})
-	waitFor(t, "the first socket to close", 10*time.Second, func() bool { return alice.closeCode.Load() == int32(closeReplaced) })
-	second.receiving(t, 20, 15*time.Second)
-	bob.receiving(t, 20, 15*time.Second)
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	alice.Receiving(t, 10, 15*time.Second)
+	second := r.dial("alice's other tab", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
+	callstest.WaitFor(t, "the first socket to close", 10*time.Second, func() bool { return alice.CloseCode() == int(closeReplaced) })
+	second.Receiving(t, 20, 15*time.Second)
+	bob.Receiving(t, 20, 15*time.Second)
 	if n := r.srv.Calls(); n != 1 {
 		t.Errorf("%d calls, want 1", n)
 	}
@@ -282,17 +243,12 @@ func TestASecondSocketReplacesTheFirst(t *testing.T) {
 
 func TestTheStateOfTheMicrophoneAndTheCameraReachesTheOtherSide(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	bob.receiving(t, 5, 15*time.Second)
-	alice.send(map[string]any{"type": "state", "microphone": false, "camera": true})
-	waitFor(t, "bob to hear", 10*time.Second, func() bool {
-		bob.mu.Lock()
-		defer bob.mu.Unlock()
-		return len(bob.peerStates) > 0
-	})
-	bob.mu.Lock()
-	got := bob.peerStates[len(bob.peerStates)-1]
-	bob.mu.Unlock()
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	bob.Receiving(t, 5, 15*time.Second)
+	alice.Send(map[string]any{"type": "state", "microphone": false, "camera": true})
+	callstest.WaitFor(t, "bob to hear", 10*time.Second, func() bool { return len(bob.PeerStates()) > 0 })
+	states := bob.PeerStates()
+	got := states[len(states)-1]
 	if got.Microphone == nil || *got.Microphone || got.Camera == nil || !*got.Camera {
 		t.Errorf("bob was told %+v", got)
 	}
@@ -303,42 +259,32 @@ func TestTheStateOfTheMicrophoneAndTheCameraReachesTheOtherSide(t *testing.T) {
 		t.Errorf("SetMedia calls = %+v", media)
 	}
 	// Someone who joins later learns the state at once.
-	late := r.dial("bob again", r.url(callID, callerID, calleeID, calleeID), clientOptions{})
-	waitFor(t, "the late joiner to hear", 10*time.Second, func() bool {
-		late.mu.Lock()
-		defer late.mu.Unlock()
-		return len(late.peerStates) == 0 // bob never sent a state: nothing to hear
+	late := r.dial("bob again", r.url(callID, callerID, calleeID, calleeID), callstest.Options{})
+	callstest.WaitFor(t, "the late joiner to hear", 10*time.Second, func() bool {
+		return len(late.PeerStates()) == 0 // bob never sent a state: nothing to hear
 	})
-	late.send(map[string]any{"type": "state", "microphone": true, "camera": true})
-	waitFor(t, "alice to hear bob", 10*time.Second, func() bool {
-		alice.mu.Lock()
-		defer alice.mu.Unlock()
-		return len(alice.peerStates) > 0
-	})
-	third := r.dial("alice again", r.url(callID, callerID, calleeID, callerID), clientOptions{})
-	waitFor(t, "the new socket of alice to learn bob's state", 10*time.Second, func() bool {
-		third.mu.Lock()
-		defer third.mu.Unlock()
-		return len(third.peerStates) > 0
-	})
+	late.Send(map[string]any{"type": "state", "microphone": true, "camera": true})
+	callstest.WaitFor(t, "alice to hear bob", 10*time.Second, func() bool { return len(alice.PeerStates()) > 0 })
+	third := r.dial("alice again", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
+	callstest.WaitFor(t, "the new socket of alice to learn bob's state", 10*time.Second, func() bool { return len(third.PeerStates()) > 0 })
 }
 
 func TestHangupFromTheSocketEndsTheCallForBoth(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	alice.receiving(t, 5, 15*time.Second)
-	bob.receiving(t, 5, 15*time.Second)
-	bob.send(map[string]any{"type": "hangup"})
-	for _, c := range []*client{alice, bob} {
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	alice.Receiving(t, 5, 15*time.Second)
+	bob.Receiving(t, 5, 15*time.Second)
+	bob.Send(map[string]any{"type": "hangup"})
+	for _, c := range []*callstest.Client{alice, bob} {
 		select {
-		case reason := <-c.ended:
+		case reason := <-c.Ended():
 			if reason != "hangup" {
-				t.Errorf("%s was told %q", c.name, reason)
+				t.Errorf("%s was told %q", c.Name(), reason)
 			}
 		case <-time.After(10 * time.Second):
-			t.Fatalf("%s was not told that the call ended", c.name)
+			t.Fatalf("%s was not told that the call ended", c.Name())
 		}
-		waitFor(t, c.name+"'s socket to close", 10*time.Second, func() bool { return c.closeCode.Load() == int32(websocket.StatusNormalClosure) })
+		callstest.WaitFor(t, c.Name()+"'s socket to close", 10*time.Second, func() bool { return c.CloseCode() == int(websocket.StatusNormalClosure) })
 	}
 	r.ctl.mu.Lock()
 	left := append([]uint64(nil), r.ctl.left...)
@@ -346,27 +292,27 @@ func TestHangupFromTheSocketEndsTheCallForBoth(t *testing.T) {
 	if len(left) != 1 || left[0] != calleeID {
 		t.Errorf("Leave was called for %v, want bob", left)
 	}
-	waitFor(t, "the server to forget the call", 5*time.Second, func() bool { return r.srv.Calls() == 0 })
+	callstest.WaitFor(t, "the server to forget the call", 5*time.Second, func() bool { return r.srv.Calls() == 0 })
 }
 
 func TestTheEndOfTheCallFromTheServiceClosesTheSockets(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	alice.receiving(t, 5, 15*time.Second)
-	bob.receiving(t, 5, 15*time.Second)
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	alice.Receiving(t, 5, 15*time.Second)
+	bob.Receiving(t, 5, 15*time.Second)
 	// The service ends it (a disabled user, a timeout, a session).
 	r.ctl.end(callID, "disabled")
-	for _, c := range []*client{alice, bob} {
+	for _, c := range []*callstest.Client{alice, bob} {
 		select {
-		case reason := <-c.ended:
+		case reason := <-c.Ended():
 			if reason != "disabled" {
-				t.Errorf("%s was told %q", c.name, reason)
+				t.Errorf("%s was told %q", c.Name(), reason)
 			}
 		case <-time.After(10 * time.Second):
-			t.Fatalf("%s was not told that the call ended", c.name)
+			t.Fatalf("%s was not told that the call ended", c.Name())
 		}
 	}
-	waitFor(t, "the server to forget the call", 5*time.Second, func() bool { return r.srv.Calls() == 0 })
+	callstest.WaitFor(t, "the server to forget the call", 5*time.Second, func() bool { return r.srv.Calls() == 0 })
 	if n := len(r.ctl.failedCalls()); n != 0 {
 		t.Errorf("the media server failed a call that the service had ended")
 	}
@@ -384,16 +330,16 @@ func TestAnEndingSessionClosesTheSocket(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newRig(t, Config{ReconnectGrace: 10 * time.Second})
-			alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-			alice.receiving(t, 5, 15*time.Second)
+			alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+			alice.Receiving(t, 5, 15*time.Second)
 			r.endSession(callerID, tt.code, tt.reason)
 			// user.changed is what tells the server to look again.
 			r.hub.Publish(live.Event{Topic: live.UserTopic(callerID), Kind: live.KindUserChanged, UserID: callerID})
-			waitFor(t, "alice's socket to close", 10*time.Second, func() bool { return alice.closeCode.Load() == int32(tt.code) })
+			callstest.WaitFor(t, "alice's socket to close", 10*time.Second, func() bool { return alice.CloseCode() == int(tt.code) })
 			// bob's goes on.
-			bob.receiving(t, 5, 15*time.Second)
-			if bob.closeCode.Load() != 0 {
-				t.Errorf("bob's socket closed with %d", bob.closeCode.Load())
+			bob.Receiving(t, 5, 15*time.Second)
+			if bob.CloseCode() != 0 {
+				t.Errorf("bob's socket closed with %d", bob.CloseCode())
 			}
 		})
 	}
@@ -401,78 +347,66 @@ func TestAnEndingSessionClosesTheSocket(t *testing.T) {
 
 func TestAPingChecksTheSessionAgain(t *testing.T) {
 	r := newRig(t, Config{PingInterval: 200 * time.Millisecond, PingTimeout: 2 * time.Second})
-	alice, _ := startCall(t, r, clientOptions{}, clientOptions{})
-	alice.receiving(t, 5, 15*time.Second)
+	alice, _ := startCall(t, r, callstest.Options{}, callstest.Options{})
+	alice.Receiving(t, 5, 15*time.Second)
 	r.endSession(callerID, CloseSessionEnded, "session ended")
-	waitFor(t, "alice's socket to close", 10*time.Second, func() bool { return alice.closeCode.Load() == int32(CloseSessionEnded) })
+	callstest.WaitFor(t, "alice's socket to close", 10*time.Second, func() bool { return alice.CloseCode() == int(CloseSessionEnded) })
 }
 
 func TestASocketOfACallThatIsOverIsToldSo(t *testing.T) {
 	r := newRig(t, Config{})
 	r.ctl.add(callID, callerID, calleeID, true)
 	r.ctl.end(callID, "hangup")
-	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), clientOptions{})
+	alice := r.dial("alice", r.url(callID, callerID, calleeID, callerID), callstest.Options{})
 	select {
-	case reason := <-alice.ended:
+	case reason := <-alice.Ended():
 		if reason != "hangup" {
 			t.Errorf("reason = %q", reason)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("alice was not told that the call is over")
 	}
-	waitFor(t, "the socket to close", 10*time.Second, func() bool { return alice.closeCode.Load() == int32(websocket.StatusNormalClosure) })
+	callstest.WaitFor(t, "the socket to close", 10*time.Second, func() bool { return alice.CloseCode() == int(websocket.StatusNormalClosure) })
 }
 
 func TestAStrangerCannotJoin(t *testing.T) {
 	r := newRig(t, Config{})
 	r.ctl.add(callID, callerID, calleeID, true)
-	stranger := r.dial("stranger", r.url(callID, callerID, calleeID, 99), clientOptions{})
-	waitFor(t, "the socket to close", 10*time.Second, func() bool { return stranger.closeCode.Load() != 0 })
-	stranger.mu.Lock()
-	defer stranger.mu.Unlock()
-	if len(stranger.errs) != 1 || stranger.errs[0].Code != CodeInternal {
-		t.Errorf("errors = %+v, want one internal error", stranger.errs)
+	stranger := r.dial("stranger", r.url(callID, callerID, calleeID, 99), callstest.Options{})
+	callstest.WaitFor(t, "the socket to close", 10*time.Second, func() bool { return stranger.CloseCode() != 0 })
+	if errs := stranger.Errors(); len(errs) != 1 || errs[0].Code != CodeInternal {
+		t.Errorf("errors = %+v, want one internal error", errs)
 	}
-	if stranger.closeCode.Load() != int32(websocket.StatusInternalError) {
-		t.Errorf("close code = %d", stranger.closeCode.Load())
+	if stranger.CloseCode() != int(websocket.StatusInternalError) {
+		t.Errorf("close code = %d", stranger.CloseCode())
 	}
 }
 
 func TestAMessageThatIsNotOfTheProtocolIsAnswered(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	bob.receiving(t, 5, 15*time.Second)
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	bob.Receiving(t, 5, 15*time.Second)
 	for _, m := range []string{`{"type":"nope"}`, `[1]`, `{"type":"answer"}`, `{"type":"state","microphone":true}`, `{"type":"hangup","extra":1}`} {
-		if err := alice.ws.Write(alice.ctx, websocket.MessageText, []byte(m)); err != nil {
-			t.Fatal(err)
-		}
+		alice.WriteRaw(websocket.MessageText, []byte(m))
 	}
-	waitFor(t, "five errors", 10*time.Second, func() bool {
-		alice.mu.Lock()
-		defer alice.mu.Unlock()
-		return len(alice.errs) == 5
-	})
-	alice.mu.Lock()
-	for _, e := range alice.errs {
+	callstest.WaitFor(t, "five errors", 10*time.Second, func() bool { return len(alice.Errors()) == 5 })
+	for _, e := range alice.Errors() {
 		if e.Code != CodeInvalidMessage {
 			t.Errorf("error = %+v", e)
 		}
 	}
-	alice.mu.Unlock()
 	// The socket stays and the call goes on.
-	alice.receiving(t, 10, 15*time.Second)
+	alice.Receiving(t, 10, 15*time.Second)
 	// A binary message closes it.
-	if err := alice.ws.Write(alice.ctx, websocket.MessageBinary, []byte{1}); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, "the socket to close", 10*time.Second, func() bool { return alice.closeCode.Load() == int32(websocket.StatusUnsupportedData) })
+	alice.WriteRaw(websocket.MessageBinary, []byte{1})
+	callstest.WaitFor(t, "the socket to close", 10*time.Second, func() bool { return alice.CloseCode() == int(websocket.StatusUnsupportedData) })
 }
 
 func TestAnOfferWithICERestartKeepsTheMediaFlowing(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	alice.receiving(t, 10, 15*time.Second)
-	bob.receiving(t, 10, 15*time.Second)
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	alice.Receiving(t, 10, 15*time.Second)
+	bob.Receiving(t, 10, 15*time.Second)
 	// The same path as a transport that failed: an offer that restarts ICE.
 	c := func() *call {
 		r.srv.mu.Lock()
@@ -484,9 +418,9 @@ func TestAnOfferWithICERestartKeepsTheMediaFlowing(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("sendOffer: %+v", err)
 	}
-	waitFor(t, "alice to answer the second offer", 10*time.Second, func() bool { return alice.offers.Load() == 2 })
-	alice.receiving(t, 25, 15*time.Second)
-	bob.receiving(t, 25, 15*time.Second)
+	callstest.WaitFor(t, "alice to answer the second offer", 10*time.Second, func() bool { return alice.Offers() == 2 })
+	alice.Receiving(t, 25, 15*time.Second)
+	bob.Receiving(t, 25, 15*time.Second)
 }
 
 func TestCloseLeavesNoGoroutine(t *testing.T) {
@@ -506,12 +440,12 @@ func TestCloseLeavesNoGoroutine(t *testing.T) {
 	before := settle()
 	func() {
 		r := newRig(t, Config{})
-		alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-		alice.receiving(t, 10, 15*time.Second)
-		bob.receiving(t, 10, 15*time.Second)
+		alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+		alice.Receiving(t, 10, 15*time.Second)
+		bob.Receiving(t, 10, 15*time.Second)
 		// A call that is still running when the server closes.
-		alice.close()
-		bob.close()
+		alice.Close()
+		bob.Close()
 		r.close()
 	}()
 	deadline := time.Now().Add(15 * time.Second)
@@ -532,20 +466,20 @@ func TestCloseLeavesNoGoroutine(t *testing.T) {
 
 func TestCloseWhileACallIsRunningTellsTheClients(t *testing.T) {
 	r := newRig(t, Config{})
-	alice, bob := startCall(t, r, clientOptions{}, clientOptions{})
-	alice.receiving(t, 5, 15*time.Second)
-	bob.receiving(t, 5, 15*time.Second)
+	alice, bob := startCall(t, r, callstest.Options{}, callstest.Options{})
+	alice.Receiving(t, 5, 15*time.Second)
+	bob.Receiving(t, 5, 15*time.Second)
 	if err := r.srv.Close(); err != nil {
 		t.Fatalf("Close: %+v", err)
 	}
-	for _, c := range []*client{alice, bob} {
+	for _, c := range []*callstest.Client{alice, bob} {
 		select {
-		case reason := <-c.ended:
+		case reason := <-c.Ended():
 			if reason != "server_stopped" {
-				t.Errorf("%s was told %q", c.name, reason)
+				t.Errorf("%s was told %q", c.Name(), reason)
 			}
 		case <-time.After(10 * time.Second):
-			t.Fatalf("%s was not told that the server stopped", c.name)
+			t.Fatalf("%s was not told that the server stopped", c.Name())
 		}
 	}
 	if err := r.srv.Close(); err != nil {
@@ -624,8 +558,3 @@ func TestPacketsOfAnotherSourceFollowOnWithoutAGap(t *testing.T) {
 		})
 	}
 }
-
-var (
-	_ = context.Background
-	_ = media.Sample{}
-)

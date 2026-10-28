@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/clock"
@@ -118,9 +119,28 @@ type CallsConfig struct {
 	// RingTimeout is how long a call rings before Expire ends it as missed;
 	// zero means 45 seconds.
 	RingTimeout time.Duration
+	// Processes tells which processes are alive when several share the
+	// database (SPEC D65); nil when this one runs alone. With it, EndOrphans
+	// ends the calls whose home process is gone.
+	Processes ProcessDirectory
+	// OrphanGrace is how long a home process must have been missing, at every
+	// check of EndOrphans, before its calls are ended; zero means 20 seconds,
+	// which is longer than the 5-second refresh of the key of a process, so
+	// that a Redis that restarted and lost its keys does not end live calls
+	// (SPEC D65). Tests make it short.
+	OrphanGrace time.Duration
 	// Logger receives the failures that the service handles itself; nil logs
 	// nothing.
 	Logger *slog.Logger
+}
+
+// ProcessDirectory says whether a process of the cluster is alive. The media
+// address a process announces in Redis (SPEC D65) is how internal/cluster
+// implements it.
+type ProcessDirectory interface {
+	// Alive reports whether the process with this ID is running. An error
+	// means the answer is not known.
+	Alive(ctx context.Context, process string) (bool, error)
 }
 
 // Calls is the service of one-to-one calls in direct conversations (SPEC
@@ -135,7 +155,16 @@ type Calls struct {
 	clk clock.Clock
 	pub Publisher
 	cfg CallsConfig
+
+	// missing is when each home was first seen without a live key, by the
+	// checks of EndOrphans; it is the memory of this process, forgotten when
+	// the key is seen again or the home has no open call left.
+	mu      sync.Mutex
+	missing map[string]time.Time
 }
+
+// defaultOrphanGrace is the default of CallsConfig.OrphanGrace.
+const defaultOrphanGrace = 20 * time.Second
 
 // NewCalls makes the service. pub receives the live events of the changes,
 // after they are committed; nil publishes nothing.
@@ -146,7 +175,10 @@ func NewCalls(st *store.Store, clk clock.Clock, cfg CallsConfig, pub Publisher) 
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.DiscardHandler)
 	}
-	return &Calls{st: st, clk: clk, pub: orNop(pub), cfg: cfg}
+	if cfg.OrphanGrace <= 0 {
+		cfg.OrphanGrace = defaultOrphanGrace
+	}
+	return &Calls{st: st, clk: clk, pub: orNop(pub), cfg: cfg, missing: map[string]time.Time{}}
 }
 
 // Call is a call as the services show it to one participant.
@@ -729,12 +761,96 @@ func (c *Calls) Fail(ctx context.Context, callID uint64) error {
 	return err
 }
 
+// EndOrphans ends, as server_stopped, every open call whose home process has
+// had no live key at every check for at least CallsConfig.OrphanGrace (20
+// seconds), and returns how many it ended (SPEC D65). The grace is longer than
+// the refresh of the keys, so that a Redis that restarted and lost them does
+// not end live calls: the first check that finds a home missing only notes the
+// time, a check that finds the key again forgets it, and a home with no open
+// call left is forgotten. It does nothing without a ProcessDirectory (a process
+// that runs alone ends the calls of an earlier run at start, EndOpen). The
+// calls of this process are left alone. When the directory cannot say whether
+// a process is alive (Redis is down) its calls are left alone too, and the
+// first such error is returned after the rest were handled. Each call is ended
+// in a transaction of its own that only changes a call that is still open, so
+// several processes may run it at the same time: a call is ended, and written
+// to the conversation, once. serve calls it every second.
+func (c *Calls) EndOrphans(ctx context.Context) (int, error) {
+	if c.cfg.Processes == nil {
+		return 0, nil
+	}
+	rows, err := c.st.OpenCalls(ctx, "")
+	if err != nil {
+		return 0, err
+	}
+	var first error
+	now := c.clk.Now()
+	open := map[string]bool{}
+	dead := map[string]bool{}
+	checked := map[string]bool{}
+	ended := 0
+	for _, row := range rows {
+		if row.Home == "" || row.Home == c.cfg.ProcessID {
+			continue
+		}
+		open[row.Home] = true
+		if !checked[row.Home] {
+			checked[row.Home] = true
+			alive, err := c.cfg.Processes.Alive(ctx, row.Home)
+			switch {
+			case err != nil:
+				if first == nil {
+					first = err
+				}
+			case alive:
+				c.forgetMissing(row.Home)
+			default:
+				dead[row.Home] = c.pastGrace(row.Home, now)
+			}
+		}
+		if !dead[row.Home] {
+			continue
+		}
+		n, err := c.endSystem(ctx, row.ID, store.CallServerStopped, "")
+		ended += n
+		if err != nil && first == nil {
+			first = err
+		}
+	}
+	c.mu.Lock()
+	for home := range c.missing {
+		if !open[home] {
+			delete(c.missing, home)
+		}
+	}
+	c.mu.Unlock()
+	return ended, first
+}
+
+// forgetMissing forgets that the home was missing.
+func (c *Calls) forgetMissing(home string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.missing, home)
+}
+
+// pastGrace notes that the home has no live key now and reports whether it has
+// been missing for the grace period.
+func (c *Calls) pastGrace(home string, now time.Time) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	since, ok := c.missing[home]
+	if !ok {
+		c.missing[home] = now
+		return false
+	}
+	return now.Sub(since) >= c.cfg.OrphanGrace
+}
+
 // EndOpen ends the open calls as server_stopped and returns how many it
 // ended: those of the process home, or every open call when home is empty.
 // serve calls it at start without Redis, when no call can be live, and at a
 // graceful shutdown for its own calls.
-//
-// TODO(step 22.3): with Redis the start ends only the calls of dead processes.
 func (c *Calls) EndOpen(ctx context.Context, home string) (int, error) {
 	rows, err := c.st.OpenCalls(ctx, home)
 	if err != nil {

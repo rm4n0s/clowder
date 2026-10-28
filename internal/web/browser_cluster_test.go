@@ -24,6 +24,13 @@ const redisTestEnv = "CLOWDER_TEST_REDIS"
 // and CLOWDER_TEST_REDIS.
 func startTwoServers(t *testing.T) (a, b *browsertest.Server) {
 	t.Helper()
+	return startTwoServersWith(t, browsertest.Options{})
+}
+
+// startTwoServersWith is startTwoServers with more options for both servers,
+// such as Calls.
+func startTwoServersWith(t *testing.T, extra browsertest.Options) (a, b *browsertest.Server) {
+	t.Helper()
 	pgURL, redisURL := os.Getenv(store.PostgresTestEnv), os.Getenv(redisTestEnv)
 	if pgURL == "" || redisURL == "" {
 		t.Skipf("set %s and %s (scripts/test-docker.sh does) to run the test with two servers", store.PostgresTestEnv, redisTestEnv)
@@ -38,7 +45,8 @@ func startTwoServers(t *testing.T) (a, b *browsertest.Server) {
 			t.Errorf("drop the database: %+v", err)
 		}
 	})
-	c := browsertest.StartClusterWith(t, browsertest.Options{DatabaseURL: dbURL, RedisURL: redisURL}, 2)
+	extra.DatabaseURL, extra.RedisURL = dbURL, redisURL
+	c := browsertest.StartClusterWith(t, extra, 2)
 	return c.Servers[0], c.Servers[1]
 }
 

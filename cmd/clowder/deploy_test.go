@@ -125,15 +125,16 @@ func TestComposePublishesOnlyWhatItShould(t *testing.T) {
 		}
 	}
 	// The web port is Caddy's. The first process publishes the SSH port of the
-	// sign-in codes (SPEC §7.16) and nothing else; the second runs the SSH
-	// server too (every process has the same -ssh-addr) and publishes nothing.
-	if !strings.Contains(service(cluster, "clowder2"), "ports: !reset []") {
-		t.Error("compose.cluster.yaml still publishes clowder2")
+	// sign-in codes (SPEC §7.16) and its media port; the second runs the SSH
+	// server too (every process has the same -ssh-addr) and publishes only its
+	// media port.
+	if got := service(cluster, "clowder2"); !strings.Contains(got, "ports: !override") || strings.Contains(got, "8080:8080") || strings.Contains(got, "2222:2222") {
+		t.Errorf("compose.cluster.yaml: the second process must publish only its media port:\n%s", got)
 	}
 	first := service(cluster, "clowder")
 	if !strings.Contains(first, "ports: !override") || !strings.Contains(first, `"${CLOWDER_SSH_PORT:-2222}:2222"`) ||
 		strings.Contains(first, "8080:8080") {
-		t.Errorf("compose.cluster.yaml: the first process must publish only the SSH port:\n%s", first)
+		t.Errorf("compose.cluster.yaml: the first process must publish only the SSH port and its media port:\n%s", first)
 	}
 	// Neither process may turn its SSH server off: a login asks for the SSH
 	// code only where the server runs, so every process has the same setting.
@@ -149,21 +150,33 @@ func TestComposePublishesOnlyWhatItShould(t *testing.T) {
 		t.Error("compose.yaml does not run and publish the SSH server on 2222")
 	}
 	// The media port of the calls (SPEC D64) is published, for UDP and TCP, by
-	// compose.yaml alone: the cluster has no calls until step 22.3, so it
-	// switches the media server off in both processes and publishes no media
-	// port.
+	// compose.yaml. The cluster runs calls in both processes (SPEC D65), each on
+	// a port of its own that it publishes in both protocols, with the same number
+	// inside and outside, because the address a process announces is the one it
+	// listens on.
 	for _, want := range []string{`CLOWDER_MEDIA_ADDR: ":7882"`, `"${CLOWDER_MEDIA_PORT:-7882}:7882/udp"`, `"${CLOWDER_MEDIA_PORT:-7882}:7882/tcp"`, `CLOWDER_MEDIA_PUBLIC_IP: ${CLOWDER_MEDIA_PUBLIC_IP:-}`} {
 		if !strings.Contains(service(compose, "clowder"), want) {
 			t.Errorf("compose.yaml does not have %s in the service clowder", want)
 		}
 	}
-	if !regexp.MustCompile(`(?m)^  CLOWDER_MEDIA_ADDR: ""$`).MatchString(cluster) {
-		t.Error("compose.cluster.yaml does not switch the media server off in both processes")
+	if regexp.MustCompile(`(?m)^\s*CLOWDER_MEDIA_ADDR: ""$`).MatchString(cluster) {
+		t.Error("compose.cluster.yaml switches the media server off")
 	}
-	for _, name := range []string{"clowder", "clowder2"} {
-		if strings.Contains(service(cluster, name), ":7882") {
-			t.Errorf("compose.cluster.yaml publishes the media port of %s", name)
+	if got := service(cluster, "clowder"); !strings.Contains(got, `"${CLOWDER_MEDIA_PORT:-7882}:7882/udp"`) || !strings.Contains(got, `"${CLOWDER_MEDIA_PORT:-7882}:7882/tcp"`) {
+		t.Errorf("compose.cluster.yaml: the first process must publish its media port 7882 for UDP and TCP:\n%s", got)
+	}
+	second := service(cluster, "clowder2")
+	for _, want := range []string{`CLOWDER_MEDIA_ADDR: ":7883"`, `"${CLOWDER_MEDIA_PORT2:-7883}:7883/udp"`, `"${CLOWDER_MEDIA_PORT2:-7883}:7883/tcp"`} {
+		if !strings.Contains(second, want) {
+			t.Errorf("compose.cluster.yaml: the second process does not have %s:\n%s", want, second)
 		}
+	}
+	if strings.Contains(second, ":7882") {
+		t.Errorf("compose.cluster.yaml: the second process uses the media port of the first:\n%s", second)
+	}
+	// Both announce the public IP of compose.yaml: the second extends the first.
+	if regexp.MustCompile(`(?m)^\s*CLOWDER_MEDIA_PUBLIC_IP:`).MatchString(second) {
+		t.Error("compose.cluster.yaml changes CLOWDER_MEDIA_PUBLIC_IP of clowder2: both processes take it from compose.yaml")
 	}
 	if !ports.MatchString(service(cluster, "caddy")) {
 		t.Error("compose.cluster.yaml does not publish caddy")
@@ -193,6 +206,16 @@ func TestCaddyfileOfTheClusterIsClosed(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("the Caddyfile does not have %q", want)
 		}
+	}
+	// The signalling WebSockets of the calls pass through as they are (SPEC D65):
+	// nothing may strip the headers of the upgrade.
+	for _, bad := range []string{"header_up -Upgrade", "header_up -Connection", "header_up Connection", "header_up Upgrade"} {
+		if strings.Contains(text, bad) {
+			t.Errorf("the Caddyfile changes the headers of a WebSocket upgrade: %s", bad)
+		}
+	}
+	if !strings.Contains(caddyfile, "WebSockets") {
+		t.Error("the Caddyfile does not say that the WebSockets of the calls pass through")
 	}
 	if strings.Contains(text, "trusted_proxies") {
 		t.Error("the Caddyfile trusts the X-Forwarded-For of its clients")

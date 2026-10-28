@@ -55,7 +55,7 @@ type participant struct {
 	cur atomic.Pointer[peer]
 
 	// The fields below belong to the goroutine of the call.
-	sock       *socket
+	sock       signalSocket
 	stateKnown bool
 	mic, cam   bool
 	grace      *time.Timer
@@ -285,13 +285,13 @@ func (c *call) requestKeyFrames() {
 // attach joins the socket to the call as its participant: any earlier socket
 // and PeerConnection of the participant are closed, a new PeerConnection is
 // made and the offer is sent. It runs in the goroutine of the call.
-func (c *call) attach(sock *socket) error {
+func (c *call) attach(sock signalSocket) error {
 	if c.ended {
 		return errors.New(TagCallClosed, "the call has ended", "call_id", c.id)
 	}
-	p := c.partOf(sock.userID)
+	p := c.partOf(sock.uid())
 	if p == nil {
-		return errors.New(TagNotParticipant, "the user is not a participant of the call", "call_id", c.id, "user_id", sock.userID)
+		return errors.New(TagNotParticipant, "the user is not a participant of the call", "call_id", c.id, "user_id", sock.uid())
 	}
 	if p.sock != nil {
 		p.sock.finish(closeReplaced, "replaced by a newer connection")
@@ -323,8 +323,8 @@ func (c *call) attach(sock *socket) error {
 // socketClosed notes that a socket has ended. The PeerConnection stays, so
 // that the media goes on while the participant joins again; an active call
 // gives them the reconnect grace.
-func (c *call) socketClosed(sock *socket) {
-	p := c.partOf(sock.userID)
+func (c *call) socketClosed(sock signalSocket) {
+	p := c.partOf(sock.uid())
 	if p == nil || p.sock != sock {
 		return
 	}
@@ -343,8 +343,8 @@ func (c *call) socketClosed(sock *socket) {
 }
 
 // onMessage handles a message of the client of a socket.
-func (c *call) onMessage(sock *socket, msg clientMessage) {
-	p := c.partOf(sock.userID)
+func (c *call) onMessage(sock signalSocket, msg clientMessage) {
+	p := c.partOf(sock.uid())
 	if p == nil || p.sock != sock || c.ended {
 		return
 	}

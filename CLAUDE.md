@@ -38,7 +38,7 @@ The packages are listed in SPEC §6.2; the layers in SPEC §6.1.
 - `cmd/clowder/` is the binary (`serve`, `invite`, `demo`) and wires everything together
 - `internal/store` is the only package that imports GORM or knows the database (SQLite or PostgreSQL: what differs stays behind its `dialect`); `internal/app` holds the services and every permission check, and never imports `net/http` or templ; `internal/web` holds the handlers, middleware and SSE streams, and never imports `internal/store`
 - `internal/api` holds the REST API and the WebSocket for desktop clients, their JSON types and the embedded `openapi.json`; like `internal/web` it never imports `internal/store`, and it never imports templ
-- `internal/cluster` is what several processes share through Redis (the event bridge, the login counters); the only package that imports go-redis
+- `internal/cluster` is what several processes share through Redis (the event bridge, the login counters, presence, and from 1.2 the relay of the calls' signalling and the key of each process, `CallLink`); the only package that imports go-redis
 - `internal/sshcode` (from 1.2) is the SSH server that hands out sign-in codes; the only package that runs an SSH server, and it never imports `internal/store`. `internal/metrics` (from 1.2) holds the Prometheus counters; `internal/calls` (from 1.2) is the WebRTC server of the calls, the only package that imports pion, and it never imports `internal/store`
 - `internal/web/views` holds the templ components; `internal/web/static` holds the embedded `datastar.js`, CSS and scripts
 - `internal/live` is the event hub; `internal/markdown`, `internal/files`, `internal/auth`, `internal/config` and `internal/clock` are what their names say

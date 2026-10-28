@@ -149,6 +149,18 @@ func TestParseFlags(t *testing.T) {
 			},
 		},
 		{
+			name: "a call across two servers",
+			args: []string{
+				"-o", "x.png", "-as", "bob", "-page", "{conversation:alice,bob}", "-cluster", "-calls", "-click", `[data-call-answer="video"]`,
+				"-other", "alice", "-other-page", "{conversation:alice,bob}", "-other-click", `[data-call-start="video"]`, "-other-hold",
+			},
+			want: options{
+				page: "{conversation:alice,bob}", out: "x.png", as: "bob", width: 1280, height: 800, wait: 500 * time.Millisecond,
+				cluster: true, calls: true, clicks: clicks{`[data-call-answer="video"]`},
+				other: script{user: "alice", page: "{conversation:alice,bob}", clicks: clicks{`[data-call-start="video"]`}}, otherHold: true,
+			},
+		},
+		{
 			name: "api login",
 			args: []string{"-o", "x.png", "-as", "alice", "-page", "/me/sessions", "-api-login", "clowder-apicheck"},
 			want: options{page: "/me/sessions", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond, apiLogin: "clowder-apicheck"},
@@ -351,6 +363,33 @@ func TestRunCluster(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "clowder:clowder@") {
 		t.Errorf("stdout holds a password: %q", stdout.String())
+	}
+}
+
+// TestRunClusterWithACall takes the proof of step 22.3: alice calls from the
+// first server, bob answers on the second and the PNG is bob's page. It needs
+// both servers of the tests and Chromium.
+func TestRunClusterWithACall(t *testing.T) {
+	if os.Getenv(postgresURLEnv) == "" || os.Getenv(redisURLEnv) == "" {
+		t.Skipf("set %s and %s (scripts/test-docker.sh does) to run the proof tool with two servers", postgresURLEnv, redisURLEnv)
+	}
+	if _, err := browsertest.FindChromium(); err != nil {
+		t.Skipf("browser test skipped: %v", err)
+	}
+	out := filepath.Join(t.TempDir(), "cluster-call.png")
+	var stdout, stderr bytes.Buffer
+	err := run(t.Context(), []string{
+		"-o", out, "-as", "bob", "-page", "{conversation:alice,bob}", "-cluster", "-calls", "-wait", "5s", "-click", `[data-call-answer="video"]`,
+		"-other", "alice", "-other-page", "{conversation:alice,bob}", "-other-click", `[data-call-start="video"]`, "-other-hold",
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %+v\nstderr: %s", err, stderr.String())
+	}
+	if info, statErr := os.Stat(out); statErr != nil || info.Size() == 0 {
+		t.Fatalf("no PNG written: %v", statErr)
+	}
+	if !strings.Contains(stdout.String(), "server B, where the screenshot is taken: http://127.0.0.1:") {
+		t.Errorf("stdout = %q", stdout.String())
 	}
 }
 

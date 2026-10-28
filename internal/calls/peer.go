@@ -22,7 +22,7 @@ type peer struct {
 	p    *participant
 	c    *call
 	pc   *webrtc.PeerConnection
-	sock *socket
+	sock signalSocket
 
 	// The fields below belong to the goroutine of the call.
 	closed    bool
@@ -45,7 +45,7 @@ type peer struct {
 
 // newPeer makes the PeerConnection of a participant with its transceivers and
 // handlers. It runs in the goroutine of the call.
-func newPeer(p *participant, sock *socket) (*peer, error) {
+func newPeer(p *participant, sock signalSocket) (*peer, error) {
 	c := p.c
 	pc, err := c.s.api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {

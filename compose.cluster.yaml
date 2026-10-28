@@ -16,32 +16,38 @@
 # publishes CLOWDER_SSH_PORT: Caddy balances HTTP, and the codes are kept in
 # the database, so the code that either gave works in both.
 #
-# Calls (SPEC §7.18, D64, D65) are off in this composition, in both processes:
-# the media of a call lives in the process that started it, and a browser's
-# signalling socket may land on the other one. The relay of the sockets and
-# the media port per process come with step 22.3; until then the media server
-# is not started here (CLOWDER_MEDIA_ADDR is empty) and the media port is not
-# published. People who want calls run compose.yaml alone.
+# Calls (SPEC §7.18, D64, D65) run in both processes, each with a media port
+# of its own: clowder listens on 7882 (CLOWDER_MEDIA_PORT) and clowder2 on 7883
+# (CLOWDER_MEDIA_PORT2), both published for UDP and TCP, with the same number
+# inside and outside, because the address a process announces is the one it
+# listens on. CLOWDER_MEDIA_PUBLIC_IP (from .env) is announced by both. The
+# media of a call lives in the process that started it, its home: the browsers
+# of both people connect straight to that process' port, whichever process
+# Caddy gave their page and their signalling WebSocket to. The process that
+# does not hold the call relays the signalling through Redis (the channel
+# clowder:calls:<process>), and every process keeps the key
+# clowder:process:<id> in Redis while it runs, so that the others end the
+# calls of a process that is gone. Open both media ports, in both protocols,
+# in your firewall.
 #
 # The first admin: docker compose -f compose.yaml -f compose.cluster.yaml run --rm clowder invite -admin
 
 # What both Clowder processes get besides the settings of compose.yaml: the
-# Redis that carries their live events and their login counters, and the proxy
-# headers of Caddy, which is always in front of them here.
+# Redis that carries their live events, their login counters and the
+# signalling of their calls, and the proxy headers of Caddy, which is always in
+# front of them here.
 x-cluster-environment: &cluster-environment
   CLOWDER_REDIS_URL: redis://redis:6379/0
   CLOWDER_TRUST_PROXY: "true"
-  # Calls are off here until step 22.3 (see above): an empty address turns the
-  # media server off, whatever compose.yaml sets.
-  CLOWDER_MEDIA_ADDR: ""
 
 services:
   redis:
     image: redis:8
-    # Redis carries only pub/sub messages and the counters of the failed
-    # logins, which expire after 15 minutes. Nothing in it has to survive a
-    # restart, so it keeps nothing on disk and has no volume (the tmpfs stops
-    # the image from making an anonymous one for /data).
+    # Redis carries only pub/sub messages, the counters of the failed logins
+    # (which expire after 15 minutes) and the keys with which the processes say
+    # they run (15 seconds). Nothing in it has to survive a restart, so it keeps
+    # nothing on disk and has no volume (the tmpfs stops the image from making
+    # an anonymous one for /data).
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     tmpfs:
       - /data
@@ -58,13 +64,16 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    # Only the SSH port (of the first process): the web port is Caddy's.
+    # The SSH port (of the first process) and its media port, for UDP and TCP:
+    # the web port is Caddy's.
     ports: !override
       - "${CLOWDER_SSH_PORT:-2222}:2222"
+      - "${CLOWDER_MEDIA_PORT:-7882}:7882/udp"
+      - "${CLOWDER_MEDIA_PORT:-7882}:7882/tcp"
 
   # The second process: the service clowder of compose.yaml (same image,
-  # database, base URL, data volume and SSH address), with the settings above.
-  # Its SSH port is not published.
+  # database, base URL, data volume, SSH address and public media IP), with
+  # the settings above. Its SSH port is not published; its media port is 7883.
   clowder2:
     extends:
       file: compose.yaml
@@ -73,10 +82,14 @@ services:
       <<: *cluster-environment
       # The SSH server runs here too (CLOWDER_SSH_ADDR is ":2222" in
       # compose.yaml): every process has the same setting.
+      # Its own media port, not the one of the first process.
+      CLOWDER_MEDIA_ADDR: ":7883"
     depends_on:
       redis:
         condition: service_healthy
-    ports: !reset []
+    ports: !override
+      - "${CLOWDER_MEDIA_PORT2:-7883}:7883/udp"
+      - "${CLOWDER_MEDIA_PORT2:-7883}:7883/tcp"
 
   caddy:
     image: caddy:2

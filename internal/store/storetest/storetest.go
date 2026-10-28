@@ -149,3 +149,7 @@ func OpenLarge(tb testing.TB, clk clock.Clock) *store.Store {
 	})
 	return s
 }
+
+// Store is the store that Open returns. Tests of packages that must not import
+// internal/store (internal/calls) name it through this alias.
+type Store = store.Store

@@ -2,24 +2,17 @@ package calls
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/coder/websocket"
-	"github.com/pion/rtcp"
-	"github.com/pion/rtp"
-	"github.com/pion/webrtc/v4"
-	"github.com/pion/webrtc/v4/pkg/media"
+	"github.com/rm4n0s/clowder/internal/calls/callstest"
 	"github.com/rm4n0s/clowder/internal/live"
 )
 
@@ -138,6 +131,9 @@ type rig struct {
 	http   *httptest.Server
 	logs   *logBuffer
 	closed bool
+	// ownsHub says that closing the rig closes the hub too; a rig on a hub
+	// that the test shares leaves it to the test.
+	ownsHub bool
 
 	// sessions are the session checks of the users, by user ID; a user with
 	// none keeps a good session.
@@ -173,8 +169,18 @@ func (b *logBuffer) String() string {
 // newRig starts a server with cfg (Addr and IncludeLoopback are set here).
 func newRig(t *testing.T, cfg Config) *rig {
 	t.Helper()
-	r := &rig{t: t, hub: live.New(), logs: &logBuffer{}, sessions: map[uint64]func() (websocket.StatusCode, string){}}
-	r.ctl = newFakeCtl(r.hub)
+	hub := live.New()
+	r := newRigOn(t, cfg, newFakeCtl(hub), hub)
+	r.ownsHub = true
+	return r
+}
+
+// newRigOn starts a server on the given service and hub, so that two servers
+// can stand for two processes of one cluster: they share the state of the
+// calls and the events, as the processes share the database and Redis.
+func newRigOn(t *testing.T, cfg Config, ctl *fakeCtl, hub *live.Hub) *rig {
+	t.Helper()
+	r := &rig{t: t, hub: hub, ctl: ctl, logs: &logBuffer{}, sessions: map[uint64]func() (websocket.StatusCode, string){}}
 	cfg.Addr = "127.0.0.1:0"
 	cfg.IncludeLoopback = true
 	cfg.Logger = slog.New(slog.NewTextHandler(r.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -193,7 +199,8 @@ func newRig(t *testing.T, cfg Config) *rig {
 	return r
 }
 
-// handle is the handler of the signalling socket: ?call=&user=&caller=&callee=.
+// handle is the handler of the signalling socket: ?call=&user=&caller=&callee=
+// and, when the call is held by another process, &home=.
 func (r *rig) handle(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 	num := func(name string) uint64 {
@@ -207,6 +214,7 @@ func (r *rig) handle(w http.ResponseWriter, req *http.Request) {
 	user := num("user")
 	r.srv.Serve(context.WithoutCancel(req.Context()), conn, Join{
 		CallID: num("call"), ConversationID: 7, CallerID: num("caller"), CalleeID: num("callee"), UserID: user,
+		Home: q.Get("home"),
 		Session: func(context.Context) (websocket.StatusCode, string) {
 			r.smu.Lock()
 			check := r.sessions[user]
@@ -230,7 +238,9 @@ func (r *rig) close() {
 	if err := r.srv.Close(); err != nil {
 		r.t.Errorf("Close: %+v", err)
 	}
-	r.hub.Close()
+	if r.ownsHub {
+		r.hub.Close()
+	}
 }
 
 // url is the signalling URL of a user in a call between caller and callee.
@@ -239,364 +249,13 @@ func (r *rig) url(call, caller, callee, user uint64) string {
 		fmt.Sprintf("/?call=%d&caller=%d&callee=%d&user=%d", call, caller, callee, user)
 }
 
-// clientOptions choose how a test client connects.
-type clientOptions struct {
-	// networks limits the network types of the client's ICE agent; nil is UDP4.
-	networks []webrtc.NetworkType
-	// noCandidates keeps the client from sending its candidates.
-	noCandidates bool
-	// video is false for an audio-only client.
-	noVideo bool
+// urlHeldBy is url for a call whose home is another process.
+func (r *rig) urlHeldBy(home string, call, caller, callee, user uint64) string {
+	return r.url(call, caller, callee, user) + "&home=" + home
 }
 
-// client is a pion peer that takes part in a call through the signalling
-// socket, sending synthetic Opus and VP8 samples and counting what it gets.
-type client struct {
-	t    *testing.T
-	name string
-	pc   *webrtc.PeerConnection
-	ws   *websocket.Conn
-	ctx  context.Context
-	stop context.CancelFunc
-	wg   sync.WaitGroup
-
-	audio *webrtc.TrackLocalStaticSample
-	// video is the track the client writes its video to: an RTP track, so
-	// that the client numbers the packets itself, as a browser does when it
-	// replaces the camera with a screen. videoSample replaces it in a test of
-	// a source with a sequencer of its own.
-	video       atomic.Pointer[webrtc.TrackLocalStaticRTP]
-	videoSample atomic.Pointer[webrtc.TrackLocalStaticSample]
-
-	audioIn, videoIn atomic.Int64
-	// videoSSRCs are the SSRCs of the video packets received.
-	mu         sync.Mutex
-	videoSSRCs map[uint32]int
-	peerStates []serverMessage
-	ended      chan string
-	offers     atomic.Int64
-	connected  chan struct{}
-	conOnce    sync.Once
-	opts       clientOptions
-	closeCode  atomic.Int32
-	closed     chan struct{}
-	// lastOffer is the SDP of the last offer, as the server sent it.
-	lastOffer atomic.Value
-	// vseq and vts number the video packets the client writes.
-	vseq uint16
-	vts  uint32
-	// plis counts the PLI and FIR the client's video sender received; rembs
-	// holds the bitrates of the REMB it received.
-	plis  atomic.Int64
-	rembs []float32
-	errs  []serverMessage
-	// candidates are the candidate lines the server sent.
-	candidates []string
-}
-
-// dial connects a client to the signalling socket and starts the exchange.
-func (r *rig) dial(name, url string, opts clientOptions) *client {
+// dial connects a client of callstest to the signalling socket at url.
+func (r *rig) dial(name, url string, opts callstest.Options) *callstest.Client {
 	r.t.Helper()
-	ctx, cancel := context.WithCancel(r.t.Context())
-	c := &client{t: r.t, name: name, ctx: ctx, stop: cancel, opts: opts, videoSSRCs: map[uint32]int{},
-		ended: make(chan string, 1), connected: make(chan struct{}), closed: make(chan struct{})}
-	ws, _, err := websocket.Dial(ctx, url, nil)
-	if err != nil {
-		r.t.Fatalf("%s: dial: %v", name, err)
-	}
-	c.ws = ws
-	c.newPeerConnection()
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		defer close(c.closed)
-		c.readLoop()
-	}()
-	r.t.Cleanup(c.close)
-	return c
+	return callstest.MustDial(r.t, name, url, opts)
 }
-
-// newPeerConnection makes the client's PeerConnection.
-func (c *client) newPeerConnection() {
-	me := &webrtc.MediaEngine{}
-	if err := me.RegisterDefaultCodecs(); err != nil {
-		c.t.Fatal(err)
-	}
-	se := webrtc.SettingEngine{}
-	se.SetIncludeLoopbackCandidate(true)
-	networks := c.opts.networks
-	if networks == nil {
-		networks = []webrtc.NetworkType{webrtc.NetworkTypeUDP4}
-	}
-	se.SetNetworkTypes(networks)
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(me), webrtc.WithSettingEngine(se))
-	pc, err := api.NewPeerConnection(webrtc.Configuration{})
-	if err != nil {
-		c.t.Fatal(err)
-	}
-	c.pc = pc
-	pc.OnTrack(func(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		c.wg.Add(1)
-		go func() {
-			defer c.wg.Done()
-			for {
-				if _, _, err := receiver.ReadRTCP(); err != nil {
-					return
-				}
-			}
-		}()
-		c.wg.Add(1)
-		go func() {
-			defer c.wg.Done()
-			for {
-				pkt, _, err := remote.ReadRTP()
-				if err != nil {
-					return
-				}
-				c.count(remote, pkt)
-			}
-		}()
-	})
-	pc.OnICECandidate(func(cand *webrtc.ICECandidate) {
-		if cand == nil || c.opts.noCandidates {
-			return
-		}
-		init := cand.ToJSON()
-		c.send(map[string]any{"type": "candidate", "candidate": init.Candidate, "sdpMid": init.SDPMid, "sdpMLineIndex": init.SDPMLineIndex})
-	})
-	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		if s == webrtc.PeerConnectionStateConnected {
-			c.conOnce.Do(func() { close(c.connected) })
-		}
-	})
-}
-
-// count records a packet received.
-func (c *client) count(remote *webrtc.TrackRemote, pkt *rtp.Packet) {
-	if remote.Kind() == webrtc.RTPCodecTypeAudio {
-		c.audioIn.Add(1)
-		return
-	}
-	c.videoIn.Add(1)
-	c.mu.Lock()
-	c.videoSSRCs[pkt.SSRC]++
-	c.mu.Unlock()
-}
-
-// send writes a JSON message to the signalling socket.
-func (c *client) send(v any) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		c.t.Errorf("%s: %v", c.name, err)
-		return
-	}
-	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
-	defer cancel()
-	if err := c.ws.Write(ctx, websocket.MessageText, data); err != nil && c.ctx.Err() == nil {
-		c.t.Logf("%s: write: %v", c.name, err)
-	}
-}
-
-// readLoop answers the offers and applies the candidates of the server.
-func (c *client) readLoop() {
-	for {
-		_, data, err := c.ws.Read(c.ctx)
-		if err != nil {
-			c.closeCode.Store(int32(websocket.CloseStatus(err)))
-			return
-		}
-		var msg serverMessage
-		if err := json.Unmarshal(data, &msg); err != nil {
-			c.t.Errorf("%s: bad message %q", c.name, data)
-			return
-		}
-		switch msg.Type {
-		case msgOffer:
-			c.offers.Add(1)
-			c.lastOffer.Store(msg.SDP)
-			c.answerOffer(msg.SDP)
-		case msgError:
-			c.mu.Lock()
-			c.errs = append(c.errs, msg)
-			c.mu.Unlock()
-		case msgCandidate:
-			c.mu.Lock()
-			c.candidates = append(c.candidates, msg.Candidate)
-			c.mu.Unlock()
-			init := webrtc.ICECandidateInit{Candidate: msg.Candidate, SDPMid: msg.SDPMid, SDPMLineIndex: msg.SDPMLineIndex}
-			if err := c.pc.AddICECandidate(init); err != nil {
-				c.t.Logf("%s: AddICECandidate: %v", c.name, err)
-			}
-		case msgPeerState:
-			c.mu.Lock()
-			c.peerStates = append(c.peerStates, msg)
-			c.mu.Unlock()
-		case msgEnded:
-			select {
-			case c.ended <- msg.Reason:
-			default:
-			}
-		}
-	}
-}
-
-// errorf fails the test with a problem of the client, unless the client is
-// being closed (the end of a test closes the PeerConnection while an answer
-// may still be under way).
-func (c *client) errorf(format string, args ...any) {
-	if c.ctx.Err() != nil {
-		return
-	}
-	c.t.Errorf(c.name+": "+format, args...)
-}
-
-// answerOffer applies an offer, adds the client's own tracks to the
-// transceivers it made and sends the answer.
-func (c *client) answerOffer(sdp string) {
-	if err := c.pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: sdp}); err != nil {
-		c.errorf("SetRemoteDescription: %v", err)
-		return
-	}
-	if c.audio == nil {
-		var err error
-		c.audio, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2}, "audio", c.name)
-		if err != nil {
-			c.t.Fatal(err)
-		}
-		if _, err := c.pc.AddTrack(c.audio); err != nil {
-			c.errorf("AddTrack audio: %v", err)
-		}
-		defer c.readSenderRTCP()
-		if !c.opts.noVideo {
-			video, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000}, "video", c.name)
-			if err != nil {
-				c.t.Fatal(err)
-			}
-			c.video.Store(video)
-			if _, err := c.pc.AddTrack(video); err != nil {
-				c.errorf("AddTrack video: %v", err)
-			}
-		}
-		c.startSending()
-	}
-	answer, err := c.pc.CreateAnswer(nil)
-	if err != nil {
-		c.errorf("CreateAnswer: %v", err)
-		return
-	}
-	if err := c.pc.SetLocalDescription(answer); err != nil {
-		c.errorf("SetLocalDescription: %v", err)
-		return
-	}
-	c.send(map[string]any{"type": "answer", "sdp": answer.SDP})
-}
-
-// readSenderRTCP reads what the server says about the video the client sends:
-// requests for key frames.
-func (c *client) readSenderRTCP() {
-	for _, sender := range c.pc.GetSenders() {
-		if sender.Track() == nil || sender.Track().Kind() != webrtc.RTPCodecTypeVideo {
-			continue
-		}
-		c.wg.Add(1)
-		go func() {
-			defer c.wg.Done()
-			for {
-				pkts, _, err := sender.ReadRTCP()
-				if err != nil {
-					return
-				}
-				for _, p := range pkts {
-					switch p := p.(type) {
-					case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-						c.plis.Add(1)
-					case *rtcp.ReceiverEstimatedMaximumBitrate:
-						c.mu.Lock()
-						c.rembs = append(c.rembs, p.Bitrate)
-						c.mu.Unlock()
-					}
-				}
-			}
-		}()
-	}
-}
-
-// startSending writes a sample of each track every 20 ms (audio) and 33 ms
-// (video) until the client closes. Writes before the connection is up are
-// dropped by the track.
-func (c *client) startSending() {
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		t := time.NewTicker(20 * time.Millisecond)
-		defer t.Stop()
-		n := 0
-		for {
-			select {
-			case <-c.ctx.Done():
-				return
-			case <-t.C:
-			}
-			n++
-			if err := c.audio.WriteSample(media.Sample{Data: []byte{1, 2, 3, 4, 5, 6, 7, 8}, Duration: 20 * time.Millisecond}); err != nil && c.ctx.Err() == nil {
-				c.t.Logf("%s: audio sample: %v", c.name, err)
-			}
-			if n%2 != 0 {
-				continue
-			}
-			// A VP8 payload: the first byte is the payload descriptor with the
-			// start of a partition.
-			data := make([]byte, 600)
-			data[0] = 0x10
-			if sample := c.videoSample.Load(); sample != nil {
-				if err := sample.WriteSample(media.Sample{Data: data, Duration: 40 * time.Millisecond}); err != nil && c.ctx.Err() == nil {
-					c.t.Logf("%s: video sample: %v", c.name, err)
-				}
-				continue
-			}
-			if video := c.video.Load(); video != nil {
-				c.vseq++
-				c.vts += 3600
-				pkt := &rtp.Packet{
-					Header:  rtp.Header{Version: 2, Marker: true, SequenceNumber: c.vseq, Timestamp: c.vts},
-					Payload: data,
-				}
-				if err := video.WriteRTP(pkt); err != nil && c.ctx.Err() == nil {
-					c.t.Logf("%s: video packet: %v", c.name, err)
-				}
-			}
-		}
-	}()
-}
-
-// close stops the client and waits for its goroutines.
-func (c *client) close() {
-	c.stop()
-	_ = c.ws.CloseNow()
-	_ = c.pc.Close()
-	c.wg.Wait()
-}
-
-// waitFor polls cond until it is true or the deadline passes.
-func waitFor(t *testing.T, what string, d time.Duration, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(d)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out after %v waiting for %s", d, what)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
-// receiving waits until the client has received at least n audio and n video
-// packets since the counters were at the given values.
-func (c *client) receiving(t *testing.T, n int64, d time.Duration) {
-	t.Helper()
-	a0, v0 := c.audioIn.Load(), c.videoIn.Load()
-	waitFor(t, c.name+" to receive audio and video", d, func() bool {
-		return c.audioIn.Load()-a0 >= n && c.videoIn.Load()-v0 >= n
-	})
-}
-
-var _ = io.EOF
