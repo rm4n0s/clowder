@@ -36,7 +36,9 @@ const linkRel = "nofollow noopener noreferrer"
 const headingShift = 2
 
 // Renderer renders bodies and finds their mentions. Build it once with New and
-// pass it around. It is safe for concurrent use.
+// pass it around. It is safe for concurrent use. It keeps the HTML of the
+// highlighted code blocks it has made, up to 8 MiB and least recently used
+// first, so a block that is read again is not lexed again.
 type Renderer struct {
 	md goldmark.Markdown
 }
@@ -44,6 +46,11 @@ type Renderer struct {
 // New returns a Renderer: goldmark with the GFM extensions, in safe mode, with
 // the link, image and heading rules of the package documentation.
 func New() *Renderer {
+	return newRenderer(newCodeCache(codeCacheBytes, codeCacheEntryBytes))
+}
+
+// newRenderer is New with the cache of highlighted blocks given.
+func newRenderer(cache *codeCache) *Renderer {
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
 		goldmark.WithParserOptions(
@@ -51,7 +58,10 @@ func New() *Renderer {
 		),
 		goldmark.WithRendererOptions(
 			// Priority 100 wins over goldmark's own renderers (1000).
-			renderer.WithNodeRenderers(util.Prioritized(&safeNodeRenderer{}, 100)),
+			renderer.WithNodeRenderers(
+				util.Prioritized(&safeNodeRenderer{}, 100),
+				util.Prioritized(&codeBlockRenderer{cache: cache}, 100),
+			),
 		),
 	)
 	return &Renderer{md: md}

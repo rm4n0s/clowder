@@ -1064,7 +1064,11 @@ func TestRunDemoMakesTheDemoPosts(t *testing.T) {
 	if formats[app.FormatText] != 1 || formats[app.FormatMarkdown] != 4 {
 		t.Errorf("formats = %v, want one text and four markdown", formats)
 	}
-	for _, want := range []string{"<h3>", "<h4>", "<ul>", "<li>", "<pre>", "<code", "<a href=", "<table>"} {
+	for _, want := range []string{"<h3>", "<h4>", "<ul>", "<li>", "<code", "<a href=", "<table>",
+		// The release checklist has a Go, a Python and a shell block (SPEC D54).
+		`<pre class="code" data-lang="go"><code>`, `<pre class="code" data-lang="python"><code>`,
+		`<pre class="code" data-lang="sh"><code>`, `<span class="hl-kd">func</span>`, `<span class="hl-k">def</span>`,
+	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("the rendered posts of general lack %s", want)
 		}

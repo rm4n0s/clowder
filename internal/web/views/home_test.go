@@ -26,6 +26,8 @@ func TestHome(t *testing.T) {
 		{"viewport", `<meta name="viewport" content="width=device-width, initial-scale=1">`},
 		{"title", "<title>Home · Clowder</title>"},
 		{"css link", `<link rel="stylesheet" href="/static/app.css">`},
+		{"code css link", `<link rel="stylesheet" href="/static/code.css">`},
+		{"code script", `<script src="/static/code.js" defer></script>`},
 		{"datastar module script", `<script type="module" src="/static/datastar.js"></script>`},
 		{"sidebar", `<aside id="sidebar">`},
 		{"main", "<main>"},

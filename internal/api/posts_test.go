@@ -1156,3 +1156,38 @@ func TestAuditThroughTheAPIForPosts(t *testing.T) {
 	step("admin", http.MethodDelete, path("/posts/%d", cid), nil, http.StatusNoContent, "post.deleted comment")
 	step("bob", http.MethodDelete, path("/posts/%d", id), nil, http.StatusNoContent, "post.deleted post", "task.deleted task")
 }
+
+// TestCodeBlocksInHTML: the html of a post and of a comment has the code
+// blocks as the pages render them (SPEC D54): the same block, the data-lang
+// and the hl- classes, and nothing that executes.
+func TestCodeBlocksInHTML(t *testing.T) {
+	t.Parallel()
+	body := "Look:\n\n```go\nfunc main() { println(\"</code></pre><script>\") }\n```\n\n```nosuchlang\nplain <b>\n```\n"
+	check := func(t *testing.T, what, html string) {
+		t.Helper()
+		for _, want := range []string{
+			`<pre class="code" data-lang="go"><code>`, `<span class="hl-kd">func</span>`,
+			`<pre class="code" data-lang="nosuchlang"><code>plain &lt;b&gt;`,
+		} {
+			if !strings.Contains(html, want) {
+				t.Errorf("%s: html lacks %q:\n%s", what, want, html)
+			}
+		}
+		for _, bad := range []string{"<script", "<b>", " style="} {
+			if strings.Contains(html, bad) {
+				t.Errorf("%s: html has %q:\n%s", what, bad, html)
+			}
+		}
+	}
+	f := newForum(t)
+	p := f.ok("bob", http.MethodPost, path("/rooms/%d/posts", f.lobby.ID), map[string]any{"format": "markdown", "body": body}, http.StatusCreated)
+	check(t, "created post", p["html"].(string))
+	id := uint64(p["id"].(float64))
+	check(t, "read post", f.ok("carol", http.MethodGet, path("/posts/%d", id), nil, http.StatusOK)["html"].(string))
+	c := f.ok("bob", http.MethodPost, path("/posts/%d/comments", id), map[string]any{"format": "markdown", "body": body}, http.StatusCreated)
+	check(t, "created comment", c["html"].(string))
+	text := f.ok("bob", http.MethodPost, path("/rooms/%d/posts", f.lobby.ID), map[string]any{"format": "text", "body": body}, http.StatusCreated)
+	if h := text["html"].(string); strings.Contains(h, "<pre") || strings.Contains(h, "hl-") {
+		t.Errorf("a text post has a code block: %s", h)
+	}
+}

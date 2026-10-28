@@ -23,6 +23,14 @@
 //   - Headings are shifted down by two levels and capped at h6, so a body never
 //     emits h1 or h2 (the page has its own), and they have no id attribute.
 //   - Attribute values (href, src, alt, title) are always HTML-escaped.
+//   - A fenced code block is <pre class="code" data-lang="go"><code>…</code></pre>
+//     (code.go). The code is highlighted by chroma, which writes only
+//     <span class="hl-…"> around text it has escaped itself: no inline style,
+//     no other tag and no other attribute. data-lang is the first word of the
+//     info string, kept only when it matches [A-Za-z0-9_+#.-]{1,32}, so it
+//     needs no escaping. The lexer is found by exact name, alias or file
+//     extension, never by guessing; a block with no language, an unknown one,
+//     over 32 KiB or over 1,000 lines is plain (escaped text).
 //   - A mention is a link only when the caller passes its username to
 //     [Renderer.RenderMentions] (the mentions it saved). The link is built
 //     here from the username, which has only a-z, 0-9, "_" and "-": it points

@@ -656,6 +656,35 @@ button.tag-option {
   border-radius: 6px;
 }
 
+/* The toolbar that code.js puts in front of a code block (the block itself is
+   styled by code.css): the language on the left, the Copy button on the right. */
+.code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.75em 0 0;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
+
+.code-toolbar + pre.code { margin-top: 0.25em; }
+
+.code-lang { font-family: var(--mono); }
+
+button.code-copy {
+  margin-left: auto;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+button.code-copy:hover { filter: none; color: var(--fg); border-color: var(--fg-muted); }
+
 .post-body :not(pre) > code { padding: 0.0625rem 0.25rem; background: var(--bg-sidebar); border-radius: 4px; }
 
 .post-body blockquote { margin: 0.75rem 0; padding-left: 0.75rem; color: var(--fg-muted); border-left: 3px solid var(--border); }

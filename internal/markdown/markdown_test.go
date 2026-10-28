@@ -67,7 +67,13 @@ func TestRenderMarkdownFeatures(t *testing.T) {
 		{
 			name:    "fenced code is escaped",
 			body:    "```html\n<script>alert(1)</script>\n```",
-			want:    []string{"&lt;script&gt;alert(1)&lt;/script&gt;"},
+			want:    []string{"&lt;", "script", "&gt;"},
+			notWant: []string{"<script"},
+		},
+		{
+			name:    "fenced code without a language is escaped",
+			body:    "```\n<script>alert(1)</script>\n```",
+			want:    []string{"<pre class=\"code\"><code>&lt;script&gt;alert(1)&lt;/script&gt;\n</code></pre>"},
 			notWant: []string{"<script"},
 		},
 		{
@@ -132,14 +138,23 @@ var (
 	reTag    = regexp.MustCompile(`<[^>"']*(?:(?:"[^"]*"|'[^']*')[^>"']*)*>`)
 	reTagEnd = regexp.MustCompile(`^</?([a-zA-Z][a-zA-Z0-9]*)`)
 	reAttr   = regexp.MustCompile(`\s([a-zA-Z-]+)(?:="([^"]*)")?`)
+	// reClassValue is what the class of an element may be: the code block, a
+	// highlighted token or a mention.
+	reClassValue = regexp.MustCompile(`^(code|mention|hl-[a-z0-9]{1,4})$`)
+	// reLangValue is what data-lang of a code block may be.
+	reLangValue = regexp.MustCompile(`^[A-Za-z0-9_+#.-]{1,32}$`)
 	// reQuoted matches a quoted attribute value.
 	reQuoted = regexp.MustCompile(`"[^"]*"`)
 
 	allowedTags = []string{
 		"p", "br", "a", "img", "em", "strong", "del", "code", "pre", "ul", "ol", "li", "blockquote",
 		"h3", "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th", "td", "input",
+		"span", // highlighted code (code.go): <span class="hl-…">
 	}
-	allowedAttrs = []string{"href", "title", "rel", "target", "src", "alt", "loading", "disabled", "checked", "type", "align", "start"}
+	allowedAttrs = []string{
+		"href", "title", "rel", "target", "src", "alt", "loading", "disabled", "checked", "type", "align", "start",
+		"class", "data-lang", // code blocks (code.go)
+	}
 )
 
 // checkNoExecutableHTML fails when out has a tag or an attribute that the
@@ -166,6 +181,12 @@ func checkNoExecutableHTML(t *testing.T, out string) {
 		}
 		for _, a := range reAttr.FindAllStringSubmatch(tag, -1) {
 			name := strings.ToLower(a[1])
+			if name == "class" && !reClassValue.MatchString(a[2]) {
+				t.Errorf("unexpected class %q in:\n%s", a[2], out)
+			}
+			if name == "data-lang" && !reLangValue.MatchString(a[2]) {
+				t.Errorf("unexpected data-lang %q in:\n%s", a[2], out)
+			}
 			if name != "href" && name != "src" {
 				continue
 			}

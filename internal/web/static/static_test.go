@@ -12,6 +12,8 @@ func TestFS(t *testing.T) {
 	}{
 		{"datastar.js"},
 		{"app.css"},
+		{"code.css"},
+		{"code.js"},
 		{"board.js"},
 		{"messages.js"},
 		{"notify.js"},

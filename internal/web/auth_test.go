@@ -365,7 +365,7 @@ func TestPublicRoutesNeedNoSession(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t, nil)
 	token := e.invitation()
-	for _, target := range []string{"/login", "/invite/" + token, "/static/app.css", "/static/datastar.js", "/nope"} {
+	for _, target := range []string{"/login", "/invite/" + token, "/static/app.css", "/static/datastar.js", "/static/code.css", "/static/code.js", "/nope"} {
 		t.Run(target, func(t *testing.T) {
 			rec := e.send(get(target))
 			if rec.Code == http.StatusFound || rec.Code == http.StatusUnauthorized {

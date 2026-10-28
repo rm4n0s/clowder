@@ -32,6 +32,22 @@ It is not a way to run code on the server, and it has no "service account" or "a
 - **Caching.** Answers carry `Cache-Control: no-store`, except file downloads (`private, max-age=86400`).
 - **`html`.** A post, a comment and a message have the `body` as written and the `html` as the pages show it, so a client needs no markdown renderer. The server makes it safe (raw HTML in the text is not passed through; links are `http`, `https` or `mailto`; images are `http` or `https`). A client that puts it in a web view should still apply its own sanitizer or content security policy, and may want to block remote images, which tell their server who opens the post.
 
+## Code blocks in `html`
+
+A fenced code block of a markdown post or comment (and of the preview) is rendered the same in the pages and in `html`, so a client gets highlighted code with no highlighter of its own:
+
+```html
+<pre class="code" data-lang="go"><code><span class="hl-kn">package</span> <span class="hl-nx">main</span>
+…</code></pre>
+```
+
+- **The block** is always `<pre class="code">` with one `<code>` inside. Text is escaped as everywhere else in `html`; there is no inline `style` and no script.
+- **`data-lang`** is the language as the author wrote it after the fence (the first word of the info string, such as `go`, `Python`, `sh` or `rs`). It is there only when the word is 1 to 32 characters of `A-Z a-z 0-9 _ + # . -`; anything else leaves it out. It is there whether or not the language is known, so a client can show it as a label.
+- **The tokens** of a highlighted block are `<span class="hl-…">`. The part after `hl-` is the short name of chroma's token type: `hl-k` is a keyword (`hl-kd`, `hl-kn`, `hl-kt` are its kinds), `hl-nf` a function name, `hl-s` and `hl-s2` strings, `hl-c1` a comment, `hl-m` a number, `hl-o` an operator, `hl-p` punctuation. The full list is in the `StandardTypes` table of [chroma](https://github.com/alecthomas/chroma) (`types.go`); a client must ignore a class it does not know. Text with no class is not wrapped in a span.
+- **Plain blocks.** A block with no language, with a language that chroma does not know (the lexer is found by name, alias or file extension, never guessed), over 32 KiB or over 1,000 lines has the same markup with no spans.
+- **Styles.** `GET /static/code.css` (from the base of the server, not under `/api/v1`; no login) styles the block and every `hl-` class, with a light and a dark palette. The dark one applies under `@media (prefers-color-scheme: dark)` unless an ancestor of the block has `data-theme="light"`, and always under `data-theme="dark"` on the root element. A client can use the file as it is or write its own rules for the classes.
+- **The pages' toolbar** (the label and the Copy button) is added by a script of the pages (`/static/code.js`) and is not in `html`; a client builds its own from `data-lang` and the text of `<code>`.
+
 ## Logging in
 
 A client logs in with the username and password of a user and keeps the **token** that comes back. There is no OAuth and no API key: the token is a session, like the browser's, and the user can see and end it (below).

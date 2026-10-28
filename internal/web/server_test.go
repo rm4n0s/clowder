@@ -302,6 +302,8 @@ func TestStaticFiles(t *testing.T) {
 	}{
 		{"/static/app.css", "text/css; charset=utf-8"},
 		{"/static/datastar.js", "text/javascript; charset=utf-8"},
+		{"/static/code.css", "text/css; charset=utf-8"},
+		{"/static/code.js", "text/javascript; charset=utf-8"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
