@@ -671,6 +671,7 @@ func TestAdminAuditAccountEvents(t *testing.T) {
 	rec := e.send(get("/admin/audit?entity=user", e.cookies["admin"]))
 	requireBody(t, rec, []string{
 		`<option value="user" selected>Accounts</option>`, `<option value="user.password_changed">user.password_changed</option>`,
+		`<option value="user.reset_link_created">user.reset_link_created</option>`, `<option value="user.password_reset">user.password_reset</option>`,
 		`<td class="audit-room"><span class="hint">None</span></td>`, `<code>user.password_changed</code>`,
 	}, "Room 0", "(deleted)", "The entity type filter is not valid.")
 }

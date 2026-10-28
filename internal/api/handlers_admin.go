@@ -39,7 +39,7 @@ var auditActions = []app.AuditAction{
 	app.ActionColumnCreated, app.ActionColumnRenamed, app.ActionColumnMoved, app.ActionColumnDeleted,
 	app.ActionMemberJoined, app.ActionMemberAdded, app.ActionMemberLeft, app.ActionMemberRemoved,
 	app.ActionRoomCreated, app.ActionRoomRenamed, app.ActionRoomDeleted,
-	app.ActionUserPasswordChanged,
+	app.ActionUserPasswordChanged, app.ActionUserResetLinkCreated, app.ActionUserPasswordReset,
 }
 
 // adminUserPatch is the body of PATCH /admin/users/{id}: a field that is not
@@ -60,6 +60,7 @@ func (s *Server) adminRoutes() []Route {
 	return []Route{
 		s.route(http.MethodGet, "/admin/users", false, s.adminUsers),
 		s.route(http.MethodPatch, "/admin/users/{id}", false, s.adminPatchUser),
+		s.route(http.MethodPost, "/admin/users/{id}/reset-link", false, s.adminResetLink),
 		s.route(http.MethodPost, "/admin/invitations", false, s.adminInvite),
 		s.route(http.MethodGet, "/admin/rooms", false, s.adminRooms),
 		s.route(http.MethodGet, "/admin/rooms/{id}/members", false, s.adminRoomMembers),
@@ -140,6 +141,27 @@ func (s *Server) adminPatchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	// Users are never deleted, so the user that was just changed is there.
 	s.writeError(w, r, errors.New(app.TagNotFound, "the user is gone", "userID", id))
+}
+
+// adminResetLink answers POST /admin/users/{id}/reset-link: an admin makes a
+// one-time password reset link for the user and gets it, once. A newer link
+// replaces the older unused ones of the user.
+func (s *Server) adminResetLink(w http.ResponseWriter, r *http.Request) {
+	c, _ := callerFrom(r.Context())
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	issued, err := s.svc.Accounts.CreateResetLink(r.Context(), c.actor, id)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	s.writeJSON(w, r, http.StatusCreated, adminResetLinkJSON{
+		URL:       s.baseURL + "/reset/" + url.PathEscape(issued.Token),
+		ExpiresAt: rfc3339(issued.ExpiresAt),
+	})
 }
 
 // adminInvite answers POST /admin/invitations: an admin makes an invitation

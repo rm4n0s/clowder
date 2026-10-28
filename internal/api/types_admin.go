@@ -40,6 +40,12 @@ type adminInvitationJSON struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+// adminResetLinkJSON is a new password reset link: the link, shown once.
+type adminResetLinkJSON struct {
+	URL       string `json:"url"`
+	ExpiresAt string `json:"expires_at"`
+}
+
 // auditEventJSON is an event of the audit log in the answers of the API.
 type auditEventJSON struct {
 	ID         uint64         `json:"id"`

@@ -75,6 +75,32 @@ func TestParseInviteToken(t *testing.T) {
 	}
 }
 
+func TestParseResetToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		output    string
+		wantToken string
+		wantOK    bool
+	}{
+		{"the link and the expiry", "http://127.0.0.1/reset/AbC-_123\nexpires 2026-10-29T10:00:00Z\n", "AbC-_123", true},
+		{"link with a path in the base URL", "https://x.example/chat/reset/tok\n", "tok", true},
+		{"windows line ending", "http://h/reset/tok\r\n", "tok", true},
+		{"an invitation link", "http://h/invite/tok\n", "", false},
+		{"link on the second line only", "hello\nhttp://h/reset/tok\n", "", false},
+		{"empty token", "http://h/reset/\n", "", false},
+		{"token with a path", "http://h/reset/a/b\n", "", false},
+		{"empty", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token, ok := ParseResetToken(tt.output)
+			if token != tt.wantToken || ok != tt.wantOK {
+				t.Errorf("ParseResetToken(%q) = %q, %v; want %q, %v", tt.output, token, ok, tt.wantToken, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestListenWatcher(t *testing.T) {
 	var out bytes.Buffer
 	w := newListenWatcher(&out)
@@ -175,7 +201,8 @@ func fakeBinary(t *testing.T, serve string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "clowder")
 	script := "#!/bin/sh\nif [ \"$1\" = demo ]; then exit 0; fi\n" +
-		"if [ \"$1\" = invite ]; then echo http://127.0.0.1/invite/fake-token; echo expires soon; exit 0; fi\n" + serve + "\n"
+		"if [ \"$1\" = invite ]; then echo http://127.0.0.1/invite/fake-token; echo expires soon; exit 0; fi\n" +
+		"if [ \"$1\" = reset-password ]; then echo http://127.0.0.1/reset/fake-reset; echo expires soon; exit 0; fi\n" + serve + "\n"
 	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -457,6 +484,87 @@ func TestStartServerInviteMember(t *testing.T) {
 				defer func() { _ = srv.Stop() }() // killed after the timeout, as the other fakes
 				if srv.InviteToken != tt.wantToken {
 					t.Errorf("InviteToken = %q, want %q", srv.InviteToken, tt.wantToken)
+				}
+				return
+			}
+			if err == nil {
+				_ = srv.Stop()
+				t.Fatal("StartServer succeeded")
+			}
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+			}
+			if appErr.Tag != tt.wantTag || !appErr.HasRoute(tt.wantRoute) {
+				t.Errorf("tag = %q, route = %s; want %s, %s", appErr.Tag, appErr.Route(), tt.wantTag, tt.wantRoute)
+			}
+			meta := ""
+			for _, k := range []string{"stderr", "output"} {
+				if v, ok := appErr.Metadata[k].(string); ok {
+					meta += v
+				}
+			}
+			if !strings.Contains(meta, tt.wantMeta) {
+				t.Errorf("metadata = %v, want it to contain %q", appErr.Metadata, tt.wantMeta)
+			}
+		})
+	}
+}
+
+func TestStartServerResetUser(t *testing.T) {
+	failing := func(t *testing.T, script string) Options {
+		path := filepath.Join(t.TempDir(), "clowder")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script+"\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return Options{Binary: path, ResetUser: "bob"}
+	}
+	tests := []struct {
+		name      string
+		opts      func(t *testing.T) Options
+		wantToken string
+		wantTag   string
+		wantRoute string
+		wantMeta  string
+	}{
+		{
+			name: "without the option there is no token",
+			opts: func(t *testing.T) Options {
+				return Options{Binary: fakeBinary(t, listenLine+"; exec sleep 60"), StopTimeout: 300 * time.Millisecond}
+			},
+		},
+		{
+			name: "with the option the token is read from the reset-password command",
+			opts: func(t *testing.T) Options {
+				return Options{Binary: fakeBinary(t, listenLine+"; exec sleep 60"), StopTimeout: 300 * time.Millisecond, ResetUser: "bob"}
+			},
+			wantToken: "fake-reset",
+		},
+		{
+			name: "reset-password fails",
+			opts: func(t *testing.T) Options {
+				return failing(t, `if [ "$1" = reset-password ]; then echo no such user >&2; exit 1; fi`)
+			},
+			wantTag: tagResetFailed, wantRoute: "StartServer->startServer->prepare->resetLink.ResetFailed", wantMeta: "no such user",
+		},
+		{
+			name: "reset-password prints no link",
+			opts: func(t *testing.T) Options {
+				return failing(t, `if [ "$1" = reset-password ]; then echo nothing useful; exit 0; fi`)
+			},
+			wantTag: tagResetOutputInvalid, wantRoute: "StartServer->startServer->prepare->resetLink.ResetOutputInvalid", wantMeta: "nothing useful",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, err := StartServer(context.Background(), tt.opts(t))
+			if tt.wantTag == "" {
+				if err != nil {
+					t.Fatalf("StartServer: %+v", err)
+				}
+				defer func() { _ = srv.Stop() }() // killed after the timeout, as the other fakes
+				if srv.ResetToken != tt.wantToken {
+					t.Errorf("ResetToken = %q, want %q", srv.ResetToken, tt.wantToken)
 				}
 				return
 			}

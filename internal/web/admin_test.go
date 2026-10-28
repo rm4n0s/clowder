@@ -125,6 +125,28 @@ func TestAdminUsersPage(t *testing.T) {
 			t.Errorf("bob row lacks %q:\n%s", want, bobRow)
 		}
 	}
+
+	// An enabled user, an admin's own row included, has the button that makes
+	// a reset link; a disabled user has none.
+	for name, row := range map[string]string{"admin": adminRow, "alice": aliceRow} {
+		var user app.User
+		if name == "admin" {
+			user = e.admin
+		} else {
+			user = e.alice
+		}
+		for _, want := range []string{"Reset password</button>", `action="` + e.path(user, "reset-link") + `"`} {
+			if !strings.Contains(row, want) {
+				t.Errorf("%s row lacks %q:\n%s", name, want, row)
+			}
+		}
+	}
+	if strings.Contains(bobRow, "Reset password") || strings.Contains(bobRow, "reset-link") {
+		t.Errorf("a disabled user has a reset button:\n%s", bobRow)
+	}
+	if strings.Contains(body, "reset-link-box") {
+		t.Error("the page shows a reset link nobody made")
+	}
 }
 
 func TestAdminPagesAreInvisibleToMembers(t *testing.T) {
@@ -141,6 +163,9 @@ func TestAdminPagesAreInvisibleToMembers(t *testing.T) {
 		{"disabled", func() *http.Request { return postForm(e.path(e.bob, "disabled"), form, e.aliceSession) }},
 		{"disabled by Datastar", func() *http.Request { return postForm(e.path(e.bob, "disabled"), form, e.aliceSession, asDatastar()) }},
 		{"role of themselves", func() *http.Request { return postForm(e.path(e.alice, "role"), form, e.aliceSession) }},
+		{"reset link", func() *http.Request { return postForm(e.path(e.bob, "reset-link"), nil, e.aliceSession) }},
+		{"reset link by Datastar", func() *http.Request { return postForm(e.path(e.bob, "reset-link"), nil, e.aliceSession, asDatastar()) }},
+		{"reset link of themselves", func() *http.Request { return postForm(e.path(e.alice, "reset-link"), nil, e.aliceSession) }},
 		{"invitation", func() *http.Request { return postForm("/admin/invitations", form, e.aliceSession) }},
 		{"invitation by Datastar", func() *http.Request { return postForm("/admin/invitations", form, e.aliceSession, asDatastar()) }},
 	}
@@ -168,6 +193,7 @@ func TestAdminPagesNeedASession(t *testing.T) {
 		{"users page", get("/admin/users")},
 		{"role", postForm("/admin/users/1/role", url.Values{"role": {"member"}})},
 		{"disabled", postForm("/admin/users/1/disabled", url.Values{"disabled": {"true"}})},
+		{"reset link", postForm("/admin/users/1/reset-link", nil)},
 		{"invitation", postForm("/admin/invitations", url.Values{"role": {"member"}})},
 	}
 	for _, tt := range tests {

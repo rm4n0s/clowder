@@ -38,6 +38,8 @@ func run(ctx context.Context, args []string, env func(string) string, stdout, st
 		return runDemo(ctx, args[1:], env, stdout, stderr, hasher)
 	case "invite":
 		return runInvite(ctx, args[1:], env, stdout, stderr, hasher)
+	case "reset-password":
+		return runResetPassword(ctx, args[1:], env, stdout, stderr, hasher)
 	case "healthcheck":
 		return runHealthcheck(ctx, args[1:], env, stderr)
 	default:
@@ -51,10 +53,11 @@ func usage(w io.Writer) {
 	_, _ = fmt.Fprint(w, `usage: clowder <command> [flags]
 
 commands:
-  serve        run the server
-  invite       print a one-time invitation link
-  demo         fill an empty database with demo data (-size large: the data set of SPEC §10)
-  healthcheck  ask a running server if it is healthy (exit status 0 if it is, 1 if not)
+  serve           run the server
+  invite          print a one-time invitation link
+  reset-password  print a one-time link that sets a new password (-user <name>)
+  demo            fill an empty database with demo data (-size large: the data set of SPEC §10)
+  healthcheck     ask a running server if it is healthy (exit status 0 if it is, 1 if not)
 
 Run "clowder serve -h" for the flags of serve.
 `)

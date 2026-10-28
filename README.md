@@ -59,7 +59,7 @@ Nobody can sign up without an invitation, and the first admin has no one to invi
 
 It prints a link such as `https://chat.example.org/invite/<token>` and the time it expires. Open it in a browser, choose a username (3 to 32 characters of `a-z`, `0-9`, `_` and `-`), a display name and a password of at least 12 characters, and you are logged in as an admin. The link works once and expires after 7 days. Give the same `-data` directory as the server (or set `CLOWDER_DATA`), and the public URL as `-base-url`, or the link names the default `http://localhost:8080`.
 
-From then on admins make invitation links for members and other admins in the Admin page. `./clowder invite -member` does the same on the command line.
+From then on admins make invitation links for members and other admins in the Admin page. `./clowder invite -member` does the same on the command line. A user who forgot the password gets a reset link from an admin in the same page (Reset password), or on the command line with `./clowder reset-password -user alice`, which prints a link that works once for 24 hours.
 
 ## Running it
 
@@ -138,7 +138,7 @@ Notes:
 
 ### PostgreSQL without Docker
 
-`clowder serve` uses PostgreSQL instead of SQLite when it is given a database URL, with `-database-url` or `CLOWDER_DATABASE_URL`, for example `postgres://clowder:secret@db.example.org:5432/clowder?sslmode=verify-full`. `clowder invite` and `clowder demo` read the same setting. The attachments stay in `files/` of the data directory.
+`clowder serve` uses PostgreSQL instead of SQLite when it is given a database URL, with `-database-url` or `CLOWDER_DATABASE_URL`, for example `postgres://clowder:secret@db.example.org:5432/clowder?sslmode=verify-full`. `clowder invite`, `clowder reset-password` and `clowder demo` read the same setting. The attachments stay in `files/` of the data directory.
 
 - **Version and extensions.** PostgreSQL 16 or later (18 is the tested version) with ICU and the `unaccent` extension, which the official images and the usual packages (`postgresql-contrib`) have.
 - **The rights of the database user.** Clowder migrates the database when it starts, so the user must be allowed to create, in its database: tables and indexes, the extension `unaccent` (a trusted extension, so the owner of the database may create it), a text search configuration (`clowder_search`), an ICU collation (`nocase`) and functions (`json_valid`), and to use advisory locks. The simplest way is to make the user the **owner of the database**: `CREATE ROLE clowder LOGIN PASSWORD '...'; CREATE DATABASE clowder OWNER clowder;`. It needs no other right, and no superuser. From PostgreSQL 15 only the owner may create objects in the `public` schema, so a user that is not the owner needs `GRANT CREATE ON SCHEMA public` and `GRANT CREATE ON DATABASE clowder`.

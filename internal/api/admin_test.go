@@ -28,6 +28,8 @@ func TestAdminRoutesAreForAdmins(t *testing.T) {
 		{"users", http.MethodGet, func(*forum) string { return "/api/v1/admin/users" }, nil, http.StatusOK},
 		{"change a user", http.MethodPatch, func(f *forum) string { return path("/admin/users/%d", f.userID("bob")) },
 			func(*forum) any { return map[string]any{"role": "admin", "disabled": true} }, http.StatusOK},
+		{"reset link", http.MethodPost, func(f *forum) string { return path("/admin/users/%d/reset-link", f.userID("bob")) },
+			nil, http.StatusCreated},
 		{"invitation", http.MethodPost, func(*forum) string { return "/api/v1/admin/invitations" },
 			func(*forum) any { return map[string]any{"role": "member"} }, http.StatusCreated},
 		{"rooms", http.MethodGet, func(*forum) string { return "/api/v1/admin/rooms" }, nil, http.StatusOK},
@@ -534,4 +536,107 @@ func TestAdminRoutesOfTheErrors(t *testing.T) {
 	if err != nil || !filter.To.Equal(time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)) || filter.Action != app.ActionPostCreated {
 		t.Errorf("filter = %+v, %v; want to the start of the next day", filter, err)
 	}
+}
+
+func TestAdminResetLink(t *testing.T) {
+	t.Parallel()
+	reset := func(f *forum, name string) string { return path("/admin/users/%d/reset-link", f.userID(name)) }
+
+	t.Run("the link uses the base URL and works once", func(t *testing.T) {
+		t.Parallel()
+		f := forumWith(t, func(o *Options) { o.BaseURL = "https://clowder.example.com/chat/" })
+		oldToken := f.as("bob")
+		before := len(f.audit())
+		rec := f.call("admin", http.MethodPost, reset(f, "bob"), nil)
+		requireStatus(t, rec, http.StatusCreated)
+		got := decode(t, rec)
+		link, _ := got["url"].(string)
+		token, ok := strings.CutPrefix(link, "https://clowder.example.com/chat/reset/")
+		if !ok || token == "" || strings.ContainsAny(token, "/?# ") {
+			t.Fatalf("url = %q", link)
+		}
+		if got["expires_at"] != rfc3339(testStart.Add(24*time.Hour)) || len(got) != 2 {
+			t.Errorf("link = %v", got)
+		}
+		f.requireAudit(before, "user.reset_link_created user")
+		// The database holds the hash, never the token.
+		if err := f.accounts.ResetLinkValid(t.Context(), token); err != nil {
+			t.Fatalf("ResetLinkValid: %+v", err)
+		}
+
+		// Using it ends every session, API tokens included, and the new password
+		// logs in through the API.
+		res, err := f.accounts.ResetPassword(t.Context(), app.ResetInput{Token: token, NewPassword: "a brand new passphrase", ClientName: "Firefox"})
+		if err != nil {
+			t.Fatalf("ResetPassword: %+v", err)
+		}
+		if res.User.Username != "bob" {
+			t.Errorf("user = %+v", res.User)
+		}
+		requireStatus(t, f.sendTo(http.MethodGet, "/api/v1/me", nil, oldToken), http.StatusUnauthorized)
+		login := f.send(request(http.MethodPost, "/api/v1/auth/login", map[string]any{
+			"username": "bob", "password": "a brand new passphrase", "client_name": "after the reset",
+		}))
+		requireStatus(t, login, http.StatusOK)
+		if old := f.send(request(http.MethodPost, "/api/v1/auth/login", map[string]any{
+			"username": "bob", "password": testPassword, "client_name": "old",
+		})); old.Code != http.StatusUnauthorized {
+			t.Errorf("login with the old password: status = %d, want 401", old.Code)
+		}
+		f.requireAudit(before, "user.reset_link_created user", "user.password_reset user")
+	})
+	t.Run("without a base URL it is a path", func(t *testing.T) {
+		t.Parallel()
+		f := newForum(t)
+		got := f.ok("root", http.MethodPost, reset(f, "root"), nil, http.StatusCreated)
+		if !strings.HasPrefix(got["url"].(string), "/reset/") {
+			t.Errorf("link = %v (no base URL: a path)", got)
+		}
+	})
+	t.Run("a newer link replaces the older", func(t *testing.T) {
+		t.Parallel()
+		f := newForum(t)
+		first := f.ok("admin", http.MethodPost, reset(f, "carol"), nil, http.StatusCreated)
+		second := f.ok("admin", http.MethodPost, reset(f, "carol"), nil, http.StatusCreated)
+		firstToken := strings.TrimPrefix(first["url"].(string), "/reset/")
+		secondToken := strings.TrimPrefix(second["url"].(string), "/reset/")
+		if firstToken == secondToken {
+			t.Fatal("two links are the same")
+		}
+		if err := f.accounts.ResetLinkValid(t.Context(), firstToken); err == nil {
+			t.Error("the first link still works")
+		}
+		if err := f.accounts.ResetLinkValid(t.Context(), secondToken); err != nil {
+			t.Errorf("the second link: %+v", err)
+		}
+	})
+	t.Run("failures", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name       string
+			target     func(f *forum) string
+			wantStatus int
+			wantCode   string
+		}{
+			{"an unknown user", func(*forum) string { return "/api/v1/admin/users/9999/reset-link" }, http.StatusNotFound, "not_found"},
+			{"an ID that is no number", func(*forum) string { return "/api/v1/admin/users/abc/reset-link" }, http.StatusNotFound, "not_found"},
+			{"an ID of zero", func(*forum) string { return "/api/v1/admin/users/0/reset-link" }, http.StatusNotFound, "not_found"},
+			{"a disabled user", func(f *forum) string { disable(f, "carol"); return reset(f, "carol") }, http.StatusConflict, "conflict"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newForum(t)
+				before := len(f.audit())
+				target := tt.target(f)
+				before = max(before, len(f.audit()))
+				rec := f.call("admin", http.MethodPost, target, nil)
+				requireStatus(t, rec, tt.wantStatus)
+				if code := errorCode(t, rec); code != tt.wantCode {
+					t.Errorf("code = %q, want %q", code, tt.wantCode)
+				}
+				f.requireAudit(before)
+			})
+		}
+	})
 }

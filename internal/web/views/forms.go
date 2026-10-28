@@ -58,6 +58,11 @@ func invitePath(token string) string {
 	return "/invite/" + url.PathEscape(token)
 }
 
+// resetPath returns the path of the page and form of a password reset link.
+func resetPath(token string) string {
+	return "/reset/" + url.PathEscape(token)
+}
+
 // userPath returns the path of an action on a user, such as
 // /admin/users/3/role.
 func userPath(id uint64, action string) string {

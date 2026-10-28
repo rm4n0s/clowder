@@ -364,3 +364,57 @@ func (s *Store) UsersByPrefix(ctx context.Context, prefix string, limit int) ([]
 // likeEscaper escapes the characters that mean something in a LIKE pattern,
 // with the backslash as the escape character.
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// ReplacePasswordReset deletes the unused reset links of the user pr.UserID
+// and inserts pr, so that a user has one unused link at most, and sets its ID.
+// Call it inside Tx. It fails with TagConflict when the token hash is already
+// taken.
+func (s *Store) ReplacePasswordReset(ctx context.Context, pr *PasswordReset) error {
+	err := s.db(ctx).Where("user_id = ? AND used_at IS NULL", pr.UserID).Delete(&PasswordReset{}).Error
+	if err != nil {
+		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "replacePasswordReset")
+	}
+	err = s.db(ctx).Create(pr).Error
+	if err != nil {
+		switch classify(err) {
+		case failureConflict:
+			return errors.NewErr(TagConflict, err).SetMetadata("op", "replacePasswordReset")
+		default:
+			return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "replacePasswordReset")
+		}
+	}
+	return nil
+}
+
+// PasswordResetByTokenHash returns the reset link whose token has the given
+// SHA-256 hash. It fails with TagNotFound when there is none.
+func (s *Store) PasswordResetByTokenHash(ctx context.Context, tokenHash string) (PasswordReset, error) {
+	var pr PasswordReset
+	err := s.db(ctx).Where("token_hash = ?", tokenHash).First(&pr).Error
+	if err != nil {
+		switch classify(err) {
+		case failureNotFound:
+			return PasswordReset{}, errors.NewErr(TagNotFound, err).SetMetadata("op", "passwordResetByTokenHash")
+		default:
+			return PasswordReset{}, errors.NewErr(TagQueryFailed, err).SetMetadata("op", "passwordResetByTokenHash")
+		}
+	}
+	return pr, nil
+}
+
+// MarkPasswordResetUsed records that the reset link id was used, at the time
+// of the Store's clock. It fails with TagNotFound when there is no such link
+// or it was used already, so that one link never sets two passwords.
+func (s *Store) MarkPasswordResetUsed(ctx context.Context, id uint64) error {
+	res := s.db(ctx).Model(&PasswordReset{}).
+		Where("id = ? AND used_at IS NULL", id).
+		Update("used_at", s.clk.Now().UTC())
+	if res.Error != nil {
+		return errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "markPasswordResetUsed")
+	}
+	if res.RowsAffected == 0 {
+		return errors.New(TagNotFound, "no unused reset link with this ID",
+			"op", "markPasswordResetUsed", "resetID", id)
+	}
+	return nil
+}

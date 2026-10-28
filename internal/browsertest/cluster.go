@@ -59,7 +59,7 @@ func (c *Cluster) start(ctx context.Context, opts Options, n int) error {
 	if dataDir == "" {
 		dataDir = filepath.Join(c.tmpDir, "data")
 	}
-	if _, err := prepare(ctx, opts, bin, dataDir); err != nil {
+	if _, _, err := prepare(ctx, opts, bin, dataDir); err != nil {
 		return err
 	}
 	for range n {

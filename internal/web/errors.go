@@ -25,6 +25,9 @@ const (
 	// messageInvitationInvalid is the page of an invitation that is used,
 	// expired or unknown.
 	messageInvitationInvalid = "This invitation is not valid."
+	// messageResetInvalid is the page of a password reset link that is used,
+	// expired, unknown or of a user who is disabled.
+	messageResetInvalid = "This reset link is not valid."
 )
 
 // statusOf maps an error to the HTTP status of its answer by the tags of the

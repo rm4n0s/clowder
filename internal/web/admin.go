@@ -19,6 +19,9 @@ const (
 	messageLastAdmin = "There must always be one active admin. Make someone else an admin first."
 	// messageUserGone is the answer to an action on a user who does not exist.
 	messageUserGone = "That user does not exist any more. Reload the page."
+	// messageResetUserDisabled is the answer to a reset link for a user who is
+	// disabled.
+	messageResetUserDisabled = "That user is disabled. Enable the user first."
 	// messageActionInvalid is the answer to an action with a value that is not
 	// valid and that the service gives no message for.
 	messageActionInvalid = "That change is not valid."
@@ -127,8 +130,15 @@ func (s *Server) setDisabled(w http.ResponseWriter, r *http.Request) {
 // userChangeFailed shows the problem of a failed action above the table. A
 // Datastar request gets the table as a patch with status 200 (the client drops
 // the body of any other status); a plain request gets the whole page with the
-// status of statusOf. TagUnauthenticated redirects to the login page.
+// status of statusOf. TagUnauthenticated redirects to the login page. A
+// TagConflict is the last admin.
 func (s *Server) userChangeFailed(w http.ResponseWriter, r *http.Request, err error, actor app.Actor, viewer app.User) {
+	s.userChangeFailedWith(w, r, err, actor, viewer, messageLastAdmin)
+}
+
+// userChangeFailedWith is userChangeFailed with the message that a
+// TagConflict shows.
+func (s *Server) userChangeFailedWith(w http.ResponseWriter, r *http.Request, err error, actor app.Actor, viewer app.User, conflict string) {
 	status := statusOf(err)
 	var message string
 	switch {
@@ -139,7 +149,7 @@ func (s *Server) userChangeFailed(w http.ResponseWriter, r *http.Request, err er
 		problems := formErrorsOf(err)
 		message = firstNonEmpty(problems.Fields[app.FieldUser], problems.Fields[app.FieldRole], problems.Form, messageActionInvalid)
 	case isTag(err, app.TagConflict):
-		message = messageLastAdmin
+		message = conflict
 	case isTag(err, app.TagNotFound):
 		message = messageUserGone
 	case isTag(err, app.TagForbidden):
@@ -158,6 +168,49 @@ func (s *Server) userChangeFailed(w http.ResponseWriter, r *http.Request, err er
 		return
 	}
 	s.render(w, r, status, views.AdminUsersPage(data))
+}
+
+// resetLink answers POST /admin/users/{id}/reset-link: it makes a password
+// reset link for the user and shows it, once, above the table. A Datastar
+// request gets the table patched; a plain request gets the whole page. A
+// failure shows its problem above the table.
+func (s *Server) resetLink(w http.ResponseWriter, r *http.Request) {
+	actor, viewer, ok := s.adminOnly(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 63)
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	if !s.parseForm(w, r) {
+		return
+	}
+	issued, err := s.svc.Accounts.CreateResetLink(r.Context(), actor, id)
+	if err != nil {
+		s.userChangeFailedWith(w, r, err, actor, viewer, messageResetUserDisabled)
+		return
+	}
+	data, ok := s.usersData(w, r, actor, viewer, views.InviteData{})
+	if !ok {
+		return
+	}
+	data.Reset = views.ResetLinkData{
+		Username:  issued.Username,
+		Link:      s.resetLinkURL(issued.Token),
+		ExpiresAt: issued.ExpiresAt,
+	}
+	if isDatastar(r) {
+		s.patch(w, r, views.UsersPanel(data))
+		return
+	}
+	s.render(w, r, http.StatusOK, views.AdminUsersPage(data))
+}
+
+// resetLinkURL returns the link of a password reset: <base URL>/reset/<token>.
+func (s *Server) resetLinkURL(token string) string {
+	return strings.TrimRight(s.cfg.BaseURL, "/") + "/reset/" + url.PathEscape(token)
 }
 
 // firstNonEmpty returns the first of the values that is not empty.

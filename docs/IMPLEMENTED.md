@@ -1078,3 +1078,47 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Other users see a new name or avatar on their next page load. Only the user's own pages update live.
   - `openapi.json` keeps `info.version` 1.1.0 until the release step.
   - `TestRunInvite` timed out once under CPU load from another project's tests, and passed on every rerun.
+
+## 18.2 Password reset links
+- **Date:** 2026-10-28
+- **Branch:** feat/step-18.2-reset-links
+- **Summary:**
+  - An admin makes a one-time reset link for a user from Admin › Users › Reset password, or through `POST /api/v1/admin/users/{id}/reset-link`. The link:
+    - is 32 random bytes, stored as SHA-256;
+    - lasts 24 hours and is used once;
+    - replaces older unused links of that user;
+    - is refused for a disabled user.
+
+    The page shows it once, with a copy button.
+  - `/reset/{token}` asks for the new password twice. In one transaction it sets the hash, ends every session of the user (browser and API), starts a new browser session and marks the link used. A conditional update makes sure a second concurrent use fails.
+  - It clears the user's login-limiter failures. An unknown, used, expired or disabled link always gets the same 404 page.
+  - `clowder reset-password -user <name>` prints the link and its expiry, reading `-data`, `-database-url` and `-base-url`.
+  - Audit events: `user.reset_link_created` and `user.password_reset`. A link made by the CLI names the user as the actor and says "made on the command line", because `actor_id` has a foreign key to the users; the manager decided this, §7.10.
+  - Reset tokens are hidden in the request log. `clowder-proof -reset <user>` opens a reset page.
+- **Main files:** `internal/app/reset.go`, `internal/store/{users,users_queries,models,audit}.go`, `internal/web/{reset,admin,middleware}.go`, `internal/web/views/{auth,admin}.templ`, `internal/api/{handlers_admin,types_admin}.go`, `openapi.json`, `cmd/clowder/reset_password.go`, `cmd/clowder-proof`, `internal/browsertest/server.go`.
+- **Tests:** about 117 new cases:
+
+  | Package | Cases |
+  |---|---|
+  | store | 10 |
+  | app | 32 |
+  | web | 45 |
+  | api | 9 |
+  | cmd/clowder | 21 |
+
+  New rows were also added to existing tables. The cases cover:
+  - the permission table (admin, the admin themselves, member, disabled admin, revoked role, disabled target, unknown target);
+  - the link's life (valid, expired at exactly 24 h, used, replaced, unknown, user disabled in between) and a concurrent double use;
+  - all sessions ending, and the audit events with no event on a failure;
+  - the pages over a plain POST and over Datastar, the cross-origin check, and log redaction;
+  - the API validated against the schema, and the CLI's output.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [18.2 reset page](implemented-proof-images/18.2-reset.png) · [18.2 reset on the command line](implemented-proof-images/18.2-reset-cli.txt)
+  - The reset page opened from a link.
+  - `clowder reset-password` refuses an unknown user, then makes bob's link. Setting the password gives a 422 for a short one, then a 303 with a session ("Signed in as Bob").
+  - The link then answers 404, apicheck logs in with the new password, and the old one gets 401.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Using a link in a browser that was logged in as someone else ends that session too.
+  - `PasswordReset` is created by AutoMigrate on both dialects; no raw migration was needed.

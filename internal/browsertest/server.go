@@ -74,6 +74,11 @@ type Options struct {
 	// token in Server.InviteToken. A test or proof that needs the sign-up page
 	// of a real invitation sets it.
 	InviteMember bool
+	// ResetUser makes one password reset link for this user of the demo data
+	// with "clowder reset-password", after the demo data and before the server
+	// starts, and puts its token in Server.ResetToken. A test or proof that
+	// needs the page of a reset link sets it.
+	ResetUser string
 	// DatabaseURL makes the server (and the demo and the invitation) use this
 	// PostgreSQL database instead of SQLite in the data directory. The URL
 	// holds a password: it is passed to the processes as a flag and never
@@ -105,6 +110,9 @@ type Server struct {
 	// InviteToken is the token of the invitation made by Options.InviteMember,
 	// the last part of the link /invite/<token>. It is empty without the option.
 	InviteToken string
+	// ResetToken is the token of the reset link made by Options.ResetUser, the
+	// last part of the link /reset/<token>. It is empty without the option.
+	ResetToken string
 
 	tmpDir      string
 	stopTimeout time.Duration
@@ -146,7 +154,7 @@ func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, err
 	if dataDir == "" {
 		dataDir = filepath.Join(tmpDir, "data")
 	}
-	inviteToken, err := prepare(ctx, opts, bin, dataDir)
+	inviteToken, resetToken, err := prepare(ctx, opts, bin, dataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -165,6 +173,7 @@ func startServer(ctx context.Context, opts Options, tmpDir string) (*Server, err
 	}
 	srv.DataDir = dataDir
 	srv.InviteToken = inviteToken
+	srv.ResetToken = resetToken
 	srv.tmpDir = tmpDir
 	return srv, nil
 }
@@ -193,24 +202,34 @@ func buildBinary(ctx context.Context, opts Options, tmpDir string) (string, erro
 }
 
 // prepare makes the demo data in dataDir (and in the database of
-// opts.DatabaseURL), unless opts.SkipDemo, and the invitation of
-// opts.InviteMember. It returns the token of the invitation, or "".
-func prepare(ctx context.Context, opts Options, bin, dataDir string) (string, error) {
+// opts.DatabaseURL), unless opts.SkipDemo, the invitation of opts.InviteMember
+// and the reset link of opts.ResetUser. It returns the token of the invitation
+// and the token of the reset link, "" for each that was not asked for.
+func prepare(ctx context.Context, opts Options, bin, dataDir string) (inviteToken, resetToken string, err error) {
 	if !opts.SkipDemo {
 		args := []string{"demo", "-data", dataDir}
 		if opts.DatabaseURL != "" {
 			args = append(args, "-database-url", opts.DatabaseURL)
 		}
 		if out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
-			return "", errors.NewErr(tagDemoFailed, err).SetMetadata("data", dataDir, "output", redactOutput(string(out), opts.DatabaseURL))
+			return "", "", errors.NewErr(tagDemoFailed, err).SetMetadata("data", dataDir, "output", redactOutput(string(out), opts.DatabaseURL))
 		}
 	} else if err := os.MkdirAll(dataDir, dataDirMode); err != nil {
-		return "", errors.NewErr(tagTempDirFailed, err).SetMetadata("dir", dataDir)
+		return "", "", errors.NewErr(tagTempDirFailed, err).SetMetadata("dir", dataDir)
 	}
-	if !opts.InviteMember {
-		return "", nil
+	if opts.InviteMember {
+		inviteToken, err = inviteMember(ctx, opts, bin, dataDir)
+		if err != nil {
+			return "", "", err
+		}
 	}
-	return inviteMember(ctx, opts, bin, dataDir)
+	if opts.ResetUser != "" {
+		resetToken, err = resetLink(ctx, opts, bin, dataDir)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	return inviteToken, resetToken, nil
 }
 
 // redactOutput removes the database URL, which holds a password, from the
@@ -346,6 +365,40 @@ func inviteMember(ctx context.Context, opts Options, bin, dataDir string) (strin
 			"output", stdout.String())
 	}
 	return token, nil
+}
+
+// resetLink runs "clowder reset-password" for opts.ResetUser on the data
+// directory and returns the token of the link it prints.
+func resetLink(ctx context.Context, opts Options, bin, dataDir string) (string, error) {
+	var stdout, stderr bytes.Buffer
+	args := []string{"reset-password", "-user", opts.ResetUser, "-data", dataDir, "-base-url", inviteBaseURL}
+	if opts.DatabaseURL != "" {
+		args = append(args, "-database-url", opts.DatabaseURL)
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", errors.NewErr(tagResetFailed, err).SetMetadata("data", dataDir, "stderr", redactOutput(stderr.String(), opts.DatabaseURL))
+	}
+	token, ok := ParseResetToken(stdout.String())
+	if !ok {
+		return "", errors.New(tagResetOutputInvalid, "the reset-password command printed no reset link",
+			"output", stdout.String())
+	}
+	return token, nil
+}
+
+// ParseResetToken reads the output of "clowder reset-password". It returns the
+// token of the link on its first line, <base URL>/reset/<token>, and true, or
+// false when there is no such link.
+func ParseResetToken(output string) (string, bool) {
+	line, _, _ := strings.Cut(output, "\n")
+	_, token, found := strings.Cut(strings.TrimSpace(line), "/reset/")
+	if !found || token == "" || strings.ContainsAny(token, "/?# ") {
+		return "", false
+	}
+	return token, true
 }
 
 // ParseInviteToken reads the output of "clowder invite". It returns the token
@@ -537,6 +590,8 @@ const (
 	tagDemoFailed          = "DemoFailed"
 	tagInviteFailed        = "InviteFailed"
 	tagInviteOutputInvalid = "InviteOutputInvalid"
+	tagResetFailed         = "ResetFailed"
+	tagResetOutputInvalid  = "ResetOutputInvalid"
 	tagServerStartFailed   = "ServerStartFailed"
 	tagServerExitedEarly   = "ServerExitedEarly"
 	tagServerStartTimeout  = "ServerStartTimeout"

@@ -54,6 +54,12 @@ const (
 	// ActionUserPasswordChanged is a user who changed their own password
 	// (SPEC §7.14).
 	ActionUserPasswordChanged AuditAction = "user.password_changed"
+	// ActionUserResetLinkCreated is a reset link made for a user by an admin
+	// or on the command line (SPEC §7.1, D51).
+	ActionUserResetLinkCreated AuditAction = "user.reset_link_created"
+	// ActionUserPasswordReset is a user who set a new password with a reset
+	// link.
+	ActionUserPasswordReset AuditAction = "user.password_reset"
 )
 
 // AuditEvent records a change to a post, task, column, membership, room or

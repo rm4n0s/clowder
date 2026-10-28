@@ -5,7 +5,9 @@
 // clowder_browser tag.
 //
 // Besides -page and -o it takes -invite (starts the server with an invitation
-// for a new member and puts its token where -page says {invite}), -fill
+// for a new member and puts its token where -page says {invite}), -reset
+// <user> (starts the server with a password reset link for that demo user and
+// puts its token where -page says {reset}), -fill
 // selector=value (repeatable: types into a field) and -click selector (repeatable: clicks in
 // order, waiting for the page to settle after each), so that a proof can show a page after a
 // form was submitted. With -as, {room:name} in -page stands for the path of the

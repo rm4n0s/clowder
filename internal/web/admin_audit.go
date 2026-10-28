@@ -42,7 +42,7 @@ var auditActions = []app.AuditAction{
 	app.ActionColumnCreated, app.ActionColumnRenamed, app.ActionColumnMoved, app.ActionColumnDeleted,
 	app.ActionMemberJoined, app.ActionMemberAdded, app.ActionMemberLeft, app.ActionMemberRemoved,
 	app.ActionRoomCreated, app.ActionRoomRenamed, app.ActionRoomDeleted,
-	app.ActionUserPasswordChanged,
+	app.ActionUserPasswordChanged, app.ActionUserResetLinkCreated, app.ActionUserPasswordReset,
 }
 
 // auditQuery reads the filters and the page number from the query of the

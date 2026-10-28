@@ -48,6 +48,10 @@ func main() {
 // -invite makes.
 const invitePlaceholder = "{invite}"
 
+// resetPlaceholder in -page stands for the token of the password reset link
+// that -reset makes.
+const resetPlaceholder = "{reset}"
+
 // roomPlaceholder in -page stands for the whole path of the room with the
 // name, as the sidebar of the logged-in user links it: -page {room:secret}
 // opens /rooms/<id>, and -page {board:general} opens /rooms/<id>/board, the
@@ -173,6 +177,9 @@ type options struct {
 	// invite makes the server start with one invitation for a new member and
 	// replaces invitePlaceholder in page with its token.
 	invite bool
+	// reset makes the server start with a password reset link for this demo
+	// user and replaces resetPlaceholder in page with its token.
+	reset string
 	// fills are typed into the page, in order, before the click.
 	fills fills
 	// clicks are the selectors of the elements to click after the fills, in
@@ -246,6 +253,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if opts.invite {
 		opts.page = strings.ReplaceAll(opts.page, invitePlaceholder, srvs.shot.InviteToken)
 	}
+	if opts.reset != "" {
+		opts.page = strings.ReplaceAll(opts.page, resetPlaceholder, srvs.shot.ResetToken)
+	}
 	shot, runErr := screenshot(ctx, srvs, opts)
 	if stopErr := stop(); stopErr != nil {
 		_, _ = fmt.Fprintln(stderr, "clowder-proof: stopping the server:", stopErr)
@@ -267,7 +277,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 // startOne starts the one server of a run and returns the function that stops
 // it.
 func startOne(ctx context.Context, opts options) (servers, func() error, error) {
-	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite})
+	srv, err := browsertest.StartServer(ctx, browsertest.Options{InviteMember: opts.invite, ResetUser: opts.reset})
 	if err != nil {
 		return servers{}, nil, err
 	}
@@ -332,6 +342,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.IntVar(&o.height, "height", 800, "viewport height in pixels")
 	fs.DurationVar(&o.wait, "wait", 500*time.Millisecond, "extra time to settle after the page has loaded and after the click")
 	fs.BoolVar(&o.invite, "invite", false, "start with an invitation for a new member and put its token in -page where it says "+invitePlaceholder)
+	fs.StringVar(&o.reset, "reset", "", "demo user to start with a password reset link for, such as bob; its token goes in -page where it says "+resetPlaceholder)
 	fs.Var(&o.fills, "fill", "type text into an element before the click, as selector=value, such as '#username=ana' (repeatable)")
 	fs.Var(&o.clicks, "click", "CSS selector of an element to click after the -fill flags; the tool then waits for the page to settle (repeatable: the clicks are made in order, such as to open a menu and then pick from it)")
 	fs.StringVar(&o.other.user, "other", "", "a second demo user who acts in a second browser once the page has loaded and its live stream is open, before the screenshot of the first one; see -other-page, -other-fill and -other-click")
@@ -378,11 +389,16 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "-cluster needs -other: the second user acts on the other server while the first one watches", "flag", "cluster")
 	case o.cluster && o.invite:
 		return options{}, errors.New(tagFlagsInvalid, "-cluster and -invite cannot be used together", "flag", "cluster")
+	case o.cluster && o.reset != "":
+		return options{}, errors.New(tagFlagsInvalid, "-cluster and -reset cannot be used together", "flag", "cluster")
 	case !o.cluster && (o.postgresURL != "" || o.redisURL != ""):
 		return options{}, errors.New(tagFlagsInvalid, "-postgres-url and -redis-url need -cluster", "flag", "cluster")
 	case o.invite != strings.Contains(o.page, invitePlaceholder):
 		return options{}, errors.New(tagFlagsInvalid, "-invite and "+invitePlaceholder+" in -page go together",
 			"invite", o.invite, "page", o.page)
+	case (o.reset != "") != strings.Contains(o.page, resetPlaceholder):
+		return options{}, errors.New(tagFlagsInvalid, "-reset and "+resetPlaceholder+" in -page go together",
+			"reset", o.reset, "page", o.page)
 	}
 	if o.other.user != "" && o.other.page == "" {
 		o.other.page = "/"

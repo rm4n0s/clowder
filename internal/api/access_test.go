@@ -91,6 +91,7 @@ func securedRoutes() []securedRoute {
 		{"download a message file", http.MethodGet, "/api/v1/messages/attachments" + missing, http.StatusNotFound, nil},
 		{"admin users", http.MethodGet, "/api/v1/admin/users", http.StatusOK, nil},
 		{"admin change a user", http.MethodPatch, "/api/v1/admin/users" + missing, http.StatusNotFound, map[string]any{"disabled": false}},
+		{"admin reset link", http.MethodPost, "/api/v1/admin/users" + missing + "/reset-link", http.StatusNotFound, nil},
 		{"admin invitation", http.MethodPost, "/api/v1/admin/invitations", http.StatusCreated, map[string]any{"role": "member"}},
 		{"admin rooms", http.MethodGet, "/api/v1/admin/rooms", http.StatusOK, nil},
 		{"admin room members", http.MethodGet, "/api/v1/admin/rooms" + missing + "/members", http.StatusNotFound, nil},
@@ -107,6 +108,7 @@ func securedRoutes() []securedRoute {
 var memberStatuses = map[string]int{
 	"admin users":         http.StatusForbidden,
 	"admin change a user": http.StatusForbidden,
+	"admin reset link":    http.StatusForbidden,
 	"admin invitation":    http.StatusForbidden,
 	"admin rooms":         http.StatusForbidden,
 	"admin room members":  http.StatusForbidden,

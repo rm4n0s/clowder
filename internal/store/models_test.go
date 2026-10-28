@@ -76,6 +76,16 @@ func TestModelsRoundTrip(t *testing.T) {
 		{"Invitation made by the command line", "invitations", func(f *fix) any {
 			return &Invitation{TokenHash: "h2", Role: RoleAdmin, CreatedBy: nil, ExpiresAt: day(24 * time.Hour)}
 		}},
+		{"PasswordReset", "password_resets", func(f *fix) any {
+			admin, user := f.user(), f.user()
+			return &PasswordReset{
+				UserID: user.ID, TokenHash: "h1", CreatedBy: &admin.ID, ExpiresAt: day(24 * time.Hour),
+				UsedAt: ptr(day(time.Hour)),
+			}
+		}},
+		{"PasswordReset made by the command line", "password_resets", func(f *fix) any {
+			return &PasswordReset{UserID: f.user().ID, TokenHash: "h2", CreatedBy: nil, ExpiresAt: day(24 * time.Hour)}
+		}},
 		{"Session", "sessions", func(f *fix) any {
 			return &Session{TokenHash: "h1", UserID: f.user().ID, ExpiresAt: day(48 * time.Hour), LastSeenAt: day(time.Minute)}
 		}},
@@ -225,8 +235,8 @@ func TestEveryModelIsMigrated(t *testing.T) {
 			t.Errorf("no table for %T", m)
 		}
 	}
-	if got := len(allModels()); got != 22 {
-		t.Errorf("%d models, want the 22 of SPEC §6.3", got)
+	if got := len(allModels()); got != 23 {
+		t.Errorf("%d models, want the 23 of SPEC §6.3", got)
 	}
 }
 
@@ -244,6 +254,11 @@ func TestUniqueConstraints(t *testing.T) {
 			u := f.user()
 			return &Invitation{TokenHash: "h", Role: RoleMember, CreatedBy: &u.ID, ExpiresAt: day(time.Hour)},
 				&Invitation{TokenHash: "h", Role: RoleAdmin, CreatedBy: &u.ID, ExpiresAt: day(time.Hour)}
+		}},
+		{"password_resets.token_hash", func(f *fix) (any, any) {
+			u := f.user()
+			return &PasswordReset{UserID: u.ID, TokenHash: "h", ExpiresAt: day(time.Hour)},
+				&PasswordReset{UserID: u.ID, TokenHash: "h", ExpiresAt: day(time.Hour)}
 		}},
 		{"sessions.token_hash", func(f *fix) (any, any) {
 			u := f.user()
@@ -546,6 +561,8 @@ func TestForeignKeyActions(t *testing.T) {
 		// The audit event outlives its room and entity: only the actor.
 		{"audit_events", "actor_id", "users", restrict},
 		{"user_settings", "user_id", "users", restrict},
+		{"password_resets", "user_id", "users", restrict},
+		{"password_resets", "created_by", "users", restrict},
 	}
 
 	f := newFix(t)
@@ -592,6 +609,8 @@ func TestIndexes(t *testing.T) {
 	}{
 		"uq_users_username":                         {"users", true, "username"},
 		"uq_invitations_token_hash":                 {"invitations", true, "token_hash"},
+		"uq_password_resets_token_hash":             {"password_resets", true, "token_hash"},
+		"idx_password_resets_user_id":               {"password_resets", false, "user_id"},
 		"uq_sessions_token_hash":                    {"sessions", true, "token_hash"},
 		"idx_sessions_user_id":                      {"sessions", false, "user_id"},
 		"uq_rooms_name":                             {"rooms", true, "name"},
@@ -946,6 +965,16 @@ func TestDeleteUserIsRefused(t *testing.T) {
 		{"invitation user", func(f *fix) *User {
 			u := f.user()
 			f.create(&Invitation{TokenHash: "h", Role: RoleMember, CreatedBy: &f.user().ID, ExpiresAt: day(time.Hour), UsedBy: &u.ID})
+			return u
+		}},
+		{"password reset user", func(f *fix) *User {
+			u := f.user()
+			f.create(&PasswordReset{UserID: u.ID, TokenHash: "h", ExpiresAt: day(time.Hour)})
+			return u
+		}},
+		{"password reset creator", func(f *fix) *User {
+			u := f.user()
+			f.create(&PasswordReset{UserID: f.user().ID, TokenHash: "h", CreatedBy: &u.ID, ExpiresAt: day(time.Hour)})
 			return u
 		}},
 		{"reaction", func(f *fix) *User {

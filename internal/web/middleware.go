@@ -106,11 +106,14 @@ const maxLoggedPath = 200
 
 // pathForLog is the path of a request that no route matched (a 404, or a 405
 // for a method the route does not have), as it is logged. The token of an
-// invitation link is a secret and never reaches the log, and a path is cut at
+// invitation or reset link is a secret and never reaches the log, and a path is cut at
 // 200 bytes, so that a request cannot fill the log.
 func pathForLog(path string) string {
 	if strings.HasPrefix(path, "/invite/") {
 		return "/invite/{token}"
+	}
+	if strings.HasPrefix(path, "/reset/") {
+		return "/reset/{token}"
 	}
 	if len(path) > maxLoggedPath {
 		return path[:maxLoggedPath]

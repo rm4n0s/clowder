@@ -48,6 +48,11 @@ func TestParseFlags(t *testing.T) {
 			},
 		},
 		{
+			name: "reset link",
+			args: []string{"-o", "x.png", "-reset", "bob", "-page", "/reset/{reset}"},
+			want: options{page: "/reset/{reset}", out: "x.png", width: 1280, height: 800, wait: 500 * time.Millisecond, reset: "bob"},
+		},
+		{
 			name: "room placeholder",
 			args: []string{"-o", "x.png", "-as", "alice", "-page", "{room:secret}"},
 			want: options{page: "{room:secret}", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond},
@@ -118,6 +123,9 @@ func TestParseFlags(t *testing.T) {
 		{name: "api login without a user", args: []string{"-o", "x.png", "-api-login", "clowder-apicheck"}, wantTag: tagFlagsInvalid},
 		{name: "cluster without other", args: []string{"-o", "x.png", "-as", "bob", "-cluster"}, wantTag: tagFlagsInvalid},
 		{name: "cluster with invite", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-invite", "-page", "/invite/{invite}"}, wantTag: tagFlagsInvalid},
+		{name: "cluster with reset", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-reset", "bob", "-page", "/reset/{reset}"}, wantTag: tagFlagsInvalid},
+		{name: "reset without the placeholder", args: []string{"-o", "x.png", "-reset", "bob", "-page", "/reset/x"}, wantTag: tagFlagsInvalid},
+		{name: "reset placeholder without reset", args: []string{"-o", "x.png", "-page", "/reset/{reset}"}, wantTag: tagFlagsInvalid},
 		{name: "postgres-url without cluster", args: []string{"-o", "x.png", "-postgres-url", "postgres://db"}, wantTag: tagFlagsInvalid},
 		{name: "redis-url without cluster", args: []string{"-o", "x.png", "-redis-url", "redis://redis"}, wantTag: tagFlagsInvalid},
 		{name: "other-page without other", args: []string{"-o", "x.png", "-other-page", "/rooms"}, wantTag: tagFlagsInvalid},

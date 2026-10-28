@@ -7,6 +7,7 @@ func allModels() []any {
 		&User{},
 		&UserSettings{},
 		&Invitation{},
+		&PasswordReset{},
 		&Session{},
 		&Room{},
 		&RoomMember{},

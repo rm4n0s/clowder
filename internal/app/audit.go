@@ -76,6 +76,11 @@ const (
 	ActionRoomDeleted = store.ActionRoomDeleted
 	// ActionUserPasswordChanged is a user who changed their own password.
 	ActionUserPasswordChanged = store.ActionUserPasswordChanged
+	// ActionUserResetLinkCreated is a password reset link made for a user.
+	ActionUserResetLinkCreated = store.ActionUserResetLinkCreated
+	// ActionUserPasswordReset is a user who set a new password with a reset
+	// link.
+	ActionUserPasswordReset = store.ActionUserPasswordReset
 )
 
 // AuditFilter narrows Audit.Events (SPEC §7.10). A zero field does not

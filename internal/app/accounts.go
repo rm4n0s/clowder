@@ -321,12 +321,22 @@ func signUpProblems(username, displayName, password string) map[string]string {
 	if n := utf8.RuneCountInString(displayName); n < 1 || n > displayNameMaxLength {
 		fields[FieldDisplayName] = "Use 1 to 64 characters."
 	}
-	if utf8.RuneCountInString(password) < passwordMinLength {
-		fields[FieldPassword] = "Use at least 12 characters."
-	} else if len(password) > passwordMaxBytes {
-		fields[FieldPassword] = "Use at most 1024 bytes."
+	if problem := passwordProblem(password); problem != "" {
+		fields[FieldPassword] = problem
 	}
 	return fields
+}
+
+// passwordProblem returns the message of the rule of SPEC §7.1 that password
+// breaks (at least 12 characters, at most 1024 bytes), or "" when it holds.
+func passwordProblem(password string) string {
+	if utf8.RuneCountInString(password) < passwordMinLength {
+		return "Use at least 12 characters."
+	}
+	if len(password) > passwordMaxBytes {
+		return "Use at most 1024 bytes."
+	}
+	return ""
 }
 
 // Users returns every user, ordered by username. Only admins may; anyone else

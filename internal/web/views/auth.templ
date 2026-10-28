@@ -71,6 +71,37 @@ templ SignUpForm(d SignUpData) {
 	</form>
 }
 
+// ResetData is what the page of a password reset link and its form show.
+type ResetData struct {
+	// Token is the token of the link, from the address.
+	Token string
+	// Errors are the problems of the last submit. The passwords are never
+	// put back.
+	Errors FormErrors
+}
+
+// ResetPage is the page of the form that sets a new password with a reset
+// link.
+templ ResetPage(d ResetData) {
+	@Layout("Set a new password", nil) {
+		<div class="auth-card">
+			<h1>Set a new password</h1>
+			@ResetForm(d)
+		</div>
+	}
+}
+
+// ResetForm is the form of a reset link. The server sends it alone as a
+// Datastar patch to show the problems of a failed submit.
+templ ResetForm(d ResetData) {
+	<form id="reset-form" method="post" action={ templ.SafeURL(resetPath(d.Token)) } data-on:submit={ FormPost(resetPath(d.Token)) }>
+		@formProblem(d.Errors.Form)
+		@inputField(formField{ID: "reset-password", Name: "password", Label: "New password", Type: "password", Autocomplete: "new-password", Error: d.Errors.Fields["password"], Hint: "At least 12 characters.", Autofocus: true})
+		@inputField(formField{ID: "reset-password-confirm", Name: "passwordConfirm", Label: "New password again", Type: "password", Autocomplete: "new-password", Error: d.Errors.Fields["passwordConfirm"]})
+		<button type="submit">Set the password and log in</button>
+	</form>
+}
+
 // formProblem shows the problem of a whole form, if there is one.
 templ formProblem(message string) {
 	if message != "" {

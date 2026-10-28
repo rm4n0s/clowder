@@ -20,6 +20,20 @@ type AdminUsersData struct {
 	Message string
 	// Invite is the state of the invitation form and of its link.
 	Invite InviteData
+	// Reset is the reset link that was just made, shown once above the
+	// table; its Link is empty when none was.
+	Reset ResetLinkData
+}
+
+// ResetLinkData is the password reset link that an admin just made.
+type ResetLinkData struct {
+	// Username is the username of the user the link is for.
+	Username string
+	// Link is the full link, <base URL>/reset/<token>; empty when none was
+	// made. It is shown once.
+	Link string
+	// ExpiresAt is when the link stops working.
+	ExpiresAt time.Time
 }
 
 // InviteData is what the invitation form shows.
@@ -81,6 +95,14 @@ templ AdminTabs(current string) {
 templ UsersPanel(d AdminUsersData) {
 	<section id="users-panel">
 		@formProblem(d.Message)
+		if d.Reset.Link != "" {
+			<div id="reset-link-box" class="invitation-box">
+				<p>Give this link to { d.Reset.Username }. It is shown only now and works once.</p>
+				<input id="reset-link" type="text" readonly value={ d.Reset.Link } aria-label="Password reset link"/>
+				<p class="hint">Expires { d.Reset.ExpiresAt.UTC().Format("2006-01-02 15:04") } UTC.</p>
+				<button id="copy-reset-link" type="button" class="secondary" data-on:click="navigator.clipboard.writeText(document.getElementById('reset-link').value).then(() => { el.textContent = 'Copied' })">Copy link</button>
+			</div>
+		}
 		<table class="users">
 			<thead>
 				<tr>
@@ -121,6 +143,9 @@ templ userRow(u app.User, self bool) {
 			} else {
 				@actionForm(userPath(u.ID, "role"), "role", "admin", "Make admin")
 			}
+			if !u.Disabled {
+				@actionButton(userPath(u.ID, "reset-link"), "Reset password")
+			}
 			if !self {
 				if u.Disabled {
 					@actionForm(userPath(u.ID, "disabled"), "disabled", "false", "Enable")
@@ -137,6 +162,14 @@ templ userRow(u app.User, self bool) {
 templ actionForm(path, name, value, label string) {
 	<form class="action" method="post" action={ templ.SafeURL(path) } data-on:submit={ FormPost(path) }>
 		<input type="hidden" name={ name } value={ value }/>
+		<button type="submit" class="secondary">{ label }</button>
+	</form>
+}
+
+// actionButton is a form of one button that posts nothing but the request
+// itself to path.
+templ actionButton(path, label string) {
+	<form class="action" method="post" action={ templ.SafeURL(path) } data-on:submit={ FormPost(path) }>
 		<button type="submit" class="secondary">{ label }</button>
 	</form>
 }

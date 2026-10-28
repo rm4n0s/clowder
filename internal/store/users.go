@@ -56,6 +56,30 @@ type Invitation struct {
 	User    *User `gorm:"foreignKey:UsedBy;constraint:OnDelete:RESTRICT"`
 }
 
+// PasswordReset is a one-use link that lets a user who forgot their password
+// set a new one (SPEC §7.1, D51). A user has at most one unused link: a newer
+// link replaces the older one.
+type PasswordReset struct {
+	ID        uint64
+	CreatedAt time.Time
+	// UserID is the user who may set a new password with the link.
+	UserID uint64 `gorm:"not null;index:idx_password_resets_user_id"`
+	// TokenHash is the SHA-256 of the token in the link; the token itself is
+	// never stored.
+	TokenHash string `gorm:"not null;uniqueIndex:uq_password_resets_token_hash"`
+	// CreatedBy is the admin who made the link; nil for one made by
+	// "clowder reset-password" on the command line.
+	CreatedBy *uint64
+	ExpiresAt time.Time `gorm:"not null"`
+	// UsedAt is when the link was used; nil until then.
+	UsedAt *time.Time
+
+	// Relations: declared so that GORM creates the foreign keys. The store
+	// never loads or saves them.
+	User    *User `gorm:"foreignKey:UserID;constraint:OnDelete:RESTRICT"`
+	Creator *User `gorm:"foreignKey:CreatedBy;constraint:OnDelete:RESTRICT"`
+}
+
 // SessionKind says where a session was made and where it is accepted (SPEC
 // D43).
 type SessionKind string

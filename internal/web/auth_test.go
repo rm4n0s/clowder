@@ -1159,6 +1159,11 @@ func TestBadForms(t *testing.T) {
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			return r
 		}},
+		{"reset with a bad escape", func(token string) *http.Request {
+			r := httptest.NewRequest(http.MethodPost, "/reset/"+token, strings.NewReader("password=%zz"))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			return r
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

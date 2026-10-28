@@ -3456,6 +3456,55 @@
         }
       }
     },
+    "/admin/users/{id}/reset-link": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Make a password reset link",
+        "operationId": "adminCreateResetLink",
+        "description": "Makes a one-time link that lets the user set a new password, and returns it, once; it is never stored or shown again. The link is <base URL>/reset/<token>, a page of the web interface (there is no route to use it). It is valid for 24 hours and works once. A newer link replaces the unused older links of the user. An admin may make a link for any user who is not disabled, themselves included. Using the link sets the password, ends every session of the user (browsers and API tokens), logs the user in on the page and writes the audit events user.reset_link_created and user.password_reset. Admins only: 403 forbidden for a member. An unknown user is 404 and a disabled user is 409 conflict.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the user.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The new reset link.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminResetLink"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/admin/invitations": {
       "post": {
         "tags": [
@@ -3667,7 +3716,9 @@
                 "room.created",
                 "room.renamed",
                 "room.deleted",
-                "user.password_changed"
+                "user.password_changed",
+                "user.reset_link_created",
+                "user.password_reset"
               ]
             }
           },
@@ -5829,6 +5880,26 @@
         ],
         "additionalProperties": false
       },
+      "AdminResetLink": {
+        "type": "object",
+        "description": "A new password reset link. The link is shown once and never stored.",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The link to give to the person: <base URL>/reset/<token>."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the link stops working: 24 hours after it was made."
+          }
+        },
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
       "AuditEvent": {
         "type": "object",
         "description": "An event of the audit log.",
@@ -5870,7 +5941,9 @@
               "room.created",
               "room.renamed",
               "room.deleted",
-              "user.password_changed"
+              "user.password_changed",
+              "user.reset_link_created",
+              "user.password_reset"
             ],
             "description": "What happened."
           },
