@@ -253,6 +253,10 @@ func pairs() []pair {
 	// the lines, the icons.
 	add(nonTextRatio, grounds, "c-focus")
 	add(nonTextRatio, []string{"c-ground", "c-surface", "c-surface-raised", "c-bar"}, "c-icon-muted", "c-accent")
+	// (21.4) The knob of a switch that is off on its track, and the accent of a
+	// chosen card or pill and of the paw of a notice, on the accent wash.
+	add(nonTextRatio, []string{"c-track"}, "c-icon-muted")
+	add(nonTextRatio, []string{"c-accent-wash"}, "c-accent")
 	add(nonTextRatio, []string{"c-ground", "c-surface", "c-surface-raised", "c-surface-sunken"}, "c-sage")
 	return ps
 }

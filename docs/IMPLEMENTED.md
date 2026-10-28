@@ -1553,3 +1553,37 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - In a group, every message of someone else shows its author: each message arrives as its own patch, so the markup cannot tell that the author changed. In a direct conversation, CSS hides the repeats.
   - A conversation has no "new" line, and the list says "Unread" rather than a number, because the summary has no count per conversation.
   - The composer of a conversation is not sticky: a sticky one covered the last messages on a phone.
+
+## 21.4 Settings, sessions and admin in the new look
+- **Date:** 2026-10-28
+- **Branch:** feat/step-21.4-settings-admin
+- **Summary:** markup and CSS, with the components of 21.2 and 21.3.
+  - **Settings:**
+    - one column of cards with anchor pills at the top; each card has its heading, a muted hint, and a foot with the "Saved" note and the accent save button;
+    - Profile has the avatar (96 px) with its upload, and Remove as a quiet danger button;
+    - Appearance has System, Light and Dark as cards on the existing radios;
+    - Notifications have choice pills, switches on the checkboxes, the sounds as rows with Play, the keywords as pills, and the places with their own preferences as rows;
+    - Sign-in has the SSH keys as rows (the fingerprint in mono), the command in a code box, and the SSH-code state as a tinted line.
+  - **Sessions:** a list with the client name, a Browser or App pill, "This device" in sage, the times, and End as a quiet danger button.
+  - **Admin:**
+    - the tabs are a segmented pill;
+    - the tables are in cards that scroll sideways on a phone, their row actions kept on one line;
+    - the users table has avatars and pills for the role, the state and the SSH code;
+    - the invitation and reset links are in mono in a tinted box, and the SSH warning is a notice card;
+    - rooms are cards, and the audit log has its times in mono and its actions as pills.
+  - One handler change closes what 21.1 left open: the theme chosen in the user menu also checks the matching card in Appearance when the settings page is open (`themeRadioJS`).
+- **Main files:** `internal/web/views/{settings,signin,notify,admin,admin_rooms,admin_audit}.templ`, `internal/web/settings.go`, `internal/web/static/app.css`, `internal/web/static/static_test.go`, `internal/web/browser_look_test.go`, `docs/SPEC.md`.
+- **Tests:**
+  - browser: `TestSettingsSessionsAndAdminFitAPhone` (390×844 on settings, sessions and the three admin pages: no sideways scroll, 44 px targets, the users and audit tables scrolling inside their cards) and `TestSettingsThemeMenuMovesTheChoiceCards`;
+  - `TestThemeMenuRoute` checks the new patch; two contrast pairs;
+  - the tests whose markup moved (the SSH keys and sessions are lists now) updated, none weakened.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ (`internal/api` failed once on PostgreSQL, in a test run while the machine was short of memory, and passed when run again) · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [settings light](implemented-proof-images/21.4-settings-light.png) · [settings dark](implemented-proof-images/21.4-settings-dark.png) · [settings 390](implemented-proof-images/21.4-settings-390.png) · [users light](implemented-proof-images/21.4-admin-users-light.png) · [users dark](implemented-proof-images/21.4-admin-users-dark.png) · [users 390](implemented-proof-images/21.4-admin-users-390.png) · [audit light](implemented-proof-images/21.4-audit-light.png) · [audit dark](implemented-proof-images/21.4-audit-dark.png) · [audit 390](implemented-proof-images/21.4-audit-390.png) · [sessions](implemented-proof-images/21.4-sessions-light.png)
+  - alice's settings with an SSH key and a client session; the admin's users with an invitation link; the audit log; alice's sessions.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The profile avatar is the 96 px size, not `xl` (42 px), which is too small for a profile.
+  - A session's address is not shown: Clowder does not store it. The SSH command has no Copy button, as before.
+  - The admin's user actions stay inline buttons, not a "more" menu, so that keyboards and tests reach them directly. On a phone they stay on one line and the table scrolls (the manager's fix, which brought the rows from about 120 px down to 70 px).
+  - "Change password" stays the accent save button of its card, although it ends the other sessions: it is the card's main action (the manager's decision).

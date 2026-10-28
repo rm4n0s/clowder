@@ -292,8 +292,9 @@ func (s *Server) settingsAppearance(w http.ResponseWriter, r *http.Request) {
 	menu := views.ThemeMenu(settings.Theme)
 	if r.URL.Query().Get("from") == "menu" {
 		// The theme form of the user menu, on any page: only the menu is
-		// patched, and the page changes its theme.
-		s.settingsSaved(w, r, sectionAppearance, menu, themeJS(settings.Theme))
+		// patched, and the page changes its theme. On the settings page the
+		// radio buttons of the Appearance section follow the choice.
+		s.settingsSaved(w, r, sectionAppearance, menu, themeJS(settings.Theme)+", "+themeRadioJS(settings.Theme))
 		return
 	}
 	// The Appearance section, and the user menu, which marks the same choice.
@@ -316,6 +317,14 @@ func themeJS(theme app.Theme) string {
 		return "document.documentElement.setAttribute('data-theme', " + jsString(string(theme)) + ")"
 	}
 	return "document.documentElement.removeAttribute('data-theme')"
+}
+
+// themeRadioJS is the JavaScript that checks the radio button of the theme in
+// the Appearance section of the settings page, so that the section agrees with
+// the user menu after a choice made there; on a page without the section it
+// does nothing.
+func themeRadioJS(theme app.Theme) string {
+	return "(document.getElementById(" + jsString("theme-"+string(theme)) + ") || {}).checked = true"
 }
 
 // sessionsRedirect answers GET /me/sessions: the page of the sessions is a

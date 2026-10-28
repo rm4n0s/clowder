@@ -94,6 +94,30 @@ func TestSettingsProfileAndTheme(t *testing.T) {
 	}
 }
 
+// TestSettingsThemeMenuMovesTheChoiceCards: the theme chosen in the user menu
+// of the settings page also checks the matching card of the Appearance section
+// (no reload), and the section's own choice is what the menu then shows.
+func TestSettingsThemeMenuMovesTheChoiceCards(t *testing.T) {
+	srv := browsertest.Start(t)
+	carol := secondBrowser(t, srv, "carol")
+	openSettings(t, carol, srv)
+	runJS(t, carol, `window.notReloaded = true; true`)
+
+	if err := waitFor(carol, `document.getElementById('theme-system').checked`); err != nil {
+		t.Fatalf("System is not checked at first: %v", err)
+	}
+	err := chromedp.Do(carol, openUserMenu(), chromedp.Click(`#theme-menu button[value="dark"]`))
+	if err != nil {
+		t.Fatalf("choose Dark in the menu: %v", err)
+	}
+	if err := waitFor(carol, `document.documentElement.getAttribute('data-theme') === 'dark' && document.getElementById('theme-dark').checked && !document.getElementById('theme-system').checked`); err != nil {
+		t.Fatalf("the card of the section does not follow the menu: %v", err)
+	}
+	if notReloaded, err := chromedp.Run(carol, chromedp.Evaluate[bool](`window.notReloaded === true`)); err != nil || !notReloaded {
+		t.Errorf("the page was reloaded (%v)", err)
+	}
+}
+
 // TestSettingsAvatar uploads a picture as carol, sees it in the settings and
 // in the sidebar, and removes it again.
 func TestSettingsAvatar(t *testing.T) {
@@ -280,13 +304,13 @@ func TestSettingsSSHKeys(t *testing.T) {
 	}
 
 	add("laptop", line, browsertest.DemoPassword)
-	if err := waitFor(carol, `document.querySelector('#signin .saved') !== null && document.querySelector('#ssh-keys-panel table.ssh-keys tbody tr') !== null`); err != nil {
+	if err := waitFor(carol, `document.querySelector('#signin .saved') !== null && document.querySelector('#ssh-keys-panel ul.ssh-keys > li') !== null`); err != nil {
 		t.Fatalf("the key is not in the table: %v", err)
 	}
-	if got := textOf(t, carol, "#ssh-keys-panel td.name"); got != "laptop" {
+	if got := textOf(t, carol, "#ssh-keys-panel .key-name"); got != "laptop" {
 		t.Errorf("name = %q", got)
 	}
-	if got := textOf(t, carol, "#ssh-keys-panel td.fingerprint"); got != ssh.FingerprintSHA256(key) {
+	if got := textOf(t, carol, "#ssh-keys-panel .key-fingerprint"); got != ssh.FingerprintSHA256(key) {
 		t.Errorf("fingerprint = %q, want %q", got, ssh.FingerprintSHA256(key))
 	}
 	// The form is empty again.

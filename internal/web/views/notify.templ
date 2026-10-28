@@ -52,66 +52,74 @@ templ mutedIcon() {
 // sends it alone as a Datastar patch after a submit.
 templ NotifyPrefsSection(d NotifyPrefsData) {
 	<section id="notifications" class="settings-section">
-		<h2>Notifications</h2>
-		<p class="hint">These decide what plays a sound and shows a notification in the browser. The bell always gets your mentions, replies, assignments and additions.</p>
+		<div class="settings-head">
+			<h2>Notifications</h2>
+			<p class="hint">These decide what plays a sound and shows a notification in the browser. The bell always gets your mentions, replies, assignments and additions.</p>
+		</div>
 		<form id="notifications-form" method="post" action={ templ.SafeURL(SettingsNotificationsPath) } data-on:submit={ FormPost(SettingsNotificationsPath) }>
 			@formProblem(d.Errors.Form)
-			<fieldset class="notify-choices">
+			<fieldset class="notify-choices setting-group">
 				<legend>Notify me about</legend>
-				for _, c := range globalNotifyChoices() {
-					<label class="notify-choice" for={ "notify-" + c.Value }>
-						<input id={ "notify-" + c.Value } type="radio" name="notify" value={ c.Value } checked?={ string(d.Settings.Notify) == c.Value }/>
-						{ c.Label }
-					</label>
-				}
+				<div class="choice-pills">
+					for _, c := range globalNotifyChoices() {
+						<label class="notify-choice choice-pill" for={ "notify-" + c.Value }>
+							<input id={ "notify-" + c.Value } type="radio" name="notify" value={ c.Value } checked?={ string(d.Settings.Notify) == c.Value }/>
+							{ c.Label }
+						</label>
+					}
+				</div>
 				if d.Errors.Fields["notify"] != "" {
 					<p class="field-error" role="alert">{ d.Errors.Fields["notify"] }</p>
 				}
 			</fieldset>
-			<fieldset class="sound-choices">
+			<fieldset class="sound-choices setting-group">
 				<legend>Sound</legend>
-				<label class="notify-choice" for="notify-sound">
+				<label class="notify-choice switch" for="notify-sound">
 					<input id="notify-sound" type="checkbox" name="sound" value="on" checked?={ d.Settings.Sound }/>
-					Play a sound
+					<span>Play a sound</span>
 				</label>
-				for _, c := range soundChoices() {
-					<div class="sound-choice">
-						<label for={ "sound-" + c.Value }>
-							<input id={ "sound-" + c.Value } type="radio" name="soundName" value={ c.Value } checked?={ string(d.Settings.SoundName) == c.Value }/>
-							{ c.Label }
-						</label>
-						<button type="button" class="secondary" data-play-sound={ c.Value } aria-label={ "Play " + c.Label }>Play</button>
-					</div>
-				}
+				<div class="sound-list">
+					for _, c := range soundChoices() {
+						<div class="sound-choice">
+							<label for={ "sound-" + c.Value }>
+								<input id={ "sound-" + c.Value } type="radio" name="soundName" value={ c.Value } checked?={ string(d.Settings.SoundName) == c.Value }/>
+								{ c.Label }
+							</label>
+							<button type="button" class="secondary" data-play-sound={ c.Value } aria-label={ "Play " + c.Label }>Play</button>
+						</div>
+					}
+				</div>
 				if d.Errors.Fields["soundName"] != "" {
 					<p class="field-error" role="alert">{ d.Errors.Fields["soundName"] }</p>
 				}
 			</fieldset>
-			<fieldset class="browser-notifications">
+			<fieldset class="browser-notifications setting-group">
 				<legend>Browser notifications</legend>
-				<label class="notify-choice" for="notify-browser">
+				<label class="notify-choice switch" for="notify-browser">
 					<input id="notify-browser" type="checkbox" name="browserNotifications" value="on" checked?={ d.Settings.BrowserNotifications }/>
-					Show a notification when no Clowder tab has the focus
+					<span>Show a notification when no Clowder tab has the focus</span>
 				</label>
 				<p class="hint" id="notify-browser-hint">Your browser asks for permission when you turn this on.</p>
 			</fieldset>
-			<fieldset class="replies-choices">
+			<fieldset class="replies-choices setting-group">
 				<legend>Replies</legend>
-				for _, c := range repliesChoices() {
-					<label class="notify-choice" for={ "replies-" + c.Value }>
-						<input id={ "replies-" + c.Value } type="radio" name="replies" value={ c.Value } checked?={ string(d.Settings.Replies) == c.Value }/>
-						{ c.Label }
-					</label>
-				}
+				<div class="choice-pills">
+					for _, c := range repliesChoices() {
+						<label class="notify-choice choice-pill" for={ "replies-" + c.Value }>
+							<input id={ "replies-" + c.Value } type="radio" name="replies" value={ c.Value } checked?={ string(d.Settings.Replies) == c.Value }/>
+							{ c.Label }
+						</label>
+					}
+				</div>
 				if d.Errors.Fields["replies"] != "" {
 					<p class="field-error" role="alert">{ d.Errors.Fields["replies"] }</p>
 				}
 			</fieldset>
-			<fieldset class="mention-keywords">
+			<fieldset class="mention-keywords setting-group">
 				<legend>Mention keywords</legend>
-				<label class="notify-choice" for="notify-group-mentions">
+				<label class="notify-choice switch" for="notify-group-mentions">
 					<input id="notify-group-mentions" type="checkbox" name="groupMentions" value="on" checked?={ d.Settings.GroupMentions }/>
-					{ "@room, @all and @here" }
+					<span>{ "@room, @all and @here" }</span>
 				</label>
 				<div class="field">
 					<label for="notify-keywords">Keywords</label>
@@ -133,11 +141,20 @@ templ NotifyPrefsSection(d NotifyPrefsData) {
 						<p class="hint">Separate them with commas: up to 10 words or phrases of at most 32 characters. A keyword matches whole words, ignoring case, outside code, and notifies you like a mention.</p>
 					}
 				</div>
+				if len(d.Settings.Keywords) > 0 {
+					<ul class="keyword-pills" id="notify-keyword-pills" aria-label="Saved keywords">
+						for _, k := range d.Settings.Keywords {
+							<li class="badge badge-accent">{ k }</li>
+						}
+					</ul>
+				}
 			</fieldset>
-			<button type="submit">Save</button>
+			<div class="card-foot">
+				@savedNote(d.Saved)
+				<button type="submit">Save</button>
+			</div>
 		</form>
-		@savedNote(d.Saved)
-		<h3>Rooms and conversations with their own preferences</h3>
+		<h3 class="settings-subhead">Rooms and conversations with their own preferences</h3>
 		if len(d.Places) == 0 {
 			<p class="hint" id="notify-places-empty">None. Open the notification preferences of a room or a conversation from its page.</p>
 		} else {
@@ -151,7 +168,7 @@ templ NotifyPrefsSection(d NotifyPrefsData) {
 								{ p.Name }
 							}
 						</a>
-						<span class="hint">{ p.Summary }</span>
+						<span class="place-summary">{ p.Summary }</span>
 					</li>
 				}
 			</ul>

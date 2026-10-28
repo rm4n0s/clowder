@@ -35,7 +35,7 @@ func TestSignInSection(t *testing.T) {
 			name: "keys and the server",
 			data: views.SignInData{Keys: keys, Server: server},
 			want: []string{
-				`<section id="signin" class="settings-section">`, `<tr id="ssh-key-3">`, `<tr id="ssh-key-5">`,
+				`<section id="signin" class="settings-section">`, `<li id="ssh-key-3" class="ssh-key">`, `<li id="ssh-key-5" class="ssh-key">`,
 				"laptop &lt;b&gt;", "SHA256:abc", "SHA256:def", "Never",
 				`action="/me/settings/ssh-keys/3/remove"`, `action="/me/settings/ssh-keys/5/remove"`,
 				`<form id="ssh-key-add-form" method="post" action="/me/settings/ssh-keys"`,

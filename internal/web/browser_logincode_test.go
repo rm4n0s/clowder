@@ -76,7 +76,7 @@ func TestLoginWithTheSSHCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add the key: %v", err)
 	}
-	if err := waitFor(carol, `document.querySelector('#ssh-keys-panel table.ssh-keys tbody tr') !== null`); err != nil {
+	if err := waitFor(carol, `document.querySelector('#ssh-keys-panel ul.ssh-keys > li') !== null`); err != nil {
 		t.Fatalf("the key is not in the table: %v", err)
 	}
 	// The switch cannot be turned on before a key has fetched a code.

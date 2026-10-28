@@ -90,7 +90,7 @@ func TestSettingsSignInSection(t *testing.T) {
 		theirs := e.addKey(e.bob, "bob's phone")
 		rec := e.send(get("/me/settings", withCookie(e.token)))
 		requireBody(t, rec, []string{
-			`<tr id="ssh-key-` + itoa(mine.ID) + `">`, "my laptop", "ssh-ed25519", mine.Fingerprint, "Never",
+			`<li id="ssh-key-` + itoa(mine.ID) + `" class="ssh-key">`, "my laptop", "ssh-ed25519", mine.Fingerprint, "Never",
 			`action="/me/settings/ssh-keys/` + itoa(mine.ID) + `/remove"`, `placeholder="Current password"`,
 		}, "bob's phone", theirs.Fingerprint, "You have no SSH keys.")
 		// The key line is never on the page.

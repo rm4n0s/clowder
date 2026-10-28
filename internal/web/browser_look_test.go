@@ -277,6 +277,66 @@ func TestPagesOfTheBoardMessagesSearchAndNotificationsFitAPhone(t *testing.T) {
 	}
 }
 
+// TestSettingsSessionsAndAdminFitAPhone: at 390 by 844 neither the settings
+// page (with its sessions), nor the admin pages is wider than the screen, what
+// is touched is at least 44 px high, and the table of users, which is wider than
+// the screen, scrolls inside its own card.
+func TestSettingsSessionsAndAdminFitAPhone(t *testing.T) {
+	srv := browsertest.Start(t)
+	browser := browsertest.Browser(t, srv)
+	ctx, cancel := context.WithTimeout(browser, pageTimeout)
+	defer cancel()
+
+	if err := browsertest.LogIn(ctx, srv, "admin"); err != nil {
+		t.Fatalf("LogIn: %+v", err)
+	}
+	if err := chromedp.Do(ctx, chromedp.EmulateViewport(390, 844), chromedp.Navigate(srv.URL+"/rooms")); err != nil {
+		t.Fatalf("resize: %v", err)
+	}
+	tall := func(sel string) string {
+		return `(() => { const els = [...document.querySelectorAll(` + strconv.Quote(sel) + `)]; return els.length > 0 && els.every(e => e.getBoundingClientRect().height >= 43.5); })()`
+	}
+	pages := []struct {
+		name    string
+		path    string
+		visible string
+		touch   []string
+	}{
+		{"the settings", "/me/settings", "#profile-form",
+			[]string{".settings-nav a", ".theme-choice", "#profile-form .card-foot button", ".choice-pills .choice-pill", ".switch", "#sessions .session-end button"}},
+		{"the old sessions page", "/me/sessions", "#sessions li.session", []string{"#sessions .session-end button"}},
+		{"the users", "/admin/users", "#users-panel table.users", []string{".admin-tabs a", ".row-actions button", "#invite-form button"}},
+		{"the rooms", "/admin/rooms", "#admin-rooms li.admin-room", []string{".admin-tabs a", ".admin-room summary", ".admin-room .room-actions button"}},
+		{"the audit log", "/admin/audit", "#audit-panel table.audit", []string{".admin-tabs a", "#audit-filter button", "#audit-filter .button-link"}},
+	}
+	for _, p := range pages {
+		if err := chromedp.Do(ctx, chromedp.Navigate(srv.URL+p.path), chromedp.WaitVisible(p.visible)); err != nil {
+			t.Fatalf("%s did not load: %v", p.name, err)
+		}
+		if err := waitFor(ctx, fitsScreen); err != nil {
+			t.Errorf("%s is wider than the screen: %v", p.name, err)
+		}
+		for _, sel := range p.touch {
+			if err := waitFor(ctx, tall(sel)); err != nil {
+				t.Errorf("%s: %s is under 44 px: %v", p.name, sel, err)
+			}
+		}
+	}
+	// The users and the audit log: the card scrolls sideways, the page does not.
+	for _, c := range []struct{ path, wait, card string }{
+		{"/admin/users", "#users-panel table.users", "#users-panel .table-card"},
+		{"/admin/audit", "#audit-panel table.audit", "#audit-panel .table-card"},
+	} {
+		if err := chromedp.Do(ctx, chromedp.Navigate(srv.URL+c.path), chromedp.WaitVisible(c.wait)); err != nil {
+			t.Fatalf("%s: %v", c.path, err)
+		}
+		card := `document.querySelector(` + strconv.Quote(c.card) + `)`
+		if err := waitFor(ctx, card+`.scrollWidth > `+card+`.clientWidth + 50 && getComputedStyle(`+card+`).overflowX === 'auto' && `+fitsScreen); err != nil {
+			t.Errorf("%s: the table does not scroll inside its card: %v", c.path, err)
+		}
+	}
+}
+
 // TestConversationMenuOpensTheNotificationPreferences: the "more" menu of a
 // conversation holds the notification preferences; the button opens the dialog
 // and closes the menu, and a patch of the header (a rename) leaves the menu

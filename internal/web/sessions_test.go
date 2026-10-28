@@ -41,7 +41,7 @@ func (e *testEnv) sessionsOf(current string) []app.SessionInfo {
 	return list
 }
 
-var sessionRowID = regexp.MustCompile(`<tr id="session-(\d+)"`)
+var sessionRowID = regexp.MustCompile(`<li id="session-(\d+)"`)
 
 func TestSessionsPage(t *testing.T) {
 	t.Parallel()
@@ -59,22 +59,22 @@ func TestSessionsPage(t *testing.T) {
 	}
 	body := rec.Body.String()
 	requireBody(t, rec, []string{
-		"<title id=\"page-title\">Settings · Clowder</title>", "<h1>Settings</h1>", `<section id="sessions" class="settings-section">`, `<table class="sessions">`,
+		"<title id=\"page-title\">Settings · Clowder</title>", "<h1>Settings</h1>", `<section id="sessions" class="settings-section">`, `<ul class="sessions">`,
 		// The app session first (the newest), with its name escaped.
-		`data-kind="api"`, `<td class="kind">App</td>`, "Clowder Desktop &lt;b&gt;on&lt;/b&gt; laptop",
-		`data-kind="browser"`, `<td class="kind">Browser</td>`,
-		"This browser", `datetime="2026-10-26T09:30:00Z"`, `datetime="2026-10-26T10:30:00Z"`,
+		`data-kind="api"`, `<span class="badge kind">App</span>`, "Clowder Desktop &lt;b&gt;on&lt;/b&gt; laptop",
+		`data-kind="browser"`, `<span class="badge kind">Browser</span>`,
+		"This device", `datetime="2026-10-26T09:30:00Z"`, `datetime="2026-10-26T10:30:00Z"`,
 		`id="sidebar-user">Alice</p>`, `<a class="user-menu-item" href="/me/settings">`, `href="/me/settings#sessions"`,
 	}, "bobs-secret-app", "<b>on</b>", "token")
 	ids := sessionRowID.FindAllStringSubmatch(body, -1)
 	if len(ids) != 2 {
 		t.Fatalf("%d rows, want alice's 2:\n%s", len(ids), body)
 	}
-	if strings.Count(body, "This browser") != 1 {
-		t.Errorf("This browser appears %d times, want once", strings.Count(body, "This browser"))
+	if strings.Count(body, "This device") != 1 {
+		t.Errorf("This device appears %d times, want once", strings.Count(body, "This device"))
 	}
 	// The current row is the browser one.
-	cur := regexp.MustCompile(`<tr id="session-\d+" data-kind="browser" class="current">`)
+	cur := regexp.MustCompile(`<li id="session-\d+" data-kind="browser" class="session current">`)
 	if !cur.MatchString(body) {
 		t.Errorf("the browser row is not the current one:\n%s", body)
 	}

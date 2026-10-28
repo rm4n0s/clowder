@@ -84,11 +84,11 @@ func AuditPage(d AuditData) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = AdminTabs("audit").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Audit log</h1>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Audit log</h1>")
+			templ_7745c5c3_Err = AdminTabs("audit").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -134,7 +134,7 @@ func AuditFilters(d AuditData) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<form id=\"audit-filter\" class=\"audit-filter\" method=\"get\" action=\"/admin/audit\" data-on:submit=\"@get('/admin/audit', {contentType: 'form'})\"><div class=\"audit-filter-fields\"><div class=\"field\"><label for=\"audit-room\">Room</label> <select id=\"audit-room\" name=\"room\"><option value=\"\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<form id=\"audit-filter\" class=\"audit-filter admin-card\" method=\"get\" action=\"/admin/audit\" data-on:submit=\"@get('/admin/audit', {contentType: 'form'})\"><div class=\"audit-filter-fields\"><div class=\"field\"><label for=\"audit-room\">Room</label> <select id=\"audit-room\" name=\"room\"><option value=\"\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -471,7 +471,7 @@ func AuditPanel(d AuditData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<div class=\"audit-table-wrap\"><table class=\"audit\"><thead><tr><th scope=\"col\">Time (UTC)</th><th scope=\"col\">Actor</th><th scope=\"col\">Room</th><th scope=\"col\">Action</th><th scope=\"col\">Summary</th></tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<div class=\"audit-table-wrap table-card\"><table class=\"audit\"><thead><tr><th scope=\"col\">Time (UTC)</th><th scope=\"col\">Actor</th><th scope=\"col\">Room</th><th scope=\"col\">Action</th><th scope=\"col\">Summary</th></tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -759,20 +759,20 @@ func auditRow(row AuditRow) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</td><td class=\"audit-action\"><code>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</td><td class=\"audit-action\"><span class=\"badge badge-accent\"><code>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(string(row.Event.Action))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `admin_audit.templ`, Line: 183, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `admin_audit.templ`, Line: 183, Col: 92}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</code></td><td class=\"audit-summary\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</code></span></td><td class=\"audit-summary\"><span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

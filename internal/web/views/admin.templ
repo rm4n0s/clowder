@@ -57,16 +57,16 @@ type InviteData struct {
 // admins get it.
 templ AdminUsersPage(d AdminUsersData) {
 	@Layout("Users", d.Sidebar.UnreadTotal(), &d.Sidebar) {
-		@AdminTabs("users")
 		<h1>Users</h1>
+		@AdminTabs("users")
 		@UsersPanel(d)
 		@InviteSection(d.Invite)
 		@liveStream(MeStreamPath)
 	}
 }
 
-// AdminTabs is the tab bar that the admin pages share: Users, Rooms and Audit
-// log. current is the tab of the page that is shown: "users", "rooms" or
+// AdminTabs is the segmented bar under the title that the admin pages share:
+// Users, Rooms and Audit log. current is the tab of the page that is shown: "users", "rooms" or
 // "audit".
 templ AdminTabs(current string) {
 	<nav class="admin-tabs" aria-label="Admin">
@@ -99,7 +99,10 @@ templ AdminTabs(current string) {
 templ UsersPanel(d AdminUsersData) {
 	<section id="users-panel">
 		if d.SSHServerOff {
-			<p id="ssh-server-warning" class="notice-warning" role="status">The SSH server is not running: users who turned on the SSH code log in with their password only.</p>
+			<p id="ssh-server-warning" class="notice-warning" role="status">
+				@IconPaw()
+				<span>The SSH server is not running: users who turned on the SSH code log in with their password only.</span>
+			</p>
 		}
 		@formProblem(d.Message)
 		if d.Reset.Link != "" {
@@ -110,77 +113,87 @@ templ UsersPanel(d AdminUsersData) {
 				<button id="copy-reset-link" type="button" class="secondary" data-on:click="navigator.clipboard.writeText(document.getElementById('reset-link').value).then(() => { el.textContent = 'Copied' })">Copy link</button>
 			</div>
 		}
-		<table class="users">
-			<thead>
-				<tr>
-					<th scope="col">Username</th>
-					<th scope="col">Display name</th>
-					<th scope="col">Role</th>
-					<th scope="col">State</th>
-					<th scope="col">SSH code</th>
-					<th scope="col">Created</th>
-					<th scope="col">Actions</th>
-				</tr>
-			</thead>
-			<tbody>
-				for _, u := range d.Users {
-					@userRow(u, u.ID == d.Viewer.ID)
-				}
-			</tbody>
-		</table>
+		<div class="table-card">
+			<table class="users">
+				<thead>
+					<tr>
+						<th scope="col">Display name</th>
+						<th scope="col">Username</th>
+						<th scope="col">Role</th>
+						<th scope="col">State</th>
+						<th scope="col">SSH code</th>
+						<th scope="col">Created</th>
+						<th scope="col">Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, u := range d.Users {
+						@userRow(u, u.ID == d.Viewer.ID)
+					}
+				</tbody>
+			</table>
+		</div>
 	</section>
 }
 
 // userRow is one row of the table. The admin's own row has no disable button.
 templ userRow(u app.User, self bool) {
 	<tr id={ "user-" + strconv.FormatUint(u.ID, 10) } data-username={ u.Username }>
-		<td>{ u.Username }</td>
-		<td>{ u.DisplayName }</td>
-		<td class="role">{ string(u.Role) }</td>
+		<td class="user-cell">
+			<span class="user-who">
+				@AvatarSized(u.ID, u.DisplayName, u.AvatarURL(), "md")
+				<span class="user-display">{ u.DisplayName }</span>
+			</span>
+		</td>
+		<td class="username">{ "@" + u.Username }</td>
+		<td class="role"><span class={ "badge", templ.KV("badge-accent", u.IsAdmin()) }>{ string(u.Role) }</span></td>
 		<td class="state">
 			if u.Disabled {
-				Disabled
+				<span class="badge badge-muted">Disabled</span>
 			} else {
-				Active
+				<span class="badge badge-sage">Active</span>
 			}
 		</td>
 		<td class="ssh-code">
 			if u.SSHCodeRequired {
-				On
+				<span class="badge badge-sage">On</span>
 			} else {
-				Off
+				<span class="badge">Off</span>
 			}
 		</td>
-		<td>{ u.CreatedAt.UTC().Format("2006-01-02") }</td>
+		<td class="created">{ u.CreatedAt.UTC().Format("2006-01-02") }</td>
 		<td class="actions">
-			if u.IsAdmin() {
-				@actionForm(userPath(u.ID, "role"), "role", "member", "Make member")
-			} else {
-				@actionForm(userPath(u.ID, "role"), "role", "admin", "Make admin")
-			}
-			if !u.Disabled {
-				@actionButton(userPath(u.ID, "reset-link"), "Reset password")
-			}
-			if u.SSHCodeRequired {
-				@actionButton(userPath(u.ID, "ssh-code/remove"), "Turn off SSH code")
-			}
-			if !self {
-				if u.Disabled {
-					@actionForm(userPath(u.ID, "disabled"), "disabled", "false", "Enable")
+			<div class="row-actions">
+				if u.IsAdmin() {
+					@actionForm(userPath(u.ID, "role"), "role", "member", "Make member", false)
 				} else {
-					@actionForm(userPath(u.ID, "disabled"), "disabled", "true", "Disable")
+					@actionForm(userPath(u.ID, "role"), "role", "admin", "Make admin", false)
 				}
-			}
+				if !u.Disabled {
+					@actionButton(userPath(u.ID, "reset-link"), "Reset password")
+				}
+				if u.SSHCodeRequired {
+					@actionButton(userPath(u.ID, "ssh-code/remove"), "Turn off SSH code")
+				}
+				if !self {
+					if u.Disabled {
+						@actionForm(userPath(u.ID, "disabled"), "disabled", "false", "Enable", false)
+					} else {
+						@actionForm(userPath(u.ID, "disabled"), "disabled", "true", "Disable", true)
+					}
+				}
+			</div>
 		</td>
 	</tr>
 }
 
 // actionForm is a one-button form that posts one value to path. Datastar sends
-// it; without JavaScript the browser posts it as an ordinary form.
-templ actionForm(path, name, value, label string) {
+// it; without JavaScript the browser posts it as an ordinary form. A button
+// that takes something away (danger) is a quiet outline in the danger colour.
+templ actionForm(path, name, value, label string, danger bool) {
 	<form class="action" method="post" action={ templ.SafeURL(path) } data-on:submit={ FormPost(path) }>
 		<input type="hidden" name={ name } value={ value }/>
-		<button type="submit" class="secondary">{ label }</button>
+		<button type="submit" class={ "secondary", templ.KV("danger-quiet", danger) }>{ label }</button>
 	</form>
 }
 
@@ -196,8 +209,10 @@ templ actionButton(path, label string) {
 // its link. The server sends it alone as a Datastar patch with the link or the
 // problems.
 templ InviteSection(d InviteData) {
-	<section id="invite">
-		<h2>Invite someone</h2>
+	<section id="invite" class="admin-card">
+		<div class="settings-head">
+			<h2>Invite someone</h2>
+		</div>
 		<form id="invite-form" method="post" action="/admin/invitations" data-on:submit={ FormPost("/admin/invitations") }>
 			@formProblem(d.Errors.Form)
 			<div class="field">
@@ -210,7 +225,9 @@ templ InviteSection(d InviteData) {
 					<p class="field-error" role="alert">{ d.Errors.Fields["role"] }</p>
 				}
 			</div>
-			<button type="submit">Make an invitation link</button>
+			<div class="card-foot">
+				<button type="submit">Make an invitation link</button>
+			</div>
 		</form>
 		if d.Link != "" {
 			<div id="invitation-box" class="invitation-box">

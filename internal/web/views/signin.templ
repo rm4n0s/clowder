@@ -66,42 +66,34 @@ type SSHKeyAddData struct {
 // sends it alone as a Datastar patch after a submit.
 templ SignInSection(d SignInData) {
 	<section id="signin" class="settings-section">
-		<h2>Sign-in</h2>
-		<p class="hint">Register an SSH public key to fetch a one-time sign-in code from this server.</p>
-		<h3>SSH keys</h3>
+		<div class="settings-head">
+			<h2>Sign-in</h2>
+			<p class="hint">Register an SSH public key to fetch a one-time sign-in code from this server.</p>
+		</div>
+		<h3 class="settings-subhead">SSH keys</h3>
 		<div id="ssh-keys-panel">
 			if len(d.Keys) == 0 {
 				<p class="hint" id="ssh-keys-empty">You have no SSH keys.</p>
 			} else {
-				<table class="ssh-keys">
-					<thead>
-						<tr>
-							<th scope="col">Name</th>
-							<th scope="col">Type</th>
-							<th scope="col">Fingerprint</th>
-							<th scope="col">Added</th>
-							<th scope="col">Last used</th>
-							<th scope="col">Actions</th>
-						</tr>
-					</thead>
-					<tbody>
-						for _, k := range d.Keys {
-							@sshKeyRow(k, d)
-						}
-					</tbody>
-				</table>
+				<ul class="ssh-keys">
+					for _, k := range d.Keys {
+						@sshKeyRow(k, d)
+					}
+				</ul>
 			}
 		</div>
-		<h3>Add a key</h3>
+		<h3 class="settings-subhead">Add a key</h3>
 		<form id="ssh-key-add-form" method="post" action={ templ.SafeURL(SettingsSSHKeysPath) } data-on:submit={ FormPost(SettingsSSHKeysPath) }>
 			@formProblem(d.Add.Errors.Form)
 			@inputField(formField{ID: "ssh-key-name", Name: "name", Label: "Name", Type: "text", Value: d.Add.Name, Error: d.Add.Errors.Fields["name"], Hint: "1 to 40 characters, such as laptop."})
 			@textareaField("ssh-key-public", "publicKey", "Public key", d.Add.PublicKey, d.Add.Errors.Fields["publicKey"])
 			@inputField(formField{ID: "ssh-key-password", Name: "currentPassword", Label: "Current password", Type: "password", Autocomplete: "current-password", Error: d.Add.Errors.Fields["currentPassword"]})
-			<button type="submit">Add key</button>
+			<div class="card-foot">
+				@savedNote(d.Saved)
+				<button type="submit">Add key</button>
+			</div>
 		</form>
-		@savedNote(d.Saved)
-		<h3>Fetch a code</h3>
+		<h3 class="settings-subhead">Fetch a code</h3>
 		if d.Server.Enabled {
 			<p>Run this command to get a code:</p>
 			<p><code id="ssh-command" class="ssh-command">{ d.Server.Command }</code></p>
@@ -129,9 +121,9 @@ func sshCodeUsed(keys []app.SSHKey) bool {
 // cannot be turned on while the SSH server is off or no key has fetched a
 // code; turning it off always works.
 templ sshCodeSwitch(d SignInData) {
-	<h3>Ask for an SSH code when I log in</h3>
+	<h3 class="settings-subhead">Ask for an SSH code when I log in</h3>
 	<form id="ssh-code-form" method="post" action={ templ.SafeURL(SettingsSSHCodePath) } data-on:submit={ FormPost(SettingsSSHCodePath) }>
-		<p id="ssh-code-state">
+		<p id="ssh-code-state" class={ "ssh-code-state", templ.KV("on", d.CodeRequired) }>
 			if d.CodeRequired {
 				It is <strong>on</strong>: after your password, a code from your SSH key is asked for.
 			} else {
@@ -166,58 +158,65 @@ templ sshCodeSwitch(d SignInData) {
 				<p class="field-error" id="ssh-code-password-error" role="alert">{ d.Code.Fields["currentPassword"] }</p>
 			}
 		</div>
-		if d.CodeRequired {
-			<input type="hidden" name="enabled" value="false"/>
-			<button type="submit" class="secondary">Turn off</button>
-		} else {
-			<input type="hidden" name="enabled" value="true"/>
-			<button
-				type="submit"
-				if !d.Server.Enabled || !sshCodeUsed(d.Keys) {
-					disabled
-				}
-			>Turn on</button>
-		}
+		<div class="card-foot">
+			if d.CodeRequired {
+				<input type="hidden" name="enabled" value="false"/>
+				<button type="submit" class="secondary">Turn off</button>
+			} else {
+				<input type="hidden" name="enabled" value="true"/>
+				<button
+					type="submit"
+					if !d.Server.Enabled || !sshCodeUsed(d.Keys) {
+						disabled
+					}
+				>Turn on</button>
+			}
+		</div>
 	</form>
 }
 
-// sshKeyRow is one row of the table of keys, with the small form that removes
+// sshKeyRow is one row of the list of keys, with the small form that removes
 // it: Remove asks for the current password.
 templ sshKeyRow(k app.SSHKey, d SignInData) {
-	<tr id={ "ssh-key-" + strconv.FormatUint(k.ID, 10) }>
-		<td class="name">{ k.Name }</td>
-		<td class="type"><code>{ k.Type }</code></td>
-		<td class="fingerprint"><code>{ k.Fingerprint }</code></td>
-		<td><time class="post-time" datetime={ postTimeStamp(k.CreatedAt) } title={ postTimeStamp(k.CreatedAt) }>{ postTimeText(k.CreatedAt) }</time></td>
-		<td>
-			if k.LastUsedAt != nil {
-				<time class="post-time" datetime={ postTimeStamp(*k.LastUsedAt) } title={ postTimeStamp(*k.LastUsedAt) }>{ postTimeText(*k.LastUsedAt) }</time>
-			} else {
-				<span class="hint">Never</span>
-			}
-		</td>
-		<td class="actions">
-			<form id={ "ssh-key-remove-form-" + strconv.FormatUint(k.ID, 10) } class="ssh-key-remove" method="post" action={ templ.SafeURL(SSHKeyRemovePath(k.ID)) } data-on:submit={ FormPost(SSHKeyRemovePath(k.ID)) }>
-				<label class="visually-hidden" for={ "ssh-key-remove-password-" + strconv.FormatUint(k.ID, 10) }>Current password</label>
-				<input
-					id={ "ssh-key-remove-password-" + strconv.FormatUint(k.ID, 10) }
-					name="currentPassword"
-					type="password"
-					autocomplete="current-password"
-					placeholder="Current password"
-					required
-					if d.RemoveKeyID == k.ID && d.RemoveErrors.Fields["currentPassword"] != "" {
-						aria-invalid="true"
+	<li id={ "ssh-key-" + strconv.FormatUint(k.ID, 10) } class="ssh-key">
+		<div class="ssh-key-info">
+			<p class="ssh-key-head">
+				<span class="key-name">{ k.Name }</span>
+				<code class="key-type badge">{ k.Type }</code>
+			</p>
+			<p class="key-fingerprint"><code>{ k.Fingerprint }</code></p>
+			<p class="ssh-key-times">
+				<span>Added <time class="post-time" datetime={ postTimeStamp(k.CreatedAt) } title={ postTimeStamp(k.CreatedAt) }>{ postTimeText(k.CreatedAt) }</time></span>
+				<span>
+					Last used
+					if k.LastUsedAt != nil {
+						<time class="post-time" datetime={ postTimeStamp(*k.LastUsedAt) } title={ postTimeStamp(*k.LastUsedAt) }>{ postTimeText(*k.LastUsedAt) }</time>
+					} else {
+						<span>Never</span>
 					}
-				/>
-				<button type="submit" class="secondary">Remove</button>
-				if d.RemoveKeyID == k.ID {
-					@formProblem(d.RemoveErrors.Form)
-					if d.RemoveErrors.Fields["currentPassword"] != "" {
-						<p class="field-error" role="alert">{ d.RemoveErrors.Fields["currentPassword"] }</p>
-					}
+				</span>
+			</p>
+		</div>
+		<form id={ "ssh-key-remove-form-" + strconv.FormatUint(k.ID, 10) } class="ssh-key-remove" method="post" action={ templ.SafeURL(SSHKeyRemovePath(k.ID)) } data-on:submit={ FormPost(SSHKeyRemovePath(k.ID)) }>
+			<label class="visually-hidden" for={ "ssh-key-remove-password-" + strconv.FormatUint(k.ID, 10) }>Current password</label>
+			<input
+				id={ "ssh-key-remove-password-" + strconv.FormatUint(k.ID, 10) }
+				name="currentPassword"
+				type="password"
+				autocomplete="current-password"
+				placeholder="Current password"
+				required
+				if d.RemoveKeyID == k.ID && d.RemoveErrors.Fields["currentPassword"] != "" {
+					aria-invalid="true"
 				}
-			</form>
-		</td>
-	</tr>
+			/>
+			<button type="submit" class="secondary danger-quiet">Remove</button>
+			if d.RemoveKeyID == k.ID {
+				@formProblem(d.RemoveErrors.Form)
+				if d.RemoveErrors.Fields["currentPassword"] != "" {
+					<p class="field-error" role="alert">{ d.RemoveErrors.Fields["currentPassword"] }</p>
+				}
+			}
+		</form>
+	</li>
 }

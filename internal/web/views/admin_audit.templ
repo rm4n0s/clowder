@@ -48,8 +48,8 @@ type AuditData struct {
 // Only admins get it.
 templ AuditPage(d AuditData) {
 	@Layout("Audit log", d.Sidebar.UnreadTotal(), &d.Sidebar) {
-		@AdminTabs("audit")
 		<h1>Audit log</h1>
+		@AdminTabs("audit")
 		@AuditFilters(d)
 		@AuditPanel(d)
 		@liveStream(MeStreamPath)
@@ -60,7 +60,7 @@ templ AuditPage(d AuditData) {
 // result can be shared by its URL; with Datastar it fetches the events and
 // patches the table in place.
 templ AuditFilters(d AuditData) {
-	<form id="audit-filter" class="audit-filter" method="get" action="/admin/audit" data-on:submit="@get('/admin/audit', {contentType: 'form'})">
+	<form id="audit-filter" class="audit-filter admin-card" method="get" action="/admin/audit" data-on:submit="@get('/admin/audit', {contentType: 'form'})">
 		<div class="audit-filter-fields">
 			<div class="field">
 				<label for="audit-room">Room</label>
@@ -126,7 +126,7 @@ templ AuditPanel(d AuditData) {
 		if len(d.Rows) == 0 {
 			<p class="empty">No events match.</p>
 		} else {
-			<div class="audit-table-wrap">
+			<div class="audit-table-wrap table-card">
 				<table class="audit">
 					<thead>
 						<tr>
@@ -180,7 +180,7 @@ templ auditRow(row AuditRow) {
 				<span class="deleted-room">Room { roomIDText(row.Event.RoomID) } <span class="hint">(deleted)</span></span>
 			}
 		</td>
-		<td class="audit-action"><code>{ string(row.Event.Action) }</code></td>
+		<td class="audit-action"><span class="badge badge-accent"><code>{ string(row.Event.Action) }</code></span></td>
 		<td class="audit-summary">
 			<span>{ row.Event.Summary }</span>
 			@auditDetails(AuditDetails(row.Event.Details))

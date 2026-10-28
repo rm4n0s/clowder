@@ -37,8 +37,8 @@ type AdminRoomsData struct {
 // delete a room and the list of its members. Only admins get it.
 templ AdminRoomsPage(d AdminRoomsData) {
 	@Layout("Rooms", d.Sidebar.UnreadTotal(), &d.Sidebar) {
-		@AdminTabs("rooms")
 		<h1>Rooms</h1>
+		@AdminTabs("rooms")
 		<section id="admin-rooms">
 			if len(d.Rooms) == 0 {
 				<p class="empty">There are no rooms yet.</p>
@@ -81,7 +81,7 @@ templ AdminRoom(row AdminRoomRow) {
 		@formProblem(row.Message)
 		<div class="room-actions">
 			<form class="action" method="post" action={ templ.SafeURL(AdminRoomPath(row.Room.ID) + "/delete") } data-on:submit={ FormPostConfirm(AdminRoomPath(row.Room.ID)+"/delete", "Delete this room and everything in it? This cannot be undone.") }>
-				<button type="submit" class="danger">Delete</button>
+				<button type="submit" class="secondary danger-quiet">Delete</button>
 			</form>
 		</div>
 		<details class="room-edit" open?={ row.Edit.Open }>

@@ -99,7 +99,7 @@ func TestAdminUsersPage(t *testing.T) {
 	body := rec.Body.String()
 
 	adminRow := rowOf(t, body, "admin")
-	for _, want := range []string{`class="role">admin`, "Active", "Make member", `value="member"`, e.path(e.admin, "role")} {
+	for _, want := range []string{`class="role"><span class="badge badge-accent">admin</span>`, "Active", "Make member", `value="member"`, e.path(e.admin, "role")} {
 		if !strings.Contains(adminRow, want) {
 			t.Errorf("admin row lacks %q:\n%s", want, adminRow)
 		}
@@ -110,7 +110,7 @@ func TestAdminUsersPage(t *testing.T) {
 
 	aliceRow := rowOf(t, body, "alice")
 	for _, want := range []string{
-		"<td>Alice</td>", `class="role">member`, "Active", "Make admin", `value="admin"`,
+		`<span class="user-display">Alice</span>`, `class="role"><span class="badge">member</span>`, "Active", "Make admin", `value="admin"`,
 		e.path(e.alice, "role"), "Disable</button>", `value="true"`, e.path(e.alice, "disabled"),
 		`data-on:submit="@post(&#39;` + e.path(e.alice, "disabled") + `&#39;`,
 	} {

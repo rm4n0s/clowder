@@ -459,7 +459,9 @@ func TestThemeMenuRoute(t *testing.T) {
 			e := newSettingsEnv(t)
 			rec := e.send(postForm("/me/settings/appearance?from=menu", url.Values{"theme": {tt.theme}}, withCookie(e.token), asDatastar()))
 			requireSSE(t, rec)
-			requireBody(t, rec, []string{`id="theme-menu"`, `value="` + tt.pressed + `" class="theme-option current" aria-pressed="true"`, tt.wantJS},
+			requireBody(t, rec, []string{`id="theme-menu"`, `value="` + tt.pressed + `" class="theme-option current" aria-pressed="true"`, tt.wantJS,
+				// The radio button of the Appearance section, when the page has one.
+				`getElementById(&#34;theme-` + tt.theme + `&#34;)`},
 				`id="appearance"`, "Saved")
 			// The home page renders the menu with the same choice marked, in the
 			// header, once.

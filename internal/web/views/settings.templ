@@ -85,21 +85,25 @@ type SettingsData struct {
 // saves on its own.
 templ SettingsPage(d SettingsData) {
 	@Layout("Settings", d.Sidebar.UnreadTotal(), &d.Sidebar) {
-		<h1>Settings</h1>
-		<nav class="settings-nav" aria-label="Settings sections">
-			<a href="#profile">Profile</a>
-			<a href="#password">Password</a>
-			<a href="#appearance">Appearance</a>
-			<a href="#notifications">Notifications</a>
-			<a href="#signin">Sign-in</a>
-			<a href="#sessions">Sessions</a>
-		</nav>
-		@ProfileSection(d.Profile)
-		@PasswordSection(d.Password)
-		@AppearanceSection(d.Appearance)
-		@NotifyPrefsSection(d.Notifications)
-		@SignInSection(d.SignIn)
-		@SessionsSection(d.Sessions)
+		<div class="settings-page">
+			<h1>Settings</h1>
+			<nav class="settings-nav" aria-label="Settings sections">
+				<a href="#profile">Profile</a>
+				<a href="#password">Password</a>
+				<a href="#appearance">Appearance</a>
+				<a href="#notifications">Notifications</a>
+				<a href="#signin">Sign-in</a>
+				<a href="#sessions">Sessions</a>
+			</nav>
+			<div class="settings-stack">
+				@ProfileSection(d.Profile)
+				@PasswordSection(d.Password)
+				@AppearanceSection(d.Appearance)
+				@NotifyPrefsSection(d.Notifications)
+				@SignInSection(d.SignIn)
+				@SessionsSection(d.Sessions)
+			</div>
+		</div>
 		@liveStream(MeStreamPath)
 	}
 }
@@ -116,11 +120,13 @@ templ savedNote(saved bool) {
 // server sends it alone as a Datastar patch after a submit.
 templ ProfileSection(d ProfileData) {
 	<section id="profile" class="settings-section">
-		<h2>Profile</h2>
+		<div class="settings-head">
+			<h2>Profile</h2>
+		</div>
 		@formProblem(d.Errors.Form)
 		<div class="settings-avatar">
 			@AvatarSized(d.User.ID, d.User.DisplayName, d.User.AvatarURL(), "lg")
-			<div>
+			<div class="settings-avatar-forms">
 				<form id="avatar-form" method="post" action={ templ.SafeURL(SettingsAvatarPath) } enctype="multipart/form-data" data-on:submit={ FormPost(SettingsAvatarPath) }>
 					<div class="field">
 						<label for="avatar-file">Avatar</label>
@@ -131,20 +137,24 @@ templ ProfileSection(d ProfileData) {
 							<p class="hint">A PNG, JPEG or GIF of up to 2 MiB. The middle square is used.</p>
 						}
 					</div>
-					<button type="submit">Upload</button>
+					<div class="avatar-buttons">
+						<button type="submit" class="secondary">Upload</button>
+					</div>
 				</form>
 				if d.User.AvatarKey != "" {
 					<form id="avatar-remove-form" class="inline-form" method="post" action={ templ.SafeURL(SettingsAvatarRemovePath) } data-on:submit={ FormPost(SettingsAvatarRemovePath) }>
-						<button type="submit" class="secondary">Remove avatar</button>
+						<button type="submit" class="secondary danger-quiet">Remove avatar</button>
 					</form>
 				}
 			</div>
 		</div>
 		<form id="profile-form" method="post" action={ templ.SafeURL(SettingsProfilePath) } data-on:submit={ FormPost(SettingsProfilePath) }>
 			@inputField(formField{ID: "profile-display-name", Name: "displayName", Label: "Display name", Type: "text", Value: d.DisplayName, Autocomplete: "name", Error: d.Errors.Fields["displayName"], Hint: "1 to 64 characters."})
-			<button type="submit">Save</button>
+			<div class="card-foot">
+				@savedNote(d.Saved)
+				<button type="submit">Save</button>
+			</div>
 		</form>
-		@savedNote(d.Saved)
 	</section>
 }
 
@@ -152,16 +162,20 @@ templ ProfileSection(d ProfileData) {
 // one twice. The server sends it alone as a Datastar patch after a submit.
 templ PasswordSection(d PasswordData) {
 	<section id="password" class="settings-section">
-		<h2>Password</h2>
-		<p class="hint">Changing it logs you out everywhere else.</p>
+		<div class="settings-head">
+			<h2>Password</h2>
+			<p class="hint">Changing it logs you out everywhere else.</p>
+		</div>
 		<form id="password-form" method="post" action={ templ.SafeURL(SettingsPasswordPath) } data-on:submit={ FormPost(SettingsPasswordPath) }>
 			@formProblem(d.Errors.Form)
 			@inputField(formField{ID: "password-current", Name: "currentPassword", Label: "Current password", Type: "password", Autocomplete: "current-password", Error: d.Errors.Fields["currentPassword"]})
 			@inputField(formField{ID: "password-new", Name: "newPassword", Label: "New password", Type: "password", Autocomplete: "new-password", Error: d.Errors.Fields["newPassword"], Hint: "At least 12 characters, and not the current one."})
 			@inputField(formField{ID: "password-confirm", Name: "newPasswordConfirm", Label: "New password again", Type: "password", Autocomplete: "new-password", Error: d.Errors.Fields["newPasswordConfirm"]})
-			<button type="submit">Change password</button>
+			<div class="card-foot">
+				@savedNote(d.Saved)
+				<button type="submit">Change password</button>
+			</div>
 		</form>
-		@savedNote(d.Saved)
 	</section>
 }
 
@@ -184,25 +198,44 @@ func themeChoices() []themeChoice {
 // alone as a Datastar patch after a submit.
 templ AppearanceSection(d AppearanceData) {
 	<section id="appearance" class="settings-section">
-		<h2>Appearance</h2>
+		<div class="settings-head">
+			<h2>Appearance</h2>
+			<p class="hint">System follows the setting of your device.</p>
+		</div>
 		<form id="appearance-form" method="post" action={ templ.SafeURL(SettingsAppearancePath) } data-on:submit={ FormPost(SettingsAppearancePath) }>
 			@formProblem(d.Errors.Form)
 			<fieldset class="theme-choices">
-				<legend>Theme</legend>
+				<legend class="visually-hidden">Theme</legend>
 				for _, c := range themeChoices() {
 					<label class="theme-choice" for={ "theme-" + string(c.Theme) }>
 						<input id={ "theme-" + string(c.Theme) } type="radio" name="theme" value={ string(c.Theme) } checked?={ d.Theme == c.Theme }/>
-						{ c.Label }
+						@themeIcon(c.Theme)
+						<span class="theme-choice-name">{ c.Label }</span>
 					</label>
 				}
-				if d.Errors.Fields["theme"] != "" {
-					<p class="field-error" role="alert">{ d.Errors.Fields["theme"] }</p>
-				}
 			</fieldset>
-			<button type="submit">Save</button>
+			if d.Errors.Fields["theme"] != "" {
+				<p class="field-error" role="alert">{ d.Errors.Fields["theme"] }</p>
+			}
+			<div class="card-foot">
+				@savedNote(d.Saved)
+				<button type="submit">Save</button>
+			</div>
 		</form>
-		@savedNote(d.Saved)
 	</section>
+}
+
+// themeIcon is the icon of a theme choice: the monitor for System, the sun for
+// Light and the moon for Dark.
+templ themeIcon(t app.Theme) {
+	switch t {
+		case app.ThemeLight:
+			@IconSun()
+		case app.ThemeDark:
+			@IconMoon()
+		default:
+			@IconMonitor()
+	}
 }
 
 // SessionsSection is the Sessions section: every browser and every app that
@@ -211,51 +244,46 @@ templ AppearanceSection(d AppearanceData) {
 // page logs it out.
 templ SessionsSection(sessions []app.SessionInfo) {
 	<section id="sessions" class="settings-section">
-		<h2>Sessions</h2>
-		<p class="hint">These are the browsers and apps that are logged in to your account. End a session to log that browser or app out.</p>
+		<div class="settings-head">
+			<h2>Sessions</h2>
+			<p class="hint">These are the browsers and apps that are logged in to your account. End a session to log that browser or app out.</p>
+		</div>
 		<div id="sessions-panel">
-			<table class="sessions">
-				<thead>
-					<tr>
-						<th scope="col">Type</th>
-						<th scope="col">Client</th>
-						<th scope="col">Created</th>
-						<th scope="col">Last used</th>
-						<th scope="col">Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					for _, sess := range sessions {
-						@sessionRow(sess)
-					}
-				</tbody>
-			</table>
+			<ul class="sessions">
+				for _, sess := range sessions {
+					@sessionRow(sess)
+				}
+			</ul>
 		</div>
 	</section>
 }
 
-// sessionRow is one row of the table of sessions.
+// sessionRow is one row of the list of sessions.
 templ sessionRow(sess app.SessionInfo) {
-	<tr id={ "session-" + strconv.FormatUint(sess.ID, 10) } data-kind={ string(sess.Kind) } class={ templ.KV("current", sess.Current) }>
-		<td class="kind">{ sessionKindText(sess.Kind) }</td>
-		<td class="client">
-			if sess.ClientName != "" {
-				{ sess.ClientName }
-			} else {
-				<span class="hint">Unknown</span>
-			}
-			if sess.Current {
-				<span class="session-current">This browser</span>
-			}
-		</td>
-		<td><time class="post-time" datetime={ postTimeStamp(sess.CreatedAt) } title={ postTimeStamp(sess.CreatedAt) }>{ postTimeText(sess.CreatedAt) }</time></td>
-		<td><time class="post-time" datetime={ postTimeStamp(sess.LastSeenAt) } title={ postTimeStamp(sess.LastSeenAt) }>{ postTimeText(sess.LastSeenAt) }</time></td>
-		<td class="actions">
-			<form class="action" method="post" action={ templ.SafeURL(SessionEndPath(sess.ID)) }>
-				<button type="submit" class="secondary">End</button>
-			</form>
-		</td>
-	</tr>
+	<li id={ "session-" + strconv.FormatUint(sess.ID, 10) } data-kind={ string(sess.Kind) } class={ "session", templ.KV("current", sess.Current) }>
+		<div class="session-info">
+			<p class="session-client">
+				if sess.ClientName != "" {
+					<span class="client">{ sess.ClientName }</span>
+				} else {
+					<span class="client hint">Unknown</span>
+				}
+			</p>
+			<p class="session-badges">
+				<span class="badge kind">{ sessionKindText(sess.Kind) }</span>
+				if sess.Current {
+					<span class="badge badge-sage session-current">This device</span>
+				}
+			</p>
+			<p class="session-times">
+				<span>Started <time class="post-time" datetime={ postTimeStamp(sess.CreatedAt) } title={ postTimeStamp(sess.CreatedAt) }>{ postTimeText(sess.CreatedAt) }</time></span>
+				<span>Last seen <time class="post-time" datetime={ postTimeStamp(sess.LastSeenAt) } title={ postTimeStamp(sess.LastSeenAt) }>{ postTimeText(sess.LastSeenAt) }</time></span>
+			</p>
+		</div>
+		<form class="action session-end" method="post" action={ templ.SafeURL(SessionEndPath(sess.ID)) }>
+			<button type="submit" class="secondary danger-quiet">End</button>
+		</form>
+	</li>
 }
 
 // sessionKindText is "Browser" for a browser session and "App" for an API
