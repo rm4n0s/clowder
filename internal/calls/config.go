@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/metrics"
 )
 
 // The defaults of the durations and limits of Config (SPEC D64).
@@ -71,6 +72,13 @@ type Config struct {
 	// MaxVideoBitrate is the limit of video per sender, in bits per second;
 	// zero takes the default.
 	MaxVideoBitrate uint64
+	// SocketsOpen counts the signalling sockets that are open (the gauge of
+	// kind "call" of clowder_websockets_open, SPEC D60). Nil counts nothing.
+	SocketsOpen *metrics.Gauge
+	// Outcomes counts the calls whose media this process held, when each
+	// closes, by how it ended (clowder_calls_total); its one label is the
+	// outcome. Nil counts nothing.
+	Outcomes *metrics.CounterVec
 	// PingInterval, PingTimeout and WriteTimeout bound a signalling socket;
 	// zero takes the default.
 	PingInterval time.Duration

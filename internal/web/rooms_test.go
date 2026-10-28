@@ -10,6 +10,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/config"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/web/views"
 	"github.com/rm4n0s/errors"
 )
@@ -38,7 +39,13 @@ func newRoomsEnv(t *testing.T) *roomsEnv {
 // newRoomsEnvWith is newRoomsEnv with a change to the configuration.
 func newRoomsEnvWith(t *testing.T, mutate func(*config.Config)) *roomsEnv {
 	t.Helper()
-	e := &roomsEnv{testEnv: newTestEnv(t, mutate), cookies: map[string]reqOpt{}}
+	return newRoomsEnvOn(t, nil, mutate)
+}
+
+// newRoomsEnvOn is newRoomsEnvWith whose server reports into the metrics.
+func newRoomsEnvOn(t *testing.T, set *metrics.Set, mutate func(*config.Config)) *roomsEnv {
+	t.Helper()
+	e := &roomsEnv{testEnv: newTestEnvOn(t, set, mutate), cookies: map[string]reqOpt{}}
 	e.admin = e.addUser("admin", "Admin", app.RoleAdmin)
 	e.alice = e.addUser("alice", "Alice", app.RoleMember)
 	e.bob = e.addUser("bob", "Bob", app.RoleMember)

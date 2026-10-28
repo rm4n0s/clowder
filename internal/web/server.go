@@ -16,6 +16,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/web/static"
 	"github.com/rm4n0s/clowder/internal/web/views"
 	"github.com/rm4n0s/errors"
@@ -105,6 +106,9 @@ type Services struct {
 	// pages (SPEC §8). The services must publish to the same hub. Nil makes a
 	// hub that nothing publishes to.
 	Hub *live.Hub
+	// Metrics receives the requests that ended and the open streams (SPEC
+	// D60). Nil reports nothing.
+	Metrics *metrics.Set
 }
 
 // Server is the HTTP server of Clowder: the routes, the middleware and the

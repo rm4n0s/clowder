@@ -90,6 +90,11 @@ type Config struct {
 	// announces as its own to the browsers when it runs behind NAT (D64).
 	// Empty announces the addresses of the machine.
 	MediaPublicIP string
+	// MetricsAddr is the address of the listener that serves the metrics at
+	// GET /metrics (SPEC D60), as host:port, such as "127.0.0.1:9090". Empty
+	// means there is no such listener and no metrics. The listener has no
+	// login: bind it to a private address.
+	MetricsAddr string
 	// MaxCalls is the most calls (ringing or in progress) that one process
 	// holds at once; at least 1.
 	MaxCalls int
@@ -247,6 +252,13 @@ func (c Config) Validate() error {
 				"mediaAddr", c.MediaAddr)
 		}
 	}
+	if c.MetricsAddr != "" {
+		_, port, err := net.SplitHostPort(c.MetricsAddr)
+		if n, convErr := strconv.Atoi(port); err != nil || convErr != nil || n < 0 || n > 65535 {
+			return errors.New(TagMetricsAddrInvalid, "the metrics address must be host:port, such as 127.0.0.1:9090",
+				"metricsAddr", c.MetricsAddr)
+		}
+	}
 	if c.MediaPublicIP != "" && net.ParseIP(c.MediaPublicIP) == nil {
 		return errors.New(TagMediaPublicIPInvalid, "the public media IP must be an IPv4 or IPv6 address",
 			"mediaPublicIP", c.MediaPublicIP)
@@ -325,6 +337,8 @@ func RedactURL(raw string) string {
 }
 
 const (
+	// TagMetricsAddrInvalid is the tag of a metrics address that is not host:port.
+	TagMetricsAddrInvalid = "MetricsAddrInvalid"
 	// TagMediaAddrInvalid is the tag of a media address that is not host:port.
 	TagMediaAddrInvalid = "MediaAddrInvalid"
 	// TagMediaPublicIPInvalid is the tag of a public media IP that is not an IP address.

@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+
+	"github.com/rm4n0s/clowder/internal/metrics"
 )
 
 // subscriberBuffer is the number of events a subscription holds. When it is
@@ -28,11 +30,31 @@ type Hub struct {
 	closed bool
 	// subs maps a topic to the subscriptions that listen to it.
 	subs map[string]map[*Subscription]struct{}
+	// droppedOverflow and droppedReconnect count the subscriptions the hub
+	// closed for each reason (SPEC D60); nil counts nothing.
+	droppedOverflow, droppedReconnect *metrics.Counter
+}
+
+// Option changes how New makes a hub.
+type Option func(*Hub)
+
+// WithDropCounter makes the hub count the subscriptions it closes, by reason
+// (DropOverflow, DropReconnect), in the counter vec, which has one label, the
+// reason (SPEC D60). A nil vec counts nothing.
+func WithDropCounter(dropped *metrics.CounterVec) Option {
+	return func(h *Hub) {
+		h.droppedOverflow = dropped.With(DropOverflow)
+		h.droppedReconnect = dropped.With(DropReconnect)
+	}
 }
 
 // New makes an empty hub.
-func New() *Hub {
-	return &Hub{subs: map[string]map[*Subscription]struct{}{}}
+func New(opts ...Option) *Hub {
+	h := &Hub{subs: map[string]map[*Subscription]struct{}{}}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // Subscription is one listener of the hub. Read events from C until it is
@@ -64,6 +86,7 @@ func (h *Hub) Publish(ev Event) {
 		default:
 			s.reason.Store(DropOverflow)
 			h.removeLocked(s)
+			h.droppedOverflow.Inc()
 		}
 	}
 }
@@ -114,6 +137,7 @@ func (h *Hub) DropAll() {
 	for s := range h.allLocked() {
 		s.reason.Store(DropReconnect)
 		h.removeLocked(s)
+		h.droppedReconnect.Inc()
 	}
 }
 

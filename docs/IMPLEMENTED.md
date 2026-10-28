@@ -1773,3 +1773,41 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - `-o -` and `-i -` were added for Docker, where `/data` belongs to the image's user and there is no shell.
   - A host key kept outside the data directory (`-ssh-host-key`) is not in the archive; the README says so.
+
+## 23.2 Metrics
+- **Date:** 2026-10-29
+- **Branch:** feat/step-23.2-metrics
+- **Summary:**
+  - `internal/metrics`, with no client library:
+    - counters, gauges and histograms with fixed label names, each label either a closed set (anything else becomes `other`) or the route pattern, the only open one;
+    - a registry written in the Prometheus text format 0.0.4, sorted;
+    - metrics read when scraped (the pool, the runtime, the build info, the active calls), so nothing samples in the background;
+    - at most 5000 series per metric and label values cut at 200 bytes;
+    - every type is nil-safe, so a package without a registry reports into nothing.
+    - A request costs about 200 ns with no allocation.
+  - **The metrics:**
+    - `clowder_http_requests_total{pattern,method,code}` and `clowder_http_request_duration_seconds` (streams and upgrades are counted when they end, and left out of the histogram);
+    - `clowder_sse_streams_open` and `clowder_websockets_open{kind}` (`api`, `call`);
+    - `clowder_hub_dropped_total{reason}` (`overflow`, `reconnect`);
+    - `clowder_logins_total{result}` and `clowder_ssh_codes_issued_total`;
+    - `clowder_calls_active` and `clowder_calls_total{outcome}`;
+    - `clowder_db_connections{state}` and the pool's waits;
+    - the Redis reconnects and bridge counts (with Redis only);
+    - `go_goroutines`, the heap, GC cycles, `process_start_time_seconds` and `clowder_build_info`.
+  - **The listener:** `-metrics-addr` (`CLOWDER_METRICS_ADDR`), empty and so off by default. It is its own `http.Server` with timeouts, serving `GET /metrics` only, with `text/plain; version=0.0.4`, `no-store` and nosniff. It opens before the database (a port in use stops `serve`) and closes last. The public listener answers 404 for `/metrics`.
+  - README: a "Metrics" section with the list, the advice to keep the listener on a private address, and a Prometheus `scrape_configs` example. The compose files have it commented out.
+- **Main files:** `internal/metrics/`, `cmd/clowder/metrics.go`, `internal/web` (the request middleware and the streams), `internal/live`, `internal/app` (logins, SSH codes), `internal/api` (the WebSocket gauge), `internal/calls`, `internal/cluster`, `internal/store` (`PoolStats`), `internal/config`, `compose.yaml`, `compose.cluster.yaml`, `README.md`, `docs/SPEC.md`.
+- **Tests:**
+  - the text format against golden output, written twice; 16 goroutines incrementing while another scrapes;
+  - the scan for IDs: 13 requests on routes with IDs and a login, then no username and no long number in any label, and every `pattern` one of the mux's or `none`;
+  - each metric moving: requests, streams and the hub's drops, every login result, SSH codes, calls and WebSockets, Redis;
+  - the listener off by default, shutting down with `serve`, 404 and 405, and `/metrics` 404 on the public address;
+  - a route test for every new tag.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · compose-smoke ✅ (also `-cluster`) · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [23.2 metrics](implemented-proof-images/23.2-metrics.txt)
+  - the demo served with `-metrics-addr`; an apicheck run (204 requests), logins and a stream; the whole output, with the counters by pattern, the logins, the stream gauge at 1 then 0, the pool, the runtime and the build info; the checks for usernames and IDs; the port closed after `serve` stops.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - `clowder_calls_total` counts the calls whose media this process held: a call declined, cancelled, missed or busy before anyone joined it is not counted (written in the SPEC and the README).
+  - `code` also has `1xx`, for WebSocket upgrades.

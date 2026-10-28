@@ -207,6 +207,10 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 	// way.
 	s.socketOpened()
 	defer s.socketClosed()
+	// Only the user's socket is in the gauge of kind "api": the signalling
+	// socket of a call is counted by the media server, as kind "call".
+	s.wsGauge.Inc()
+	defer s.wsGauge.Dec()
 	conn, err := s.accept(w, r)
 	if err != nil {
 		// The library has answered the request.

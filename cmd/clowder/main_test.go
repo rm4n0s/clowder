@@ -286,6 +286,25 @@ func TestParseServeConfig(t *testing.T) {
 			}(),
 		},
 		{
+			name: "metrics address from the environment",
+			env:  map[string]string{"CLOWDER_METRICS_ADDR": "127.0.0.1:9090"},
+			want: func() config.Config {
+				c := def
+				c.MetricsAddr = "127.0.0.1:9090"
+				return c
+			}(),
+		},
+		{
+			name: "metrics address: the flag beats the environment",
+			args: []string{"-metrics-addr", ":9100"},
+			env:  map[string]string{"CLOWDER_METRICS_ADDR": "127.0.0.1:9090"},
+			want: func() config.Config {
+				c := def
+				c.MetricsAddr = ":9100"
+				return c
+			}(),
+		},
+		{
 			name: "media settings: flags beat the environment",
 			args: []string{"-media-addr", "127.0.0.1:7100", "-max-calls", "3"},
 			env: map[string]string{
@@ -442,6 +461,20 @@ func TestParseServeConfigErrors(t *testing.T) {
 			wantTag:   config.TagSSHAddrInvalid,
 			wantRoute: "parseServeConfig->Config.Validate.SSHAddrInvalid",
 			wantMeta:  map[string]any{"sshAddr": "localhost"},
+		},
+		{
+			name:      "invalid config: metrics address from the environment",
+			env:       map[string]string{"CLOWDER_METRICS_ADDR": "9090"},
+			wantTag:   config.TagMetricsAddrInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.MetricsAddrInvalid",
+			wantMeta:  map[string]any{"metricsAddr": "9090"},
+		},
+		{
+			name:      "invalid config: metrics address from the flag",
+			args:      []string{"-metrics-addr", "localhost"},
+			wantTag:   config.TagMetricsAddrInvalid,
+			wantRoute: "parseServeConfig->Config.Validate.MetricsAddrInvalid",
+			wantMeta:  map[string]any{"metricsAddr": "localhost"},
 		},
 		{
 			name:      "invalid config: SSH host key in a missing directory",

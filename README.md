@@ -183,11 +183,52 @@ Each setting is a flag of `clowder serve` or a `CLOWDER_*` environment variable.
 | `-media-public-ip` | `CLOWDER_MEDIA_PUBLIC_IP` | empty | The IP address that the people who call reach this machine at, when it runs behind NAT or in a container. Empty announces the addresses of the machine. |
 | `-max-calls` | `CLOWDER_MAX_CALLS` | `20` | Most calls (ringing or in progress) that one process holds at once; zero or less is no limit. |
 | `-call-ring-timeout` | `CLOWDER_CALL_RING_TIMEOUT` | `45s` | How long a call rings before nobody answered it and it becomes a missed call; at least one second. The default is what people expect: change it only for tests. |
+| `-metrics-addr` | `CLOWDER_METRICS_ADDR` | empty | Address of the listener that serves the metrics at `GET /metrics`, as `host:port`, such as `127.0.0.1:9090` (see "Metrics"). It has no login: bind it to `127.0.0.1` or a private address. Empty: no metrics and no listener. |
 | `-trust-proxy` | `CLOWDER_TRUST_PROXY` | `false` | Take the client address, which the login limiter counts, from the last entry of `X-Forwarded-For`. Turn it on only behind your own reverse proxy. |
 
 Durations are written the way Go reads them: `720h`, `90m`. `clowder invite` reads `-data`, `-database-url`, `-base-url` and `-invitation-lifetime` (and their variables); `clowder demo` reads `-data`, `-database-url` and `-size`; `clowder backup` reads `-o`, `-data` and `-database-url`, and `clowder restore` reads `-i` and `-data` (see "Backups"). `clowder healthcheck -addr host:port` asks `GET /healthz` of a running server and exits 0 when it answers 200 and 1 otherwise; the Docker image runs it as its health check.
 
 The log has one entry per request (method, route pattern, status, duration, user ID). It never has passwords, tokens, post bodies or query strings.
+
+## Metrics
+
+With `-metrics-addr 127.0.0.1:9090`, Clowder serves its metrics at `GET /metrics` on that address, in the Prometheus text format. It is a listener of its own and never the public one: `/metrics` on `-addr` is a 404 page. Without `-metrics-addr` nothing is counted and nothing listens.
+
+**The listener has no login.** It is for a private network: bind it to `127.0.0.1` (and scrape from the same machine, or through an SSH tunnel or a reverse proxy of your own that asks for a login) or to an address of a private network. Never bind it to a public address. With Docker, leave the port unpublished and let Prometheus scrape it over the compose network:
+
+```yaml
+# in compose.yaml, under clowder: environment:
+CLOWDER_METRICS_ADDR: ":9090"      # reachable as clowder:9090 from other services of the compose network
+```
+
+A scrape configuration for Prometheus:
+
+```yaml
+scrape_configs:
+  - job_name: clowder
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["127.0.0.1:9090"]     # or ["clowder:9090"] in the compose network
+```
+
+| Metric | Labels | What it counts |
+|---|---|---|
+| `clowder_http_requests_total` | `pattern`, `method`, `code` | Requests that ended. `pattern` is the route that answered, such as `GET /rooms/{id}` (never the path: no ID is in it), or `none` when no route matched; `code` is the status class, `1xx` to `5xx`. The REST API is counted too. A stream or a WebSocket is counted when it ends. |
+| `clowder_http_request_duration_seconds` | `pattern`, `method` | A histogram of how long requests took (buckets from 5 ms to 10 s). Event streams and WebSockets are left out: they are long by design. |
+| `clowder_sse_streams_open` | | Open event streams of the pages. |
+| `clowder_websockets_open` | `kind` | Open WebSockets: `api` (the user's socket of the API) and `call` (the signalling socket of a call, from the pages or the API). |
+| `clowder_hub_dropped_total` | `reason` | Live subscriptions the server closed: `overflow` (the client was too slow) and `reconnect` (Redis came back after a break). The pages and clients reload when it happens. |
+| `clowder_logins_total` | `result` | Logins: `ok`, `wrong` (wrong username or password), `limited` (too many failures), `ssh_code_required` (the password was right, the SSH code is next) and `ssh_code_wrong`. |
+| `clowder_ssh_codes_issued_total` | | SSH sign-in codes issued. |
+| `clowder_calls_active` | | Calls whose media this process holds. |
+| `clowder_calls_total` | `outcome` | Calls whose media this process held, counted when they end: `hangup`, `cancelled`, `declined`, `missed`, `busy`, `failed`, `disabled`, `session_ended`, `server_stopped` or `ended`. A call that ended while it rang, before anyone opened its media, is not counted. |
+| `clowder_db_connections` | `state` | Connections of the database pool: `open`, `in_use`, `idle`. |
+| `clowder_db_wait_total`, `clowder_db_wait_seconds_total` | | How often, and for how many seconds in all, a query waited for a connection. |
+| `clowder_redis_reconnects_total`, `clowder_redis_bridge_published_total`, `clowder_redis_bridge_received_total` | | With `-redis-url` only: reconnections, events sent to Redis, and events received from other processes. |
+| `go_goroutines`, `go_memstats_heap_alloc_bytes`, `go_memstats_heap_sys_bytes`, `go_gc_cycles_total`, `process_start_time_seconds` | | The Go runtime and the start time of the process. |
+| `clowder_build_info` | `version`, `go_version` | Always 1. |
+
+No label carries a user, an ID, a room name, an address or a token. Each process has its own numbers: scrape every process of a cluster.
 
 ## SSH sign-in codes
 

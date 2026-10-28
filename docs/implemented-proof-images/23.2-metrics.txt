@@ -1,0 +1,1291 @@
+# Step 23.2: the metrics of a served demo, after a short clowder-apicheck run
+
+$ clowder serve -data demo -addr 127.0.0.1:45981 -ssh-addr 127.0.0.1:35023 -metrics-addr 127.0.0.1:35127 &
+
+$ curl -si http://127.0.0.1:45981/metrics | head -3   # the public address does not serve them
+HTTP/1.1 404 Not Found
+Cache-Control: no-store
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' https: http:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+
+$ curl -si -X POST http://127.0.0.1:35127/metrics | head -4   # the listener serves GET only
+HTTP/1.1 405 Method Not Allowed
+Allow: GET
+Cache-Control: no-store
+Content-Type: text/plain; charset=utf-8
+
+$ curl -si http://127.0.0.1:35127/other | head -1
+HTTP/1.1 404 Not Found
+
+$ curl -si http://127.0.0.1:35127/metrics | head -8   # the headers
+HTTP/1.1 200 OK
+Cache-Control: no-store
+Content-Type: text/plain; version=0.0.4; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Wed, 28 Oct 2026 21:53:09 GMT
+Transfer-Encoding: chunked
+
+# HELP clowder_build_info Build information; the value is always 1.
+
+$ clowder-apicheck -base-url http://127.0.0.1:45981 -username alice -password demo-password-1234 | tail -4
+exit status 0
+
+ok watch
+
+all scenarios passed (204 requests)
+
+$ a wrong login through the page, and one through the API
+POST /login (wrong password): 422
+POST /api/v1/auth/login (wrong password): 401
+
+$ log in as alice with curl and keep an event stream open (GET /me/stream)
+POST /login: 303
+
+$ curl -s http://127.0.0.1:35127/metrics   # the whole answer, with the stream still open
+# HELP clowder_build_info Build information; the value is always 1.
+# TYPE clowder_build_info gauge
+clowder_build_info{version="v1.1.1-0.20261028213520-ec9d614974a7+dirty",go_version="go1.27.3"} 1
+# HELP clowder_calls_active Calls whose media this process holds.
+# TYPE clowder_calls_active gauge
+clowder_calls_active 0
+# HELP clowder_calls_total Calls whose media this process held, by how they ended.
+# TYPE clowder_calls_total counter
+clowder_calls_total{outcome="busy"} 0
+clowder_calls_total{outcome="cancelled"} 0
+clowder_calls_total{outcome="declined"} 0
+clowder_calls_total{outcome="disabled"} 0
+clowder_calls_total{outcome="ended"} 0
+clowder_calls_total{outcome="failed"} 0
+clowder_calls_total{outcome="hangup"} 0
+clowder_calls_total{outcome="missed"} 0
+clowder_calls_total{outcome="server_stopped"} 0
+clowder_calls_total{outcome="session_ended"} 0
+# HELP clowder_db_connections Connections of the database pool, by state.
+# TYPE clowder_db_connections gauge
+clowder_db_connections{state="idle"} 2
+clowder_db_connections{state="in_use"} 0
+clowder_db_connections{state="open"} 2
+# HELP clowder_db_wait_seconds_total Seconds spent waiting for a database connection.
+# TYPE clowder_db_wait_seconds_total counter
+clowder_db_wait_seconds_total 0
+# HELP clowder_db_wait_total Times a request waited for a database connection.
+# TYPE clowder_db_wait_total counter
+clowder_db_wait_total 0
+# HELP clowder_http_request_duration_seconds Seconds a request took, by route pattern and method. Event streams and WebSockets are not observed.
+# TYPE clowder_http_request_duration_seconds histogram
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/columns/{id}",method="DELETE",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="DELETE /api/v1/columns/{id}",method="DELETE"} 0.000430348
+clowder_http_request_duration_seconds_count{pattern="DELETE /api/v1/columns/{id}",method="DELETE"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="0.005"} 0
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="0.01"} 0
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="0.025"} 0
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="0.05"} 0
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE"} 0.22011553900000003
+clowder_http_request_duration_seconds_count{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/messages/{id}",method="DELETE",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="DELETE /api/v1/messages/{id}",method="DELETE"} 0.000824679
+clowder_http_request_duration_seconds_count{pattern="DELETE /api/v1/messages/{id}",method="DELETE"} 2
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}",method="DELETE",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="DELETE /api/v1/posts/{id}",method="DELETE"} 0.000615606
+clowder_http_request_duration_seconds_count{pattern="DELETE /api/v1/posts/{id}",method="DELETE"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE"} 0.0010735749999999998
+clowder_http_request_duration_seconds_count{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE"} 3
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE"} 0.000319891
+clowder_http_request_duration_seconds_count{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE"} 1
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="0.005"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="0.01"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="0.025"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="0.05"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="0.1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="0.25"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="0.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="2.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="10"} 4
+clowder_http_request_duration_seconds_bucket{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",le="+Inf"} 4
+clowder_http_request_duration_seconds_sum{pattern="DELETE /api/v1/rooms/{id}",method="DELETE"} 0.003685858
+clowder_http_request_duration_seconds_count{pattern="DELETE /api/v1/rooms/{id}",method="DELETE"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="0.005"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="0.01"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="0.025"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="0.05"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="0.1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="0.25"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="0.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="2.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="10"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/audit",method="GET",le="+Inf"} 4
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/admin/audit",method="GET"} 0.001337662
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/admin/audit",method="GET"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/admin/rooms",method="GET"} 0.000347021
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/admin/rooms",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET"} 0.000327545
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/admin/users",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/admin/users",method="GET"} 0.00047257699999999996
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/admin/users",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/attachments/{id}",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/attachments/{id}",method="GET"} 0.000478508
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/attachments/{id}",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/auth/invitations/{token}",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/auth/invitations/{token}",method="GET"} 0.000104526
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/auth/invitations/{token}",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/avatars/{id}",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/avatars/{id}",method="GET"} 0.000158147
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/avatars/{id}",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/conversations",method="GET"} 0.000904829
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/conversations",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/conversations/{id}",method="GET"} 0.00065038
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/conversations/{id}",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/messages",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/conversations/{id}/messages",method="GET"} 0.001121164
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/conversations/{id}/messages",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET"} 0.0006908060000000001
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="0.005"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="0.01"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="0.025"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="0.05"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="0.1"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="0.25"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="0.5"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="1"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="2.5"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="5"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="10"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me",method="GET",le="+Inf"} 9
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/me",method="GET"} 0.0023693990000000003
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/me",method="GET"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/presence",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/me/presence",method="GET"} 0.00021357100000000002
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/me/presence",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/sessions",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/me/sessions",method="GET"} 0.00022397
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/me/sessions",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/settings",method="GET",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/me/settings",method="GET"} 0.000656585
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/me/settings",method="GET"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/me/ssh-keys",method="GET",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/me/ssh-keys",method="GET"} 0.000749457
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/me/ssh-keys",method="GET"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/attachments/{id}",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/messages/attachments/{id}",method="GET"} 0.000571633
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/messages/attachments/{id}",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="0.005"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="0.01"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="0.025"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="0.05"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="0.1"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="0.25"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="0.5"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="1"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="2.5"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="5"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="10"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/messages/search",method="GET",le="+Inf"} 6
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/messages/search",method="GET"} 0.001691566
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/messages/search",method="GET"} 6
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/notifications",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/notifications",method="GET"} 0.000437782
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/notifications",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="0.005"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="0.01"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="0.025"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="0.05"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="0.1"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="0.25"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="0.5"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="1"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="2.5"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="5"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="10"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}",method="GET",le="+Inf"} 9
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/posts/{id}",method="GET"} 0.002999199
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/posts/{id}",method="GET"} 9
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/posts/{id}/thread",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/posts/{id}/thread",method="GET"} 0.000542959
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/posts/{id}/thread",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="0.005"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="0.01"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="0.025"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="0.05"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="0.1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="0.25"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="0.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="2.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="10"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms",method="GET",le="+Inf"} 4
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/rooms",method="GET"} 0.0026170530000000003
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/rooms",method="GET"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/rooms/{id}",method="GET"} 0.000445145
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/rooms/{id}",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="0.005"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="0.01"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="0.025"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="0.05"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="0.1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="0.25"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="0.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="2.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="10"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/board",method="GET",le="+Inf"} 4
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/rooms/{id}/board",method="GET"} 0.001785322
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/rooms/{id}/board",method="GET"} 4
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/rooms/{id}/candidates",method="GET"} 0.000321143
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/rooms/{id}/candidates",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET"} 0.000570291
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET"} 3
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/members",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/rooms/{id}/members",method="GET"} 0.00030871
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/rooms/{id}/members",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET"} 0.000317196
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/rooms/{id}/posts",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/rooms/{id}/posts",method="GET"} 0.000493676
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/rooms/{id}/posts",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/search",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/search",method="GET"} 0.000749757
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/search",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/tags",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/tags",method="GET"} 0.000212399
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/tags",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /api/v1/users",method="GET",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="GET /api/v1/users",method="GET"} 0.00058591
+clowder_http_request_duration_seconds_count{pattern="GET /api/v1/users",method="GET"} 2
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="GET /healthz",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="GET /healthz",method="GET"} 0.000150452
+clowder_http_request_duration_seconds_count{pattern="GET /healthz",method="GET"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/columns/{id}",method="PATCH",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="PATCH /api/v1/columns/{id}",method="PATCH"} 0.000784082
+clowder_http_request_duration_seconds_count{pattern="PATCH /api/v1/columns/{id}",method="PATCH"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="PATCH /api/v1/conversations/{id}",method="PATCH"} 0.000693361
+clowder_http_request_duration_seconds_count{pattern="PATCH /api/v1/conversations/{id}",method="PATCH"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me",method="PATCH",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="PATCH /api/v1/me",method="PATCH"} 0.000441138
+clowder_http_request_duration_seconds_count{pattern="PATCH /api/v1/me",method="PATCH"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="0.005"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="0.01"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="0.025"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="0.05"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="0.1"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="0.25"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="0.5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="1"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="2.5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="10"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/me/settings",method="PATCH",le="+Inf"} 5
+clowder_http_request_duration_seconds_sum{pattern="PATCH /api/v1/me/settings",method="PATCH"} 0.002403212
+clowder_http_request_duration_seconds_count{pattern="PATCH /api/v1/me/settings",method="PATCH"} 5
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/messages/{id}",method="PATCH",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="PATCH /api/v1/messages/{id}",method="PATCH"} 0.001579484
+clowder_http_request_duration_seconds_count{pattern="PATCH /api/v1/messages/{id}",method="PATCH"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/posts/{id}",method="PATCH",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="PATCH /api/v1/posts/{id}",method="PATCH"} 0.001499555
+clowder_http_request_duration_seconds_count{pattern="PATCH /api/v1/posts/{id}",method="PATCH"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="PATCH /api/v1/tasks/{id}",method="PATCH"} 0.001221383
+clowder_http_request_duration_seconds_count{pattern="PATCH /api/v1/tasks/{id}",method="PATCH"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/admin/invitations",method="POST",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/admin/invitations",method="POST"} 0.000477667
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/admin/invitations",method="POST"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="0.005"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="0.01"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="0.025"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="0.05"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="0.1"} 17
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="0.25"} 17
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="0.5"} 17
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="1"} 17
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="2.5"} 17
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="5"} 17
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="10"} 17
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/login",method="POST",le="+Inf"} 17
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/auth/login",method="POST"} 1.2568308609999999
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/auth/login",method="POST"} 17
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="0.005"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="0.01"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="0.025"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="0.05"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="0.1"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="0.25"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="0.5"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="1"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="2.5"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="5"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="10"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/auth/logout",method="POST",le="+Inf"} 14
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/auth/logout",method="POST"} 0.0029578810000000003
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/auth/logout",method="POST"} 14
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/columns/{id}/move",method="POST",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/columns/{id}/move",method="POST"} 0.000510228
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/columns/{id}/move",method="POST"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="0.005"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="0.01"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="0.025"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="0.05"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="0.1"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="0.25"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="0.5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="1"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="2.5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="10"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations",method="POST",le="+Inf"} 5
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/conversations",method="POST"} 0.004149738
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/conversations",method="POST"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/leave",method="POST",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/conversations/{id}/leave",method="POST"} 0.000639912
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/conversations/{id}/leave",method="POST"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="0.005"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="0.01"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="0.025"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="0.05"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="0.1"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="0.25"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="0.5"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="1"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="2.5"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="5"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="10"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/messages",method="POST",le="+Inf"} 6
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/conversations/{id}/messages",method="POST"} 0.005114830999999999
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/conversations/{id}/messages",method="POST"} 6
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/conversations/{id}/read",method="POST",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/conversations/{id}/read",method="POST"} 0.00040157400000000003
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/conversations/{id}/read",method="POST"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="0.005"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="0.01"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="0.025"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="0.05"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/password",method="POST",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/me/password",method="POST"} 0.36875739500000004
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/me/password",method="POST"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="0.005"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="0.01"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="0.025"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="0.05"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/me/ssh-keys",method="POST",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/me/ssh-keys",method="POST"} 0.14122041400000002
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/me/ssh-keys",method="POST"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/notifications/read",method="POST",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/notifications/read",method="POST"} 0.000248847
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/notifications/read",method="POST"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="0.005"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="0.01"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="0.025"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="0.05"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="0.1"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="0.25"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="0.5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="1"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="2.5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="5"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="10"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/posts/{id}/comments",method="POST",le="+Inf"} 5
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/posts/{id}/comments",method="POST"} 0.006548943999999999
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/posts/{id}/comments",method="POST"} 5
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="0.005"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="0.01"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="0.025"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="0.05"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="0.1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="0.25"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="0.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="2.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="10"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms",method="POST",le="+Inf"} 4
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/rooms",method="POST"} 0.003001124
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/rooms",method="POST"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/columns",method="POST",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/rooms/{id}/columns",method="POST"} 0.000568598
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/rooms/{id}/columns",method="POST"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/join",method="POST",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/rooms/{id}/join",method="POST"} 0.000434786
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/rooms/{id}/join",method="POST"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/leave",method="POST",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/rooms/{id}/leave",method="POST"} 0.00046855
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/rooms/{id}/leave",method="POST"} 1
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/members",method="POST",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/rooms/{id}/members",method="POST"} 0.002690501
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/rooms/{id}/members",method="POST"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="0.005"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="0.01"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="0.025"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="0.05"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="0.1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="0.25"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="0.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="2.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="10"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/posts",method="POST",le="+Inf"} 4
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/rooms/{id}/posts",method="POST"} 0.011450314
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/rooms/{id}/posts",method="POST"} 4
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/rooms/{id}/read",method="POST",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/rooms/{id}/read",method="POST"} 0.000839717
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/rooms/{id}/read",method="POST"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/tasks/{id}/move",method="POST",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/tasks/{id}/move",method="POST"} 0.001282516
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/tasks/{id}/move",method="POST"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /api/v1/uploads",method="POST",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="POST /api/v1/uploads",method="POST"} 0.006396509
+clowder_http_request_duration_seconds_count{pattern="POST /api/v1/uploads",method="POST"} 3
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="0.005"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="0.01"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="0.025"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="0.05"} 0
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="POST /login",method="POST",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="POST /login",method="POST"} 0.145472036
+clowder_http_request_duration_seconds_count{pattern="POST /login",method="POST"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="0.005"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="0.01"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="0.025"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="0.05"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="0.1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="0.25"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="0.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="1"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="2.5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="5"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="10"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",le="+Inf"} 4
+clowder_http_request_duration_seconds_sum{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT"} 0.0012850130000000002
+clowder_http_request_duration_seconds_count{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT"} 4
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="0.005"} 0
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/me/avatar",method="PUT",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="PUT /api/v1/me/avatar",method="PUT"} 0.005478315
+clowder_http_request_duration_seconds_count{pattern="PUT /api/v1/me/avatar",method="PUT"} 1
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT"} 0.00085273
+clowder_http_request_duration_seconds_count{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="0.005"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="0.01"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="0.025"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="0.05"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="0.1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="0.25"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="0.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="1"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="2.5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="5"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="10"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",le="+Inf"} 3
+clowder_http_request_duration_seconds_sum{pattern="PUT /api/v1/posts/{id}/follow",method="PUT"} 0.000641544
+clowder_http_request_duration_seconds_count{pattern="PUT /api/v1/posts/{id}/follow",method="PUT"} 3
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT"} 0.000804621
+clowder_http_request_duration_seconds_count{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="0.005"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="0.01"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="0.025"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="0.05"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="0.1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="0.25"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="0.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="1"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="2.5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="5"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="10"} 2
+clowder_http_request_duration_seconds_bucket{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",le="+Inf"} 2
+clowder_http_request_duration_seconds_sum{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT"} 0.000604486
+clowder_http_request_duration_seconds_count{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT"} 2
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="0.005"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="0.01"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="0.025"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="0.05"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="0.1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="0.25"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="0.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="1"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="2.5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="5"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="10"} 1
+clowder_http_request_duration_seconds_bucket{pattern="none",method="GET",le="+Inf"} 1
+clowder_http_request_duration_seconds_sum{pattern="none",method="GET"} 0.000092393
+clowder_http_request_duration_seconds_count{pattern="none",method="GET"} 1
+# HELP clowder_http_requests_total Requests that ended, by route pattern, method and status class. Event streams and WebSockets are counted when they end.
+# TYPE clowder_http_requests_total counter
+clowder_http_requests_total{pattern="DELETE /api/v1/columns/{id}",method="DELETE",code="2xx"} 1
+clowder_http_requests_total{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",code="2xx"} 1
+clowder_http_requests_total{pattern="DELETE /api/v1/me/ssh-keys/{id}",method="DELETE",code="4xx"} 2
+clowder_http_requests_total{pattern="DELETE /api/v1/messages/{id}",method="DELETE",code="2xx"} 2
+clowder_http_requests_total{pattern="DELETE /api/v1/posts/{id}",method="DELETE",code="2xx"} 1
+clowder_http_requests_total{pattern="DELETE /api/v1/posts/{id}/follow",method="DELETE",code="2xx"} 3
+clowder_http_requests_total{pattern="DELETE /api/v1/posts/{id}/reactions/{emoji}",method="DELETE",code="2xx"} 1
+clowder_http_requests_total{pattern="DELETE /api/v1/rooms/{id}",method="DELETE",code="2xx"} 4
+clowder_http_requests_total{pattern="GET /api/v1/admin/audit",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/admin/audit",method="GET",code="4xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/admin/rooms",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/admin/rooms",method="GET",code="4xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/admin/rooms/{id}/members",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/admin/users",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/admin/users",method="GET",code="4xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/attachments/{id}",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/auth/invitations/{token}",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/avatars/{id}",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/conversations",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/conversations/{id}",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/conversations/{id}",method="GET",code="4xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/conversations/{id}/messages",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/conversations/{id}/notification-prefs",method="GET",code="4xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/me",method="GET",code="2xx"} 7
+clowder_http_requests_total{pattern="GET /api/v1/me",method="GET",code="4xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/me/presence",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/me/presence",method="GET",code="4xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/me/sessions",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/me/settings",method="GET",code="2xx"} 3
+clowder_http_requests_total{pattern="GET /api/v1/me/ssh-keys",method="GET",code="2xx"} 3
+clowder_http_requests_total{pattern="GET /api/v1/messages/attachments/{id}",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/messages/search",method="GET",code="2xx"} 3
+clowder_http_requests_total{pattern="GET /api/v1/messages/search",method="GET",code="4xx"} 3
+clowder_http_requests_total{pattern="GET /api/v1/notifications",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/posts/{id}",method="GET",code="2xx"} 8
+clowder_http_requests_total{pattern="GET /api/v1/posts/{id}",method="GET",code="4xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/posts/{id}/thread",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/rooms",method="GET",code="2xx"} 4
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}",method="GET",code="4xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}/board",method="GET",code="2xx"} 4
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}/candidates",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}/group-mention-count",method="GET",code="4xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}/members",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}/notification-prefs",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/rooms/{id}/posts",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/search",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/tags",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="GET /api/v1/users",method="GET",code="2xx"} 2
+clowder_http_requests_total{pattern="GET /api/v1/ws",method="GET",code="1xx"} 1
+clowder_http_requests_total{pattern="GET /healthz",method="GET",code="2xx"} 1
+clowder_http_requests_total{pattern="PATCH /api/v1/columns/{id}",method="PATCH",code="2xx"} 1
+clowder_http_requests_total{pattern="PATCH /api/v1/conversations/{id}",method="PATCH",code="2xx"} 1
+clowder_http_requests_total{pattern="PATCH /api/v1/me",method="PATCH",code="2xx"} 2
+clowder_http_requests_total{pattern="PATCH /api/v1/me/settings",method="PATCH",code="2xx"} 4
+clowder_http_requests_total{pattern="PATCH /api/v1/me/settings",method="PATCH",code="4xx"} 1
+clowder_http_requests_total{pattern="PATCH /api/v1/messages/{id}",method="PATCH",code="2xx"} 2
+clowder_http_requests_total{pattern="PATCH /api/v1/messages/{id}",method="PATCH",code="4xx"} 1
+clowder_http_requests_total{pattern="PATCH /api/v1/posts/{id}",method="PATCH",code="2xx"} 1
+clowder_http_requests_total{pattern="PATCH /api/v1/tasks/{id}",method="PATCH",code="2xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/admin/invitations",method="POST",code="2xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/admin/invitations",method="POST",code="4xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/auth/login",method="POST",code="2xx"} 16
+clowder_http_requests_total{pattern="POST /api/v1/auth/login",method="POST",code="4xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/auth/logout",method="POST",code="2xx"} 14
+clowder_http_requests_total{pattern="POST /api/v1/columns/{id}/move",method="POST",code="2xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/conversations",method="POST",code="2xx"} 5
+clowder_http_requests_total{pattern="POST /api/v1/conversations/{id}/leave",method="POST",code="2xx"} 2
+clowder_http_requests_total{pattern="POST /api/v1/conversations/{id}/leave",method="POST",code="4xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/conversations/{id}/messages",method="POST",code="2xx"} 6
+clowder_http_requests_total{pattern="POST /api/v1/conversations/{id}/read",method="POST",code="2xx"} 2
+clowder_http_requests_total{pattern="POST /api/v1/me/password",method="POST",code="2xx"} 2
+clowder_http_requests_total{pattern="POST /api/v1/me/password",method="POST",code="4xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/me/ssh-keys",method="POST",code="2xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/me/ssh-keys",method="POST",code="4xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/notifications/read",method="POST",code="2xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/posts/{id}/comments",method="POST",code="2xx"} 5
+clowder_http_requests_total{pattern="POST /api/v1/rooms",method="POST",code="2xx"} 4
+clowder_http_requests_total{pattern="POST /api/v1/rooms/{id}/columns",method="POST",code="2xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/rooms/{id}/join",method="POST",code="2xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/rooms/{id}/leave",method="POST",code="2xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/rooms/{id}/members",method="POST",code="2xx"} 3
+clowder_http_requests_total{pattern="POST /api/v1/rooms/{id}/posts",method="POST",code="2xx"} 4
+clowder_http_requests_total{pattern="POST /api/v1/rooms/{id}/read",method="POST",code="2xx"} 2
+clowder_http_requests_total{pattern="POST /api/v1/rooms/{id}/read",method="POST",code="4xx"} 1
+clowder_http_requests_total{pattern="POST /api/v1/tasks/{id}/move",method="POST",code="2xx"} 2
+clowder_http_requests_total{pattern="POST /api/v1/uploads",method="POST",code="2xx"} 3
+clowder_http_requests_total{pattern="POST /login",method="POST",code="3xx"} 1
+clowder_http_requests_total{pattern="POST /login",method="POST",code="4xx"} 1
+clowder_http_requests_total{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",code="2xx"} 2
+clowder_http_requests_total{pattern="PUT /api/v1/conversations/{id}/notification-prefs",method="PUT",code="4xx"} 2
+clowder_http_requests_total{pattern="PUT /api/v1/me/avatar",method="PUT",code="2xx"} 1
+clowder_http_requests_total{pattern="PUT /api/v1/messages/{id}/reactions/{emoji}",method="PUT",code="2xx"} 2
+clowder_http_requests_total{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",code="2xx"} 2
+clowder_http_requests_total{pattern="PUT /api/v1/posts/{id}/follow",method="PUT",code="4xx"} 1
+clowder_http_requests_total{pattern="PUT /api/v1/posts/{id}/reactions/{emoji}",method="PUT",code="2xx"} 2
+clowder_http_requests_total{pattern="PUT /api/v1/rooms/{id}/notification-prefs",method="PUT",code="2xx"} 2
+clowder_http_requests_total{pattern="none",method="GET",code="4xx"} 1
+# HELP clowder_hub_dropped_total Subscriptions of the live hub that it closed, by reason.
+# TYPE clowder_hub_dropped_total counter
+clowder_hub_dropped_total{reason="overflow"} 0
+clowder_hub_dropped_total{reason="reconnect"} 0
+# HELP clowder_logins_total Logins, by result.
+# TYPE clowder_logins_total counter
+clowder_logins_total{result="limited"} 0
+clowder_logins_total{result="ok"} 17
+clowder_logins_total{result="ssh_code_required"} 0
+clowder_logins_total{result="ssh_code_wrong"} 0
+clowder_logins_total{result="wrong"} 2
+# HELP clowder_sse_streams_open Open event streams of the pages.
+# TYPE clowder_sse_streams_open gauge
+clowder_sse_streams_open 1
+# HELP clowder_ssh_codes_issued_total SSH sign-in codes issued.
+# TYPE clowder_ssh_codes_issued_total counter
+clowder_ssh_codes_issued_total 0
+# HELP clowder_websockets_open Open WebSockets, by kind.
+# TYPE clowder_websockets_open gauge
+clowder_websockets_open{kind="api"} 0
+clowder_websockets_open{kind="call"} 0
+# HELP go_gc_cycles_total Completed garbage collection cycles.
+# TYPE go_gc_cycles_total counter
+go_gc_cycles_total 67
+# HELP go_goroutines Number of goroutines.
+# TYPE go_goroutines gauge
+go_goroutines 14
+# HELP go_memstats_heap_alloc_bytes Bytes of allocated heap objects.
+# TYPE go_memstats_heap_alloc_bytes gauge
+go_memstats_heap_alloc_bytes 10471704
+# HELP go_memstats_heap_sys_bytes Bytes of heap memory obtained from the system.
+# TYPE go_memstats_heap_sys_bytes gauge
+go_memstats_heap_sys_bytes 86245376
+# HELP process_start_time_seconds Start time of the process, in seconds since the Unix epoch.
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1793224389.006401
+
+$ the stream closed: curl -s http://127.0.0.1:35127/metrics | grep -E 'sse_streams_open|me/stream'
+clowder_http_requests_total{pattern="GET /me/stream",method="GET",code="2xx"} 1
+# HELP clowder_sse_streams_open Open event streams of the pages.
+# TYPE clowder_sse_streams_open gauge
+clowder_sse_streams_open 0
+
+$ no user, id or name in any label (the checks run on the whole output above)
+lines with the usernames alice, bob or carol: 0
+lines with admin outside the route names /admin/: 0
+label values with a number of four digits or more, except the version of the build: 0
+
+$ kill $SERVE   # serve stops and the metrics port is closed with it
+serve exit status 0
+curl to the metrics port after serve stopped: 000 (000 = refused)

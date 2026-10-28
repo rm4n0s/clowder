@@ -37,6 +37,8 @@ func (s *Server) Serve(ctx context.Context, conn *websocket.Conn, j Join) {
 	s.serving.Add(1)
 	s.mu.Unlock()
 	defer s.serving.Done()
+	s.cfg.SocketsOpen.Inc()
+	defer s.cfg.SocketsOpen.Dec()
 
 	conn.SetReadLimit(readLimit)
 	// The socket does not end with the server's context: the call closes when

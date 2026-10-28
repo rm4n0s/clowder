@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/metrics"
 )
 
 // wait is how long a test waits for something that should happen.
@@ -556,4 +557,39 @@ func TestAddAndRemoveTopics(t *testing.T) {
 	if _, ok := <-s.C(); ok {
 		t.Errorf("a closed subscription received an event")
 	}
+}
+
+// TestDropCounters checks that a hub made with WithDropCounter counts the
+// subscriptions it closes by reason (SPEC D60), and only those: a subscription
+// that ends by Close, by its context or by the hub's Close is not a drop.
+func TestDropCounters(t *testing.T) {
+	t.Parallel()
+	set, err := metrics.NewSet(metrics.SetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := live.New(live.WithDropCounter(set.HubDropped))
+	slow := h.Subscribe(t.Context(), "room:1")
+	_ = slow
+	closed := h.Subscribe(t.Context(), "room:1")
+	closed.Close()
+	for i := range 65 {
+		h.Publish(live.Event{Topic: "room:1", PostID: uint64(i + 1)})
+	}
+	if got := set.HubDropped.With(live.DropOverflow).Value(); got != 1 {
+		t.Errorf("overflow drops = %d, want 1", got)
+	}
+	h.Subscribe(t.Context(), "room:2")
+	h.Subscribe(t.Context(), "room:3")
+	h.DropAll()
+	if got := set.HubDropped.With(live.DropReconnect).Value(); got != 2 {
+		t.Errorf("reconnect drops = %d, want 2", got)
+	}
+	h.Subscribe(t.Context(), "room:4")
+	h.Close()
+	if got := set.HubDropped.With(live.DropOverflow).Value() + set.HubDropped.With(live.DropReconnect).Value(); got != 3 {
+		t.Errorf("drops after Close = %d, want 3", got)
+	}
+	// A hub with no counter, and one with a nil vec, count nothing.
+	live.New(live.WithDropCounter(nil)).Close()
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -180,6 +181,7 @@ func (a *Accounts) LoginClient(ctx context.Context, in ClientLogin) (LoginResult
 	username := normalizeUsername(in.Username)
 	clientIP := in.ClientIP
 	if !a.limiter.Allow(ctx, username, clientIP) {
+		a.countLogin(metrics.LoginLimited)
 		return LoginResult{}, errors.New(TagRateLimited, "too many failed login attempts",
 			"username", limiterKey(username), "ip", clientIP)
 	}
@@ -203,6 +205,7 @@ func (a *Accounts) LoginClient(ctx context.Context, in ClientLogin) (LoginResult
 		}
 	}
 	if !known || !match || user.DisabledAt != nil {
+		a.countLogin(metrics.LoginWrong)
 		a.limiter.Fail(ctx, username, clientIP)
 		return LoginResult{}, errors.New(TagInvalidInput, "wrong username or password",
 			"fields", map[string]string{FieldForm: "Wrong username or password."})
@@ -213,9 +216,14 @@ func (a *Accounts) LoginClient(ctx context.Context, in ClientLogin) (LoginResult
 		return LoginResult{}, err
 	}
 	if needsCode && in.Kind == SessionBrowser {
-		return a.startPendingLogin(ctx, user, in.Next)
+		pending, err := a.startPendingLogin(ctx, user, in.Next)
+		if err == nil {
+			a.countLogin(metrics.LoginSSHCodeRequired)
+		}
+		return pending, err
 	}
 	if needsCode && in.SSHCode == "" {
+		a.countLogin(metrics.LoginSSHCodeRequired)
 		return LoginResult{}, errors.New(TagSSHCodeRequired, "the user needs an SSH sign-in code",
 			"userID", user.ID)
 	}
@@ -247,10 +255,12 @@ func (a *Accounts) LoginClient(ctx context.Context, in ClientLogin) (LoginResult
 		return LoginResult{}, err
 	}
 	if wrongCode {
+		a.countLogin(metrics.LoginSSHCodeWrong)
 		a.limiter.Fail(ctx, username, clientIP)
 		return LoginResult{}, errors.New(TagUnauthenticated, "the SSH sign-in code is wrong",
 			"reason", "sshCode", "userID", user.ID)
 	}
+	a.countLogin(metrics.LoginOK)
 	a.limiter.Reset(ctx, username)
 	return LoginResult{Token: token, User: viewOf(user), ExpiresAt: sess.ExpiresAt}, nil
 }

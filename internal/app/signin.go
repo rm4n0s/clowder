@@ -10,6 +10,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/clock"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -53,18 +54,33 @@ type SignIn struct {
 	st     *store.Store
 	clk    clock.Clock
 	logger *slog.Logger
+	// issued counts the codes issued (SPEC D60); nil counts nothing.
+	issued *metrics.Counter
+}
+
+// SignInOption changes how NewSignIn makes the service.
+type SignInOption func(*SignIn)
+
+// WithCodesCounter makes the service count each code it issues in c
+// (metrics.Set.SSHCodes, SPEC D60). A nil counter counts nothing.
+func WithCodesCounter(c *metrics.Counter) SignInOption {
+	return func(s *SignIn) { s.issued = c }
 }
 
 // NewSignIn makes the service. A nil clk is the real clock and a nil logger
 // discards the log.
-func NewSignIn(st *store.Store, clk clock.Clock, logger *slog.Logger) *SignIn {
+func NewSignIn(st *store.Store, clk clock.Clock, logger *slog.Logger, opts ...SignInOption) *SignIn {
 	if clk == nil {
 		clk = clock.Real()
 	}
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return &SignIn{st: st, clk: clk, logger: logger}
+	s := &SignIn{st: st, clk: clk, logger: logger}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // KeyAllowed reports whether the key with the SHA-256 fingerprint belongs to
@@ -157,6 +173,7 @@ func (s *SignIn) IssueCode(ctx context.Context, username, fingerprint, addr stri
 	if err != nil {
 		return IssuedSSHCode{}, err
 	}
+	s.issued.Inc()
 	s.logger.Info("an SSH sign-in code was issued", "user", normalizeUsername(username), "userID", userID,
 		"fingerprint", fingerprint, "addr", addr)
 	return issued, nil

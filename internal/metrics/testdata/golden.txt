@@ -1,0 +1,30 @@
+# HELP test_duration_seconds Durations.
+# TYPE test_duration_seconds histogram
+test_duration_seconds_bucket{route="GET /a",le="0.1"} 2
+test_duration_seconds_bucket{route="GET /a",le="1"} 3
+test_duration_seconds_bucket{route="GET /a",le="2.5"} 4
+test_duration_seconds_bucket{route="GET /a",le="+Inf"} 5
+test_duration_seconds_sum{route="GET /a"} 33.35
+test_duration_seconds_count{route="GET /a"} 5
+test_duration_seconds_bucket{route="GET /empty",le="0.1"} 0
+test_duration_seconds_bucket{route="GET /empty",le="1"} 0
+test_duration_seconds_bucket{route="GET /empty",le="2.5"} 0
+test_duration_seconds_bucket{route="GET /empty",le="+Inf"} 0
+test_duration_seconds_sum{route="GET /empty"} 0
+test_duration_seconds_count{route="GET /empty"} 0
+# HELP test_open Open things.
+# TYPE test_open gauge
+test_open 4
+# HELP test_pool A pool.
+# TYPE test_pool gauge
+test_pool{state="idle"} 1.5
+test_pool{state="open"} 4
+# HELP test_requests_total Requests with a \\ and a\nnewline in the help.
+# TYPE test_requests_total counter
+test_requests_total{route="GET /a",code="2xx"} 1
+test_requests_total{route="GET /a",code="other"} 1
+test_requests_total{route="GET /a\"b\\c\nd",code="2xx"} 3
+test_requests_total{route="GET /z",code="5xx"} 1
+# HELP test_waits_total Waits.
+# TYPE test_waits_total counter
+test_waits_total 1700000000.25

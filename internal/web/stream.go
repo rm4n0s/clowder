@@ -106,6 +106,7 @@ func pageTitleOf(r *http.Request) (label, base string) {
 // on the client has the headers, which tells it, and the tests, that the
 // handler has subscribed and has read what it sends first.
 func (ls *liveStream) open() error {
+	ls.s.streamStarted(ls.r)
 	ls.arm()
 	ls.sse = datastar.NewSSE(ls.w, ls.r)
 	if _, err := io.WriteString(ls.w, "id: "+streamEventID+"\n\n"); err != nil {

@@ -394,6 +394,7 @@ func (c *call) closeAll() {
 		}
 		c.cancel()
 		c.s.remove(c)
+		c.s.cfg.Outcomes.With(reason).Inc()
 		close(c.done)
 		c.logger.Info("call closed", "reason", reason)
 	})

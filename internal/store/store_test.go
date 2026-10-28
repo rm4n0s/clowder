@@ -849,3 +849,26 @@ func TestOpenRestrictsTheDatabaseFile(t *testing.T) {
 		})
 	}
 }
+
+// TestPoolStats checks the statistics of the pool that the metrics read
+// (SPEC D60): the opened store has a pool with a limit and a connection it
+// used, and the Store a transaction hands out has none.
+func TestPoolStats(t *testing.T) {
+	s, _, _ := testStore(t, nil)
+	if err := s.Ping(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	st := s.PoolStats()
+	if st.MaxOpenConnections < 1 || st.OpenConnections < 1 {
+		t.Errorf("PoolStats() = %+v, want a pool with a limit and an open connection", st)
+	}
+	err := s.Tx(t.Context(), func(tx *Store) error {
+		if got := tx.PoolStats(); got.MaxOpenConnections != 0 || got.OpenConnections != 0 {
+			t.Errorf("the Store of a transaction has pool statistics: %+v", got)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

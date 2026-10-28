@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/web/views"
 	"github.com/rm4n0s/errors"
 )
@@ -50,6 +51,10 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter {
 type requestState struct {
 	// userID is the ID of the logged-in user, 0 when there is none.
 	userID uint64
+	// stream is true when the request became an event stream (liveStream.open
+	// sets it): it is counted in the gauge of open streams while it runs, and
+	// its duration stays out of the histogram (SPEC D60).
+	stream bool
 }
 
 // requestStateKey is the context key of the *requestState.
@@ -91,6 +96,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		if state.userID != 0 {
 			attrs = append(attrs, "user_id", state.userID)
 		}
+		s.countRequest(r, rec.status, time.Since(start), state)
 		// A successful health check comes every few seconds: it is a debug
 		// entry, so that it does not flood the log.
 		level := slog.LevelInfo
@@ -99,6 +105,59 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		}
 		s.logger.Log(r.Context(), level, "request", attrs...)
 	})
+}
+
+// countRequest reports a request that ended into the metrics (SPEC D60): the
+// counter by route pattern, method and status class, and the histogram of the
+// duration. A request that was an event stream or a WebSocket (status 101) is
+// counted when it ends, like any other, but is left out of the histogram:
+// those are long by design. The label is the pattern the mux matched
+// (r.Pattern), never the path, so it holds no ID; a request no route matched
+// is "none".
+func (s *Server) countRequest(r *http.Request, status int, d time.Duration, state *requestState) {
+	m := s.svc.Metrics
+	if m == nil {
+		return
+	}
+	if state.stream {
+		m.SSEStreams.Dec()
+	}
+	pattern := r.Pattern
+	if pattern == "" {
+		pattern = metrics.PatternNone
+	}
+	m.HTTPRequests.With(pattern, r.Method, statusClass(status)).Inc()
+	if !state.stream && status != http.StatusSwitchingProtocols {
+		m.HTTPDuration.With(pattern, r.Method).ObserveDuration(d)
+	}
+}
+
+// streamStarted notes that the request became an event stream: the gauge of
+// open streams goes up now, and countRequest takes it down when the handler
+// returns.
+func (s *Server) streamStarted(r *http.Request) {
+	stateOf(r.Context()).stream = true
+	if m := s.svc.Metrics; m != nil {
+		m.SSEStreams.Inc()
+	}
+}
+
+// statusClass returns the class of a status code, as the metrics label it:
+// "1xx" to "5xx". A code outside those is "other".
+func statusClass(status int) string {
+	switch status / 100 {
+	case 1:
+		return "1xx"
+	case 2:
+		return "2xx"
+	case 3:
+		return "3xx"
+	case 4:
+		return "4xx"
+	case 5:
+		return "5xx"
+	}
+	return "other"
 }
 
 // maxLoggedPath is the longest path that a log entry holds.

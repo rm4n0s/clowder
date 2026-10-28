@@ -21,6 +21,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/sshcode"
 	"github.com/rm4n0s/clowder/internal/web"
 	"github.com/rm4n0s/errors"
@@ -45,6 +46,21 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		return err
 	}
 	logger := newLogger(cfg.LogLevel, stderr)
+	// The metrics exist only with -metrics-addr (SPEC D60): without it nothing
+	// is counted and nothing listens. The listener opens first, so that a port
+	// in use stops serve before anything else is started, and it closes last.
+	metricsSet, err := newMetricsSet(cfg)
+	if err != nil {
+		return err
+	}
+	m := reportTo(metricsSet)
+	if metricsSet != nil {
+		stopMetrics, _, err := startMetrics(ctx, cfg, metricsSet.Registry, logger)
+		if err != nil {
+			return err
+		}
+		defer stopMetrics()
+	}
 	if err := os.MkdirAll(cfg.DataDir, dataDirMode); err != nil {
 		return errors.NewErr(tagDataDirCreateFailed, err).SetMetadata("dir", cfg.DataDir)
 	}
@@ -62,6 +78,11 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 			logger.Error("closing the store failed", "err", closeErr)
 		}
 	}()
+	if metricsSet != nil {
+		if err := metricsSet.RegisterPool(st.PoolStats); err != nil {
+			return err
+		}
+	}
 	fileStore, err := files.New(filepath.Join(cfg.DataDir, filesDir))
 	if err != nil {
 		return err
@@ -70,9 +91,11 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	if err != nil {
 		return err
 	}
-	hub := live.New()
+	hub := live.New(live.WithDropCounter(m.HubDropped))
 	defer hub.Close()
-	pub, closeBridge, err := newPublisher(ctx, cfg.RedisURL, hub, logger, openBridge)
+	pub, closeBridge, err := newPublisher(ctx, cfg.RedisURL, hub, logger, func(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger) (publisherCloser, error) {
+		return openBridge(ctx, redisURL, hub, logger, cluster.WithMetrics(bridgeMetrics(m)))
+	})
 	if err != nil {
 		return err
 	}
@@ -98,6 +121,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		// server; every process of a cluster has the same -ssh-addr
 		// (SPEC §7.16).
 		SSHServer: cfg.SSHAddr != "",
+		Logins:    m.Logins,
 	})
 	postsConfig := app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
@@ -151,18 +175,28 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	// and those before the key of the process is removed, the hub and the
 	// store close.
 	defer endCallsAtStop(ctx, callSvc, processID, logger)
-	media, stopMedia, err := startMedia(ctx, cfg, callSvc, hub, processID, link, logger)
+	media, stopMedia, err := startMedia(ctx, cfg, callSvc, hub, processID, link, logger, withMediaMetrics(m))
 	if err != nil {
 		return err
 	}
 	defer stopMedia()
+	if metricsSet != nil {
+		if err := metricsSet.RegisterCalls(func() int {
+			if media == nil {
+				return 0
+			}
+			return media.Calls()
+		}); err != nil {
+			return err
+		}
+	}
 	stopExpirer := startCallExpirer(ctx, callSvc, callExpireInterval, logger)
 	defer stopExpirer()
 	board := app.NewBoard(st, clock.Real(), pub)
 	search := app.NewSearch(st)
 	audit := app.NewAudit(st)
 	presence := app.NewPresence(st, livePresence)
-	stopSSH, sshInfo, err := startSSH(ctx, cfg, app.NewSignIn(st, clock.Real(), logger), limiter, logger)
+	stopSSH, sshInfo, err := startSSH(ctx, cfg, app.NewSignIn(st, clock.Real(), logger, app.WithCodesCounter(m.SSHCodes)), limiter, logger)
 	if err != nil {
 		return err
 	}
@@ -179,11 +213,13 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		MaxUploadSize: cfg.MaxAttachmentSize,
 		Markdown:      md,
 		BaseURL:       cfg.BaseURL,
+		WebSockets:    m.WebSockets.With(metrics.WebSocketKindAPI),
 	})
 	if err != nil {
 		return err
 	}
 	srv, err := web.New(cfg, logger, web.Services{
+		Metrics:       metricsSet,
 		API:           apiServer,
 		Accounts:      accounts,
 		Rooms:         rooms,
@@ -258,9 +294,9 @@ type publisherCloser interface {
 // pass a fake.
 type bridgeOpener func(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger) (publisherCloser, error)
 
-// openBridge opens a cluster.Bridge.
-func openBridge(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger) (publisherCloser, error) {
-	b, err := cluster.NewBridge(ctx, redisURL, hub, logger)
+// openBridge opens a cluster.Bridge with the options.
+func openBridge(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger, opts ...cluster.BridgeOption) (publisherCloser, error) {
+	b, err := cluster.NewBridge(ctx, redisURL, hub, logger, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -442,6 +478,8 @@ func parseServeConfig(args []string, env func(string) string, stderr io.Writer) 
 		"most calls (ringing or in progress) this process holds at once (CLOWDER_MAX_CALLS)")
 	fs.DurationVar(&cfg.CallRingTimeout, "call-ring-timeout", callRingTimeout,
 		"how long a call rings before it is missed (CLOWDER_CALL_RING_TIMEOUT)")
+	fs.StringVar(&cfg.MetricsAddr, "metrics-addr", envString(env, "CLOWDER_METRICS_ADDR", def.MetricsAddr),
+		"address of the listener that serves the metrics at GET /metrics, such as 127.0.0.1:9090; no login: bind it to a private address; empty: no metrics (CLOWDER_METRICS_ADDR)")
 	fs.BoolVar(&cfg.TrustProxyHeaders, "trust-proxy", trustProxy,
 		"take the client address from the last X-Forwarded-For entry; only behind our own reverse proxy (CLOWDER_TRUST_PROXY)")
 	if err := fs.Parse(args); err != nil {

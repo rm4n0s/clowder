@@ -12,6 +12,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/errors"
 )
 
@@ -67,6 +68,7 @@ type Bridge struct {
 	closeOnce sync.Once
 	closed    atomic.Bool
 	lost      atomic.Uint64
+	metrics   BridgeMetrics
 
 	// One gate per kind of log line, so that an outage of one kind does not
 	// hide the others.
@@ -83,18 +85,45 @@ type bridgeOptions struct {
 	marshal func(any) ([]byte, error)
 	// random fills the bytes with random ones; nil means rand.Read.
 	random func([]byte) (int, error)
+	// metrics are the counters of the bridge; the zero value counts nothing.
+	metrics BridgeMetrics
+}
+
+// BridgeMetrics are the counters of a Bridge (SPEC D60). A nil counter counts
+// nothing.
+type BridgeMetrics struct {
+	// Reconnects counts the times the connection to Redis came back after a
+	// break.
+	Reconnects *metrics.Counter
+	// Published counts the events the bridge sent to Redis.
+	Published *metrics.Counter
+	// Received counts the events of other processes the bridge delivered to
+	// the local hub.
+	Received *metrics.Counter
+}
+
+// BridgeOption changes how NewBridge makes the bridge.
+type BridgeOption func(*bridgeOptions)
+
+// WithMetrics makes the bridge count its work in m.
+func WithMetrics(m BridgeMetrics) BridgeOption {
+	return func(o *bridgeOptions) { o.metrics = m }
 }
 
 // NewBridge connects to Redis at redisURL (redis:// or rediss://), checks the
 // connection with a PING, subscribes to EventsChannel and starts the sender
 // and the receiver. ctx bounds the connecting only; the goroutines run until
 // Close. The error never holds the password of the URL.
-func NewBridge(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger) (*Bridge, error) {
+func NewBridge(ctx context.Context, redisURL string, hub *live.Hub, logger *slog.Logger, opts ...BridgeOption) (*Bridge, error) {
 	c, err := openRedis(ctx, redisURL)
 	if err != nil {
 		return nil, err
 	}
-	return newBridge(ctx, c, hub, logger, bridgeOptions{})
+	var o bridgeOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return newBridge(ctx, c, hub, logger, o)
 }
 
 // newBridge makes a bridge over c and owns c from then on: when it fails, it
@@ -136,6 +165,7 @@ func newBridge(ctx context.Context, c client, hub *live.Hub, logger *slog.Logger
 		queue:        make(chan live.Event, opts.queueSize),
 		cancel:       cancel,
 		cancelSend:   cancelSend,
+		metrics:      opts.metrics,
 		lostLog:      newLogGate(opts.clock, logEvery),
 		sendLog:      newLogGate(opts.clock, logEvery),
 		receiveLog:   newLogGate(opts.clock, logEvery),
@@ -251,7 +281,9 @@ func (b *Bridge) send(ctx context.Context, ev live.Event) {
 		if ok, skipped := b.sendLog.allow(); ok {
 			b.logger.Warn("sending a live event to Redis failed", "err", err, "lost", b.lost.Load(), "skipped_logs", skipped)
 		}
+		return
 	}
+	b.metrics.Published.Inc()
 }
 
 // runReceiver delivers the events of other processes to the local hub until
@@ -278,6 +310,7 @@ func (b *Bridge) runReceiver(ctx context.Context) {
 		if in.resubscribed {
 			b.logger.Info("the connection to Redis came back; live subscriptions of this process are reset")
 			b.hub.DropAll()
+			b.metrics.Reconnects.Inc()
 			continue
 		}
 		b.deliver(in.payload)
@@ -298,6 +331,7 @@ func (b *Bridge) deliver(payload []byte) {
 		return
 	}
 	b.hub.Publish(ev)
+	b.metrics.Received.Inc()
 }
 
 // sleep waits for d or for ctx to end; it reports whether d passed.

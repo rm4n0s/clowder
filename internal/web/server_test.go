@@ -26,6 +26,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/clowder/internal/store/storetest"
 	"github.com/rm4n0s/clowder/internal/web/static"
@@ -122,6 +123,13 @@ const testHostFingerprint = "SHA256:testhostkeyfingerprint"
 // server is made; extra routes are added to the server's.
 func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *testEnv {
 	t.Helper()
+	return newTestEnvOn(t, nil, mutate, extra...)
+}
+
+// newTestEnvOn is newTestEnv with the metrics the server, the hub, the logins
+// and the API report into; nil reports nothing.
+func newTestEnvOn(t *testing.T, set *metrics.Set, mutate func(*config.Config), extra ...route) *testEnv {
+	t.Helper()
 	buf := &syncBuffer{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	clk := clock.NewFake(testStart)
@@ -130,7 +138,17 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 	if mutate != nil {
 		mutate(&cfg)
 	}
-	hub := live.New()
+	var (
+		hubOpts    []live.Option
+		logins     *metrics.CounterVec
+		webSockets *metrics.Gauge
+	)
+	if set != nil {
+		hubOpts = append(hubOpts, live.WithDropCounter(set.HubDropped))
+		logins = set.Logins
+		webSockets = set.WebSockets.With(metrics.WebSocketKindAPI)
+	}
+	hub := live.New(hubOpts...)
 	t.Cleanup(hub.Close)
 	presence := live.NewMemoryPresence()
 	avatarStore, err := files.New(filepath.Join(t.TempDir(), "avatars"))
@@ -143,6 +161,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		Publisher:          hub,
 		Avatars:            avatarStore,
 		SSHServer:          cfg.SSHAddr != "",
+		Logins:             logins,
 	})
 	filesDir := filepath.Join(t.TempDir(), "files")
 	fileStore, err := files.New(filesDir)
@@ -181,11 +200,12 @@ func newTestEnv(t *testing.T, mutate func(*config.Config), extra ...route) *test
 		NoteUser:      NoteUser,
 		ClientIP:      ClientIPFunc(cfg.TrustProxyHeaders),
 		MaxUploadSize: cfg.MaxAttachmentSize,
+		WebSockets:    webSockets,
 	})
 	if err != nil {
 		t.Fatalf("api.New: %+v", err)
 	}
-	s, err := newServer(cfg, logger, Services{API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Presence: online, SSHKeys: sshKeys, Health: app.NewHealth(st), Calls: callSvc, Hub: hub}, static.FS, extra...)
+	s, err := newServer(cfg, logger, Services{Metrics: set, API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Presence: online, SSHKeys: sshKeys, Health: app.NewHealth(st), Calls: callSvc, Hub: hub}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}

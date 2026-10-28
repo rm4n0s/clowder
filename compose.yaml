@@ -40,6 +40,10 @@ services:
       # people who are not on this machine's network does not connect.
       CLOWDER_MEDIA_ADDR: ":7882"
       CLOWDER_MEDIA_PUBLIC_IP: ${CLOWDER_MEDIA_PUBLIC_IP:-}
+      # The metrics for Prometheus (SPEC D60) are off. To turn them on, remove
+      # the "#" below: they are then served at http://clowder:9090/metrics on
+      # the compose network, without a login. Do not publish the port.
+      # CLOWDER_METRICS_ADDR: ":9090"
     volumes:
       - clowderdata:/data
     ports:

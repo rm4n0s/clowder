@@ -11,6 +11,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/clock"
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -103,6 +104,8 @@ type Accounts struct {
 	// sshServer is true when this process runs the SSH server: only then a
 	// user who turned on the SSH code is asked for it (SPEC §7.16).
 	sshServer bool
+	// logins counts the logins by result; nil counts nothing.
+	logins *metrics.CounterVec
 }
 
 // AccountsConfig holds the settings and the injected parts of Accounts.
@@ -135,6 +138,9 @@ type AccountsConfig struct {
 	// then; with the server off the password alone logs in. Every process of
 	// a cluster has the same setting (SPEC §7.16).
 	SSHServer bool
+	// Logins counts the logins by result (metrics.Set.Logins, SPEC D60): the
+	// counter vec has the one label "result". Nil counts nothing.
+	Logins *metrics.CounterVec
 }
 
 // NewAccounts makes the service. Time is counted on clk; a nil clk is the real
@@ -166,7 +172,14 @@ func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg Accou
 		avatars:            cfg.Avatars,
 		cleaner:            newFileCleaner(cfg.Avatars, cfg.Logger),
 		sshServer:          cfg.SSHServer,
+		logins:             cfg.Logins,
 	}
+}
+
+// countLogin counts a login with the result (the metrics.Login* values). The
+// counter never gets a username, an address or a token (SPEC D60).
+func (a *Accounts) countLogin(result string) {
+	a.logins.With(result).Inc()
 }
 
 // CreateInvitation makes an invitation for a new user with the given role.

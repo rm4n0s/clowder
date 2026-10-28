@@ -6,6 +6,7 @@ import (
 
 	"github.com/rm4n0s/clowder/internal/auth"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -179,6 +180,7 @@ func (a *Accounts) CompleteLogin(ctx context.Context, pendingToken, code, client
 		return LoginResult{}, err
 	}
 	if !a.limiter.Allow(ctx, user.Username, clientIP) {
+		a.countLogin(metrics.LoginLimited)
 		return LoginResult{}, errors.New(TagRateLimited, "too many failed login attempts",
 			"username", limiterKey(user.Username), "ip", clientIP)
 	}
@@ -219,6 +221,7 @@ func (a *Accounts) CompleteLogin(ctx context.Context, pendingToken, code, client
 		return LoginResult{}, errors.New(TagUnauthenticated, MessageSignInExpired,
 			"reason", "gone", "pendingID", p.ID)
 	case errors.Is(err, errWrongCode):
+		a.countLogin(metrics.LoginSSHCodeWrong)
 		a.limiter.Fail(ctx, user.Username, clientIP)
 		gone, err := a.st.AddPendingLoginWrongTry(ctx, p.ID, sshCodeMaxWrongTries)
 		if err != nil {
@@ -233,6 +236,7 @@ func (a *Accounts) CompleteLogin(ctx context.Context, pendingToken, code, client
 	default:
 		return LoginResult{}, err
 	}
+	a.countLogin(metrics.LoginOK)
 	a.limiter.Reset(ctx, user.Username)
 	return LoginResult{Token: token, User: viewOf(user), ExpiresAt: sess.ExpiresAt, Next: p.Next}, nil
 }

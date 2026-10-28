@@ -14,6 +14,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/live"
 	"github.com/rm4n0s/clowder/internal/markdown"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/errors"
 )
 
@@ -95,6 +96,12 @@ type Options struct {
 	// slash (config.Config.BaseURL): the link of an invitation is
 	// <BaseURL>/invite/<token>. Empty makes the link a path.
 	BaseURL string
+	// WebSockets counts the open user WebSockets of the API, GET /api/v1/ws
+	// (the gauge of kind "api" of clowder_websockets_open, SPEC D60). The
+	// signalling socket of a call is not in it: the media server counts that
+	// one, as kind "call". A socket is counted from the moment its handler
+	// starts the upgrade. Nil counts nothing.
+	WebSockets *metrics.Gauge
 }
 
 // Route is a pattern of http.ServeMux, with the method and the whole path
@@ -129,6 +136,9 @@ type Server struct {
 	wsMu      sync.Mutex
 	wsActive  int
 	wsChanged chan struct{}
+	// wsGauge counts the open user WebSockets for the metrics; nil counts
+	// nothing.
+	wsGauge *metrics.Gauge
 	// lookup holds the routes without the catch-all, to find the methods a
 	// path has.
 	lookup *http.ServeMux
@@ -144,7 +154,8 @@ func New(opts Options) (*Server, error) {
 	}
 	s := &Server{svc: opts.Services, logger: opts.Logger, noteUser: opts.NoteUser, clientIP: opts.ClientIP,
 		md: opts.Markdown, baseURL: strings.TrimRight(opts.BaseURL, "/"),
-		pingInterval: wsPingInterval, pingTimeout: wsPingTimeout, writeTimeout: wsWriteTimeout, wsChanged: make(chan struct{})}
+		pingInterval: wsPingInterval, pingTimeout: wsPingTimeout, writeTimeout: wsWriteTimeout, wsChanged: make(chan struct{}),
+		wsGauge: opts.WebSockets}
 	if s.svc.Hub == nil {
 		s.svc.Hub = live.New()
 	}

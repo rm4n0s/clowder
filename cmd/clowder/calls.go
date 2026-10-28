@@ -226,13 +226,16 @@ func announcedAddr(publicIP string, udp net.Addr) string {
 // nothing when calls are off). The server stops when the function is called.
 // With a link (several processes on Redis) the server relays the sockets of the
 // calls that other processes hold, and the process announces its media address.
-func startMedia(ctx context.Context, cfg config.Config, svc *app.Calls, hub *live.Hub, processID string, link callLink, logger *slog.Logger) (*calls.Server, func(), error) {
+func startMedia(ctx context.Context, cfg config.Config, svc *app.Calls, hub *live.Hub, processID string, link callLink, logger *slog.Logger, opts ...func(*calls.Config)) (*calls.Server, func(), error) {
 	if cfg.MediaAddr == "" {
 		return nil, func() {}, nil
 	}
 	mediaCfg := calls.Config{Addr: cfg.MediaAddr, PublicIP: cfg.MediaPublicIP, ProcessID: processID, Logger: logger}
 	if link != nil {
 		mediaCfg.Relay = link
+	}
+	for _, opt := range opts {
+		opt(&mediaCfg)
 	}
 	media, err := calls.New(ctx, mediaCfg, callsController{svc: svc}, hub)
 	if err != nil {

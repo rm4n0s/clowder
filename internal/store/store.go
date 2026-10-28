@@ -80,6 +80,9 @@ type Store struct {
 	// closer closes the connection pool. It is nil in the Store that Tx hands
 	// to its function, which must not close the database.
 	closer io.Closer
+	// pool is the connection pool, for PoolStats. It is nil in the Store that
+	// Tx hands to its function.
+	pool *sql.DB
 }
 
 // options holds what Open fixes and the tests change.
@@ -207,7 +210,7 @@ func open(ctx context.Context, target string, clk clock.Clock, logger *slog.Logg
 		sqlDB.SetMaxOpenConns(n)
 		sqlDB.SetMaxIdleConns(n)
 	}
-	s := &Store{gdb: gdb, clk: clk, logger: logger, closer: sqlDB, dialect: opts.dialect}
+	s := &Store{gdb: gdb, clk: clk, logger: logger, closer: sqlDB, pool: sqlDB, dialect: opts.dialect}
 	if err := pingAndMigrate(ctx, s, sqlDB, opts); err != nil {
 		if closeErr := sqlDB.Close(); closeErr != nil {
 			logger.Warn("closing the database after a failed open failed", "err", closeErr)
@@ -289,6 +292,16 @@ func (s *Store) Close() error {
 		return errors.NewErr(tagCloseFailed, err)
 	}
 	return nil
+}
+
+// PoolStats returns the statistics of the connection pool: the connections
+// open, in use and idle, and how often and how long a query waited for one
+// (SPEC D60). It is the zero value in the Store of a transaction.
+func (s *Store) PoolStats() sql.DBStats {
+	if s.pool == nil {
+		return sql.DBStats{}
+	}
+	return s.pool.Stats()
 }
 
 // Ping checks that the database answers, within ctx. It is what the health

@@ -39,6 +39,11 @@
 x-cluster-environment: &cluster-environment
   CLOWDER_REDIS_URL: redis://redis:6379/0
   CLOWDER_TRUST_PROXY: "true"
+  # The metrics for Prometheus (SPEC D60) are off. To turn them on in both
+  # processes, remove the "#" below: each serves http://clowder:9090/metrics
+  # or http://clowder2:9090/metrics on the compose network, without a login
+  # (each process has its own numbers; scrape both). Do not publish the port.
+  # CLOWDER_METRICS_ADDR: ":9090"
 
 services:
   redis:
