@@ -145,7 +145,7 @@ func TestMessagesLinkAndBadgeInTheSidebar(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200", rec.Code)
 			}
-			requireBody(t, rec, []string{`<a class="sidebar-messages" href="/messages"><span>Messages</span>` + messageBadge(tt.want) + `</a>`, `@get(&#39;` + tt.stream})
+			requireBody(t, rec, []string{`<a class="header-link header-messages" href="/messages">`, `<span class="visually-hidden">Messages</span>` + messageBadge(tt.want) + `</a>`, `@get(&#39;` + tt.stream})
 		})
 	}
 }

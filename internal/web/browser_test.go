@@ -37,6 +37,12 @@ func textOf(t *testing.T, ctx context.Context, sel string) string {
 	return got
 }
 
+// openUserMenu opens the menu of the user in the header (a details element
+// with no script), where Admin, the theme and Log out are.
+func openUserMenu() chromedp.Action[chromedp.Void] {
+	return chromedp.Steps(chromedp.Click("#user-menu summary"), chromedp.WaitVisible("#user-menu[open] #logout-form button"))
+}
+
 // valueOf returns the value of the input.
 func valueOf(t *testing.T, ctx context.Context, sel string) string {
 	t.Helper()
@@ -114,7 +120,7 @@ func TestLoginDatastar(t *testing.T) {
 	}
 
 	// Logging out brings the login page back, and the home page needs a login again.
-	if err := chromedp.Do(ctx, chromedp.Click("#logout-form button"), chromedp.WaitVisible("#login-form")); err != nil {
+	if err := chromedp.Do(ctx, openUserMenu(), chromedp.Click("#logout-form button"), chromedp.WaitVisible("#login-form")); err != nil {
 		t.Fatalf("log out: %v", err)
 	}
 	if err := chromedp.Do(ctx, chromedp.Navigate(srv.URL+"/"), chromedp.WaitVisible("#login-form")); err != nil {
@@ -195,10 +201,13 @@ func TestLoggedInSidebar(t *testing.T) {
 	if err := browsertest.LogIn(ctx, srv, "alice"); err != nil {
 		t.Fatalf("LogIn: %+v", err)
 	}
-	if got := textOf(t, ctx, "aside .sidebar-user"); got != "Alice" {
-		t.Errorf("sidebar name = %q, want Alice", got)
+	if err := chromedp.Do(ctx, openUserMenu()); err != nil {
+		t.Fatalf("open the user menu: %v", err)
 	}
-	if err := waitFor(ctx, `document.querySelector('aside a[href="/admin/users"]') === null`); err != nil {
+	if got := textOf(t, ctx, "#sidebar-user"); got != "Alice" {
+		t.Errorf("user menu name = %q, want Alice", got)
+	}
+	if err := waitFor(ctx, `document.querySelector('#user-menu a[href="/admin/users"]') === null`); err != nil {
 		t.Errorf("a member sees the Admin link: %v", err)
 	}
 
@@ -223,7 +232,7 @@ func TestAdminDisablesAUser(t *testing.T) {
 	if err := browsertest.LogIn(ctx, srv, "admin"); err != nil {
 		t.Fatalf("LogIn: %+v", err)
 	}
-	err := chromedp.Do(ctx, chromedp.Click(`aside a[href="/admin/users"]`), chromedp.WaitVisible("#users-panel"))
+	err := chromedp.Do(ctx, openUserMenu(), chromedp.Click(`#user-menu a[href="/admin/users"]`), chromedp.WaitVisible("#users-panel"))
 	if err != nil {
 		t.Fatalf("open the users page: %v", err)
 	}

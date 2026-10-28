@@ -62,20 +62,20 @@ func TestMessageCount(t *testing.T) {
 	}
 }
 
-func TestSidebarHasTheMessagesLink(t *testing.T) {
+func TestHeaderHasTheMessagesLink(t *testing.T) {
 	user := app.User{DisplayName: "Bob", Username: "bob", Role: app.RoleMember}
 	tests := []struct {
 		name   string
 		unread int
 		want   string
 	}{
-		{"with a count", 2, `<a class="sidebar-messages" href="/messages"><span>Messages</span><span id="message-count" class="count-badge" title="2 conversations with unread messages">2</span></a>`},
-		{"without", 0, `<a class="sidebar-messages" href="/messages"><span>Messages</span><span id="message-count" class="count-badge"></span></a>`},
+		{"with a count", 2, `<span class="visually-hidden">Messages</span><span id="message-count" class="count-badge" title="2 conversations with unread messages">2</span></a>`},
+		{"without", 0, `<span class="visually-hidden">Messages</span><span id="message-count" class="count-badge"></span></a>`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			html := renderHTML(t, views.Sidebar(views.SidebarData{User: user, UnreadMessages: tt.unread}))
-			requireHTML(t, html, []string{tt.want}, nil)
+			html := renderHTML(t, views.Header(views.SidebarData{User: user, UnreadMessages: tt.unread}))
+			requireHTML(t, html, []string{`<a class="header-link header-messages" href="/messages">`, tt.want}, nil)
 		})
 	}
 }

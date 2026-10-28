@@ -8,7 +8,7 @@ import (
 // MessagesPage is the page of the conversations of the user, most recent
 // first, with the form that starts one. Its stream keeps the list live.
 templ MessagesPage(d ConversationsData) {
-	@Layout("Messages", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
+	@Layout("Messages", d.Sidebar.UnreadTotal(), &d.Sidebar) {
 		<h1>Messages</h1>
 		@MessageSearchBox(d.Search.Query)
 		if d.Search.Active {
@@ -160,7 +160,7 @@ templ ConversationList(items []app.ConversationSummary, viewerID uint64) {
 // oldest first with the newest at the bottom, the composer and, for a group,
 // the members panel.
 templ ConversationPage(d ConversationData) {
-	@Layout(d.Header.DisplayName, d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
+	@Layout(d.Header.DisplayName, d.Sidebar.UnreadTotal(), &d.Sidebar) {
 		@liveStream(ConversationStreamPath(d.Header.ID, d.NewestID(), d.Before))
 		@NotifyPlace(PlaceKey(app.ConversationRef(d.Header.ID)))
 		@ConversationHeader(d)

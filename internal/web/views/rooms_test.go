@@ -26,7 +26,7 @@ func TestSidebarRooms(t *testing.T) {
 			name: "rooms with a lock for the private one and the current one marked",
 			data: views.SidebarData{User: user, Rooms: rooms, CurrentRoomID: 2},
 			want: []string{
-				`<h2 class="sidebar-heading">Rooms</h2>`,
+				`<h2 class="sidebar-heading">Your rooms</h2>`,
 				`href="/rooms/1"`, `data-room="general"`,
 				`href="/rooms/2" class="current" data-room="secret" aria-current="page"`,
 				`<svg class="lock" role="img" aria-label="Private"`,

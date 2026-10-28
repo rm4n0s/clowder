@@ -26,7 +26,7 @@ const (
 func openConversation(t *testing.T, ctx context.Context, members string) {
 	t.Helper()
 	err := chromedp.Do(ctx,
-		chromedp.Click(`aside a.sidebar-messages`),
+		chromedp.Click(`a.header-messages`),
 		chromedp.WaitVisible(`#conversation-list li.conversation`),
 		chromedp.Click(`#conversation-list li.conversation[data-members="`+members+`"] a.conversation-link`),
 		chromedp.WaitVisible(`#message-composer-form`),
@@ -207,7 +207,7 @@ func TestBobsMessagesBadgeGoesUpWhileHeReadsARoom(t *testing.T) {
 	}
 
 	// The Messages page: the list marks them, and follows the next message.
-	err := chromedp.Do(bob, chromedp.Click(`aside a.sidebar-messages`), chromedp.WaitVisible(`#conversation-list li.conversation`))
+	err := chromedp.Do(bob, chromedp.Click(`a.header-messages`), chromedp.WaitVisible(`#conversation-list li.conversation`))
 	if err != nil {
 		t.Fatalf("bob opens the Messages page: %v", err)
 	}
@@ -470,7 +470,7 @@ func TestAliceSearchesHerMessages(t *testing.T) {
 		t.Fatalf("LogIn: %+v", err)
 	}
 	err := chromedp.Do(ctx,
-		chromedp.Click(`aside a.sidebar-messages`),
+		chromedp.Click(`a.header-messages`),
 		chromedp.WaitVisible(`#conversation-list li.conversation`),
 		browsertest.Fill("#message-search-q", "notes"),
 		chromedp.Click(`#message-search button[type="submit"]`),

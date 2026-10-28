@@ -36,7 +36,7 @@ type AdminRoomsData struct {
 // AdminRoomsPage is the page of every room, with the forms that rename and
 // delete a room and the list of its members. Only admins get it.
 templ AdminRoomsPage(d AdminRoomsData) {
-	@Layout("Rooms", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
+	@Layout("Rooms", d.Sidebar.UnreadTotal(), &d.Sidebar) {
 		@AdminTabs("rooms")
 		<h1>Rooms</h1>
 		<section id="admin-rooms">

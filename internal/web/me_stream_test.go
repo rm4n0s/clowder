@@ -106,8 +106,8 @@ func TestMeStreamPatchesTheRoomList(t *testing.T) {
 	var sidebar, count bool
 	for _, p := range c.drain() {
 		switch {
-		case p.selector == "#sidebar":
-			requirePatch(t, p, "#sidebar", "inner", []string{`data-room="secret"`}, []string{"aria-current"})
+		case strings.Contains(p.html, `id="sidebar"`):
+			requireChromePatch(t, p, []string{`data-room="secret"`}, []string{"aria-current"})
 			sidebar = true
 		case strings.Contains(p.html, `id="notification-count"`):
 			requireCount(t, p, 1)
@@ -130,7 +130,7 @@ func TestMeStreamPatchesTheRoomList(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("no patch after leaving")
 	}
-	requirePatch(t, got[len(got)-1], "#sidebar", "inner", []string{`<ul class="sidebar-room-list"></ul>`}, []string{`data-room=`})
+	requireChromePatch(t, got[len(got)-1], []string{`<ul class="sidebar-room-list"></ul>`}, []string{`data-room=`})
 }
 
 func TestMeStreamReconnectSendsTheSidebar(t *testing.T) {
@@ -139,7 +139,7 @@ func TestMeStreamReconnectSendsTheSidebar(t *testing.T) {
 	e.mentionBob("general", "hello")
 	c := e.serveStreams().open("bob", "/me/stream", asDatastar(), withHeader("Last-Event-ID", "1"))
 	got := c.patches(1)
-	requirePatch(t, got[0], "#sidebar", "inner", []string{`data-room="general"`, `data-room="secret"`, badge(2)}, nil)
+	requireChromePatch(t, got[0], []string{`data-room="general"`, `data-room="secret"`, badge(2)}, nil)
 }
 
 func TestMeStreamKeepAliveAndEnd(t *testing.T) {

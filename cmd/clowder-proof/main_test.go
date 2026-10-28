@@ -138,6 +138,12 @@ func TestParseFlags(t *testing.T) {
 			args: []string{"-o", "x.png", "-as", "alice", "-page", "/me/sessions", "-api-login", "clowder-apicheck"},
 			want: options{page: "/me/sessions", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond, apiLogin: "clowder-apicheck"},
 		},
+		{
+			name: "color scheme",
+			args: []string{"-o", "x.png", "-as", "alice", "-color-scheme", "dark"},
+			want: options{page: "/", out: "x.png", as: "alice", width: 1280, height: 800, wait: 500 * time.Millisecond, colorScheme: "dark"},
+		},
+		{name: "color scheme that does not exist", args: []string{"-o", "x.png", "-color-scheme", "sepia"}, wantTag: tagFlagsInvalid},
 		{name: "api login without a user", args: []string{"-o", "x.png", "-api-login", "clowder-apicheck"}, wantTag: tagFlagsInvalid},
 		{name: "cluster without other", args: []string{"-o", "x.png", "-as", "bob", "-cluster"}, wantTag: tagFlagsInvalid},
 		{name: "cluster with ssh", args: []string{"-o", "x.png", "-as", "bob", "-other", "alice", "-cluster", "-ssh"}, wantTag: tagFlagsInvalid},
@@ -189,6 +195,57 @@ func TestParseFlags(t *testing.T) {
 				t.Fatalf("expected *errors.Error, got %T: %v", err, err)
 			}
 			if appErr.Tag != tt.wantTag || !appErr.HasRoute("parseFlags.FlagsInvalid") {
+				t.Errorf("tag = %q, route = %s", appErr.Tag, appErr.Route())
+			}
+		})
+	}
+}
+
+func TestParseFlagsRenderIcon(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    options
+		wantTag string
+	}{
+		{
+			name: "defaults to 32 px",
+			args: []string{"-o", "x.png", "-render-icon", "favicon.svg"},
+			want: options{page: "/", out: "x.png", width: 1280, height: 800, wait: 500 * time.Millisecond, renderIcon: "favicon.svg", iconSize: 32},
+		},
+		{
+			name: "all flags",
+			args: []string{"-o", "x.png", "-render-icon", "favicon.svg", "-icon-size", "180", "-icon-bg", "#fbf6ee", "-icon-pad", "20"},
+			want: options{page: "/", out: "x.png", width: 1280, height: 800, wait: 500 * time.Millisecond, renderIcon: "favicon.svg", iconSize: 180, iconBackground: "#fbf6ee", iconPadding: 20},
+		},
+		{name: "too small", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-icon-size", "8"}, wantTag: tagFlagsInvalid},
+		{name: "too large", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-icon-size", "2048"}, wantTag: tagFlagsInvalid},
+		{name: "padding too large", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-icon-pad", "60"}, wantTag: tagFlagsInvalid},
+		{name: "negative padding", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-icon-pad", "-1"}, wantTag: tagFlagsInvalid},
+		{name: "ground that is not a hex color", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-icon-bg", "cream"}, wantTag: tagFlagsInvalid},
+		{name: "ground with three digits", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-icon-bg", "#fff"}, wantTag: tagFlagsInvalid},
+		{name: "with a user", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-as", "alice"}, wantTag: tagFlagsInvalid},
+		{name: "with the cluster", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-cluster"}, wantTag: tagFlagsInvalid},
+		{name: "with ssh", args: []string{"-o", "x.png", "-render-icon", "a.svg", "-ssh"}, wantTag: tagFlagsInvalid},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			got, err := parseFlags(tt.args, &stderr)
+			if tt.wantTag == "" {
+				if err != nil {
+					t.Fatalf("parseFlags: %v", err)
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("options = %+v, want %+v", got, tt.want)
+				}
+				return
+			}
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+			}
+			if appErr.Tag != tt.wantTag || !appErr.HasRoute("parseFlags->options.checkRenderIcon.FlagsInvalid") {
 				t.Errorf("tag = %q, route = %s", appErr.Tag, appErr.Route())
 			}
 		})

@@ -1,0 +1,24 @@
+package views
+
+// LogoMark is the cat head of Clowder, the mark of the logo and of the
+// favicon: a head with two ears, two eyes and a nose. It is decorative
+// (aria-hidden). app.css colours the head with the accent and the eyes and the
+// nose with --logo-eye, the colour of the ground it sits on.
+templ LogoMark() {
+	<svg class="logo-mark" viewBox="0 0 32 32" width="34" height="34" aria-hidden="true" focusable="false">
+		<path class="logo-head" d="M5 27V8l7 6h8l7-6v19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path>
+		<circle class="logo-eye" cx="12" cy="19" r="1.8"></circle>
+		<circle class="logo-eye" cx="20" cy="19" r="1.8"></circle>
+		<path class="logo-nose" d="M14.5 23.5 16 25l1.5-1.5"></path>
+	</svg>
+}
+
+// Logo is the logo of Clowder: the cat head and the word "clowder" in the
+// heading font, one link to the home page. The word is text, so the link has
+// its name.
+templ Logo() {
+	<a class="logo" href="/">
+		@LogoMark()
+		<span class="logo-word">clowder</span>
+	</a>
+}

@@ -50,21 +50,23 @@ func TestNotificationCount(t *testing.T) {
 	}
 }
 
-func TestSidebarHasTheNotificationsLink(t *testing.T) {
+func TestHeaderHasTheBell(t *testing.T) {
 	user := app.User{DisplayName: "Bob", Username: "bob", Role: app.RoleMember}
 	tests := []struct {
 		name   string
 		unread int
 		want   string
 	}{
-		{"with a count", 4, `<a class="sidebar-notifications" href="/notifications"><span>Notifications</span><span id="notification-count" class="count-badge" title="4 unread notifications">4</span></a>`},
-		{"without", 0, `<a class="sidebar-notifications" href="/notifications"><span>Notifications</span><span id="notification-count" class="count-badge"></span></a>`},
+		{"with a count", 4, `<span class="visually-hidden">Notifications</span><span id="notification-count" class="count-badge" title="4 unread notifications">4</span></a>`},
+		{"without", 0, `<span class="visually-hidden">Notifications</span><span id="notification-count" class="count-badge"></span></a>`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			html := renderHTML(t, views.Sidebar(views.SidebarData{User: user, Unread: tt.unread}))
-			if !strings.Contains(html, tt.want) {
-				t.Errorf("html does not contain %q:\n%s", tt.want, html)
+			html := renderHTML(t, views.Header(views.SidebarData{User: user, Unread: tt.unread}))
+			for _, want := range []string{`<a class="header-link header-notifications" href="/notifications">`, tt.want} {
+				if !strings.Contains(html, want) {
+					t.Errorf("html does not contain %q:\n%s", want, html)
+				}
 			}
 		})
 	}

@@ -10,3 +10,17 @@ Helper scripts for development. Run them from anywhere; they find the repository
 | `compose-smoke.sh` | Smoke test of `compose.yaml` (SPEC D40) on a throw-away compose project: builds the image, starts Clowder and PostgreSQL, checks both are healthy, makes an admin invitation, signs up through the form with `curl`, opens the home page logged in, asks `/healthz`, and removes the containers and volumes. Needs `docker` and `curl`. |
 
 The helper that talks to the server is the Go program `cmd/clowder-perf` (no dependencies besides the module's own); `clowder-perf -h` lists its flags. The benchmarks of the feed and of search are ordinary Go benchmarks that skip unless `CLOWDER_BENCH_DB` names the database file of a large demo (see `docs/PERFORMANCE.md`; with `CLOWDER_BENCH_DATABASE_URL` set to the URL of a large demo on PostgreSQL they run on it).
+
+## Rendering the icons
+
+The PNG icons are rendered once from an SVG with headless Chromium, by `clowder-proof` (build tag `clowder_browser`; it needs Chromium on `PATH`, no server and no data). The PNGs are committed; run these again only when the SVG changes (from the repository root):
+
+```sh
+# the favicon fallback: 32 px, transparent ground
+go run -tags clowder_browser ./cmd/clowder-proof -render-icon internal/web/static/favicon.svg -icon-size 32 -o internal/web/static/favicon-32.png
+
+# the icon iOS puts on the home screen: 180 px on the cream ground, with 20% around the head
+go run -tags clowder_browser ./cmd/clowder-proof -render-icon internal/web/static/favicon.svg -icon-size 180 -icon-bg '#fbf6ee' -icon-pad 20 -o internal/web/static/apple-touch-icon.png
+```
+
+`-icon-size` is the width and the height in pixels (16 to 1024), `-icon-bg` is a `#rrggbb` ground (transparent when left out) and `-icon-pad` the space around the icon on each side, in percent (0 to 40). Step 21.5 renders the icons of the installed app (192 and 512 px, and the maskable ones) the same way.

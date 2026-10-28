@@ -64,7 +64,7 @@ func TestSessionsPage(t *testing.T) {
 		`data-kind="api"`, `<td class="kind">App</td>`, "Clowder Desktop &lt;b&gt;on&lt;/b&gt; laptop",
 		`data-kind="browser"`, `<td class="kind">Browser</td>`,
 		"This browser", `datetime="2026-10-26T09:30:00Z"`, `datetime="2026-10-26T10:30:00Z"`,
-		`id="sidebar-user">Alice</p>`, `<a href="/me/settings">Settings</a>`,
+		`id="sidebar-user">Alice</p>`, `<a class="user-menu-item" href="/me/settings">`, `href="/me/settings#sessions"`,
 	}, "bobs-secret-app", "<b>on</b>", "token")
 	ids := sessionRowID.FindAllStringSubmatch(body, -1)
 	if len(ids) != 2 {
@@ -111,8 +111,8 @@ func TestSessionsPageShowsTheSidebarLink(t *testing.T) {
 	e := newTestEnv(t, nil)
 	e.addUser("alice", "Alice", store.RoleMember)
 	rec := e.send(get("/", withCookie(e.session("alice"))))
-	requireBody(t, rec, []string{`id="sidebar-user">Alice</p>`, `<p class="sidebar-account"><a href="/me/settings">Settings</a></p>`,
-		`<a class="sidebar-avatar" href="/me/settings"`, `<span class="avatar avatar-md avatar-c`})
+	requireBody(t, rec, []string{`id="sidebar-user">Alice</p>`, `<a class="user-menu-item" href="/me/settings">`,
+		`<summary class="user-menu-button" aria-label="Account menu">`, `<span id="header-avatar">`, `<span class="avatar avatar-md avatar-c`})
 }
 
 // TestOldSessionsPageRedirectsToTheSettings: the page of the sessions of 1.1 is

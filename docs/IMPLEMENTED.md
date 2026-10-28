@@ -1460,3 +1460,38 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - The brief's link `#message-{id}` is `#msg-{id}`, the ID the conversation page already uses, with `?msg=` to open an older page.
   - `TestBackfill` on PostgreSQL now drops `messages_search` first, because it depends on the text search configuration that the test drops.
+
+## 21.1 The foundations of the new look
+- **Date:** 2026-10-28
+- **Branch:** feat/step-21.1-foundations
+- **Summary:**
+  - The owner's chosen artboards ("A · Sunbeam" and "A · Sunbeam, dark") are copied from the design canvas into `docs/design/` as the reference of M21.
+  - `app.css` has three token blocks, named by role (`--c-ground`, `--c-text-muted`, `--c-accent`, `--code-keyword`, …): light on `:root`, dark under `prefers-color-scheme: dark` unless `data-theme="light"`, and on `data-theme="dark"`. They are the only places a colour is written. Every page is readable in both palettes before it is redone.
+    - `:focus-visible` draws a 2 px ring; `prefers-reduced-motion` turns motion off.
+    - No mockup pair needed a darker or lighter shade to pass 4.5:1.
+  - The fonts are self-hosted under `internal/web/static/fonts/`: Bricolage Grotesque, Nunito and JetBrains Mono. Each is variable woff2 in Latin and Latin Extended, 225,396 bytes in all, with its `OFL.txt` and its source in `fonts/README.md`. SPEC §15 and `NOTICE` list them.
+  - `gencodecss` writes `code.css` with `var(--code-…)` tokens only, chroma's token types mapped by family; the code colours are the mockup's.
+  - The logo (the cat head and "clowder"), `favicon.svg`, and `favicon-dot.svg` for the unread mark of 20.2, plus `favicon-32.png` and `apple-touch-icon.png`, rendered with `clowder-proof -render-icon` (`scripts/README.md`). 22 inline SVG icons in `views/icons.templ`, drawn for Clowder or taken from the mockups.
+  - The shell:
+    - a header with the logo, the round search box, the bell and Messages with their live counts, and a user menu (`<details>`, no script) with Settings, the theme (System, Light, Dark), Sessions, Admin and Log out;
+    - the sidebar of rooms with the counts of 20.2;
+    - the pages without a login (login, sign-up, reset, the login code, the error pages) as a card under the logo.
+    - The live patch of the sidebar now carries the header and the sidebar as two elements morphed by ID; the streams send the same events as before.
+  - `clowder-proof -color-scheme light|dark` emulates the system theme.
+- **Main files:** `internal/web/static/{app.css,code.css,static.go,favicon.svg,favicon-dot.svg,favicon-32.png,apple-touch-icon.png}`, `internal/web/static/fonts/`, `internal/markdown/cmd/gencodecss`, `internal/web/views/{layout,sidebar,auth,signin,error,icons,logo}.templ`, `internal/web/{stream,settings}.go`, `cmd/clowder-proof`, `internal/browsertest`, `docs/design/`, `docs/SPEC.md`, `NOTICE`.
+- **Tests:**
+  - the contrast test: 231 pairs in light and in both dark blocks; every token used as a text colour is in a pair; no colour outside the token blocks; the two dark blocks are the same; `code.css` has tokens only;
+  - the static files: fonts as `font/woff2` with their licenses, every `@font-face` URL served;
+  - the views: logo, icons, the user menu (Admin only for admins), the theme form, the header IDs;
+  - the handlers: the theme posted from the menu, the pages under the logo;
+  - browser: the system theme against the chosen one, the focus ring, the fonts loading, and every earlier browser test (the live counts, the title and favicon of 20.2) passing as before;
+  - `clowder-proof`: the new flags and `-render-icon`.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [login light](implemented-proof-images/21.1-login-light.png) · [login dark](implemented-proof-images/21.1-login-dark.png) · [shell light](implemented-proof-images/21.1-shell-light.png) · [shell dark](implemented-proof-images/21.1-shell-dark.png) · [shell 390](implemented-proof-images/21.1-shell-390.png)
+  - the login card under the logo; alice in `general` with the user menu open and the counts in the header and the sidebar, in both themes and at 390 px.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The mockup's "+ Find or make a room" is two links, Browse rooms and New room, because they are separate pages. The sidebar has rooms only, as before; Home is the logo.
+  - The mockup's input borders have a contrast of about 1.3:1 against the ground; the labels carry the meaning (recorded in the SPEC).
+  - Changing the theme from the menu while the settings page is open leaves its Appearance radios as they were until the page is loaded again.

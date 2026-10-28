@@ -213,6 +213,22 @@ type options struct {
 	// and a code, so a proof of the second form types the password in the
 	// login form itself instead of using -as.
 	sshCode string
+	// colorScheme is "light" or "dark": the browsers report it as the
+	// system's prefers-color-scheme, so that the page shows the palette of
+	// that scheme unless the user's setting overrides it; empty leaves the
+	// browser's own.
+	colorScheme string
+	// renderIcon is the SVG file that the tool renders to a PNG of iconSize
+	// pixels instead of taking a screenshot of a page (see render.go).
+	renderIcon string
+	// iconSize is the width and the height of the PNG of -render-icon.
+	iconSize int
+	// iconBackground is the color of the ground of the PNG of -render-icon
+	// (#rrggbb); empty keeps it transparent.
+	iconBackground string
+	// iconPadding is the space around the icon in the PNG of -render-icon, in
+	// percent of its size on each side.
+	iconPadding int
 }
 
 // script is what a user does in a browser: log in, open a page, type into
@@ -250,6 +266,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	opts, err := parseFlags(args, stderr)
 	if err != nil {
 		return err
+	}
+	if opts.renderIcon != "" {
+		return renderIcon(ctx, opts, stdout)
 	}
 	var (
 		srvs servers
@@ -376,6 +395,11 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.BoolVar(&o.ssh, "ssh", false, "start the server with its SSH server of the sign-in codes on a free port of 127.0.0.1, so that the Sign-in section of the settings page shows the ssh command (not with -cluster)")
 	fs.StringVar(&o.sshCode, "ssh-code", "", "demo user whose SSH code at login is turned on before the page opens (a key is added and fetches a code through the SSH server, which this starts): open /login and use -fill and -click to type the password, so that the screenshot shows the second form (not with -cluster; not the same user as -as)")
 	fs.StringVar(&o.apiLogin, "api-login", "", "client name: the -as user also logs in through POST /api/v1/auth/login as a client of that name before the page opens, and the session stays, so that the page of the sessions shows it (needs -as)")
+	fs.StringVar(&o.colorScheme, "color-scheme", "", "light or dark: the browsers report it as the system's prefers-color-scheme, so that the page shows the palette of the system theme (a user's own theme setting still wins); default: the browser's own")
+	fs.StringVar(&o.renderIcon, "render-icon", "", "path of an SVG file to render to a PNG of -icon-size pixels at -o instead of taking a screenshot of a page (the favicons and the icons of the installed app); needs no server")
+	fs.IntVar(&o.iconSize, "icon-size", 0, "with -render-icon: the width and the height of the PNG in pixels (default 32)")
+	fs.StringVar(&o.iconBackground, "icon-bg", "", "with -render-icon: the color of the ground of the PNG as #rrggbb (default: transparent)")
+	fs.IntVar(&o.iconPadding, "icon-pad", 0, "with -render-icon: the space around the icon on each side, in percent of its size (0 to 40)")
 	fs.Var(&o.other.clicks, "other-click", "CSS selector of an element the -other user clicks after the -other-fill flags (repeatable, in order)")
 	if err := fs.Parse(args); err != nil {
 		return options{}, errors.NewErr(tagFlagsInvalid, err)
@@ -385,6 +409,10 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 		return options{}, errors.New(tagFlagsInvalid, "unexpected arguments", "args", fs.Args())
 	case o.out == "":
 		return options{}, errors.New(tagFlagsInvalid, "-o is required", "flag", "o")
+	case o.colorScheme != "" && o.colorScheme != "light" && o.colorScheme != "dark":
+		return options{}, errors.New(tagFlagsInvalid, "-color-scheme must be light or dark", "scheme", o.colorScheme)
+	case o.renderIcon != "":
+		return o.checkRenderIcon()
 	case !validPage(o.page):
 		return options{}, errors.New(tagFlagsInvalid, "-page must start with /, {room:name}, {board:name}, {post:text} or {conversation:members}", "page", o.page)
 	case o.width <= 0 || o.height <= 0:
@@ -518,6 +546,11 @@ func actAs(ctx context.Context, srv *browsertest.Server, o options) (release fun
 // open logs the user in, resolves the placeholders of the page, opens it and
 // waits for it to settle. It returns the URL of the page.
 func (sc script) open(ctx context.Context, srv *browsertest.Server, o options) (string, error) {
+	if o.colorScheme != "" {
+		if err := chromedp.Do(ctx, browsertest.EmulateColorScheme(o.colorScheme)); err != nil {
+			return "", err
+		}
+	}
 	if sc.user != "" {
 		if err := browsertest.LogIn(ctx, srv, sc.user); err != nil {
 			return "", err

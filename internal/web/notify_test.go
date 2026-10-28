@@ -473,7 +473,7 @@ func TestPlacePrefsChangeRefreshesTheLists(t *testing.T) {
 	var sidebar, list bool
 	for _, p := range c.drain() {
 		switch {
-		case p.selector == "#sidebar":
+		case strings.Contains(p.html, `id="sidebar"`):
 			sidebar = true
 		case strings.Contains(p.html, `id="conversation-list"`):
 			list = strings.Contains(p.html, `class="conversation unread muted"`) || strings.Contains(p.html, `class="conversation muted"`)

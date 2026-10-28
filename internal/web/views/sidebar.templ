@@ -5,7 +5,8 @@ import (
 	"strconv"
 )
 
-// SidebarData is what the sidebar of a logged-in page shows.
+// SidebarData is what the shell of a logged-in page shows: the header and the
+// sidebar of rooms.
 type SidebarData struct {
 	// User is the logged-in user.
 	User app.User
@@ -15,54 +16,146 @@ type SidebarData struct {
 	// sidebar highlights; 0 on every other page.
 	CurrentRoomID uint64
 	// Unread is the number of unread notifications of the user, shown on the
-	// Notifications link; the badge is left out when it is 0.
+	// bell; the badge is left out when it is 0.
 	Unread int
 	// UnreadMessages is the number of conversations of the user with unread
-	// messages, shown on the Messages link; the badge is left out when it is 0.
+	// messages, shown on the Messages link of the header; the badge is left out
+	// when it is 0.
 	UnreadMessages int
-	// HideSearch leaves out the search box of the sidebar. The search page
+	// HideSearch leaves out the search box of the header. The search page
 	// sets it: it has a box of its own.
 	HideSearch bool
+	// Theme is the theme of the user, which the theme form of the user menu
+	// marks; empty means System.
+	Theme app.Theme
 }
 
-// Sidebar is the sidebar of the pages of a logged-in user: the display name of
-// the user with their avatar (a link to the settings), the search box, the navigation (Home, Messages and Notifications with
-// their unread counts, and Admin for admins), the
-// rooms of the user with the links to browse and to make rooms, and the logout
-// button.
-templ Sidebar(d SidebarData) {
-	<div class="sidebar-profile" id="sidebar-profile">
-		<a class="sidebar-avatar" href={ templ.SafeURL(SettingsPath) } title="Settings" aria-label="Settings">
-			@AvatarSized(d.User.ID, d.User.DisplayName, d.User.AvatarURL(), "md")
-		</a>
-		<p class="sidebar-user" id="sidebar-user">{ d.User.DisplayName }</p>
-	</div>
-	<p class="sidebar-account"><a href={ templ.SafeURL(SettingsPath) }>Settings</a></p>
+// PageHeader is the header element of the pages of a logged-in user, with
+// its content (Header). The streams patch it together with PageSidebar, by
+// their ids.
+templ PageHeader(d SidebarData) {
+	<header id="site-header" class="site-header">
+		@Header(d)
+	</header>
+}
+
+// PageSidebar is the aside element of the pages of a logged-in user, with the
+// rooms (Sidebar).
+templ PageSidebar(d SidebarData) {
+	<aside id="sidebar">
+		@Sidebar(d)
+	</aside>
+}
+
+// Header is the content of the header of the pages of a logged-in user: the
+// logo (a link to the home page), the search box (left out when HideSearch is
+// set), the bell with the unread notifications, Messages with the conversations
+// that have unread messages (both links, with the counts that the streams patch
+// by their ids) and the user menu.
+templ Header(d SidebarData) {
+	@Logo()
 	if !d.HideSearch {
 		@SearchBar()
 	}
-	<nav aria-label="Main">
-		<ul>
-			<li><a href="/">Home</a></li>
-			<li>
-				<a class="sidebar-messages" href="/messages">
-					<span>Messages</span>
-					@MessageCount(d.UnreadMessages)
-				</a>
-			</li>
-			<li>
-				<a class="sidebar-notifications" href="/notifications">
-					<span>Notifications</span>
-					@NotificationCount(d.Unread)
-				</a>
-			</li>
+	<div class="header-actions">
+		<a class="header-link header-notifications" href="/notifications">
+			@IconBell()
+			<span class="visually-hidden">Notifications</span>
+			@NotificationCount(d.Unread)
+		</a>
+		<a class="header-link header-messages" href="/messages">
+			@IconMessage()
+			<span class="visually-hidden">Messages</span>
+			@MessageCount(d.UnreadMessages)
+		</a>
+		@UserMenu(d)
+	</div>
+}
+
+// UserMenu is the menu of the user, a details element without script: the
+// avatar opens a panel with the name, Settings, the theme (ThemeMenu),
+// Sessions, Admin (for admins only) and the logout form. The details element
+// keeps its open state when a stream patches the header (data-preserve-attr).
+templ UserMenu(d SidebarData) {
+	<details class="user-menu" id="user-menu" data-preserve-attr="open">
+		<summary class="user-menu-button" aria-label="Account menu">
+			<span id="header-avatar">
+				@AvatarSized(d.User.ID, d.User.DisplayName, d.User.AvatarURL(), "md")
+			</span>
+		</summary>
+		<div class="user-menu-panel">
+			<p class="user-menu-name" id="sidebar-user">{ d.User.DisplayName }</p>
+			<a class="user-menu-item" href={ templ.SafeURL(SettingsPath) }>
+				@IconSettings()
+				Settings
+			</a>
+			@ThemeMenu(d.Theme)
+			<a class="user-menu-item" href={ templ.SafeURL(SettingsSessionsPath) }>
+				@IconLock()
+				Sessions
+			</a>
 			if d.User.IsAdmin() {
-				<li><a href="/admin/users">Admin</a></li>
+				<a class="user-menu-item" href="/admin/users">
+					@IconBoard()
+					Admin
+				</a>
 			}
-		</ul>
-	</nav>
+			<form id="logout-form" class="user-menu-logout" method="post" action="/logout" data-on:submit={ FormPost("/logout") }>
+				<button type="submit" class="user-menu-item">
+					@IconLogout()
+					Log out
+				</button>
+			</form>
+		</div>
+	</details>
+}
+
+// SettingsAppearanceMenuPath is the route that saves the theme, as the form of
+// the user menu posts to it: the query from=menu makes the answer patch the
+// menu and not the Appearance section, which is not on most pages.
+const SettingsAppearanceMenuPath = SettingsAppearancePath + "?from=menu"
+
+// ThemeMenu is the small form of the user menu that picks the theme: System,
+// Light or Dark, three buttons that post to the Appearance route of the
+// settings (the query from=menu tells it to answer for the menu). The current choice has
+// aria-pressed="true". The server sends it alone as a Datastar patch after the
+// choice, which also sets data-theme on the page.
+templ ThemeMenu(theme app.Theme) {
+	<form id="theme-menu" class="theme-menu" method="post" action={ templ.SafeURL(SettingsAppearanceMenuPath) } data-on:submit={ FormPost(SettingsAppearanceMenuPath) }>
+		<p class="theme-menu-label" id="theme-menu-label">Theme</p>
+		<div class="theme-menu-choices" role="group" aria-labelledby="theme-menu-label">
+			for _, c := range themeChoices() {
+				<button type="submit" name="theme" value={ string(c.Theme) } class={ "theme-option", templ.KV("current", themeSelected(theme, c.Theme)) } aria-pressed={ strconv.FormatBool(themeSelected(theme, c.Theme)) }>
+					switch c.Theme {
+						case app.ThemeLight:
+							@IconSun()
+						case app.ThemeDark:
+							@IconMoon()
+						default:
+							@IconMonitor()
+					}
+					{ c.Label }
+				</button>
+			}
+		</div>
+	</form>
+}
+
+// themeSelected reports whether choice is the theme in use: an empty theme is
+// System, like any value that is not Light or Dark.
+func themeSelected(theme, choice app.Theme) bool {
+	if theme != app.ThemeLight && theme != app.ThemeDark {
+		theme = app.ThemeSystem
+	}
+	return theme == choice
+}
+
+// Sidebar is the sidebar of the pages of a logged-in user: the rooms of the
+// user with the counts of 20.2, and the links to browse and to make rooms.
+// Everything else the old sidebar held is in the header (Header).
+templ Sidebar(d SidebarData) {
 	<nav aria-label="Rooms" id="sidebar-rooms">
-		<h2 class="sidebar-heading">Rooms</h2>
+		<h2 class="sidebar-heading">Your rooms</h2>
 		<ul class="sidebar-room-list">
 			for _, room := range d.Rooms {
 				@SidebarRoom(room, d.CurrentRoomID)
@@ -73,9 +166,6 @@ templ Sidebar(d SidebarData) {
 			<li><a href="/rooms/new">New room</a></li>
 		</ul>
 	</nav>
-	<form id="logout-form" method="post" action="/logout" data-on:submit={ FormPost("/logout") }>
-		<button type="submit" class="secondary">Log out</button>
-	</form>
 }
 
 // SidebarRoom is the list item of one room in the sidebar: the link with the
@@ -113,7 +203,7 @@ templ SidebarRoom(room app.Room, current uint64) {
 }
 
 // NotificationCount is the badge with the number of unread notifications, on
-// the Notifications link of the sidebar. The element is always there, so that
+// the bell of the header. The element is always there, so that
 // a patch finds it; it is empty, and not shown, when the count is 0.
 templ NotificationCount(n int) {
 	if n > 0 {
@@ -124,7 +214,7 @@ templ NotificationCount(n int) {
 }
 
 // MessageCount is the badge with the number of conversations that have unread
-// messages, on the Messages link of the sidebar. The element is always there,
+// messages, on the Messages link of the header. The element is always there,
 // so that a patch finds it; it is empty, and not shown, when the count is 0.
 templ MessageCount(n int) {
 	if n > 0 {
@@ -144,8 +234,9 @@ func unreadTitle(n int) string {
 
 // lockIcon is the small padlock that marks a private room.
 templ lockIcon() {
-	<svg class="lock" role="img" aria-label="Private" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-		<path d="M8 1a3 3 0 0 0-3 3v2H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V4a3 3 0 0 0-3-3Zm-1.5 3a1.5 1.5 0 0 1 3 0v2h-3V4Z"></path>
+	<svg class="lock" role="img" aria-label="Private" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+		<rect x="4" y="11" width="16" height="10" rx="2"></rect>
+		<path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
 	</svg>
 }
 

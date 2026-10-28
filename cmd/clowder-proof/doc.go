@@ -30,6 +30,16 @@
 // and -click: -page /login -fill '#login-username=alice' -fill
 // '#login-password=demo-password-1234' -click '#login-form button[type=submit]'.
 //
+// With -color-scheme light|dark the browsers report that prefers-color-scheme,
+// so that the proof shows the palette of the system theme (a user's own theme
+// setting still wins).
+//
+// With -render-icon <svg> the tool starts no server: it renders the SVG file to
+// the PNG of -o, -icon-size pixels wide and high, with a transparent ground or
+// the -icon-bg color and -icon-pad percent of space around the icon (the
+// favicons and, from step 21.5, the icons of the installed app; see
+// scripts/README.md).
+//
 // With -other a second user acts in a second browser while the first one
 // watches. With -cluster the tool starts two servers on one new PostgreSQL
 // database, one Redis and one data directory, as compose.cluster.yaml does

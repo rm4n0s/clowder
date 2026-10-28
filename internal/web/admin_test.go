@@ -94,7 +94,7 @@ func TestAdminUsersPage(t *testing.T) {
 		"Username", "Display name", "Role", "State", "Created", "2026-10-26",
 		`id="invite-form"`, `action="/admin/invitations"`, `<option value="member" selected>`, "Invite someone",
 		// The sidebar.
-		`id="sidebar-user">Admin</p>`, `<a href="/admin/users">Admin</a>`, `<a href="/">Home</a>`, `id="logout-form"`,
+		`id="sidebar-user">Admin</p>`, `<a class="user-menu-item" href="/admin/users">`, `<a class="logo" href="/">`, `id="logout-form"`,
 	}, "form-error", "invitation-box")
 	body := rec.Body.String()
 
@@ -216,8 +216,8 @@ func TestSidebarAdminLinkIsForAdminsOnly(t *testing.T) {
 		want    []string
 		notWant []string
 	}{
-		{"admin on the home page", e.adminSession, "/", []string{`<a href="/admin/users">Admin</a>`, `<a href="/">Home</a>`, `id="sidebar-user">Admin</p>`}, nil},
-		{"member on the home page", e.aliceSession, "/", []string{`<a href="/">Home</a>`, `id="sidebar-user">Alice</p>`, `id="logout-form"`}, []string{"/admin/users", ">Admin</a>"}},
+		{"admin on the home page", e.adminSession, "/", []string{`<a class="user-menu-item" href="/admin/users">`, "Admin</a>", `<a class="logo" href="/">`, `id="sidebar-user">Admin</p>`}, nil},
+		{"member on the home page", e.aliceSession, "/", []string{`<a class="logo" href="/">`, `id="sidebar-user">Alice</p>`, `id="logout-form"`}, []string{"/admin/users", ">Admin</a>"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

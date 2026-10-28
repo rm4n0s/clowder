@@ -70,7 +70,7 @@ func RoomsBrowsePage(d RoomsBrowseData) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Layout("Rooms", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Layout("Rooms", d.Sidebar.UnreadTotal(), &d.Sidebar).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -379,7 +379,7 @@ func RoomNewPage(d RoomNewData) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Layout("New room", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var16), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Layout("New room", d.Sidebar.UnreadTotal(), &d.Sidebar).Render(templ.WithChildren(ctx, templ_7745c5c3_Var16), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -786,7 +786,7 @@ func RoomPage(d RoomData) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Layout(d.Room.Name, d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var31), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Layout(d.Room.Name, d.Sidebar.UnreadTotal(), &d.Sidebar).Render(templ.WithChildren(ctx, templ_7745c5c3_Var31), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

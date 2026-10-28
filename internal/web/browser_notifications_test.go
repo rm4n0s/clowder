@@ -105,7 +105,7 @@ func TestBobReadsHisNotifications(t *testing.T) {
 	if err := waitFor(bob, `parseInt(document.querySelector('#notification-count').textContent || '0', 10) > 0`); err != nil {
 		t.Fatalf("bob's badge is empty: %v", err)
 	}
-	err := chromedp.Do(bob, chromedp.Click(`aside a.sidebar-notifications`), chromedp.WaitVisible("#notification-list .notification"))
+	err := chromedp.Do(bob, chromedp.Click(`a.header-notifications`), chromedp.WaitVisible("#notification-list .notification"))
 	if err != nil {
 		t.Fatalf("bob opens the notifications: %v", err)
 	}

@@ -123,7 +123,7 @@ func TestSettingsAvatar(t *testing.T) {
 	if err := waitFor(carol, `document.querySelector('#profile img.avatar-lg') !== null`); err != nil {
 		t.Fatalf("the settings do not show the picture: %v", err)
 	}
-	if err := waitFor(carol, `document.querySelector('#sidebar-profile img.avatar-md') !== null`); err != nil {
+	if err := waitFor(carol, `document.querySelector('#header-avatar img.avatar-md') !== null`); err != nil {
 		t.Fatalf("the sidebar does not show the picture: %v", err)
 	}
 	// The picture is really there: the browser loaded it, 256 by 256.
@@ -154,7 +154,7 @@ func TestSettingsAvatar(t *testing.T) {
 	if err := waitFor(carol, `document.querySelector('#profile img.avatar-lg') === null && document.querySelector('#profile span.avatar-lg') !== null`); err != nil {
 		t.Fatalf("the initials do not come back: %v", err)
 	}
-	if err := waitFor(carol, `document.querySelector('#sidebar-profile img.avatar-md') === null`); err != nil {
+	if err := waitFor(carol, `document.querySelector('#header-avatar img.avatar-md') === null`); err != nil {
 		t.Fatalf("the sidebar keeps the picture: %v", err)
 	}
 }
@@ -167,7 +167,7 @@ func TestSettingsPasswordEndsTheOtherBrowser(t *testing.T) {
 	first := secondBrowser(t, srv, "carol")
 	other := secondBrowser(t, srv, "carol")
 	openSettings(t, first, srv)
-	if err := chromedp.Do(other, chromedp.Navigate(srv.URL+"/rooms"), chromedp.WaitVisible("#sidebar-user")); err != nil {
+	if err := chromedp.Do(other, chromedp.Navigate(srv.URL+"/rooms"), chromedp.WaitVisible("#user-menu")); err != nil {
 		t.Fatal(err)
 	}
 	if err := chromedp.Do(other, chromedp.Sleep(streamSettle)); err != nil {
@@ -218,7 +218,7 @@ func TestSettingsPasswordEndsTheOtherBrowser(t *testing.T) {
 		t.Fatal("the other browser was not logged out")
 	}
 	// The first one still works.
-	if err := chromedp.Do(first, chromedp.Navigate(srv.URL+"/rooms"), chromedp.WaitVisible("#sidebar-user")); err != nil {
+	if err := chromedp.Do(first, chromedp.Navigate(srv.URL+"/rooms"), chromedp.WaitVisible("#user-menu")); err != nil {
 		t.Fatalf("the browser that changed the password was logged out: %v", err)
 	}
 }

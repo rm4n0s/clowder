@@ -30,8 +30,6 @@ const (
 	streamEventID = "1"
 	// lastEventIDHeader is the header that carries the id of the last event.
 	lastEventIDHeader = "Last-Event-ID"
-	// sidebarSelector is the element that holds the sidebar of a page.
-	sidebarSelector = "#sidebar"
 )
 
 // liveStream is one open Datastar SSE stream of a page. Its methods write to
@@ -184,9 +182,13 @@ func (ls *liveStream) ping() error {
 	return nil
 }
 
-// sidebarOps are the patches of the sidebar of the user, as it is on the page
-// of the room current (0 for no room), and of the title and favicon of the
-// page when what they show is not the count of the sidebar.
+// sidebarOps are the patches of the shell of the user, as it is on the page
+// of the room current (0 for no room): the header and the sidebar, in one
+// patch (two elements with ids, which Datastar morphs each into its place), so
+// that the counts of the bell and of Messages, which are in the header, the
+// name and the avatar of the user menu and the list of rooms agree; and the
+// title and favicon of the page when what they show is not the count of the
+// sidebar.
 func (ls *liveStream) sidebarOps(ctx context.Context, current uint64) ([]patchOp, error) {
 	ls.refreshUser(ctx)
 	sb, err := ls.s.sidebarData(ctx, ls.actor, ls.user, current)
@@ -196,10 +198,7 @@ func (ls *liveStream) sidebarOps(ctx context.Context, current uint64) ([]patchOp
 	if ls.readRoom != 0 {
 		sb = sb.WithRoomRead(ls.readRoom)
 	}
-	ops := []patchOp{{
-		component: views.Sidebar(sb),
-		options:   []datastar.PatchElementOption{datastar.WithSelector(sidebarSelector), datastar.WithModeInner()},
-	}}
+	ops := []patchOp{{component: templ.Join(views.PageHeader(sb), views.PageSidebar(sb))}}
 	return append(ops, ls.tabOps(sb.UnreadTotal())...), nil
 }
 

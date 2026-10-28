@@ -31,7 +31,7 @@ func TestLogIn(t *testing.T) {
 			if err := LogIn(ctx, srv, tt.user); err != nil {
 				t.Fatalf("LogIn: %+v", err)
 			}
-			got, err := chromedp.Run(ctx, chromedp.Text("aside .sidebar-user"))
+			got, err := chromedp.Run(ctx, chromedp.TextContent("#sidebar-user"))
 			if err != nil || got != tt.want {
 				t.Errorf("sidebar name = %q, %v; want %q", got, err, tt.want)
 			}

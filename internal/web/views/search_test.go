@@ -239,16 +239,16 @@ func TestSearchPage(t *testing.T) {
 	}
 }
 
-func TestSidebarSearchBox(t *testing.T) {
+func TestHeaderSearchBox(t *testing.T) {
 	user := app.User{DisplayName: "Alice", Role: app.RoleMember}
-	html := render(t, views.Sidebar(views.SidebarData{User: user}))
+	html := render(t, views.Header(views.SidebarData{User: user}))
 	for _, w := range []string{`<form id="sidebar-search" class="sidebar-search" role="search" method="get" action="/search">`, `name="q" type="search" placeholder="Search"`} {
 		if !strings.Contains(html, w) {
 			t.Errorf("does not contain %q:\n%s", w, html)
 		}
 	}
-	html = render(t, views.Sidebar(views.SidebarData{User: user, HideSearch: true}))
+	html = render(t, views.Header(views.SidebarData{User: user, HideSearch: true}))
 	if strings.Contains(html, "sidebar-search") {
-		t.Errorf("the search page's sidebar has a box:\n%s", html)
+		t.Errorf("the search page's header has a box:\n%s", html)
 	}
 }

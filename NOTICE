@@ -1,7 +1,7 @@
 Clowder
 Copyright (c) the Clowder authors. Licensed under the BSD-3-Clause license (see LICENSE).
 
-This product embeds the following third-party file:
+This product embeds the following third-party files:
 
 datastar.js
   Path:    internal/web/static/datastar.js
@@ -9,5 +9,14 @@ datastar.js
   License: MIT, Copyright (c) Star Federation (text in internal/web/static/datastar.LICENSE)
   Source:  https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.2/bundles/datastar.js
            (https://github.com/starfederation/datastar, tag v1.0.2)
+
+Bricolage Grotesque, Nunito and JetBrains Mono (the fonts of the new look)
+  Path:    internal/web/static/fonts/<family>/ (woff2, Latin and Latin Extended, as released)
+  License: SIL Open Font License 1.1, one OFL.txt next to the files of each family
+  Source:  Google Fonts (https://fonts.google.com); each file's address and date are in
+           internal/web/static/fonts/README.md
+  Copyright: 2022 The Bricolage Grotesque Project Authors (https://github.com/ateliertriay/bricolage);
+           2014 The Nunito Project Authors (https://github.com/googlefonts/nunito);
+           2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
 Go dependencies are not vendored; see go.mod.

@@ -146,7 +146,7 @@ func TestConversationStreamConnects(t *testing.T) {
 		second := e.say("carol", crew, "second")
 		c := e.serveStreams().open("bob", streamOfConversation(crew, "seen="+idText(first.ID)), asDatastar(), withHeader("Last-Event-ID", "1"))
 		got := c.drain()
-		requirePatch(t, got[0], "#sidebar", "inner", []string{`data-room="general"`, messageBadge(1)}, nil)
+		requireChromePatch(t, got[0], []string{`data-room="general"`, messageBadge(1)}, nil)
 		requirePatch(t, got[1], "", "outer", []string{`id="conversation-header"`, "<h1>Launch crew</h1>"}, nil)
 		requirePatch(t, got[2], "", "outer", []string{`id="conversation-members"`}, nil)
 		// The message the page had is patched in place, the other put at the end.
@@ -553,7 +553,7 @@ func TestMessagesPageStreamKeepsTheListLive(t *testing.T) {
 	t.Run("a reconnection sends the sidebar and the list", func(t *testing.T) {
 		c := ss.open("bob", "/me/stream?messages=1", asDatastar(), withHeader("Last-Event-ID", "1"))
 		got := c.patches(2)
-		requirePatch(t, got[0], "#sidebar", "inner", []string{`data-room="general"`}, nil)
+		requireChromePatch(t, got[0], []string{`data-room="general"`}, nil)
 		requireContains(t, got[1].html, []string{`id="conversation-list"`, "Alice: third"}, nil)
 	})
 }

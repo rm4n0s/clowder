@@ -54,7 +54,11 @@ func (s *Server) sidebarData(ctx context.Context, actor app.Actor, user app.User
 	if err != nil {
 		return views.SidebarData{}, err
 	}
-	return views.SidebarData{User: user, Rooms: rooms, CurrentRoomID: current, Unread: unread, UnreadMessages: unreadMessages}, nil
+	settings, err := s.svc.Accounts.Settings(ctx, actor)
+	if err != nil {
+		return views.SidebarData{}, err
+	}
+	return views.SidebarData{User: user, Rooms: rooms, CurrentRoomID: current, Unread: unread, UnreadMessages: unreadMessages, Theme: settings.Theme}, nil
 }
 
 // roomFail answers a failed read of a room: the error page, except that a

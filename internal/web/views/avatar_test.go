@@ -3,7 +3,6 @@ package views_test
 import (
 	"bytes"
 	"context"
-	"math"
 	"os"
 	"regexp"
 	"strconv"
@@ -135,34 +134,27 @@ func TestSettingsPageSections(t *testing.T) {
 	}
 }
 
-// TestAvatarPalette checks that the white text on each of the eight colours of
-// the stylesheet has a contrast of at least 4.5:1.
+// TestAvatarPalette checks that the stylesheet has the eight classes of the
+// palette and that each takes its text and its ground from the pair of tokens
+// of its number. That each pair reaches 4.5:1 in the light and in both dark
+// palettes is checked by TestContrast of internal/web/static.
 func TestAvatarPalette(t *testing.T) {
 	t.Parallel()
 	css, err := os.ReadFile("../static/app.css")
 	if err != nil {
 		t.Fatal(err)
 	}
-	re := regexp.MustCompile(`\.avatar-c(\d) \{ background: #([0-9a-f]{6}); \}`)
+	re := regexp.MustCompile(`\.avatar-c(\d) \{ color: var\(--c-avatar-(\d)-text\); background: var\(--c-avatar-(\d)-bg\); \}`)
 	found := re.FindAllStringSubmatch(string(css), -1)
 	if len(found) != 8 {
-		t.Fatalf("%d colours in the stylesheet, want 8", len(found))
+		t.Fatalf("%d avatar classes in the stylesheet, want 8", len(found))
 	}
 	for _, m := range found {
-		v, err := strconv.ParseUint(m[2], 16, 32)
-		if err != nil {
-			t.Fatal(err)
+		if m[1] != m[2] || m[1] != m[3] {
+			t.Errorf("avatar-c%s uses the tokens %s and %s", m[1], m[2], m[3])
 		}
-		lum := func(c uint64) float64 {
-			x := float64(c) / 255
-			if x <= 0.03928 {
-				return x / 12.92
-			}
-			return math.Pow((x+0.055)/1.055, 2.4)
-		}
-		l := 0.2126*lum(v>>16&0xff) + 0.7152*lum(v>>8&0xff) + 0.0722*lum(v&0xff)
-		if ratio := 1.05 / (l + 0.05); ratio < 4.5 {
-			t.Errorf("avatar-c%s (#%s): white text has a contrast of %.2f, want at least 4.5", m[1], m[2], ratio)
-		}
+	}
+	if got := views.AvatarColourIndex(11); got != 3 {
+		t.Errorf("AvatarColourIndex(11) = %d, want 3", got)
 	}
 }

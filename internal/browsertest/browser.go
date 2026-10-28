@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
 	"github.com/rm4n0s/errors"
 )
@@ -87,6 +89,29 @@ func Fill(selector, value string) chromedp.Action[chromedp.Void] {
 	}
 }
 
+// EmulateColorScheme makes the browser report scheme ("light" or "dark") for
+// the CSS media feature prefers-color-scheme, as a system setting would, so
+// that a page without a data-theme shows the palette of that scheme. An empty
+// scheme clears the emulation. It fails with a ColorSchemeInvalid error for any
+// other value. The setting belongs to the tab: run it before the page opens or
+// reload the page after it.
+func EmulateColorScheme(scheme string) chromedp.Action[chromedp.Void] {
+	return func(ctx context.Context, t *chromedp.Target) (chromedp.Void, error) {
+		var features []*emulation.MediaFeature
+		switch scheme {
+		case "":
+		case "light", "dark":
+			features = []*emulation.MediaFeature{{Name: "prefers-color-scheme", Value: scheme}}
+		default:
+			return chromedp.Void{}, errors.New(tagColorSchemeInvalid, "the color scheme must be light or dark", "scheme", scheme)
+		}
+		if _, err := cdp.Call(ctx, t, emulation.SetEmulatedMedia, emulation.SetEmulatedMediaParams{Features: features}); err != nil {
+			return chromedp.Void{}, errors.NewErr(tagColorSchemeFailed, err).SetMetadata("scheme", scheme)
+		}
+		return chromedp.Void{}, nil
+	}
+}
+
 const (
 	// defaultWidth and defaultHeight are the size of the browser window.
 	defaultWidth  = 1280
@@ -100,4 +125,6 @@ const (
 
 	tagBrowserStartFailed = "BrowserStartFailed"
 	tagFillFailed         = "FillFailed"
+	tagColorSchemeInvalid = "ColorSchemeInvalid"
+	tagColorSchemeFailed  = "ColorSchemeFailed"
 )

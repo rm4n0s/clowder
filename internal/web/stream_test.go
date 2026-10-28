@@ -430,6 +430,15 @@ func requirePatch(t *testing.T, p patch, selector, mode string, want, notWant []
 	requireContains(t, p.html, want, notWant)
 }
 
+// requireChromePatch checks the patch that carries the shell of the page, the
+// header and the sidebar of rooms: no selector and the outer mode (the two
+// elements #site-header and #sidebar are morphed each by its id), with the
+// header and the aside in the HTML, and that the HTML has and lacks the strings.
+func requireChromePatch(t *testing.T, p patch, want, notWant []string) {
+	t.Helper()
+	requirePatch(t, p, "", "outer", append([]string{`<header id="site-header"`, `<aside id="sidebar">`}, want...), notWant)
+}
+
 // streamOfRoom is the path of the stream of the room, with the query.
 func (e *roomsEnv) streamOfRoom(room string, query string) string {
 	path := "/rooms/" + idText(e.room(room).ID) + "/stream"
@@ -603,7 +612,7 @@ func TestRoomStreamPatchesTheRoom(t *testing.T) {
 				requirePatch(t, got[1], "", "outer", []string{`id="room-members-count"`, "2 members"}, nil)
 				requirePatch(t, got[2], "", "outer", []string{`id="room-header"`, "join-form"}, []string{`id="leave-form"`})
 				requirePatch(t, got[3], "", "outer", []string{`id="post-composer"`, "Join this room to post"}, []string{"post-editor"})
-				requirePatch(t, got[4], "#sidebar", "inner", []string{`id="sidebar-rooms"`}, []string{`data-room="general"`})
+				requireChromePatch(t, got[4], []string{`id="sidebar-rooms"`}, []string{`data-room="general"`})
 			},
 		},
 		{
@@ -618,7 +627,7 @@ func TestRoomStreamPatchesTheRoom(t *testing.T) {
 			n: 2,
 			want: func(t *testing.T, got []patch) {
 				requirePatch(t, got[0], "", "outer", []string{`id="room-header"`, "<h1>lobby</h1>"}, nil)
-				requirePatch(t, got[1], "#sidebar", "inner", []string{`data-room="lobby"`}, []string{`data-room="general"`})
+				requireChromePatch(t, got[1], []string{`data-room="lobby"`}, []string{`data-room="general"`})
 			},
 		},
 		{
@@ -631,7 +640,7 @@ func TestRoomStreamPatchesTheRoom(t *testing.T) {
 			},
 			n: 1,
 			want: func(t *testing.T, got []patch) {
-				requirePatch(t, got[0], "#sidebar", "inner", []string{`data-room="secret"`}, nil)
+				requireChromePatch(t, got[0], []string{`data-room="secret"`}, nil)
 			},
 		},
 	}
@@ -774,7 +783,7 @@ func TestRoomStreamConnects(t *testing.T) {
 			name: "a reconnection sends everything the page shows", query: "seen=NEWEST",
 			header: map[string]string{"Last-Event-ID": "1"}, n: 6,
 			want: func(t *testing.T, got []patch) {
-				requirePatch(t, got[0], "#sidebar", "inner", []string{`data-room="general"`, `aria-current="page"`}, nil)
+				requireChromePatch(t, got[0], []string{`data-room="general"`, `aria-current="page"`}, nil)
 				requirePatch(t, got[1], "", "outer", []string{`id="room-header"`, "<h1>general</h1>"}, nil)
 				requirePatch(t, got[2], "", "outer", []string{`id="members-panel"`}, nil)
 				requirePatch(t, got[3], "", "outer", []string{`id="post-composer"`, "post-editor-new"}, nil)
@@ -1128,7 +1137,7 @@ func TestPostStreamPatchesTheThread(t *testing.T) {
 			},
 			n: 1,
 			want: func(t *testing.T, got []patch, f fixture, made app.Post) {
-				requirePatch(t, got[0], "#sidebar", "inner", []string{`data-room="random"`}, nil)
+				requireChromePatch(t, got[0], []string{`data-room="random"`}, nil)
 			},
 		},
 	}
@@ -1248,7 +1257,7 @@ func TestPostStreamConnects(t *testing.T) {
 			name: "a reconnection sends the thread and the sidebar", seen: "NEWEST", header: map[string]string{"Last-Event-ID": "1"}, n: 2,
 			want: func(t *testing.T, got []patch) {
 				requirePatch(t, got[0], "", "outer", []string{`<div id="thread"`, "a comment"}, nil)
-				requirePatch(t, got[1], "#sidebar", "inner", []string{`data-room="general"`}, nil)
+				requireChromePatch(t, got[1], []string{`data-room="general"`}, nil)
 			},
 		},
 	}

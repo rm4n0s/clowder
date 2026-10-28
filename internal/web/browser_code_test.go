@@ -77,8 +77,8 @@ func TestCodeBlocksHaveALabelAndACopyButton(t *testing.T) {
 		`getComputedStyle(document.querySelector(`+jsQuote(post+` pre.code span.hl-kd`)+`)).color !== getComputedStyle(document.querySelector(`+jsQuote(post+` pre.code`)+`)).color`)); err != nil || !ok {
 		t.Errorf("a keyword has the color of the plain text: code.css is not applied (%v)", err)
 	}
-	// The palettes follow the theme setting (data-theme on the html element).
-	for theme, want := range map[string]string{"dark": "rgb(22, 27, 34)", "light": "rgb(246, 248, 250)"} {
+	// The code ground follows the theme setting (data-theme on the html element): the tokens of app.css (SPEC 7.19).
+	for theme, want := range map[string]string{"dark": "rgb(18, 14, 11)", "light": "rgb(43, 33, 24)"} {
 		runJS(t, ctx, `document.documentElement.setAttribute('data-theme', `+jsQuote(theme)+`); true`)
 		got, err := chromedp.Run(ctx, chromedp.Evaluate[string](
 			`getComputedStyle(document.querySelector(`+jsQuote(post+" pre.code")+`)).backgroundColor`))

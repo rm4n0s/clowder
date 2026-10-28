@@ -3,7 +3,7 @@ package views
 // Home is the home page of a logged-in user: it greets the user by display
 // name.
 templ Home(sb SidebarData) {
-	@Layout("Home", sb.UnreadTotal(), Sidebar(sb)) {
+	@Layout("Home", sb.UnreadTotal(), &sb) {
 		<h1>Clowder</h1>
 		<p>A place where the team talks in rooms.</p>
 		<p id="signed-in-as">Signed in as { sb.User.DisplayName }</p>

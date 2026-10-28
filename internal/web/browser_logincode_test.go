@@ -112,7 +112,7 @@ func TestLoginWithTheSSHCode(t *testing.T) {
 	}
 
 	// Log out and log in again: the password, then the code.
-	if err := chromedp.Do(carol, chromedp.Click(`#logout-form button[type="submit"]`), chromedp.WaitVisible("#login-form")); err != nil {
+	if err := chromedp.Do(carol, openUserMenu(), chromedp.Click(`#logout-form button[type="submit"]`), chromedp.WaitVisible("#login-form")); err != nil {
 		t.Fatalf("log out: %v", err)
 	}
 	err = chromedp.Do(carol,
@@ -179,7 +179,7 @@ func TestLoginWithTheSSHCode(t *testing.T) {
 		loc, _ := chromedp.Run(carol, chromedp.Location())
 		t.Fatalf("the login did not land on /rooms (at %q)", loc)
 	}
-	if err := chromedp.Do(carol, chromedp.WaitVisible("#sidebar-user")); err != nil {
+	if err := chromedp.Do(carol, chromedp.WaitVisible("#user-menu")); err != nil {
 		t.Fatalf("carol is not logged in: %v", err)
 	}
 }

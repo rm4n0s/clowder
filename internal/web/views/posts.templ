@@ -511,7 +511,8 @@ templ FeedPosts(d FeedData) {
 // seen: what is above it is new.
 templ FeedNewLine() {
 	<div id="feed-new-line" class="feed-new-line" role="separator" aria-label="New since your last visit">
-		<span aria-hidden="true">↑</span> New since your last visit
+		@IconPaw()
+		<span>New since your last visit</span>
 	</div>
 }
 
@@ -597,7 +598,7 @@ templ threadItem(d PostPageData, c PostCardData) {
 // was written in, the post and its thread of comments. The page of a comment is
 // the page of its post with that comment in focus.
 templ PostPage(d PostPageData) {
-	@Layout(postTitle(d), d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
+	@Layout(postTitle(d), d.Sidebar.UnreadTotal(), &d.Sidebar) {
 		@liveStream(PostStreamPath(d.Post.ID, d.NewestID()))
 		@NotifyPlace(PlaceKey(app.RoomRef(d.Post.RoomID)))
 		<p class="post-room hint">in <a href={ templ.SafeURL(RoomPath(d.Post.RoomID)) }>{ d.Post.RoomName }</a></p>

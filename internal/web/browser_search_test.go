@@ -39,7 +39,7 @@ func TestAliceSearchesFromATagLink(t *testing.T) {
 		t.Fatalf("the demo posts are not in the feed: %v", err)
 	}
 	// The sidebar has the search box on a page that is not the search page.
-	if n := countOf(t, ctx, `aside #sidebar-search input[name="q"]`); n != 1 {
+	if n := countOf(t, ctx, `#site-header #sidebar-search input[name="q"]`); n != 1 {
 		t.Errorf("the sidebar has %d search boxes, want 1", n)
 	}
 

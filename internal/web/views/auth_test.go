@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/a-h/templ"
+
 	"github.com/rm4n0s/clowder/internal/app"
 	"github.com/rm4n0s/clowder/internal/web/views"
 )
@@ -114,15 +115,27 @@ func TestAuthViews(t *testing.T) {
 			want: []string{"<title id=\"page-title\">Sign up · Clowder</title>", "<h1>Join Clowder</h1>", `id="signup-form"`},
 		},
 		{
-			name:    "sidebar of a member",
-			c:       views.Sidebar(views.SidebarData{User: app.User{DisplayName: "Alice", Role: app.RoleMember}}),
-			want:    []string{`id="sidebar-user">Alice</p>`, `<a href="/">Home</a>`, `<a href="/rooms">Browse rooms</a>`, `<a href="/rooms/new">New room</a>`, `<form id="logout-form" method="post" action="/logout"`, "Log out</button>"},
-			notWant: []string{"Admin</a>", "/admin/users"},
+			name: "header of a member",
+			c:    views.Header(views.SidebarData{User: app.User{DisplayName: "Alice", Role: app.RoleMember}}),
+			want: []string{
+				`<a class="logo" href="/">`, `<span class="logo-word">clowder</span>`,
+				`<a class="header-link header-notifications" href="/notifications">`, `<a class="header-link header-messages" href="/messages">`,
+				`id="sidebar-user">Alice</p>`, `<a class="user-menu-item" href="/me/settings">`, `href="/me/settings#sessions"`,
+				`<form id="logout-form" class="user-menu-logout" method="post" action="/logout"`, "Log out</button>",
+			},
+			notWant: []string{"Admin", "/admin/users"},
 		},
 		{
-			name: "sidebar of an admin",
-			c:    views.Sidebar(views.SidebarData{User: app.User{DisplayName: "Ada", Role: app.RoleAdmin}}),
-			want: []string{`id="sidebar-user">Ada</p>`, `<a href="/">Home</a>`, `<a href="/admin/users">Admin</a>`, "Log out</button>"},
+			name: "header of an admin",
+			c:    views.Header(views.SidebarData{User: app.User{DisplayName: "Ada", Role: app.RoleAdmin}}),
+			want: []string{`id="sidebar-user">Ada</p>`, `<a class="user-menu-item" href="/admin/users">`, "Admin</a>", "Log out</button>"},
+		},
+		{
+			name: "sidebar of a member",
+			c:    views.Sidebar(views.SidebarData{User: app.User{DisplayName: "Alice", Role: app.RoleMember}}),
+			want: []string{`<h2 class="sidebar-heading">Your rooms</h2>`, `<a href="/rooms">Browse rooms</a>`, `<a href="/rooms/new">New room</a>`},
+			// What the old sidebar held moved to the header.
+			notWant: []string{"Admin", "/admin/users", "logout-form", "sidebar-user", "Messages", "Notifications"},
 		},
 	}
 	for _, tt := range tests {
@@ -156,13 +169,27 @@ func TestFormPost(t *testing.T) {
 	}
 }
 
-func TestLayoutSidebar(t *testing.T) {
-	with := render(t, views.Layout("T", 0, templ.Raw("S")))
-	if !strings.Contains(with, `<aside id="sidebar">S</aside>`) {
-		t.Errorf("sidebar missing:\n%s", with)
+func TestLayoutShell(t *testing.T) {
+	sb := views.SidebarData{User: app.User{DisplayName: "Alice"}}
+	with := render(t, views.Layout("T", 0, &sb))
+	for _, want := range []string{`<header id="site-header" class="site-header">`, `<aside id="sidebar">`, `<nav aria-label="Rooms" id="sidebar-rooms">`, `<main>`, `src="/static/notify.js"`} {
+		if !strings.Contains(with, want) {
+			t.Errorf("a page with a sidebar lacks %q:\n%s", want, with)
+		}
+	}
+	// The header comes before the sidebar, and the sidebar before the main column.
+	if h, a, m := strings.Index(with, "<header"), strings.Index(with, "<aside"), strings.Index(with, "<main>"); h >= a || a >= m {
+		t.Errorf("order header %d, aside %d, main %d, want header < aside < main", h, a, m)
 	}
 	without := render(t, views.Layout("T", 0, nil))
-	if strings.Contains(without, "<aside") {
-		t.Errorf("empty sidebar drawn:\n%s", without)
+	for _, want := range []string{`<div class="plain-shell">`, `<p class="plain-logo">`, `<a class="logo" href="/">`, `<main>`} {
+		if !strings.Contains(without, want) {
+			t.Errorf("a page without a sidebar lacks %q:\n%s", want, without)
+		}
+	}
+	for _, notWant := range []string{"<aside", "<header", "notify.js", "user-menu"} {
+		if strings.Contains(without, notWant) {
+			t.Errorf("a page without a sidebar has %q:\n%s", notWant, without)
+		}
 	}
 }

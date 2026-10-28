@@ -304,6 +304,17 @@ func TestStaticFiles(t *testing.T) {
 		{"/static/datastar.js", "text/javascript; charset=utf-8"},
 		{"/static/code.css", "text/css; charset=utf-8"},
 		{"/static/code.js", "text/javascript; charset=utf-8"},
+		{"/static/favicon.svg", "image/svg+xml"},
+		{"/static/favicon-dot.svg", "image/svg+xml"},
+		{"/static/favicon-32.png", "image/png"},
+		{"/static/apple-touch-icon.png", "image/png"},
+		{"/static/fonts/bricolage-grotesque/latin.woff2", "font/woff2"},
+		{"/static/fonts/bricolage-grotesque/latin-ext.woff2", "font/woff2"},
+		{"/static/fonts/nunito/latin.woff2", "font/woff2"},
+		{"/static/fonts/nunito/latin-ext.woff2", "font/woff2"},
+		{"/static/fonts/jetbrains-mono/latin.woff2", "font/woff2"},
+		{"/static/fonts/jetbrains-mono/latin-ext.woff2", "font/woff2"},
+		{"/static/fonts/nunito/OFL.txt", "text/plain; charset=utf-8"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {

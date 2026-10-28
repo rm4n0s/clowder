@@ -271,7 +271,10 @@ func (s *Server) settingsPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // settingsAppearance answers POST /me/settings/appearance: it saves the theme
-// and, for a Datastar request, sets it on the page at once.
+// and, for a Datastar request, sets it on the page at once. The form of the
+// user menu, on every page, posts to the route with the query from=menu and gets only the menu
+// patched; the Appearance section of the settings page gets itself and the
+// menu patched.
 func (s *Server) settingsAppearance(w http.ResponseWriter, r *http.Request) {
 	if !s.parseForm(w, r) {
 		return
@@ -286,7 +289,16 @@ func (s *Server) settingsAppearance(w http.ResponseWriter, r *http.Request) {
 		}, func(d views.SettingsData) templ.Component { return views.AppearanceSection(d.Appearance) })
 		return
 	}
-	s.settingsSaved(w, r, sectionAppearance, views.AppearanceSection(views.AppearanceData{Theme: settings.Theme, Saved: true}), themeJS(settings.Theme))
+	menu := views.ThemeMenu(settings.Theme)
+	if r.URL.Query().Get("from") == "menu" {
+		// The theme form of the user menu, on any page: only the menu is
+		// patched, and the page changes its theme.
+		s.settingsSaved(w, r, sectionAppearance, menu, themeJS(settings.Theme))
+		return
+	}
+	// The Appearance section, and the user menu, which marks the same choice.
+	section := views.AppearanceSection(views.AppearanceData{Theme: settings.Theme, Saved: true})
+	s.settingsSaved(w, r, sectionAppearance, templ.Join(section, menu), themeJS(settings.Theme))
 }
 
 // resetFormJS is the JavaScript that empties the form id after it was saved:

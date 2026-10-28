@@ -412,7 +412,9 @@ func TestSettingsAppearance(t *testing.T) {
 				}
 				return
 			}
-			requireBody(t, rec, []string{`id="appearance"`, "Saved", tt.wantJS, `value="` + tt.theme + `" checked`})
+			requireBody(t, rec, []string{`id="appearance"`, "Saved", tt.wantJS, `value="` + tt.theme + `" checked`,
+				// The user menu marks the same choice.
+				`id="theme-menu"`, `value="` + tt.theme + `" class="theme-option current" aria-pressed="true"`})
 			// The next page of the person has the attribute.
 			page := e.send(get("/me/settings", withCookie(e.token)))
 			if tt.attr == "" {
@@ -434,6 +436,58 @@ func TestSettingsAppearance(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("plain refused: status %d, want 422", rec.Code)
 	}
+}
+
+// TestThemeMenuRoute: the form of the user menu posts to the Appearance route
+// with the query from=menu. The answer patches the menu alone (the Appearance
+// section is not on most pages) and sets the theme on the page; every page
+// then renders the menu with the choice marked.
+func TestThemeMenuRoute(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		theme   string
+		wantJS  string
+		pressed string
+	}{
+		{theme: "dark", wantJS: `document.documentElement.setAttribute(&#39;data-theme&#39;, &#34;dark&#34;)`, pressed: "dark"},
+		{theme: "light", wantJS: `document.documentElement.setAttribute(&#39;data-theme&#39;, &#34;light&#34;)`, pressed: "light"},
+		{theme: "system", wantJS: `document.documentElement.removeAttribute(&#39;data-theme&#39;)`, pressed: "system"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.theme, func(t *testing.T) {
+			t.Parallel()
+			e := newSettingsEnv(t)
+			rec := e.send(postForm("/me/settings/appearance?from=menu", url.Values{"theme": {tt.theme}}, withCookie(e.token), asDatastar()))
+			requireSSE(t, rec)
+			requireBody(t, rec, []string{`id="theme-menu"`, `value="` + tt.pressed + `" class="theme-option current" aria-pressed="true"`, tt.wantJS},
+				`id="appearance"`, "Saved")
+			// The home page renders the menu with the same choice marked, in the
+			// header, once.
+			page := e.send(get("/", withCookie(e.token)))
+			requireBody(t, page, []string{`<header id="site-header" class="site-header">`, `value="` + tt.pressed + `" class="theme-option current" aria-pressed="true"`})
+			if n := strings.Count(page.Body.String(), `aria-pressed="true"`); n != 1 {
+				t.Errorf("%d theme choices are marked on the home page, want 1", n)
+			}
+		})
+	}
+	t.Run("plain form", func(t *testing.T) {
+		t.Parallel()
+		e := newSettingsEnv(t)
+		rec := e.send(postForm("/me/settings/appearance?from=menu", url.Values{"theme": {"dark"}}, withCookie(e.token)))
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/me/settings?saved=appearance#appearance" {
+			t.Errorf("plain: status %d Location %q", rec.Code, rec.Header().Get("Location"))
+		}
+	})
+	t.Run("refused", func(t *testing.T) {
+		t.Parallel()
+		e := newSettingsEnv(t)
+		rec := e.send(postForm("/me/settings/appearance?from=menu", url.Values{"theme": {"neon"}}, withCookie(e.token), asDatastar()))
+		requireSSE(t, rec)
+		requireBody(t, rec, []string{"Choose System, Light or Dark."}, "Saved")
+		if got, _ := e.accounts.Settings(t.Context(), e.actor(e.alice)); got.Theme != app.ThemeSystem {
+			t.Errorf("theme = %q after a refused one", got.Theme)
+		}
+	})
 }
 
 func (e *testEnv) actor(u app.User) app.Actor {

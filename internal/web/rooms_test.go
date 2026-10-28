@@ -196,7 +196,7 @@ func TestSidebarListsTheRoomsOfTheUser(t *testing.T) {
 				`id="sidebar-rooms"`, `href="/rooms/` + gen + `"`, `data-room="general"`,
 				`href="/rooms/` + sec + `"`, `data-room="secret"`, `aria-label="Private"`,
 				`<a href="/rooms">Browse rooms</a>`, `<a href="/rooms/new">New room</a>`,
-				`<a href="/">Home</a>`, `id="logout-form"`,
+				`<a class="logo" href="/">`, `id="logout-form"`,
 			},
 			notWant: []string{`data-room="random"`, "aria-current"},
 		},
@@ -217,7 +217,7 @@ func TestSidebarListsTheRoomsOfTheUser(t *testing.T) {
 		},
 		{
 			name: "the admin page has the sidebar too", user: "admin", page: "/admin/users",
-			want:    []string{`data-room="general"`, `data-room="random"`, `<a href="/admin/users">Admin</a>`},
+			want:    []string{`data-room="general"`, `data-room="random"`, `<a class="user-menu-item" href="/admin/users">`, "Admin</a>"},
 			notWant: []string{`data-room="secret"`},
 		},
 	}

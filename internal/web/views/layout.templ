@@ -4,12 +4,15 @@ package views
 // (which starts with "(n) " while unread is above 0, the number of unread
 // notifications and conversations of the person, SPEC §7.17) and the favicon
 // (with a dot while unread is above 0), the stylesheets (app.css, and code.css for the code blocks), the Datastar
-// client and code.js (the toolbar of the code blocks), an aside for the
-// sidebar (only when there is one: the pages of people who are not logged in
-// have none) and a
-// main element for the children. The html element carries data-theme when the
-// context has a theme (WithTheme).
-templ Layout(title string, unread int, sidebar templ.Component) {
+// client and code.js (the toolbar of the code blocks) and the shell of the
+// page (SPEC D57). With sb, the page of a logged-in person, the shell is the
+// header (the logo, the search box, the bell, Messages and the user menu), the
+// aside of the sidebar with the rooms and the main element for the children.
+// Without it, the pages of people who are not logged in and the error pages,
+// the shell is a main element with the logo above the card of the children.
+// The html element carries data-theme when the context has a theme
+// (WithTheme).
+templ Layout(title string, unread int, sb *SidebarData) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
@@ -22,25 +25,37 @@ templ Layout(title string, unread int, sidebar templ.Component) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			@PageTitle(unread, PageBaseTitle(title))
 			@Favicon(unread)
+			<link rel="alternate icon" type="image/png" sizes="32x32" href="/static/favicon-32.png"/>
+			<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png"/>
 			<link rel="stylesheet" href="/static/app.css"/>
 			<link rel="stylesheet" href="/static/code.css"/>
 			<script type="module" src="/static/datastar.js"></script>
 			<script src="/static/code.js" defer></script>
-			if sidebar != nil {
+			if sb != nil {
 				<script src="/static/notify.js" defer></script>
 			}
 		</head>
 		<body>
-			if sidebar != nil {
-				<aside id="sidebar">
-					@sidebar
-				</aside>
-				// The streams append here what the script rings for (SPEC §7.15); it is never patched itself.
-				<div id="notify-events" hidden></div>
+			if sb != nil {
+				@PageHeader(*sb)
+				<div class="shell">
+					@PageSidebar(*sb)
+					// The streams append here what the script rings for (SPEC §7.15); it is never patched itself.
+					<div id="notify-events" hidden></div>
+					<main>
+						{ children... }
+					</main>
+				</div>
+			} else {
+				<div class="plain-shell">
+					<main>
+						<p class="plain-logo">
+							@Logo()
+						</p>
+						{ children... }
+					</main>
+				</div>
 			}
-			<main>
-				{ children... }
-			</main>
 		</body>
 	</html>
 }

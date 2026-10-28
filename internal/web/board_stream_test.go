@@ -158,7 +158,7 @@ func TestBoardStreamConnects(t *testing.T) {
 			name: "a reconnection sends everything the page shows", query: "v=CURRENT",
 			header: map[string]string{"Last-Event-ID": "1"}, n: 5,
 			want: func(t *testing.T, got []patch) {
-				requirePatch(t, got[0], "#sidebar", "inner", []string{`data-room="general"`, `aria-current="page"`}, nil)
+				requireChromePatch(t, got[0], []string{`data-room="general"`, `aria-current="page"`}, nil)
 				requirePatch(t, got[1], "", "outer", []string{`id="board-header"`, "<h1>general</h1>"}, nil)
 				requirePatch(t, got[2], "", "outer", []string{`id="board-note"`}, nil)
 				requirePatch(t, got[3], "", "outer", []string{`id="board-add"`}, nil)
@@ -299,7 +299,7 @@ func TestBoardStreamFollowsTheRoom(t *testing.T) {
 	}
 	got := c.patches(2)
 	requirePatch(t, got[0], "", "outer", []string{`id="board-header"`, "<h1>lobby</h1>"}, nil)
-	requirePatch(t, got[1], "#sidebar", "inner", []string{`data-room="lobby"`, `aria-current="page"`}, nil)
+	requireChromePatch(t, got[1], []string{`data-room="lobby"`, `aria-current="page"`}, nil)
 }
 
 func TestBoardStreamRefusesWhoCannotRead(t *testing.T) {

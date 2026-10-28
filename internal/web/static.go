@@ -93,6 +93,14 @@ func staticContentType(name string) string {
 		return "text/css; charset=utf-8"
 	case ".svg":
 		return "image/svg+xml"
+	case ".png":
+		return "image/png"
+	case ".woff2":
+		return "font/woff2"
+	case ".txt":
+		return "text/plain; charset=utf-8"
+	case ".md":
+		return "text/markdown; charset=utf-8"
 	default:
 		return ""
 	}
