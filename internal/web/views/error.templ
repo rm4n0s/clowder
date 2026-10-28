@@ -9,7 +9,7 @@ import (
 // status code and a short message, in the layout. The message is plain text,
 // never the text of an error.
 templ ErrorPage(status int, message string) {
-	@Layout(strconv.Itoa(status)+" "+http.StatusText(status), nil) {
+	@Layout(strconv.Itoa(status)+" "+http.StatusText(status), 0, nil) {
 		<h1>{ strconv.Itoa(status) }</h1>
 		<p>{ message }</p>
 		<p><a href="/">Back to the home page</a></p>

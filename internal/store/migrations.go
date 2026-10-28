@@ -20,6 +20,7 @@ func migrationList() []dialectMigration {
 		{ID: "0002_posts_feed_roots", SQLite: migrationPostsFeedRootsSQLite, Postgres: migrationPostsFeedRootsPostgres},
 		{ID: "0003_audit_entity_user", SQLite: migrationAuditEntityUserSQLite, Postgres: migrationAuditEntityUserPostgres},
 		{ID: "0004_notification_kinds", SQLite: migrationNotificationKindsSQLite, Postgres: migrationNotificationKindsPostgres},
+		{ID: "0005_room_reads", SQLite: migrationRoomReadsSQLite, Postgres: migrationRoomReadsPostgres},
 	}
 }
 
@@ -217,3 +218,24 @@ const migrationNotificationKindsSQLite = "" +
 	"CREATE INDEX `idx_notifications_task_id` ON `notifications`(`task_id`);\n" +
 	"CREATE INDEX `idx_notifications_post_id` ON `notifications`(`post_id`);\n" +
 	"CREATE INDEX `idx_notifications_user_read` ON `notifications`(`user_id`,`read_at`,`id`);\n"
+
+// migrationRoomReadsSQLite starts every existing member at the newest post or
+// comment of the room (SPEC §7.17, D55): nothing is unread when 1.2 starts.
+// The table room_reads is made by AutoMigrate before this runs. The rows
+// already there (a database that was migrated and then restored) are left
+// alone.
+const migrationRoomReadsSQLite = `
+INSERT INTO room_reads (user_id, room_id, last_seen_id, updated_at)
+SELECT m.user_id, m.room_id, COALESCE((SELECT MAX(p.id) FROM posts p WHERE p.room_id = m.room_id), 0), CURRENT_TIMESTAMP
+FROM room_members m
+WHERE NOT EXISTS (SELECT 1 FROM room_reads r WHERE r.user_id = m.user_id AND r.room_id = m.room_id);
+`
+
+// migrationRoomReadsPostgres is migrationRoomReadsSQLite for PostgreSQL, with
+// the time as now().
+const migrationRoomReadsPostgres = `
+INSERT INTO room_reads (user_id, room_id, last_seen_id, updated_at)
+SELECT m.user_id, m.room_id, COALESCE((SELECT MAX(p.id) FROM posts p WHERE p.room_id = m.room_id), 0), now()
+FROM room_members m
+WHERE NOT EXISTS (SELECT 1 FROM room_reads r WHERE r.user_id = m.user_id AND r.room_id = m.room_id);
+`

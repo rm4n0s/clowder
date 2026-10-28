@@ -1398,3 +1398,36 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - A cold feed is about 54 ms, a little over the 50 ms the manager set. The cache makes repeated views cheap, and the manager accepted this.
   - Chroma's regular expressions have a 250 ms timeout per match. The 32 KiB and 1,000-line caps, and the cache, bound what a hostile block costs.
+
+## 20.2 Unread posts per room
+- **Date:** 2026-10-28
+- **Branch:** feat/step-20.2-unread-rooms
+- **Summary:**
+  - New table `room_reads` (user, room, `last_seen_id`, `updated_at`; key (user, room); cascades with both), migration `0005_room_reads` on both dialects.
+    - The migration gives every existing membership a row at its room's highest ID.
+    - `CreateRoomMember` makes the row and `DeleteRoomMember` deletes it, so a member starts with nothing unread (D55): create, join, add and rejoin.
+    - `Stats` checks `MembersWithoutMark` and `StrayMarks`. The large demo starts with nothing unread.
+  - One query gives every room's counts: unread top-level posts by others (counted up to 100) and unread mention notifications (`mention`, `group_mention`, `keyword`).
+  - `Rooms.MarkRead` (forward only, capped at the room's highest ID) and `Rooms.Visit`: opening the newest feed page or the board moves the mark and reads the room's mention notifications in one transaction. A live post in an open feed moves the mark too.
+  - Live event `room.unread`, folded into the fan-out of `postRingEvents` (one event per user), and also sent for mentions, reading notifications, deleting a post and moving a mark.
+  - Sidebar: bold with a count ("99+"), a separate mention badge, muted rooms dimmed with only the mention badge, *only mentions* rooms with only the badge.
+  - Feed: the "New since your last visit" line at the boundary of unseen and seen posts on the first page, below the oldest unseen one.
+  - Tab: `<title>` starts with "(n) " (unread notifications plus unmuted unread conversations) and the favicon switches to `favicon-dot.svg`. Both are patched by the stream without script; the page sends its title to the stream in `X-Page-Title`.
+  - API: `unread_posts` and `unread_mentions` in every room (0 for a non-member), `POST /rooms/{id}/read` (204; 422 on `post_id`; 403 for a visible room not joined; 404 for a private one), the WebSocket frame `room.unread`. `openapi.json`, `docs/API.md` and the apicheck are updated.
+- **Main files:** `internal/store/{room_reads,migrations,models,stats}.go`, `internal/app/{unread,ring,rooms,posts,notifications}.go`, `internal/live/event.go`, `internal/web/{me_stream,stream,rooms,board}.go`, `internal/web/views/{sidebar,layout,unread}.*`, `internal/web/static/favicon{,-dot}.svg`, `internal/api/{handlers_rooms,types_rooms,ws_events}.go`, `cmd/clowder/demo_large.go`, `cmd/clowder-apicheck`.
+- **Tests:**
+  - store: the counts table, the cap, a row for every membership after joins, adds, leaves and rejoins, the forward-only mark, the migration's upgrade test, and the plans on the large demo (`TestLargeDemoUnreadPlans`, which fails above 20 ms);
+  - app: the permission tables of `MarkRead` and `Visit`, a foreign post ID, mentions cleared by a visit, the live events and their deduplication;
+  - web: the sidebar in every preference, the divider (some, all and none unseen; older pages), an open feed keeping the count at 0, the title and favicon rendered and patched;
+  - API and WebSocket: the counts, `POST /rooms/{id}/read`, `room.unread`, the OpenAPI parity;
+  - browser: `TestUnreadCountsGoUpLiveAndClearOnOpening`.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [20.2 unread](implemented-proof-images/20.2-unread.png) · [20.2 muted](implemented-proof-images/20.2-unread-muted.png) · [20.2 live](implemented-proof-images/20.2-unread-live.png) · [20.2 tab](implemented-proof-images/20.2-tab.txt) · [20.2 plans](implemented-proof-images/20.2-explain.txt)
+  - bob's sidebar with a count and a mention badge, and the line under the one unseen post; alice's muted room with only the mention badge; bob posts and alice's count goes from 1 to 2 live; the title going from "(7)" to "(8)".
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Unread posts are counted up to 100 per room (`UnreadPostsCap`; the API's `100` means 100 or more). Uncapped, a user in 100 rooms of the large demo who had read nothing took 29–31 ms on PostgreSQL, over the 20 ms limit. Capped, it is 11.6 ms on PostgreSQL and 9.0 ms on SQLite, with no new index. The manager accepted this.
+  - §7.17 says the line goes "above the oldest unseen post". The feed is newest first, so it goes at the boundary, below it (recorded in the SPEC note).
+  - One post to a room of N members costs N one-room count queries (0.05–0.5 ms each), spread over the open streams.
+  - The favicons are placeholders until M21.

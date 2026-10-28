@@ -500,7 +500,19 @@ templ PostEdit(d PostEditData) {
 templ FeedPosts(d FeedData) {
 	for _, p := range d.Page.Posts {
 		@PostCard(PostCardData{Post: p})
+		if p.ID == d.NewSince {
+			@FeedNewLine()
+		}
 	}
+}
+
+// FeedNewLine is the line "New since your last visit" (SPEC §7.17). The feed
+// is newest first, so the line sits below the oldest post the person has not
+// seen: what is above it is new.
+templ FeedNewLine() {
+	<div id="feed-new-line" class="feed-new-line" role="separator" aria-label="New since your last visit">
+		<span aria-hidden="true">↑</span> New since your last visit
+	</div>
 }
 
 // FeedMore is the end of the feed. When older posts exist it is the sentinel:
@@ -585,7 +597,7 @@ templ threadItem(d PostPageData, c PostCardData) {
 // was written in, the post and its thread of comments. The page of a comment is
 // the page of its post with that comment in focus.
 templ PostPage(d PostPageData) {
-	@Layout(postTitle(d), Sidebar(d.Sidebar)) {
+	@Layout(postTitle(d), d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		@liveStream(PostStreamPath(d.Post.ID, d.NewestID()))
 		@NotifyPlace(PlaceKey(app.RoomRef(d.Post.RoomID)))
 		<p class="post-room hint">in <a href={ templ.SafeURL(RoomPath(d.Post.RoomID)) }>{ d.Post.RoomName }</a></p>

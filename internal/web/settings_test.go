@@ -56,7 +56,7 @@ func TestSettingsPage(t *testing.T) {
 		t.Fatalf("status = %d:\n%s", rec.Code, rec.Body)
 	}
 	requireBody(t, rec, []string{
-		"<title>Settings · Clowder</title>", "<h1>Settings</h1>",
+		"<title id=\"page-title\">Settings · Clowder</title>", "<h1>Settings</h1>",
 		`<section id="profile" class="settings-section">`, `<section id="password" class="settings-section">`,
 		`<section id="appearance" class="settings-section">`, `<section id="sessions" class="settings-section">`,
 		`<form id="avatar-form" method="post" action="/me/settings/avatar" enctype="multipart/form-data"`, `type="file"`,
@@ -98,7 +98,7 @@ func TestSettingsProfile(t *testing.T) {
 		{name: "datastar too long", form: url.Values{"displayName": {strings.Repeat("x", 65)}}, opts: []reqOpt{asDatastar()}, wantCode: http.StatusOK,
 			want: []string{"Use 1 to 64 characters.", strings.Repeat("x", 65)}, wantName: "Alice"},
 		{name: "plain empty shows the page", form: url.Values{"displayName": {""}}, wantCode: http.StatusUnprocessableEntity,
-			want: []string{"<title>Settings · Clowder</title>", "Use 1 to 64 characters.", `id="sessions"`}, wantName: "Alice"},
+			want: []string{"<title id=\"page-title\">Settings · Clowder</title>", "Use 1 to 64 characters.", `id="sessions"`}, wantName: "Alice"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestSettingsAvatar(t *testing.T) {
 		{name: "too many bytes", data: append(append([]byte{}, good...), make([]byte, app.AvatarMaxBytes)...), opts: []reqOpt{asDatastar()}, wantCode: http.StatusOK,
 			want: []string{"Use a picture of at most 2 MiB."}},
 		{name: "plain failure shows the page", data: []byte("hello"), wantCode: http.StatusUnprocessableEntity,
-			want: []string{"<title>Settings · Clowder</title>", "Use a PNG, JPEG or GIF picture."}},
+			want: []string{"<title id=\"page-title\">Settings · Clowder</title>", "Use a PNG, JPEG or GIF picture."}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -334,7 +334,7 @@ func TestSettingsPassword(t *testing.T) {
 		{name: "the same", form: url.Values{"currentPassword": {testPassword}, "newPassword": {testPassword}, "newPasswordConfirm": {testPassword}},
 			opts: []reqOpt{asDatastar()}, wantCode: http.StatusOK, want: []string{"Choose a password different from the current one."}},
 		{name: "plain failure shows the page", form: url.Values{"currentPassword": {"nope nope nope"}, "newPassword": {newPassword}, "newPasswordConfirm": {newPassword}},
-			wantCode: http.StatusUnprocessableEntity, want: []string{"<title>Settings · Clowder</title>", "This is not your password."}},
+			wantCode: http.StatusUnprocessableEntity, want: []string{"<title id=\"page-title\">Settings · Clowder</title>", "This is not your password."}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

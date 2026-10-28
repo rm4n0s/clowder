@@ -103,7 +103,7 @@ func TestGroupMentionAsksAboveFivePeople(t *testing.T) {
 					}
 					want := []string{question, `id="group-mention-confirm-new"`, `formaction="/rooms/` + idText(e.general.ID) + `/posts?confirm_group_mention=1"`, ">Send<", ">Cancel<"}
 					if !datastar {
-						want = append(want, "<title>general · Clowder</title>", tt.body)
+						want = append(want, "<title id=\"page-title\">general · Clowder</title>", tt.body)
 					}
 					requireBody(t, rec, want)
 					return

@@ -34,7 +34,7 @@ func TestAdminRoomsPage(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	requireBody(t, rec, []string{
-		"<title>Rooms · Clowder</title>", `<h1>Rooms</h1>`, `id="admin-rooms"`,
+		"<title id=\"page-title\">Rooms · Clowder</title>", `<h1>Rooms</h1>`, `id="admin-rooms"`,
 		// The tab bar, with this tab current.
 		`<nav class="admin-tabs" aria-label="Admin">`, `href="/admin/users"`, `href="/admin/audit"`,
 		`class="current" aria-current="page">Rooms</a>`,

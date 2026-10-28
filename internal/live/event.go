@@ -99,6 +99,12 @@ const (
 	// conversation. The sidebar and the list of conversations refresh, and a
 	// client of the WebSocket gets the preferences.
 	KindPlacePrefsChanged = "place_prefs.changed"
+	// KindRoomUnread says the unread counts of a room changed for one member:
+	// a post came or was deleted, a mention came or was read, or the member's
+	// mark moved (SPEC §7.17, D55). It is published on UserTopic of that member;
+	// UserID is the member and RoomID the room. It holds no counts: whoever
+	// receives it reads the counts of that room for that user.
+	KindRoomUnread = "room.unread"
 	// KindConversationRead says a member read a conversation up to a message.
 	// It is published on ConversationTopic, which drives "Seen" (UserID is the
 	// member, MessageID the message), and on UserTopic of the member, which

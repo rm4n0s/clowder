@@ -220,11 +220,44 @@ func (s *Server) roomPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d, ok := s.roomPageData(w, r, id, beforeOf(r))
+	before := beforeOf(r)
+	d, ok := s.roomPageData(w, r, id, before)
 	if !ok {
 		return
 	}
+	// The newest page of the feed is read: the room is marked as read, after
+	// the page's data, and the line "New since your last visit" is worked out
+	// from the mark as it was (SPEC §7.17). A page of older posts shows no new
+	// post and moves nothing.
+	if before == 0 && d.Room.IsMember {
+		actor, _ := actorFrom(r.Context())
+		seen, sb, err := s.visitRoom(r.Context(), actor, id, d.Sidebar)
+		if err != nil {
+			s.roomFail(w, r, err, id)
+			return
+		}
+		d.Sidebar = sb
+		d.Feed.NewSince = views.NewSinceID(d.Feed.Page.Posts, seen, actor.UserID)
+	}
 	s.render(w, r, http.StatusOK, views.RoomPage(d))
+}
+
+// visitRoom marks the room as read for the actor (Rooms.Visit) and returns the
+// mark as it was and the sidebar as it is after that: the room shows nothing
+// waiting, and the count of the bell is read again, because opening the room
+// reads its mentions.
+func (s *Server) visitRoom(ctx context.Context, actor app.Actor, roomID uint64, sb views.SidebarData) (uint64, views.SidebarData, error) {
+	seen, err := s.svc.Rooms.Visit(ctx, actor, roomID)
+	if err != nil {
+		return 0, sb, err
+	}
+	unread, err := s.svc.Notifications.UnreadCount(ctx, actor)
+	if err != nil {
+		return 0, sb, err
+	}
+	sb = sb.WithRoomRead(roomID)
+	sb.Unread = unread
+	return seen, sb, nil
 }
 
 // roomPost starts every POST on a room: it reads the ID and the form and

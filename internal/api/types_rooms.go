@@ -37,6 +37,11 @@ type roomJSON struct {
 	MemberCount int         `json:"member_count"`
 	IsMember    bool        `json:"is_member"`
 	CanManage   bool        `json:"can_manage"`
+	// UnreadPosts and UnreadMentions are the unread counts of the caller in the
+	// room (SPEC §7.17); 0 for a room the caller is not a member of. They are
+	// the raw numbers, whatever the notification preferences of the room say.
+	UnreadPosts    int `json:"unread_posts"`
+	UnreadMentions int `json:"unread_mentions"`
 }
 
 // roomOf makes the JSON of a room.
@@ -51,6 +56,9 @@ func roomOf(r app.Room) roomJSON {
 		MemberCount: r.MemberCount,
 		IsMember:    r.IsMember,
 		CanManage:   r.CanManage,
+
+		UnreadPosts:    r.UnreadPosts,
+		UnreadMentions: r.UnreadMentions,
 	}
 }
 

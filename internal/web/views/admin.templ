@@ -56,7 +56,7 @@ type InviteData struct {
 // AdminUsersPage is the page of the users and of the invitation form. Only
 // admins get it.
 templ AdminUsersPage(d AdminUsersData) {
-	@Layout("Users", Sidebar(d.Sidebar)) {
+	@Layout("Users", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		@AdminTabs("users")
 		<h1>Users</h1>
 		@UsersPanel(d)

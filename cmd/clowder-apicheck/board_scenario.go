@@ -72,8 +72,9 @@ func columnID(a answer, i int) uint64 {
 // moves the card to "In progress", sets its due date, adds a column, renames
 // it, moves it and deletes it, downloads the two attachments, and searches for
 // the post by a word and its tag. Then it logs in as the other user, reads the
-// notifications (the assignment is there) and marks them read, and the
-// room goes.
+// unread posts of the room (the post), marks it read, refuses a post that is
+// not of the room, reads the notifications (the assignment is there) and marks
+// them read, and the room goes.
 func boardScenario(ctx context.Context, r *runner) error {
 	if _, err := r.login(ctx); err != nil {
 		return err
@@ -247,6 +248,14 @@ func boardScenario(ctx context.Context, r *runner) error {
 	if _, err = r.loginAs(ctx, r.otherUsername, r.otherPassword); err != nil {
 		return err
 	}
+
+	// The unread counts (SPEC §7.17): the post of the first user is unread in
+	// the room the other user was added to before it; marking the post read
+	// brings the count to 0, and an ID that is not of the room is refused.
+	if err = r.checkUnreadPosts(ctx, name, room, postID); err != nil {
+		return err
+	}
+
 	a, err = r.c.do(ctx, "GET", "/api/v1/notifications", nil, 200)
 	if err != nil {
 		return err
@@ -289,6 +298,58 @@ func boardScenario(ctx context.Context, r *runner) error {
 		return err
 	}
 	r.c.token = ""
+	return nil
+}
+
+// unreadPostsOf returns the unread_posts and unread_mentions that GET /rooms
+// gives the logged-in user for the room with the name.
+func (r *runner) unreadPostsOf(ctx context.Context, name string) (posts, mentions uint64, err error) {
+	a, err := r.c.do(ctx, "GET", "/api/v1/rooms", nil, 200)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, item := range a.items("rooms") {
+		room, _ := item.(map[string]any)
+		if room["name"] != name {
+			continue
+		}
+		p, okP := room["unread_posts"].(float64)
+		m, okM := room["unread_mentions"].(float64)
+		if !okP || !okM {
+			return 0, 0, errors.New(tagAnswerUnexpected, "the room has no unread counts", "room", name)
+		}
+		return uint64(p), uint64(m), nil
+	}
+	return 0, 0, errors.New(tagAnswerUnexpected, "the room is not in the list of rooms", "room", name)
+}
+
+// checkUnreadPosts reads the unread count of the room for the logged-in user,
+// who has not seen the post postID yet, marks the post as read, reads the count
+// again, and tries a post that is not of the room and a mark that goes back.
+func (r *runner) checkUnreadPosts(ctx context.Context, name, room string, postID uint64) error {
+	posts, _, err := r.unreadPostsOf(ctx, name)
+	if err != nil {
+		return err
+	}
+	if posts != 1 {
+		return errors.New(tagAnswerUnexpected, "the post of the other user is not the one unread post", "unread", posts)
+	}
+	if _, err = r.c.do(ctx, "POST", room+"/read", map[string]any{"post_id": postID}, 204); err != nil {
+		return err
+	}
+	if posts, _, err = r.unreadPostsOf(ctx, name); err != nil {
+		return err
+	}
+	if posts != 0 {
+		return errors.New(tagAnswerUnexpected, "the room still has unread posts after the mark", "unread", posts)
+	}
+	if _, err = r.c.do(ctx, "POST", room+"/read", map[string]any{"post_id": 999999999}, 422); err != nil {
+		return err
+	}
+	// Going back is not an error and changes nothing.
+	if _, err = r.c.do(ctx, "POST", room+"/read", map[string]any{"post_id": postID}, 204); err != nil {
+		return err
+	}
 	return nil
 }
 

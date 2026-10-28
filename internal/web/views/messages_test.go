@@ -393,7 +393,7 @@ func TestConversationPageHeaderAndPane(t *testing.T) {
 	}
 	html := renderHTML(t, views.ConversationPage(d))
 	requireHTML(t, html, []string{
-		"<title>Bob · Clowder</title>", `<h1>Bob</h1>`, `With Bob (disabled)`,
+		"<title id=\"page-title\">Bob · Clowder</title>", `<h1>Bob</h1>`, `With Bob (disabled)`,
 		`@get(&#39;/messages/4/stream?seen=13&#39;`,
 		`<div id="message-pane" class="message-pane" data-init="el.scrollTop = el.scrollHeight">`,
 		`<div id="messages-older" class="messages-older" data-on-intersect__once="@get(&#39;/messages/4/older?before=12&#39;)"><a href="/messages/4?before=12">Older messages</a></div>`,

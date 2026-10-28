@@ -1,0 +1,256 @@
+Step 20.2: the plans and the timings of the unread counts (SPEC §7.17, D55)
+
+What this measures: the query that gives the unread posts and the unread
+mentions of every room of one user (store.RoomUnreadCounts, the sidebar and
+GET /rooms), its one-room form (store.RoomUnreadOf, the stream that patches one
+entry of the sidebar and the WebSocket event room.unread) and the highest ID of a
+room (store.RoomMaxPostID, used when a member joins, opens the feed or marks it).
+
+Data: `clowder demo -size large` (SPEC §10): 200 users, 100 rooms (14 private),
+100,000 posts and comments (70,250 top-level), 124,556 audit events. The user is
+the one with the most memberships, made a member of all 100 rooms; 300 unread
+mention notifications are added for the user. The marks are put where each case
+says. Medians of 30 runs for all rooms and 100 runs for one room.
+
+Machine: the development machine of docs/PERFORMANCE.md (32 CPUs, local disk),
+SQLite through the pure-Go driver, PostgreSQL 18.6 in a container on the same
+machine (fsync off).
+
+How to repeat: make a large demo (`go run ./cmd/clowder demo -data DIR -size
+large`, with `-database-url postgres://...` for PostgreSQL) and run
+  CLOWDER_BENCH_DB=DIR/clowder.db go test ./internal/store -run LargeDemoUnreadPlans -v
+  CLOWDER_BENCH_DATABASE_URL=postgres://... go test ./internal/store -run LargeDemoUnreadPlans -v
+The test fails when the median for 100 rooms with nothing seen is over 20 ms.
+
+Summary
+-------
+No new index is needed. The posts of a room that are new are found by the index
+of the feed: idx_posts_feed (room_id, parent_id, id DESC) on SQLite and the
+partial index idx_posts_feed_roots (room_id, id DESC) WHERE parent_id IS NULL on
+PostgreSQL (migration 0002); the mentions by idx_notifications_user_read
+(user_id, read_at, id); the marks by the primary key of room_reads (user_id,
+room_id).
+
+The count stops at 100 per room (store.UnreadPostsCap; the pages show "99+"
+above 99). Before the cap, a user who had not read any of the 100 rooms (66,704
+unread posts) took 29 to 31 ms on PostgreSQL (target: under 20 ms) and 59 ms on
+SQLite, because the query counted every unread post of every room. With the cap
+the worst case is 100 rooms of 100 rows:
+
+                                   PostgreSQL    SQLite
+  nothing seen, capped (worst)      11.6 ms       9.0 ms   <- the target case: under 20 ms
+  nothing seen, no cap (exact)      30.7 ms      59.3 ms
+  half seen                          5.8 ms       8.6 ms
+  everything seen                    0.3 ms       0.4 ms
+  one room, busiest, nothing seen    0.5 ms       0.09 ms
+  highest ID of the busiest room     0.04 ms      0.9 ms
+
+A new post to a room of N members makes N one-room counts (one per open stream
+of a member): 0.1 to 0.5 ms each when the member has unread posts, 0.05 ms when
+the member has read the room.
+
+==============================================================================
+SQLITE
+==============================================================================
+== unread counts on the large demo (sqlite): user 1 is a member of 100 rooms; 70250 top-level posts; busiest room 49
+
+-- worst case: nothing seen (every mark 0)
+   100 rooms, 10000 unread posts, 300 unread mentions
+   RoomUnreadCounts (all 100 rooms): median 8.99ms, slowest 11.27ms over 30 runs
+   without the cap (exact counts): median 59.33ms, slowest 70.5ms over 30 runs
+   RoomUnreadOf (the busiest room): median 90µs, slowest 310µs over 100 runs
+   RoomMaxPostID (the busiest room): median 890µs, slowest 1.2ms over 100 runs
+
+Plan of RoomUnreadCounts:
+MATERIALIZE n
+SEARCH notifications USING INDEX idx_notifications_user_read (user_id=? AND read_at=?)
+USE TEMP B-TREE FOR GROUP BY
+SEARCH m USING INDEX idx_room_members_user_id (user_id=?)
+SEARCH r USING INDEX sqlite_autoindex_room_reads_1 (user_id=? AND room_id=?) LEFT-JOIN
+SEARCH n USING AUTOMATIC COVERING INDEX (room_id=?) LEFT-JOIN
+CORRELATED SCALAR SUBQUERY 2
+CO-ROUTINE capped
+SEARCH p USING INDEX idx_posts_feed (room_id=? AND parent_id=? AND id>?)
+SCAN capped
+USE TEMP B-TREE FOR ORDER BY
+
+Plan of RoomUnreadOf (the busiest room):
+MATERIALIZE n
+SEARCH notifications USING INDEX idx_notifications_room_id (room_id=?)
+SEARCH m USING COVERING INDEX uq_room_members_room_user (room_id=? AND user_id=?)
+SEARCH r USING INDEX sqlite_autoindex_room_reads_1 (user_id=? AND room_id=?) LEFT-JOIN
+SCAN n LEFT-JOIN
+CORRELATED SCALAR SUBQUERY 2
+CO-ROUTINE capped
+SEARCH p USING INDEX idx_posts_feed (room_id=? AND parent_id=? AND id>?)
+SCAN capped
+
+Plan of RoomMaxPostID (the busiest room):
+SEARCH posts USING COVERING INDEX idx_posts_feed (room_id=?)
+USE TEMP B-TREE FOR ORDER BY
+
+-- half seen (every mark at the middle of the room)
+   100 rooms, 9982 unread posts, 300 unread mentions
+   RoomUnreadCounts (all 100 rooms): median 8.57ms, slowest 10.93ms over 30 runs
+   RoomUnreadOf (the busiest room): median 90µs, slowest 760µs over 100 runs
+   RoomMaxPostID (the busiest room): median 910µs, slowest 1.61ms over 100 runs
+
+-- all seen (every mark at the newest ID)
+   100 rooms, 0 unread posts, 300 unread mentions
+   RoomUnreadCounts (all 100 rooms): median 430µs, slowest 630µs over 30 runs
+   RoomUnreadOf (the busiest room): median 50µs, slowest 110µs over 100 runs
+   RoomMaxPostID (the busiest room): median 1.03ms, slowest 1.74ms over 100 runs
+
+
+==============================================================================
+POSTGRESQL (EXPLAIN (ANALYZE, BUFFERS))
+==============================================================================
+== unread counts on the large demo (postgres): user 1 is a member of 100 rooms; 70250 top-level posts; busiest room 49
+
+-- worst case: nothing seen (every mark 0)
+   100 rooms, 10000 unread posts, 300 unread mentions
+   RoomUnreadCounts (all 100 rooms): median 11.64ms, slowest 12.2ms over 30 runs
+   without the cap (exact counts): median 30.66ms, slowest 53.16ms over 30 runs
+   RoomUnreadOf (the busiest room): median 540µs, slowest 1.77ms over 100 runs
+   RoomMaxPostID (the busiest room): median 40µs, slowest 320µs over 100 runs
+
+Plan of RoomUnreadCounts:
+Merge Left Join  (cost=143.20..57752.31 rows=177 width=24) (actual time=0.353..11.775 rows=100.00 loops=1)
+  Merge Cond: (m.room_id = r.room_id)
+  Buffers: shared hit=10452
+  ->  Sort  (cost=62.27..62.52 rows=100 width=24) (actual time=0.160..0.168 rows=100.00 loops=1)
+        Sort Key: m.room_id
+        Sort Method: quicksort  Memory: 28kB
+        Buffers: shared hit=42
+        ->  Hash Left Join  (cost=23.42..58.95 rows=100 width=24) (actual time=0.097..0.152 rows=100.00 loops=1)
+              Hash Cond: (m.room_id = n.room_id)
+              Buffers: shared hit=42
+              ->  Bitmap Heap Scan on room_members m  (cost=5.06..40.31 rows=100 width=16) (actual time=0.014..0.056 rows=100.00 loops=1)
+                    Recheck Cond: (user_id = '1'::bigint)
+                    Heap Blocks: exact=33
+                    Buffers: shared hit=35
+                    ->  Bitmap Index Scan on idx_room_members_user_id  (cost=0.00..5.03 rows=100 width=0) (actual time=0.008..0.008 rows=100.00 loops=1)
+                          Index Cond: (user_id = '1'::bigint)
+                          Index Searches: 1
+                          Buffers: shared hit=2
+              ->  Hash  (cost=17.35..17.35 rows=81 width=16) (actual time=0.080..0.082 rows=84.00 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                    Buffers: shared hit=7
+                    ->  Subquery Scan on n  (cost=15.73..17.35 rows=81 width=16) (actual time=0.065..0.076 rows=84.00 loops=1)
+                          Buffers: shared hit=7
+                          ->  HashAggregate  (cost=15.73..16.54 rows=81 width=16) (actual time=0.065..0.070 rows=84.00 loops=1)
+                                Group Key: notifications.room_id
+                                Batches: 1  Memory Usage: 32kB
+                                Buffers: shared hit=7
+                                ->  Seq Scan on notifications  (cost=0.00..14.78 rows=190 width=8) (actual time=0.012..0.033 rows=300.00 loops=1)
+                                      Filter: ((read_at IS NULL) AND (user_id = '1'::bigint) AND (kind = ANY ('{mention,group_mention,keyword}'::text[])))
+                                      Rows Removed by Filter: 179
+                                      Buffers: shared hit=7
+  ->  Sort  (cost=80.93..81.18 rows=100 width=24) (actual time=0.061..0.067 rows=100.00 loops=1)
+        Sort Key: r.room_id
+        Sort Method: quicksort  Memory: 28kB
+        Buffers: shared hit=52
+        ->  Bitmap Heap Scan on room_reads r  (cost=5.06..77.61 rows=100 width=24) (actual time=0.028..0.053 rows=100.00 loops=1)
+              Recheck Cond: (user_id = '1'::bigint)
+              Heap Blocks: exact=50
+              Buffers: shared hit=52
+              ->  Bitmap Index Scan on room_reads_pkey  (cost=0.00..5.03 rows=100 width=0) (actual time=0.007..0.008 rows=234.00 loops=1)
+                    Index Cond: (user_id = '1'::bigint)
+                    Index Searches: 1
+                    Buffers: shared hit=2
+  SubPlan 1
+    ->  Aggregate  (cost=325.45..325.46 rows=1 width=8) (actual time=0.115..0.115 rows=1.00 loops=100)
+          Buffers: shared hit=10358
+          ->  Limit  (cost=10.82..324.20 rows=100 width=4) (actual time=0.062..0.112 rows=100.00 loops=100)
+                Buffers: shared hit=10358
+                ->  Bitmap Heap Scan on posts p  (cost=10.82..740.99 rows=233 width=4) (actual time=0.062..0.107 rows=100.00 loops=100)
+                      Recheck Cond: ((room_id = m.room_id) AND (id > COALESCE(r.last_seen_id, '0'::bigint)) AND (parent_id IS NULL))
+                      Filter: ((deleted_at IS NULL) AND (author_id <> m.user_id))
+                      Rows Removed by Filter: 5
+                      Heap Blocks: exact=9583
+                      Buffers: shared hit=10358
+                      ->  Bitmap Index Scan on idx_posts_feed_roots  (cost=0.00..10.76 rows=234 width=0) (actual time=0.031..0.031 rows=702.50 loops=100)
+                            Index Cond: ((room_id = m.room_id) AND (id > COALESCE(r.last_seen_id, '0'::bigint)))
+                            Index Searches: 100
+                            Buffers: shared hit=675
+Planning Time: 0.212 ms
+Execution Time: 11.813 ms
+
+Plan of RoomUnreadOf (the busiest room):
+Nested Loop Left Join  (cost=8.97..1333.57 rows=4 width=24) (actual time=0.611..0.615 rows=1.00 loops=1)
+  Buffers: shared hit=109
+  ->  Nested Loop Left Join  (cost=4.68..20.41 rows=2 width=24) (actual time=0.036..0.038 rows=1.00 loops=1)
+        Buffers: shared hit=8
+        ->  Index Only Scan using uq_room_members_room_user on room_members m  (cost=0.28..8.31 rows=2 width=16) (actual time=0.010..0.010 rows=1.00 loops=1)
+              Index Cond: ((room_id = '49'::bigint) AND (user_id = '1'::bigint))
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=3
+        ->  Materialize  (cost=4.40..12.07 rows=1 width=16) (actual time=0.025..0.027 rows=1.00 loops=1)
+              Storage: Memory  Maximum Storage: 17kB
+              Buffers: shared hit=5
+              ->  Subquery Scan on n  (cost=4.40..12.07 rows=1 width=16) (actual time=0.024..0.025 rows=1.00 loops=1)
+                    Buffers: shared hit=5
+                    ->  GroupAggregate  (cost=4.40..12.06 rows=1 width=16) (actual time=0.024..0.024 rows=1.00 loops=1)
+                          Buffers: shared hit=5
+                          ->  Bitmap Heap Scan on notifications  (cost=4.40..12.02 rows=13 width=8) (actual time=0.012..0.021 rows=33.00 loops=1)
+                                Recheck Cond: (room_id = '49'::bigint)
+                                Filter: ((read_at IS NULL) AND (user_id = '1'::bigint) AND (kind = ANY ('{mention,group_mention,keyword}'::text[])))
+                                Heap Blocks: exact=4
+                                Buffers: shared hit=5
+                                ->  Bitmap Index Scan on idx_notifications_room_id  (cost=0.00..4.39 rows=33 width=0) (actual time=0.005..0.005 rows=33.00 loops=1)
+                                      Index Cond: (room_id = '49'::bigint)
+                                      Index Searches: 1
+                                      Buffers: shared hit=1
+  ->  Materialize  (cost=4.29..11.30 rows=2 width=24) (actual time=0.007..0.008 rows=1.00 loops=1)
+        Storage: Memory  Maximum Storage: 17kB
+        Buffers: shared hit=3
+        ->  Bitmap Heap Scan on room_reads r  (cost=4.29..11.29 rows=2 width=24) (actual time=0.006..0.006 rows=1.00 loops=1)
+              Recheck Cond: ((user_id = '1'::bigint) AND (room_id = '49'::bigint))
+              Heap Blocks: exact=1
+              Buffers: shared hit=3
+              ->  Bitmap Index Scan on room_reads_pkey  (cost=0.00..4.29 rows=2 width=0) (actual time=0.004..0.004 rows=1.00 loops=1)
+                    Index Cond: ((user_id = '1'::bigint) AND (room_id = '49'::bigint))
+                    Index Searches: 1
+                    Buffers: shared hit=2
+  SubPlan 1
+    ->  Aggregate  (cost=325.45..325.46 rows=1 width=8) (actual time=0.567..0.567 rows=1.00 loops=1)
+          Buffers: shared hit=98
+          ->  Limit  (cost=10.82..324.20 rows=100 width=4) (actual time=0.532..0.562 rows=100.00 loops=1)
+                Buffers: shared hit=98
+                ->  Bitmap Heap Scan on posts p  (cost=10.82..740.99 rows=233 width=4) (actual time=0.532..0.557 rows=100.00 loops=1)
+                      Recheck Cond: ((room_id = m.room_id) AND (id > COALESCE(r.last_seen_id, '0'::bigint)) AND (parent_id IS NULL))
+                      Filter: ((deleted_at IS NULL) AND (author_id <> m.user_id))
+                      Rows Removed by Filter: 1
+                      Heap Blocks: exact=37
+                      Buffers: shared hit=98
+                      ->  Bitmap Index Scan on idx_posts_feed_roots  (cost=0.00..10.76 rows=234 width=0) (actual time=0.314..0.314 rows=8523.00 loops=1)
+                            Index Cond: ((room_id = m.room_id) AND (id > COALESCE(r.last_seen_id, '0'::bigint)))
+                            Index Searches: 1
+                            Buffers: shared hit=60
+Planning Time: 0.240 ms
+Execution Time: 0.648 ms
+
+Plan of RoomMaxPostID (the busiest room):
+Limit  (cost=0.29..0.80 rows=1 width=8) (actual time=0.006..0.006 rows=1.00 loops=1)
+  Buffers: shared hit=3
+  ->  Index Scan Backward using posts_pkey on posts  (cost=0.29..6151.96 rows=12073 width=8) (actual time=0.005..0.005 rows=1.00 loops=1)
+        Filter: (room_id = '49'::bigint)
+        Rows Removed by Filter: 2
+        Index Searches: 1
+        Buffers: shared hit=3
+Planning Time: 0.037 ms
+Execution Time: 0.011 ms
+
+-- half seen (every mark at the middle of the room)
+   100 rooms, 9982 unread posts, 300 unread mentions
+   RoomUnreadCounts (all 100 rooms): median 5.81ms, slowest 7.66ms over 30 runs
+   RoomUnreadOf (the busiest room): median 230µs, slowest 1.01ms over 100 runs
+   RoomMaxPostID (the busiest room): median 50µs, slowest 290µs over 100 runs
+
+-- all seen (every mark at the newest ID)
+   100 rooms, 0 unread posts, 300 unread mentions
+   RoomUnreadCounts (all 100 rooms): median 310µs, slowest 360µs over 30 runs
+   RoomUnreadOf (the busiest room): median 70µs, slowest 350µs over 100 runs
+   RoomMaxPostID (the busiest room): median 50µs, slowest 100µs over 100 runs
+

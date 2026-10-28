@@ -920,7 +920,7 @@
         ],
         "summary": "List rooms",
         "operationId": "listRooms",
-        "description": "Lists the rooms the user sees, by name without regard to case: every visible room and the private rooms the user is a member of. is_member says which the user has joined. A private room the user is not in is not listed, an admin included.",
+        "description": "Lists the rooms the user sees, by name without regard to case: every visible room and the private rooms the user is a member of. is_member says which the user has joined. A private room the user is not in is not listed, an admin included. For the rooms the user is a member of, unread_posts and unread_mentions are the unread counts (SPEC 7.17); they are 0 for the other rooms.",
         "responses": {
           "200": {
             "description": "The rooms.",
@@ -1216,6 +1216,65 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/rooms/{id}/read": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Mark a room as read up to a post",
+        "operationId": "readRoom",
+        "description": "Tells the server that the client has shown the room up to the post or comment post_id, so the posts and comments up to it are no longer unread. The mark of the user only moves forward: an ID behind the mark changes nothing and is not an error, and the mark never goes above the newest post or comment of the room. It does not touch the user's notifications (POST /notifications/read does). When the mark moves, the user's connections get a room.unread event. post_id must be the ID of a post or comment of this room, or the answer is 422 with the field post_id. Only members have a mark: a visible room the user has not joined is 403 forbidden, and a private room the user may not read, admins included, is 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the room.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The newest post or comment of the room the client has shown.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomReadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The mark is at or past the post."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -4984,6 +5043,16 @@
           "can_manage": {
             "type": "boolean",
             "description": "True when the user may rename and delete the room: an admin, or its creator."
+          },
+          "unread_posts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of top-level posts of the room by other people that the user has not seen: not deleted, newer than the user's mark (see POST /rooms/{id}/read), counted up to 100 (100 means 100 or more). 0 for a room the user is not a member of. It is the raw number: it does not depend on the notification preferences of the room, so a client shows it as the sidebar of the pages does, bold and with the number (\"99+\" above 99), unless the room is muted or its mark_unread is mentions (see GET /rooms/{id}/notification-prefs)."
+          },
+          "unread_mentions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The number of the user's unread notifications in the room that are mentions: the kinds mention, group_mention and keyword. 0 for a room the user is not a member of. A muted room still counts them."
           }
         },
         "required": [
@@ -4995,7 +5064,9 @@
           "created_at",
           "member_count",
           "is_member",
-          "can_manage"
+          "can_manage",
+          "unread_posts",
+          "unread_mentions"
         ],
         "additionalProperties": false
       },
@@ -7003,7 +7074,7 @@
       },
       "WsEvent": {
         "type": "object",
-        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.changed: the Notification, after a reply was folded into it (it never rings); notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections. place_prefs.changed on user:<id>: the PlacePrefs of the room (room_id) or conversation (conversation_id), after the user changed them. post.created and message.created on user:<id> (not to be confused with the same kinds on room:<id>, post:<id> and conversation:<id>, whose data is the Post and the Message) are sent only to a user the post or message rings for, with ring true, and have the WsNotice as data; notification.created, on a notification that rings for the user, has ring true as well. ring, sound and browser are the server's decision from the preferences of the user (SPEC 7.15): the client plays the sound and, when browser is true, shows a notification of the system, if it has no window with the focus and the place is not the one the user is looking at.",
+        "description": "Server to client: something changed on a topic the user listens to. The ID fields that the event has are set, the others are absent. data is the resource as the REST API returns it to this user at the time of sending, and is absent for a deletion (post.deleted, comment.deleted, message.deleted, member.left, room.deleted) and for conversation.changed or member.joined when the resource is no longer there. post.created, post.updated, comment.created and comment.updated: the Post (a comment's event is on post:<root id>; a comment's change also arrives as post.updated of its root on room:<id>, so that the comment count refreshes). reaction.changed and message.reaction: the reactions of the post, comment or message as the user sees them, as the routes that put a reaction return them (ReactionList). board.changed: the Board. room.updated: the Room. member.joined: the Member. notification.created: the Notification; notification.changed: the Notification, after a reply was folded into it (it never rings); notification.read and conversation.read on user:<id>: the unread counts (WsUnreadCounts). message.created and message.updated: the Message. conversation.updated and conversation.changed: the Conversation. conversation.read on conversation:<id>: WsConversationRead. room.deleted: no data; the topics of the room are dropped with an error message each. user.updated on user:<id>: the User, after the user changed their display name or avatar. settings.changed on user:<id>: the Settings. Both reach only the user's own connections. place_prefs.changed on user:<id>: the PlacePrefs of the room (room_id) or conversation (conversation_id), after the user changed them. post.created and message.created on user:<id> (not to be confused with the same kinds on room:<id>, post:<id> and conversation:<id>, whose data is the Post and the Message) are sent only to a user the post or message rings for, with ring true, and have the WsNotice as data; notification.created, on a notification that rings for the user, has ring true as well. ring, sound and browser are the server's decision from the preferences of the user (SPEC 7.15): the client plays the sound and, when browser is true, shows a notification of the system, if it has no window with the focus and the place is not the one the user is looking at. room.unread on user:<id>: the WsRoomUnread, the unread counts of the user in the room (room_id), sent when a post comes or is deleted in a room of the user, a mention comes or is read, or the user's mark moves; it is not sent for a room the user is not a member of.",
         "properties": {
           "type": {
             "const": "event"
@@ -7039,7 +7110,8 @@
               "conversation.read",
               "user.updated",
               "settings.changed",
-              "place_prefs.changed"
+              "place_prefs.changed",
+              "room.unread"
             ],
             "description": "What happened."
           },
@@ -7117,6 +7189,9 @@
               },
               {
                 "$ref": "#/components/schemas/WsNotice"
+              },
+              {
+                "$ref": "#/components/schemas/WsRoomUnread"
               }
             ]
           },
@@ -7686,6 +7761,47 @@
         },
         "required": [
           "online"
+        ],
+        "additionalProperties": false
+      },
+      "RoomReadRequest": {
+        "type": "object",
+        "properties": {
+          "post_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ID of a post or comment of the room: the newest one the client has shown."
+          }
+        },
+        "required": [
+          "post_id"
+        ],
+        "additionalProperties": false
+      },
+      "WsRoomUnread": {
+        "type": "object",
+        "description": "The data of room.unread on user:<id>: the unread counts of the user in a room, as GET /rooms returns them for it. A client keeps the counts of its rooms up to date with these. The event is sent when a post comes or is deleted, when a mention comes or is read, and when the user's mark moves (their own POST /rooms/{id}/read, or opening the room in a page).",
+        "properties": {
+          "room_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The room."
+          },
+          "unread_posts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "As in Room."
+          },
+          "unread_mentions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "As in Room."
+          }
+        },
+        "required": [
+          "room_id",
+          "unread_posts",
+          "unread_mentions"
         ],
         "additionalProperties": false
       }

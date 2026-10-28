@@ -132,6 +132,18 @@ func (s *Server) boardPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Opening the board marks the room as read, like opening its feed (SPEC
+	// §7.17). The board shows no posts, so the stream of the page keeps the
+	// counts of the sidebar live afterwards.
+	if br.view.CanEdit {
+		actor, _ := actorFrom(r.Context())
+		_, sb, err := s.visitRoom(r.Context(), actor, br.id, d.Sidebar)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		d.Sidebar = sb
+	}
 	s.render(w, r, http.StatusOK, views.BoardPage(d))
 }
 

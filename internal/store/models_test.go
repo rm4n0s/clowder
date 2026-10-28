@@ -258,8 +258,8 @@ func TestEveryModelIsMigrated(t *testing.T) {
 			t.Errorf("no table for %T", m)
 		}
 	}
-	if got := len(allModels()); got != 28 {
-		t.Errorf("%d models, want the 28 of SPEC §6.3", got)
+	if got := len(allModels()); got != 29 {
+		t.Errorf("%d models, want the 29 of SPEC §6.3", got)
 	}
 }
 
@@ -651,6 +651,8 @@ func TestForeignKeyActions(t *testing.T) {
 		{"ssh_codes", "user_id", "users", restrict},
 		{"ssh_codes", "key_id", "ssh_keys", cascade},
 		{"pending_logins", "user_id", "users", restrict},
+		{"room_reads", "user_id", "users", cascade},
+		{"room_reads", "room_id", "rooms", cascade},
 	}
 
 	f := newFix(t)
@@ -711,6 +713,7 @@ func TestIndexes(t *testing.T) {
 		"uq_rooms_name":                             {"rooms", true, "name"},
 		"uq_room_members_room_user":                 {"room_members", true, "room_id,user_id"},
 		"idx_room_members_user_id":                  {"room_members", false, "user_id"},
+		"idx_room_reads_room_id":                    {"room_reads", false, "room_id"},
 		"idx_posts_feed":                            {"posts", false, "room_id,parent_id,id DESC"},
 		"idx_posts_thread":                          {"posts", false, "root_id,id"},
 		"idx_posts_parent_id":                       {"posts", false, "parent_id"},

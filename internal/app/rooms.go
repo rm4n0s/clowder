@@ -88,6 +88,18 @@ type Room struct {
 	// Muted is true when the asking actor muted the room (SPEC §7.15). Only
 	// Mine fills it.
 	Muted bool
+	// MentionsOnly is true when the asking actor chose "Only mentions" as what
+	// the room counts as unread (SPEC §7.15, §7.17). Only Mine fills it.
+	MentionsOnly bool
+	// UnreadPosts is the number of top-level posts of the room by others that
+	// the asking actor has not seen (SPEC §7.17, D55), up to UnreadPostsCap. It
+	// is the raw number: it does not depend on the preferences of the room. 0
+	// when the actor is not a member. Mine, Available, Get and Patch fill it.
+	UnreadPosts int
+	// UnreadMentions is the number of the actor's unread notifications in the
+	// room that are mentions (mention, group mention and keyword); 0 when the
+	// actor is not a member. Mine, Available, Get and Patch fill it.
+	UnreadMentions int
 }
 
 // Member is a member of a room as the services show it.
@@ -218,7 +230,8 @@ func (r *Rooms) Visible(ctx context.Context, actor Actor) ([]Room, error) {
 
 // Mine returns the rooms the actor is a member of, visible and private,
 // ordered by name, except that the rooms the actor muted come last (SPEC
-// §7.15) and say so in Muted.
+// §7.15) and say so in Muted. Each has its unread counts and says in
+// MentionsOnly whether the actor counts only mentions there (SPEC §7.17).
 func (r *Rooms) Mine(ctx context.Context, actor Actor) ([]Room, error) {
 	rows, err := r.st.ListRoomsOfUser(ctx, actor.UserID)
 	if err != nil {
@@ -233,16 +246,27 @@ func (r *Rooms) Mine(ctx context.Context, actor Actor) ([]Room, error) {
 		return nil, err
 	}
 	muted := map[uint64]bool{}
+	mentionsOnly := map[uint64]bool{}
 	for _, p := range prefs {
-		if p.RoomID != nil && p.Muted {
+		if p.RoomID == nil {
+			continue
+		}
+		if p.Muted {
 			muted[*p.RoomID] = true
 		}
-	}
-	if len(muted) == 0 {
-		return views, nil
+		if p.MarkUnread == store.MarkUnreadMentions {
+			mentionsOnly[*p.RoomID] = true
+		}
 	}
 	for i := range views {
 		views[i].Muted = muted[views[i].ID]
+		views[i].MentionsOnly = mentionsOnly[views[i].ID]
+	}
+	if err := fillUnread(ctx, r.st, actor, views); err != nil {
+		return nil, err
+	}
+	if len(muted) == 0 {
+		return views, nil
 	}
 	sort.SliceStable(views, func(a, b int) bool { return !views[a].Muted && views[b].Muted })
 	return views, nil
@@ -258,6 +282,9 @@ func (r *Rooms) Get(ctx context.Context, actor Actor, roomID uint64) (Room, erro
 	}
 	views, err := roomViews(ctx, r.st, actor, []store.Room{row})
 	if err != nil {
+		return Room{}, err
+	}
+	if err := fillUnread(ctx, r.st, actor, views); err != nil {
 		return Room{}, err
 	}
 	return views[0], nil
@@ -728,7 +755,14 @@ func (r *Rooms) Available(ctx context.Context, actor Actor) ([]Room, error) {
 		}
 		return cmp.Compare(a.ID, b.ID)
 	})
-	return roomViews(ctx, r.st, actor, rows)
+	views, err := roomViews(ctx, r.st, actor, rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := fillUnread(ctx, r.st, actor, views); err != nil {
+		return nil, err
+	}
+	return views, nil
 }
 
 // RoomPatch is a change of a room in which only the fields that are set
@@ -766,6 +800,9 @@ func (r *Rooms) Patch(ctx context.Context, actor Actor, roomID uint64, patch Roo
 	}
 	views, err := roomViews(ctx, r.st, actor, []store.Room{row})
 	if err != nil {
+		return Room{}, err
+	}
+	if err := fillUnread(ctx, r.st, actor, views); err != nil {
 		return Room{}, err
 	}
 	return views[0], nil

@@ -159,7 +159,8 @@ func (n *Notifications) UnreadCount(ctx context.Context, actor Actor) (int, erro
 
 // MarkRead marks as read the actor's unread notifications with an ID up to
 // upToID; newer ones stay unread. It publishes notification.read to the actor
-// when it changed something. An actor with no ID fails with TagUnauthenticated.
+// when it changed something, and room.unread for each room whose mention badge
+// it changed (SPEC §7.17). An actor with no ID fails with TagUnauthenticated.
 func (n *Notifications) MarkRead(ctx context.Context, actor Actor, upToID uint64) error {
 	if actor.UserID == 0 {
 		return errors.New(TagUnauthenticated, "notifications need a login", "reason", "none")
@@ -167,12 +168,21 @@ func (n *Notifications) MarkRead(ctx context.Context, actor Actor, upToID uint64
 	var events []live.Event
 	err := n.st.Tx(ctx, func(tx *store.Store) error {
 		events = nil
+		// The rooms whose mention badge this changes are read before the
+		// marking, which hides the notifications from the query.
+		rooms, err := tx.RoomsOfUnreadMentions(ctx, actor.UserID, upToID)
+		if err != nil {
+			return err
+		}
 		changed, err := tx.MarkNotificationsRead(ctx, actor.UserID, upToID)
 		if err != nil {
 			return err
 		}
 		if changed > 0 {
 			events = []live.Event{{Topic: live.UserTopic(actor.UserID), Kind: live.KindNotificationRead, UserID: actor.UserID}}
+			for _, roomID := range rooms {
+				events = append(events, unreadEvent(actor.UserID, roomID))
+			}
 		}
 		return nil
 	})
@@ -324,6 +334,11 @@ func notify(ctx context.Context, tx *store.Store, actor Actor, room store.Room, 
 			ringEvent(&ev, ringFor(r.Settings, r.Place, PlaceRoom, EventNotification, true))
 		}
 		events = append(events, ev)
+		if isMentionKind(best[id].kind) {
+			// A mention changes the mention badge of the room, even a muted
+			// one (SPEC §7.17).
+			events = append(events, unreadEvent(id, room.ID))
+		}
 	}
 	return events, nil
 }

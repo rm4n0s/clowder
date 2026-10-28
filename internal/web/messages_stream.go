@@ -93,11 +93,11 @@ func (cs *conversationStream) connect(ctx context.Context) (start, error) {
 	}
 	var ops []patchOp
 	if cs.reconnect {
-		sidebar, err := cs.sidebarOp(ctx, 0)
+		sidebar, err := cs.sidebarOps(ctx, 0)
 		if err != nil {
 			return start{}, err
 		}
-		ops = append(ops, sidebar)
+		ops = append(ops, sidebar...)
 		ops = append(ops, cs.headerOps(ctx, h)...)
 	}
 	if cs.before != 0 {

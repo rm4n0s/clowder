@@ -1,13 +1,15 @@
 package views
 
-// Layout is the HTML page every page is rendered in: the head with the title,
-// the stylesheets (app.css, and code.css for the code blocks), the Datastar
+// Layout is the HTML page every page is rendered in: the head with the title
+// (which starts with "(n) " while unread is above 0, the number of unread
+// notifications and conversations of the person, SPEC §7.17) and the favicon
+// (with a dot while unread is above 0), the stylesheets (app.css, and code.css for the code blocks), the Datastar
 // client and code.js (the toolbar of the code blocks), an aside for the
 // sidebar (only when there is one: the pages of people who are not logged in
 // have none) and a
 // main element for the children. The html element carries data-theme when the
 // context has a theme (WithTheme).
-templ Layout(title string, sidebar templ.Component) {
+templ Layout(title string, unread int, sidebar templ.Component) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
@@ -18,7 +20,8 @@ templ Layout(title string, sidebar templ.Component) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ title } · Clowder</title>
+			@PageTitle(unread, PageBaseTitle(title))
+			@Favicon(unread)
 			<link rel="stylesheet" href="/static/app.css"/>
 			<link rel="stylesheet" href="/static/code.css"/>
 			<script type="module" src="/static/datastar.js"></script>
@@ -47,4 +50,18 @@ templ Layout(title string, sidebar templ.Component) {
 // sends. The element is never patched, so the stream is opened once.
 templ liveStream(path string) {
 	<div id="live-stream" hidden data-init={ streamAction(path) }></div>
+}
+
+// PageTitle is the title element of a page: "(n) " when unread is above 0,
+// then base, the name of the page with the name of the site. It has an id so
+// that the stream can patch it when the count changes.
+templ PageTitle(unread int, base string) {
+	<title id="page-title">{ TabTitle(unread, base) }</title>
+}
+
+// Favicon is the link element of the favicon: the plain one, or the one with a
+// dot while unread is above 0. It has an id so that the stream can patch it
+// when the count changes.
+templ Favicon(unread int) {
+	<link id="favicon" rel="icon" type="image/svg+xml" href={ templ.SafeURL(FaviconPath(unread)) }/>
 }

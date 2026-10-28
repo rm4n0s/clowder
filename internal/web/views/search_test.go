@@ -145,7 +145,7 @@ func TestSearchPage(t *testing.T) {
 			name: "an empty query is the box and the help",
 			d:    views.SearchData{Sidebar: views.SidebarData{User: user, HideSearch: true}, Page: 1},
 			want: []string{
-				"<title>Search · Clowder</title>", `id="search-form"`, `name="q" type="search" value=""`, `id="search-panel"`,
+				"<title id=\"page-title\">Search · Clowder</title>", `id="search-form"`, `name="q" type="search" value=""`, `id="search-panel"`,
 				"Words, &#34;phrases&#34;, #tags, room:name, from:user, after:2026-10-01, before:…, is:post, is:comment",
 			},
 			notWant: []string{"Nothing found.", "search-result", `class="chips"`, "field-error", `class="pager"`, `id="sidebar-search"`},

@@ -24,7 +24,7 @@ func TestHome(t *testing.T) {
 		{"doctype", "<!doctype html>"},
 		{"charset", `<meta charset="utf-8">`},
 		{"viewport", `<meta name="viewport" content="width=device-width, initial-scale=1">`},
-		{"title", "<title>Home · Clowder</title>"},
+		{"title", "<title id=\"page-title\">Home · Clowder</title>"},
 		{"css link", `<link rel="stylesheet" href="/static/app.css">`},
 		{"code css link", `<link rel="stylesheet" href="/static/code.css">`},
 		{"code script", `<script src="/static/code.js" defer></script>`},

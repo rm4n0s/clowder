@@ -83,13 +83,13 @@ func (s *Server) meStream(w http.ResponseWriter, r *http.Request) {
 func (ms *meStream) connect(ctx context.Context) (start, error) {
 	var ops []patchOp
 	if ms.reconnect {
-		sidebar, err := ms.sidebarOp(ctx, 0)
+		sidebar, err := ms.sidebarOps(ctx, 0)
 		if err != nil {
 			return start{}, err
 		}
-		ops = []patchOp{sidebar}
+		ops = sidebar
 	} else {
-		counts, err := ms.s.countOps(ctx, ms.actor)
+		counts, err := ms.countOps(ctx)
 		if err != nil {
 			return start{}, err
 		}

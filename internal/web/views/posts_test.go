@@ -377,7 +377,7 @@ func TestPostPageView(t *testing.T) {
 			name: "the post in the layout with the room highlighted and a place for comments",
 			data: views.PostPageData{Sidebar: sidebar, Post: post},
 			want: []string{
-				"<title>Post by Alice in general &lt;x&gt; · Clowder</title>", `<aside id="sidebar">`, `aria-current="page"`,
+				"<title id=\"page-title\">Post by Alice in general &lt;x&gt; · Clowder</title>", `<aside id="sidebar">`, `aria-current="page"`,
 				`<a href="/rooms/2">general &lt;x&gt;</a>`, `id="post-5"`, "<p>hello</p>",
 				`name="from" value="post"`, `<div id="thread" class="thread">`, `<section id="comments" class="comments">`, "No comments yet.",
 				// A person who has not joined the room is told to.
@@ -409,7 +409,7 @@ func TestPostPageView(t *testing.T) {
 		{
 			name:    "a deleted post",
 			data:    views.PostPageData{Sidebar: sidebar, Post: deleted},
-			want:    []string{"<title>Deleted post in general · Clowder</title>", "This post was deleted."},
+			want:    []string{"<title id=\"page-title\">Deleted post in general · Clowder</title>", "This post was deleted."},
 			notWant: []string{"post-author"},
 		},
 	}
@@ -820,9 +820,10 @@ func TestStreamPaths(t *testing.T) {
 		got  string
 		want string
 	}{
-		{"a room", views.RoomStreamPath(7, 31, 0), "/rooms/7/stream?seen=31"},
-		{"a room without posts", views.RoomStreamPath(7, 0, 0), "/rooms/7/stream?seen=0"},
-		{"a page of older posts of a room", views.RoomStreamPath(7, 31, 20), "/rooms/7/stream?seen=31&before=20"},
+		{"a room", views.RoomStreamPath(7, 31, 0, 0), "/rooms/7/stream?seen=31"},
+		{"a room without posts", views.RoomStreamPath(7, 0, 0, 0), "/rooms/7/stream?seen=0"},
+		{"a page of older posts of a room", views.RoomStreamPath(7, 31, 20, 0), "/rooms/7/stream?seen=31&before=20"},
+		{"a room with the line of new posts", views.RoomStreamPath(7, 31, 0, 25), "/rooms/7/stream?seen=31&line=25"},
 		{"a post", views.PostStreamPath(12, 40), "/posts/12/stream?seen=40"},
 	}
 	for _, tt := range tests {
@@ -870,7 +871,7 @@ func TestPagesOpenTheirStream(t *testing.T) {
 				Feed: views.FeedData{RoomID: 7, Page: app.FeedPage{Posts: []app.Post{{ID: 31}}}},
 			}),
 			want: []string{
-				`<div id="live-stream" hidden data-init="@get(&#39;/rooms/7/stream?seen=31&#39;, {retry: &#39;always&#39;, retryMaxCount: 1000, openWhenHidden: true})"></div>`,
+				`<div id="live-stream" hidden data-init="@get(&#39;/rooms/7/stream?seen=31&#39;, {headers: {&#39;X-Page-Title&#39;: encodeURIComponent(document.title)}, retry: &#39;always&#39;, retryMaxCount: 1000, openWhenHidden: true})"></div>`,
 				`id="post-composer"`, `id="room-members-count"`, `<aside id="sidebar">`,
 			},
 		},
@@ -880,7 +881,7 @@ func TestPagesOpenTheirStream(t *testing.T) {
 				Sidebar: views.SidebarData{User: user}, Post: app.Post{ID: 12, RoomID: 7, RoomName: "general"},
 				Comments: []app.Comment{{Post: app.Post{ID: 15}}},
 			}),
-			want: []string{`data-init="@get(&#39;/posts/12/stream?seen=15&#39;, {retry: &#39;always&#39;`, `id="comments"`},
+			want: []string{`data-init="@get(&#39;/posts/12/stream?seen=15&#39;, {headers:`, `id="comments"`},
 		},
 	}
 	for _, tt := range tests {

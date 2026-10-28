@@ -5,7 +5,7 @@ import "strconv"
 // SearchPage is the page of the search: the box, the help, the filters as
 // chips and the results.
 templ SearchPage(d SearchData) {
-	@Layout("Search", Sidebar(d.Sidebar)) {
+	@Layout("Search", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		<h1>Search</h1>
 		@SearchBox(d.Query)
 		@SearchPanel(d)

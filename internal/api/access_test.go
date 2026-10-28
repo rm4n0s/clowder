@@ -53,6 +53,7 @@ func securedRoutes() []securedRoute {
 		{"delete a room", http.MethodDelete, "/api/v1/rooms" + missing, http.StatusNotFound, nil},
 		{"join a room", http.MethodPost, "/api/v1/rooms" + missing + "/join", http.StatusNotFound, nil},
 		{"leave a room", http.MethodPost, "/api/v1/rooms" + missing + "/leave", http.StatusNotFound, nil},
+		{"mark a room as read", http.MethodPost, "/api/v1/rooms" + missing + "/read", http.StatusNotFound, map[string]any{"post_id": 1}},
 		{"members", http.MethodGet, "/api/v1/rooms" + missing + "/members", http.StatusNotFound, nil},
 		{"add a member", http.MethodPost, "/api/v1/rooms" + missing + "/members", http.StatusNotFound, map[string]any{"user_id": 1}},
 		{"remove a member", http.MethodDelete, "/api/v1/rooms" + missing + "/members/1", http.StatusNotFound, nil},

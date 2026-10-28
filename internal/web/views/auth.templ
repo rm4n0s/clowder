@@ -16,7 +16,7 @@ type LoginData struct {
 
 // LoginPage is the page of the login form.
 templ LoginPage(d LoginData) {
-	@Layout("Log in", nil) {
+	@Layout("Log in", 0, nil) {
 		<div class="auth-card">
 			<h1>Log in</h1>
 			@LoginForm(d)
@@ -59,7 +59,7 @@ const LoginCodeRestartPath = "/login/code/restart"
 // LoginCodePage is the page of the second form of the login, which asks for
 // the SSH code after the right password.
 templ LoginCodePage(d LoginCodeData) {
-	@Layout("Log in", nil) {
+	@Layout("Log in", 0, nil) {
 		<div class="auth-card">
 			<h1>Enter your code</h1>
 			@LoginCodeForm(d)
@@ -98,7 +98,7 @@ type SignUpData struct {
 
 // SignUpPage is the page of the sign-up form of an invitation.
 templ SignUpPage(d SignUpData) {
-	@Layout("Sign up", nil) {
+	@Layout("Sign up", 0, nil) {
 		<div class="auth-card">
 			<h1>Join Clowder</h1>
 			@SignUpForm(d)
@@ -130,7 +130,7 @@ type ResetData struct {
 // ResetPage is the page of the form that sets a new password with a reset
 // link.
 templ ResetPage(d ResetData) {
-	@Layout("Set a new password", nil) {
+	@Layout("Set a new password", 0, nil) {
 		<div class="auth-card">
 			<h1>Set a new password</h1>
 			@ResetForm(d)

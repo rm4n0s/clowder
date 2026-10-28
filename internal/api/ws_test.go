@@ -90,6 +90,11 @@ type wsClient struct {
 	conn   *websocket.Conn
 	nextID uint64
 	frames chan wsClientFrame
+	// unread holds the room.unread events of the user's own topic, apart from
+	// the other messages: most tests do not look at them (they come whenever a
+	// post is written in a room of the user), the tests of the unread counts
+	// do (see awaitUnread).
+	unread chan []byte
 	// closeErr is the error that ended the connection, once it has.
 	closeErr error
 }
@@ -105,10 +110,17 @@ type wsClientFrame struct {
 // newWSClient makes the client of a connection and starts its reader. The
 // goroutine ends with the test.
 func newWSClient(t *testing.T, conn *websocket.Conn) *wsClient {
-	c := &wsClient{t: t, conn: conn, frames: make(chan wsClientFrame, 4096)}
+	c := &wsClient{t: t, conn: conn, frames: make(chan wsClientFrame, 4096), unread: make(chan []byte, 4096)}
 	go func() {
 		for {
 			typ, raw, err := conn.Read(t.Context())
+			if err == nil && typ == websocket.MessageText {
+				var m map[string]any
+				if json.Unmarshal(raw, &m) == nil && m["type"] == wsEventType && m["kind"] == "room.unread" {
+					c.unread <- raw
+					continue
+				}
+			}
 			c.frames <- wsClientFrame{typ: typ, raw: raw, err: err}
 			if err != nil {
 				return
@@ -231,6 +243,33 @@ func (c *wsClient) await(topic, kind string) map[string]any {
 			return m
 		}
 		seen = append(seen, describeMessage(m))
+	}
+}
+
+// awaitUnread returns the next room.unread event of the user's topic, waiting
+// for it as long as the other messages. It fails the test when none comes.
+func (c *wsClient) awaitUnread() map[string]any {
+	c.t.Helper()
+	select {
+	case raw := <-c.unread:
+		return c.message(wsClientFrame{typ: websocket.MessageText, raw: raw})
+	case <-time.After(wsWait):
+		c.t.Fatalf("no room.unread within %s", wsWait)
+		return nil
+	}
+}
+
+// requireNoUnread fails the test if a room.unread event comes now. It pings
+// first, so that an event on its way comes before the pong.
+func (c *wsClient) requireNoUnread() {
+	c.t.Helper()
+	if pong := c.request(wsPing, nil); pong["type"] != wsPong {
+		c.t.Fatalf("expected the pong, got %v", describeMessage(pong))
+	}
+	select {
+	case raw := <-c.unread:
+		c.t.Fatalf("a room.unread came: %s", raw)
+	case <-time.After(wsQuiet):
 	}
 }
 

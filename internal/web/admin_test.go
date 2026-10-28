@@ -90,7 +90,7 @@ func TestAdminUsersPage(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	requireBody(t, rec, []string{
-		"<title>Users · Clowder</title>", `id="users-panel"`, `<table class="users">`,
+		"<title id=\"page-title\">Users · Clowder</title>", `id="users-panel"`, `<table class="users">`,
 		"Username", "Display name", "Role", "State", "Created", "2026-10-26",
 		`id="invite-form"`, `action="/admin/invitations"`, `<option value="member" selected>`, "Invite someone",
 		// The sidebar.
@@ -390,7 +390,7 @@ func TestAdminUserActionFailures(t *testing.T) {
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("plain status = %d, want %d; body:\n%s", rec.Code, tt.wantStatus, rec.Body)
 			}
-			requireBody(t, rec, []string{"<title>Users · Clowder</title>", tt.wantText, `id="invite-form"`})
+			requireBody(t, rec, []string{"<title id=\"page-title\">Users · Clowder</title>", tt.wantText, `id="invite-form"`})
 
 			// Nothing changed.
 			if e.roleOf("admin") != app.RoleAdmin || e.roleOf("alice") != app.RoleMember || e.disabled("alice") || e.disabled("admin") {
@@ -505,7 +505,7 @@ func TestAdminInvitation(t *testing.T) {
 					t.Fatalf("status = %d, want 200", rec.Code)
 				}
 				// The whole page, so a browser without JavaScript sees the link.
-				requireBody(t, rec, []string{"<title>Users · Clowder</title>", `id="users-panel"`})
+				requireBody(t, rec, []string{"<title id=\"page-title\">Users · Clowder</title>", `id="users-panel"`})
 			}
 			// The box: the link, the expiry (7 days after the fake clock's
 			// start) and the copy button.

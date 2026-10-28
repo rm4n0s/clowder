@@ -261,7 +261,7 @@ func TestRoomsBrowse(t *testing.T) {
 		{
 			name: "alice joined general and can join random", user: "alice",
 			want: []string{
-				"<title>Rooms · Clowder</title>", "<h1>Browse rooms</h1>", `id="rooms-panel"`,
+				"<title id=\"page-title\">Rooms · Clowder</title>", "<h1>Browse rooms</h1>", `id="rooms-panel"`,
 				"Everything", "3 members", "1 member",
 				`<span class="joined">Joined</span>`, `href="/rooms/` + idText(e.general.ID) + `"`,
 				`action="/rooms/` + idText(e.random.ID) + `/join"`, `name="from" value="browse"`,
@@ -301,7 +301,7 @@ func TestRoomNewPage(t *testing.T) {
 	}{
 		{
 			name: "a member makes private rooms", user: "alice",
-			want:    []string{"<title>New room · Clowder</title>", `id="room-new-form"`, `name="visibility" value="private"`, "Rooms you make are private", `name="name"`, `name="description"`},
+			want:    []string{"<title id=\"page-title\">New room · Clowder</title>", `id="room-new-form"`, `name="visibility" value="private"`, "Rooms you make are private", `name="name"`, `name="description"`},
 			notWant: []string{"<select"},
 		},
 		{
@@ -507,7 +507,7 @@ func TestRoomPage(t *testing.T) {
 		{
 			name: "a member of a private room, who made it", user: "alice", room: "secret",
 			want: []string{
-				"<title>secret · Clowder</title>", `id="room-header"`, "<h1>secret</h1>", "badge-private", "Private", "Just us", "2 members",
+				"<title id=\"page-title\">secret · Clowder</title>", `id="room-header"`, "<h1>secret</h1>", "badge-private", "Private", "Just us", "2 members",
 				"No posts yet",
 				`id="leave-form"`, `action="/rooms/` + sec + `/leave"`, "confirm(", `id="delete-form"`, `id="room-edit"`,
 				`id="members-panel"`, `data-username="alice"`, `data-username="bob"`, "added by Alice", "Bob", "@bob",

@@ -179,7 +179,7 @@ func TestCommentPageShowsTheThreadOfItsPost(t *testing.T) {
 	}
 	body := rec.Body.String()
 	requireBody(t, rec, []string{
-		"<title>Post by Alice in general · Clowder</title>", "The root post", "first comment", "second comment", "third comment",
+		"<title id=\"page-title\">(1) Post by Alice in general · Clowder</title>", "The root post", "first comment", "second comment", "third comment",
 		"reply to the deleted one", `id="comments"`,
 	})
 	requireOrder(t, body, `id="post-`+idText(d.root.ID)+`"`, `id="post-`+idText(d.second.ID)+`"`)

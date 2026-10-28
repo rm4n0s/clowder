@@ -333,7 +333,7 @@ func (p *Posts) Create(ctx context.Context, actor Actor, roomID uint64, in PostI
 		events = append(events, notified...)
 		// The members whose choice for the room is All hear of the post, but
 		// not twice: those who were notified of it have the notification.
-		events = append(events, postRingEvents(recipients, room.ID, created.ID, usersOf(notified))...)
+		events = append(events, postRingEvents(recipients, room.ID, created.ID, notified)...)
 		return nil
 	})
 	if err != nil {
@@ -740,6 +740,17 @@ func (p *Posts) Delete(ctx context.Context, actor Actor, postID uint64) error {
 			events = append(events[:1],
 				live.Event{Topic: live.RoomTopic(room.ID), Kind: live.KindPostDeleted, RoomID: room.ID, PostID: rootGone},
 				live.Event{Topic: live.PostTopic(rootGone), Kind: live.KindPostDeleted, RoomID: room.ID, PostID: rootGone})
+		}
+		if row.ParentID == nil {
+			// A top-level post leaves the unread counts of the other members
+			// (SPEC §7.17); a comment is not counted.
+			ids, err := tx.RoomMemberIDs(ctx, room.ID, row.AuthorID)
+			if err != nil {
+				return err
+			}
+			for _, id := range ids {
+				events = append(events, unreadEvent(id, room.ID))
+			}
 		}
 		if err := recordAudit(ctx, tx, auditEntry{
 			ActorID:    actor.UserID,

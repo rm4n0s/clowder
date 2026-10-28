@@ -36,6 +36,11 @@ type memberAddRequest struct {
 	UserID uint64 `json:"user_id"`
 }
 
+// roomReadRequest is the body of POST /rooms/{id}/read.
+type roomReadRequest struct {
+	PostID uint64 `json:"post_id"`
+}
+
 // roomRoutes are the routes of the rooms and their members.
 func (s *Server) roomRoutes() []Route {
 	return []Route{
@@ -46,6 +51,7 @@ func (s *Server) roomRoutes() []Route {
 		s.route(http.MethodDelete, "/rooms/{id}", false, s.deleteRoom),
 		s.route(http.MethodPost, "/rooms/{id}/join", false, s.joinRoom),
 		s.route(http.MethodPost, "/rooms/{id}/leave", false, s.leaveRoom),
+		s.route(http.MethodPost, "/rooms/{id}/read", false, s.readRoom),
 		s.route(http.MethodGet, "/rooms/{id}/members", false, s.roomMembers),
 		s.route(http.MethodPost, "/rooms/{id}/members", false, s.addRoomMember),
 		s.route(http.MethodDelete, "/rooms/{id}/members/{user_id}", false, s.removeRoomMember),
@@ -172,6 +178,29 @@ func (s *Server) leaveRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.svc.Rooms.Leave(r.Context(), c.actor, id); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	s.writeNoContent(w)
+}
+
+// readRoom answers POST /rooms/{id}/read: the caller has shown the room up to
+// the post or comment post_id, so the posts up to it are no longer unread
+// (SPEC §7.17). The mark never moves back; marking a post that is behind it is
+// not an error. An ID that is not of this room is 422 on post_id.
+func (s *Server) readRoom(w http.ResponseWriter, r *http.Request) {
+	c, _ := callerFrom(r.Context())
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var in roomReadRequest
+	if err := decodeJSON(w, r, &in); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if err := s.svc.Rooms.MarkRead(r.Context(), c.actor, id, in.PostID); err != nil {
 		s.writeError(w, r, err)
 		return
 	}

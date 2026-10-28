@@ -6,7 +6,7 @@ import "github.com/rm4n0s/clowder/internal/app"
 // The unread marks are those of the notifications that were unread when the
 // page opened; "Mark all as read" clears them through the signal readUpTo.
 templ NotificationsPage(d NotificationsData) {
-	@Layout("Notifications", Sidebar(d.Sidebar)) {
+	@Layout("Notifications", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		<h1>Notifications</h1>
 		<section id="notifications" data-signals="{readUpTo: 0}">
 			@NotificationsMessage(d.Message)

@@ -125,8 +125,11 @@ func (s *Store) ListRoomsOfUser(ctx context.Context, userID uint64) ([]Room, err
 	return rooms, nil
 }
 
-// CreateRoomMember inserts m and sets its ID. It fails with TagConflict when
-// the user is a member of the room already.
+// CreateRoomMember inserts m, sets its ID, and makes the member's row in
+// room_reads at the room's highest ID so far, so that a new member starts with
+// nothing unread (SPEC §7.17, D55). Call it inside Store.Tx so that both
+// writes are one: the services do. It fails with TagConflict when the user is a
+// member of the room already.
 func (s *Store) CreateRoomMember(ctx context.Context, m *RoomMember) error {
 	err := s.db(ctx).Create(m).Error
 	if err != nil {
@@ -137,7 +140,7 @@ func (s *Store) CreateRoomMember(ctx context.Context, m *RoomMember) error {
 			return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "createRoomMember")
 		}
 	}
-	return nil
+	return s.createRoomRead(ctx, m.UserID, m.RoomID)
 }
 
 // RoomMemberOf returns the membership of the user in the room. It fails with
@@ -166,9 +169,15 @@ func (s *Store) IsRoomMember(ctx context.Context, roomID, userID uint64) (bool, 
 	return n > 0, nil
 }
 
-// DeleteRoomMember deletes the membership id. It fails with TagNotFound when
-// there is none.
+// DeleteRoomMember deletes the membership id and the member's row in
+// room_reads (SPEC §7.17). Call it inside Store.Tx so that both writes are one:
+// the services do. It fails with TagNotFound when there is no such membership.
 func (s *Store) DeleteRoomMember(ctx context.Context, id uint64) error {
+	err := s.db(ctx).Exec(`DELETE FROM room_reads WHERE EXISTS (SELECT 1 FROM room_members m
+WHERE m.id = ? AND m.user_id = room_reads.user_id AND m.room_id = room_reads.room_id)`, id).Error
+	if err != nil {
+		return errors.NewErr(TagQueryFailed, err).SetMetadata("op", "deleteRoomMember", "memberID", id, "step", "room_reads")
+	}
 	res := s.db(ctx).Where("id = ?", id).Delete(&RoomMember{})
 	if res.Error != nil {
 		return errors.NewErr(TagQueryFailed, res.Error).SetMetadata("op", "deleteRoomMember", "memberID", id)

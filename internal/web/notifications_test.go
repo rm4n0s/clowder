@@ -79,10 +79,13 @@ func TestSidebarShowsTheUnreadCount(t *testing.T) {
 		{"admin users", "admin", "/admin/users", 0, views.MeStreamPath},
 		{"admin rooms", "admin", "/admin/rooms", 0, views.MeStreamPath},
 		{"admin audit", "admin", "/admin/audit", 0, views.MeStreamPath},
-		{"a room", "bob", roomPath, 3, roomPath + "/stream"},
-		{"a board", "bob", roomPath + "/board", 3, roomPath + "/board/stream"},
 		{"a post", "bob", "/posts/" + idText(post.ID), 3, "/posts/" + idText(post.ID) + "/stream"},
 		{"no notifications", "carol", "/", 0, views.MeStreamPath},
+		// The cases below come last: opening the feed or the board of a room
+		// reads the mentions of that room (SPEC §7.17), so the two in "general"
+		// are gone afterwards, and the addition to "secret" is left.
+		{"a room", "bob", roomPath, 1, roomPath + "/stream"},
+		{"a board", "bob", roomPath + "/board", 1, roomPath + "/board/stream"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -125,7 +128,7 @@ func TestNotificationsPageText(t *testing.T) {
 		{
 			name: "mention, reply, assignment and the private room", user: "bob",
 			want: []string{
-				"<title>Notifications · Clowder</title>", "<h1>Notifications</h1>",
+				"<title id=\"page-title\">Notifications · Clowder</title>", "<h1>Notifications</h1>",
 				`<span class="notification-actor">Alice</span> <span class="notification-username">@alice</span> mentioned you in <a class="notification-room" href="/rooms/` + sec + `">secret</a>`,
 				`data-kind="mention"`,
 				`mentioned you in <a class="notification-room" href="/rooms/` + gen + `">general</a>`,

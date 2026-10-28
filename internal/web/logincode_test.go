@@ -338,7 +338,7 @@ func TestLoginCodeSubmitFailures(t *testing.T) {
 		if rec.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("status = %d:\n%s", rec.Code, rec.Body)
 		}
-		requireBody(t, rec, []string{"<title>Log in · Clowder</title>", `id="login-code-form"`, "That code is not right."})
+		requireBody(t, rec, []string{"<title id=\"page-title\">Log in · Clowder</title>", `id="login-code-form"`, "That code is not right."})
 	})
 	t.Run("an empty code", func(t *testing.T) {
 		t.Parallel()
@@ -569,7 +569,7 @@ func TestSettingsSSHCodePost(t *testing.T) {
 		{name: "a wrong password", serverOn: true, form: url.Values{"enabled": {"false"}, "currentPassword": {"wrong password!"}}, datastar: true,
 			wantCode: http.StatusOK, want: []string{"This is not your password.", `aria-invalid="true"`}, notWant: []string{"wrong password!", "Saved</p>"}, wantOn: true},
 		{name: "a wrong password, plain", serverOn: true, form: url.Values{"enabled": {"false"}, "currentPassword": {"wrong password!"}},
-			wantCode: http.StatusUnprocessableEntity, want: []string{"<title>Settings · Clowder</title>", "This is not your password."}, wantOn: true},
+			wantCode: http.StatusUnprocessableEntity, want: []string{"<title id=\"page-title\">Settings · Clowder</title>", "This is not your password."}, wantOn: true},
 		{name: "not true or false", serverOn: true, form: url.Values{"enabled": {"maybe"}, "currentPassword": {testPassword}}, datastar: true,
 			wantCode: http.StatusOK, want: []string{messageActionInvalid}, wantOn: true},
 		{name: "turn on with no key that fetched a code", serverOn: true, prepare: func(c *codeEnv) {

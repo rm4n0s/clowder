@@ -56,6 +56,11 @@ type Stats struct {
 	// BadTaskPositions counts columns whose tasks do not have the positions
 	// 0, 1, 2, ... without gaps.
 	BadTaskPositions int64
+	// MembersWithoutMark counts memberships of rooms that have no row in
+	// room_reads (SPEC §6.3: every membership has one).
+	MembersWithoutMark int64
+	// StrayMarks counts rows of room_reads that belong to no membership.
+	StrayMarks int64
 }
 
 // statQueries lists, for each field of Stats, the query that computes it.
@@ -108,6 +113,10 @@ func statQueries(st *Stats, d dialect) []struct {
   WHERE c.room_id != t.room_id OR p.room_id != t.room_id`},
 		{&st.BadTaskPositions, `SELECT COUNT(*) FROM (SELECT column_id FROM tasks GROUP BY column_id
   HAVING MIN(position) != 0 OR MAX(position) != COUNT(*) - 1 OR COUNT(DISTINCT position) != COUNT(*)) AS bad`},
+		{&st.MembersWithoutMark, `SELECT COUNT(*) FROM room_members m WHERE NOT EXISTS
+  (SELECT 1 FROM room_reads r WHERE r.room_id = m.room_id AND r.user_id = m.user_id)`},
+		{&st.StrayMarks, `SELECT COUNT(*) FROM room_reads r WHERE NOT EXISTS
+  (SELECT 1 FROM room_members m WHERE m.room_id = r.room_id AND m.user_id = r.user_id)`},
 	}
 }
 

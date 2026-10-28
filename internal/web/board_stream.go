@@ -47,6 +47,7 @@ func (s *Server) boardStream(w http.ResponseWriter, r *http.Request) {
 	sub := s.svc.Hub.Subscribe(ctx, live.BoardTopic(id), live.RoomTopic(id), live.UserTopic(actor.UserID))
 	defer sub.Close()
 	ls := s.newStream(w, r, actor, user)
+	ls.current = id
 	bs := &boardStream{liveStream: ls, id: id, version: r.URL.Query().Get("v")}
 	st, err := bs.connect(ctx)
 	if err != nil {
@@ -81,11 +82,11 @@ func (bs *boardStream) connect(ctx context.Context) (start, error) {
 		}
 		return start{ops: memberOps(d)}, nil
 	}
-	sidebar, err := bs.sidebarOp(ctx, bs.id)
+	ops, err := bs.sidebarOps(ctx, bs.id)
 	if err != nil {
 		return start{}, err
 	}
-	ops := []patchOp{sidebar, {component: views.BoardHeader(d)}}
+	ops = append(ops, patchOp{component: views.BoardHeader(d)})
 	return start{ops: append(ops, memberOps(d)...)}, nil
 }
 

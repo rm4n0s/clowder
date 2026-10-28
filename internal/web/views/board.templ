@@ -32,7 +32,7 @@ templ RoomNav(roomID uint64, current RoomNavCurrent) {
 // drop. The hidden form and link next to the columns are what that script
 // uses to talk to the server through Datastar.
 templ BoardPage(d BoardData) {
-	@Layout("Board of "+d.Board.Room.Name, Sidebar(d.Sidebar)) {
+	@Layout("Board of "+d.Board.Room.Name, d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		@liveStream(BoardStreamPath(d.Board.Room.ID, BoardVersion(d.Board)))
 		@NotifyPlace(PlaceKey(app.RoomRef(d.Board.Room.ID)))
 		<div class="board-page">

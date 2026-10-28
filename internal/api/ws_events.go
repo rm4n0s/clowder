@@ -16,6 +16,15 @@ type wsCountsJSON struct {
 	UnreadConversations int `json:"unread_conversations"`
 }
 
+// wsRoomUnreadJSON is the data of a room.unread event on the user's own topic:
+// the unread counts of the user in the room (SPEC §7.17), as GET /rooms returns
+// them for that room.
+type wsRoomUnreadJSON struct {
+	RoomID         uint64 `json:"room_id"`
+	UnreadPosts    int    `json:"unread_posts"`
+	UnreadMentions int    `json:"unread_mentions"`
+}
+
 // wsConversationReadJSON is the data of a conversation.read event on a
 // conversation topic: who has read the conversation up to which message.
 type wsConversationReadJSON struct {
@@ -216,6 +225,8 @@ func (ws *wsSession) onUserEvent(ctx context.Context, ev live.Event) error {
 		return ws.notificationChanged(ctx, ev)
 	case live.KindPlacePrefsChanged:
 		return ws.placePrefsChanged(ctx, ev)
+	case live.KindRoomUnread:
+		return ws.roomUnread(ctx, ev)
 	case live.KindPostCreated, live.KindMessageCreated:
 		return ws.ringNotice(ctx, ev)
 	case live.KindNotificationRead, live.KindConversationRead:
@@ -351,6 +362,17 @@ func (ws *wsSession) ringNotice(ctx context.Context, ev live.Event) error {
 		return nil
 	}
 	return ws.sendEvent(ctx, ev, wsNoticeJSON{Text: n.Text, PlaceName: n.PlaceName, Author: userRefOf(n.Author)})
+}
+
+// roomUnread handles a room.unread event: the data are the unread counts of the
+// user in the room, read now. A room the user is not a member of (they left
+// it, or it is gone) has none, and the event is not sent.
+func (ws *wsSession) roomUnread(ctx context.Context, ev live.Event) error {
+	got, ok, err := ws.s.svc.Rooms.Unread(ctx, ws.actor, ev.RoomID)
+	if err != nil || !ok {
+		return err
+	}
+	return ws.sendEvent(ctx, ev, wsRoomUnreadJSON{RoomID: got.RoomID, UnreadPosts: got.Posts, UnreadMentions: got.Mentions})
 }
 
 // placePrefsChanged handles a place_prefs.changed event: the data are the

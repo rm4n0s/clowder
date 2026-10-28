@@ -83,7 +83,7 @@ func TestLargeDemoIsConsistent(t *testing.T) {
 
 	t.Run("every rule of the services holds", func(t *testing.T) {
 		if s.BadComments != 0 || s.NonMemberAuthors != 0 || s.BadColumns != 0 ||
-			s.TasksInForeignColumn != 0 || s.BadTaskPositions != 0 {
+			s.TasksInForeignColumn != 0 || s.BadTaskPositions != 0 || s.MembersWithoutMark != 0 || s.StrayMarks != 0 {
 			t.Errorf("broken rules: %+v", s)
 		}
 	})

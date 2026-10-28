@@ -84,7 +84,7 @@ type SettingsData struct {
 // Password, Appearance, Notifications, Sign-in and Sessions, each of which
 // saves on its own.
 templ SettingsPage(d SettingsData) {
-	@Layout("Settings", Sidebar(d.Sidebar)) {
+	@Layout("Settings", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		<h1>Settings</h1>
 		<nav class="settings-nav" aria-label="Settings sections">
 			<a href="#profile">Profile</a>

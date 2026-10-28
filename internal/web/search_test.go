@@ -104,7 +104,7 @@ func TestSearchEmptyQuery(t *testing.T) {
 				t.Fatalf("status = %d, want 200", rec.Code)
 			}
 			requireBody(t, rec, []string{
-				"<title>Search · Clowder</title>", `<h1>Search</h1>`, `id="search-form"`, `role="search"`, `method="get" action="/search"`,
+				"<title id=\"page-title\">Search · Clowder</title>", `<h1>Search</h1>`, `id="search-form"`, `role="search"`, `method="get" action="/search"`,
 				`name="q" type="search"`, `id="search-panel"`,
 				`Words, &#34;phrases&#34;, #tags, room:name, from:user, after:2026-10-01, before:…, is:post, is:comment`,
 				// The sidebar is there, but the page has its own box.

@@ -21,13 +21,13 @@ func TestErrorPage(t *testing.T) {
 			name:    "not found",
 			status:  404,
 			message: "Page not found",
-			want:    []string{"<title>404 Not Found · Clowder</title>", "<h1>404</h1>", "<p>Page not found</p>", "<main>"},
+			want:    []string{"<title id=\"page-title\">404 Not Found · Clowder</title>", "<h1>404</h1>", "<p>Page not found</p>", "<main>"},
 		},
 		{
 			name:    "internal server error",
 			status:  500,
 			message: "Something went wrong",
-			want:    []string{"<title>500 Internal Server Error · Clowder</title>", "<h1>500</h1>", "<p>Something went wrong</p>"},
+			want:    []string{"<title id=\"page-title\">500 Internal Server Error · Clowder</title>", "<h1>500</h1>", "<p>Something went wrong</p>"},
 		},
 		{
 			name:    "message is escaped",

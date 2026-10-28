@@ -63,7 +63,7 @@ func MessagesPage(d ConversationsData) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Layout("Messages", Sidebar(d.Sidebar)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Layout("Messages", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -593,7 +593,7 @@ func ConversationPage(d ConversationData) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Layout(d.Header.DisplayName, Sidebar(d.Sidebar)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var24), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Layout(d.Header.DisplayName, d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var24), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

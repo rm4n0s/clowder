@@ -91,7 +91,7 @@ func TestRoomViews(t *testing.T) {
 				Room: private, Members: members, Candidates: candidates,
 			}),
 			want: []string{
-				"<title>secret · Clowder</title>", `id="room-header"`, "<h1>secret</h1>", "badge-private", "Private",
+				"<title id=\"page-title\">secret · Clowder</title>", `id="room-header"`, "<h1>secret</h1>", "badge-private", "Private",
 				"Just us", "2 members", "No posts yet",
 				`id="leave-form"`, "confirm(&#39;Leave this room?&#39;) &amp;&amp; @post(&#39;/rooms/7/leave&#39;",
 				`id="delete-form"`, "/rooms/7/delete",

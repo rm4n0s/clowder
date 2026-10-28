@@ -237,6 +237,12 @@ func notifEvt(user, room, post uint64) live.Event {
 	return live.Event{Topic: live.UserTopic(user), Kind: live.KindNotificationCreated, RoomID: room, PostID: post, UserID: user, Ring: true, Sound: "purr"}
 }
 
+// unreadEvt is the event that tells a member that the unread counts of a room
+// changed.
+func unreadEvt(user, room uint64) live.Event {
+	return live.Event{Topic: live.UserTopic(user), Kind: live.KindRoomUnread, RoomID: room, UserID: user}
+}
+
 // norm returns the events with the IDs of their notifications zeroed, which a
 // test cannot know in advance. The input is not changed.
 func norm(events []live.Event) []live.Event {
@@ -260,11 +266,13 @@ func TestLivePostsPublish(t *testing.T) {
 	runLiveCases(t, []liveCase{
 		{"create a post", func(e *liveEnv) liveResult {
 			p, err := e.posts.Create(e.t.Context(), e.as("bob"), e.lobby.ID, textInput("hello"))
-			return liveResult{err: err, want: postEvts(live.KindPostCreated, e.lobby.ID, p.ID)}
+			want := append(postEvts(live.KindPostCreated, e.lobby.ID, p.ID), unreadEvt(e.uid("admin"), e.lobby.ID))
+			return liveResult{err: err, want: want}
 		}},
 		{"create a post in a private room", func(e *liveEnv) liveResult {
 			p, err := e.posts.Create(e.t.Context(), e.as("alice"), e.den.ID, textInput("hello"))
-			return liveResult{err: err, want: postEvts(live.KindPostCreated, e.den.ID, p.ID)}
+			want := append(postEvts(live.KindPostCreated, e.den.ID, p.ID), unreadEvt(e.uid("bob"), e.den.ID))
+			return liveResult{err: err, want: want}
 		}},
 		{"create with a mistake", func(e *liveEnv) liveResult {
 			_, err := e.posts.Create(e.t.Context(), e.as("bob"), e.lobby.ID, textInput(""))
@@ -369,20 +377,23 @@ func TestLivePostsPublish(t *testing.T) {
 			p := e.write("bob", "lobby", "post")
 			e.rec.Reset()
 			err := e.posts.Delete(e.t.Context(), e.as("bob"), p.ID)
-			return liveResult{err: err, want: postEvts(live.KindPostDeleted, e.lobby.ID, p.ID)}
+			want := append(postEvts(live.KindPostDeleted, e.lobby.ID, p.ID), unreadEvt(e.uid("admin"), e.lobby.ID))
+			return liveResult{err: err, want: want}
 		}},
 		{"an admin deletes a post", func(e *liveEnv) liveResult {
 			p := e.write("bob", "lobby", "post")
 			e.rec.Reset()
 			err := e.posts.Delete(e.t.Context(), e.as("admin"), p.ID)
-			return liveResult{err: err, want: postEvts(live.KindPostDeleted, e.lobby.ID, p.ID)}
+			want := append(postEvts(live.KindPostDeleted, e.lobby.ID, p.ID), unreadEvt(e.uid("admin"), e.lobby.ID))
+			return liveResult{err: err, want: want}
 		}},
 		{"delete a post that stays as a placeholder", func(e *liveEnv) liveResult {
 			p := e.write("bob", "lobby", "post")
 			e.say("admin", p.ID, "comment")
 			e.rec.Reset()
 			err := e.posts.Delete(e.t.Context(), e.as("bob"), p.ID)
-			return liveResult{err: err, want: postEvts(live.KindPostDeleted, e.lobby.ID, p.ID)}
+			want := append(postEvts(live.KindPostDeleted, e.lobby.ID, p.ID), unreadEvt(e.uid("admin"), e.lobby.ID))
+			return liveResult{err: err, want: want}
 		}},
 		{"delete a comment", func(e *liveEnv) liveResult {
 			p := e.write("bob", "lobby", "post")

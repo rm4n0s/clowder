@@ -122,7 +122,7 @@ func TestBoardPage(t *testing.T) {
 	}
 	id := idText(e.general.ID)
 	requireBody(t, rec, []string{
-		"<title>Board of general · Clowder</title>",
+		"<title id=\"page-title\">Board of general · Clowder</title>",
 		// The sidebar, with the room highlighted.
 		`<aside id="sidebar">`, `href="/rooms/` + id + `" class="current" data-room="general" aria-current="page"`,
 		// The header, with the way back to the posts.

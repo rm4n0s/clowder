@@ -47,7 +47,7 @@ type AuditData struct {
 // AuditPage is the page of the audit log: the filter form and the events.
 // Only admins get it.
 templ AuditPage(d AuditData) {
-	@Layout("Audit log", Sidebar(d.Sidebar)) {
+	@Layout("Audit log", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		@AdminTabs("audit")
 		<h1>Audit log</h1>
 		@AuditFilters(d)

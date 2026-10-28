@@ -57,6 +57,7 @@ func TestRoomShape(t *testing.T) {
 	want := map[string]any{
 		"id": float64(f.den.ID), "name": "den", "description": "", "visibility": "private",
 		"created_at": "2026-10-26T09:30:00Z", "member_count": float64(2), "is_member": true, "can_manage": false,
+		"unread_posts": float64(0), "unread_mentions": float64(0),
 		"created_by": map[string]any{"id": float64(f.userID("alice")), "username": "alice", "display_name": "Alice", "avatar_url": nil},
 	}
 	if !reflect.DeepEqual(body, want) {

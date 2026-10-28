@@ -75,7 +75,7 @@ func TestConversationPageShowsTheMessages(t *testing.T) {
 	}
 	body := rec.Body.String()
 	requireBody(t, rec, []string{
-		"<title>Bob · Clowder</title>", "<h1>Bob</h1>", `<p class="hint conversation-members-line">With Bob</p>`,
+		"<title id=\"page-title\">Bob · Clowder</title>", "<h1>Bob</h1>", `<p class="hint conversation-members-line">With Bob</p>`,
 		`href="/messages">All conversations</a>`,
 		`<div id="message-pane" class="message-pane"`, `<ol id="message-list" class="message-list">`,
 		`<div id="messages-older" class="messages-older"></div>`, `<p id="messages-empty" class="empty messages-empty">No messages yet.</p>`,
@@ -266,7 +266,7 @@ func TestGroupConversationPage(t *testing.T) {
 
 	rec := e.send(get(convPath(crew), e.cookies["bob"]))
 	requireBody(t, rec, []string{
-		"<title>Launch crew · Clowder</title>", "<h1>Launch crew</h1>", "With Alice, Carol (disabled)",
+		"<title id=\"page-title\">(1) Launch crew · Clowder</title>", "<h1>Launch crew</h1>", "With Alice, Carol (disabled)",
 		`<section id="conversation-members" class="members-panel conversation-members">`,
 		`data-username="alice"`, `data-username="bob"`, `<span class="hint member-added">disabled</span>`,
 		`<form id="conversation-add-form" class="add-member" method="post" action="/messages/` + idText(crew) + `/members"`,

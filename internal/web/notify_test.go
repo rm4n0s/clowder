@@ -109,7 +109,7 @@ func TestSettingsNotificationsSave(t *testing.T) {
 			want:   []string{`id="notifications"`, "Choose all new activity, mentions or nothing."},
 			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, Notify: app.NotifyMentions, SoundName: app.SoundPurr, Replies: app.RepliesFollowing, Keywords: []string{}, GroupMentions: true}},
 		{name: "plain unknown sound shows the page", form: url.Values{"soundName": {"moo"}, "sound": {"on"}}, wantCode: http.StatusUnprocessableEntity,
-			want:   []string{"<title>Settings · Clowder</title>", "Choose Purr, Chirp, Bell or Meow."},
+			want:   []string{"<title id=\"page-title\">(1) Settings · Clowder</title>", "Choose Purr, Chirp, Bell or Meow."},
 			stored: app.Settings{Theme: app.ThemeSystem, Sound: true, Notify: app.NotifyMentions, SoundName: app.SoundPurr, Replies: app.RepliesFollowing, Keywords: []string{}, GroupMentions: true}},
 	}
 	for _, tt := range tests {
@@ -284,7 +284,7 @@ func TestMutedRoomsAndConversationsAreDimmedAtTheEnd(t *testing.T) {
 	if general < 0 || secret < 0 || general < secret {
 		t.Errorf("general at %d, secret at %d; want the muted room after the other", general, secret)
 	}
-	requireBody(t, rec, []string{`<li class="muted"><a href="/rooms/` + idText(e.general.ID) + `"`, `class="muted-icon"`, `aria-label="Muted"`})
+	requireBody(t, rec, []string{`<li id="sidebar-room-` + idText(e.general.ID) + `" class="muted"><a href="/rooms/` + idText(e.general.ID) + `"`, `class="muted-icon"`, `aria-label="Muted"`})
 	if n := strings.Count(body, `class="muted"`); n != 1 {
 		t.Errorf("%d muted rooms in the sidebar, want 1", n)
 	}

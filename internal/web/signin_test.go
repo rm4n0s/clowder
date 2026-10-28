@@ -161,7 +161,7 @@ func TestSettingsSSHKeyAdd(t *testing.T) {
 		{
 			name: "plain: a dsa key shows the page with 422", form: url.Values{"name": {"k"}, "publicKey": {dsaKeyLine}, "currentPassword": {testPassword}},
 			wantCode: http.StatusUnprocessableEntity,
-			want:     []string{"<title>Settings · Clowder</title>", "This type of key is not accepted.", `id="sessions"`},
+			want:     []string{"<title id=\"page-title\">Settings · Clowder</title>", "This type of key is not accepted.", `id="sessions"`},
 		},
 	}
 	for _, tt := range tests {

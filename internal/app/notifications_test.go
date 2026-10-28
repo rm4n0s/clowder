@@ -1284,7 +1284,10 @@ func TestUnreadCountAndMarkRead(t *testing.T) {
 			t.Errorf("ReadAt = %v, want %v", n.ReadAt, e.clk.Now())
 		}
 	}
-	wantEv := []live.Event{{Topic: live.UserTopic(e.uid("carol")), Kind: live.KindNotificationRead, UserID: e.uid("carol")}}
+	wantEv := []live.Event{
+		{Topic: live.UserTopic(e.uid("carol")), Kind: live.KindNotificationRead, UserID: e.uid("carol")},
+		unreadEvt(e.uid("carol"), e.lobby.ID),
+	}
 	if got := e.rec.Events(); !reflect.DeepEqual(got, wantEv) {
 		t.Errorf("published %+v, want %+v", got, wantEv)
 	}
@@ -1392,7 +1395,8 @@ func TestNotificationEventsPublished(t *testing.T) {
 			run:  func(e *notifEnv) { e.mustCreate("bob", "lobby", app.FormatText, "@carol") },
 			want: func(e *notifEnv) []live.Event {
 				p := e.lastPost("lobby")
-				return append(postEvts(live.KindPostCreated, e.lobby.ID, p), notif(e.uid("carol"), e.lobby.ID, p))
+				return append(postEvts(live.KindPostCreated, e.lobby.ID, p),
+					notif(e.uid("carol"), e.lobby.ID, p), unreadEvt(e.uid("carol"), e.lobby.ID), unreadEvt(e.uid("admin"), e.lobby.ID))
 			},
 		},
 		{
@@ -1416,7 +1420,9 @@ func TestNotificationEventsPublished(t *testing.T) {
 					boardEvt(e.lobby.ID, c),
 					notif(e.uid("admin"), e.lobby.ID, c),
 					notif(e.uid("carol"), e.lobby.ID, c),
+					unreadEvt(e.uid("carol"), e.lobby.ID),
 					notif(e.uid("dave"), e.lobby.ID, c),
+					unreadEvt(e.uid("dave"), e.lobby.ID),
 				}
 			},
 		},
@@ -1424,7 +1430,7 @@ func TestNotificationEventsPublished(t *testing.T) {
 			name: "nobody to notify: nothing extra",
 			run:  func(e *notifEnv) { e.mustCreate("bob", "lobby", app.FormatText, "plain") },
 			want: func(e *notifEnv) []live.Event {
-				return postEvts(live.KindPostCreated, e.lobby.ID, e.lastPost("lobby"))
+				return append(postEvts(live.KindPostCreated, e.lobby.ID, e.lastPost("lobby")), unreadEvt(e.uid("admin"), e.lobby.ID))
 			},
 		},
 		{
@@ -1436,7 +1442,7 @@ func TestNotificationEventsPublished(t *testing.T) {
 			},
 			want: func(e *notifEnv) []live.Event {
 				p := e.lastPost("lobby")
-				return append(postEvts(live.KindPostUpdated, e.lobby.ID, p), notif(e.uid("carol"), e.lobby.ID, p))
+				return append(postEvts(live.KindPostUpdated, e.lobby.ID, p), notif(e.uid("carol"), e.lobby.ID, p), unreadEvt(e.uid("carol"), e.lobby.ID))
 			},
 		},
 		{

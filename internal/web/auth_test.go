@@ -164,7 +164,7 @@ func TestLoginPage(t *testing.T) {
 			name:   "form",
 			target: "/login",
 			wantBody: []string{
-				"<title>Log in · Clowder</title>", "<h1>Log in</h1>",
+				"<title id=\"page-title\">Log in · Clowder</title>", "<h1>Log in</h1>",
 				`<form id="login-form" method="post" action="/login"`,
 				`data-on:submit="@post(&#39;/login&#39;, {contentType: &#39;form&#39;})"`,
 				`name="username"`, `name="password"`, `type="password"`, "Log in</button>",
@@ -801,7 +801,7 @@ func TestSignUpPage(t *testing.T) {
 		{
 			name: "valid", token: valid, wantStatus: http.StatusOK,
 			wantBody: []string{
-				"<title>Sign up · Clowder</title>", "<h1>Join Clowder</h1>",
+				"<title id=\"page-title\">Sign up · Clowder</title>", "<h1>Join Clowder</h1>",
 				`<form id="signup-form" method="post" action="/invite/` + valid + `"`,
 				`data-on:submit="@post(&#39;/invite/` + valid + `&#39;, {contentType: &#39;form&#39;})"`,
 				`name="username"`, `name="displayName"`, `name="password"`, "Create account</button>",

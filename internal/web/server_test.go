@@ -221,12 +221,12 @@ func TestHandlerPages(t *testing.T) {
 		{
 			name: "login", method: http.MethodGet, path: "/login",
 			wantStatus: http.StatusOK,
-			wantBody:   []string{"<!doctype html>", "<h1>Log in</h1>", "<title>Log in · Clowder</title>"},
+			wantBody:   []string{"<!doctype html>", "<h1>Log in</h1>", "<title id=\"page-title\">Log in · Clowder</title>"},
 		},
 		{
 			name: "unknown path", method: http.MethodGet, path: "/nope",
 			wantStatus: http.StatusNotFound,
-			wantBody:   []string{"<h1>404</h1>", "Page not found", "<title>404 Not Found · Clowder</title>"},
+			wantBody:   []string{"<h1>404</h1>", "Page not found", "<title id=\"page-title\">404 Not Found · Clowder</title>"},
 		},
 		{
 			name: "unknown nested path", method: http.MethodGet, path: "/rooms/1/nothing",

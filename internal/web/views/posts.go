@@ -432,6 +432,10 @@ type FeedData struct {
 	Page app.FeedPage
 	// Before is the beforeID that asked for this page; 0 for the first page.
 	Before uint64
+	// NewSince is the ID of the post after which the line "New since your last
+	// visit" is drawn (see NewSinceID); 0 for no line. Only the first page of
+	// the feed has one.
+	NewSince uint64
 }
 
 // PostPageData is what the page of a post shows.
@@ -516,11 +520,16 @@ func PostStreamPath(rootID, newest uint64) string {
 // RoomStreamPath returns the path of the live stream of the room. newest is
 // the ID of the newest post the page showed, 0 for none; before is the beforeID
 // of the page of the feed (0 for the newest posts), which a stream does not
-// keep up to date.
-func RoomStreamPath(roomID, newest, before uint64) string {
+// keep up to date; newSince is the post after which the page draws the line
+// "New since your last visit" (0 for none), which the stream draws again when
+// it sends the feed.
+func RoomStreamPath(roomID, newest, before, newSince uint64) string {
 	path := RoomPath(roomID) + "/stream?seen=" + strconv.FormatUint(newest, 10)
 	if before != 0 {
 		path += "&before=" + strconv.FormatUint(before, 10)
+	}
+	if newSince != 0 {
+		path += "&line=" + strconv.FormatUint(newSince, 10)
 	}
 	return path
 }
@@ -536,8 +545,13 @@ func postContentID(id uint64) string {
 // default is to retry only after an error), and on every attempt the client
 // sends the id of the last event, which tells the server that this is not the
 // first connection. A hidden page keeps its stream.
+//
+// The request carries the title of the page in the header X-Page-Title (percent
+// encoded, so that any title is a valid header value), so that the stream can
+// patch the title when the count of unread things changes (SPEC §7.17) without
+// knowing the page; the server takes the "(n) " off it.
 func streamAction(path string) string {
-	return "@get('" + escapeQuote(path) + "', {retry: 'always', retryMaxCount: 1000, openWhenHidden: true})"
+	return "@get('" + escapeQuote(path) + "', {headers: {'X-Page-Title': encodeURIComponent(document.title)}, retry: 'always', retryMaxCount: 1000, openWhenHidden: true})"
 }
 
 // PostPath returns the path of the page of a post, /posts/<id>. Its actions

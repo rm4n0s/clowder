@@ -19,7 +19,7 @@ type RoomsBrowseData struct {
 // RoomsBrowsePage is the page that lists the visible rooms with a Join button
 // for each room the person has not joined.
 templ RoomsBrowsePage(d RoomsBrowseData) {
-	@Layout("Rooms", Sidebar(d.Sidebar)) {
+	@Layout("Rooms", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		<h1>Browse rooms</h1>
 		@RoomsPanel(d)
 		@liveStream(MeStreamPath)
@@ -93,7 +93,7 @@ type RoomNewData struct {
 
 // RoomNewPage is the page of the form that makes a room.
 templ RoomNewPage(d RoomNewData) {
-	@Layout("New room", Sidebar(d.Sidebar)) {
+	@Layout("New room", d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
 		<h1>New room</h1>
 		@RoomNewForm(d)
 		@liveStream(MeStreamPath)
@@ -198,8 +198,8 @@ type RoomData struct {
 // RoomPage is the page of a room: the header, the editor of a new post (for a
 // member; others are told to join), the feed and the members panel.
 templ RoomPage(d RoomData) {
-	@Layout(d.Room.Name, Sidebar(d.Sidebar)) {
-		@liveStream(RoomStreamPath(d.Room.ID, d.Feed.NewestID(), d.Feed.Before))
+	@Layout(d.Room.Name, d.Sidebar.UnreadTotal(), Sidebar(d.Sidebar)) {
+		@liveStream(RoomStreamPath(d.Room.ID, d.Feed.NewestID(), d.Feed.Before, d.Feed.NewSince))
 		@NotifyPlace(PlaceKey(app.RoomRef(d.Room.ID)))
 		@RoomHeader(d)
 		@PlacePrefsDialog(d.Prefs)

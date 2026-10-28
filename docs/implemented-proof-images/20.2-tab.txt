@@ -1,0 +1,7 @@
+Step 20.2: the tab of bob (browser test TestUnreadCountsGoUpLiveAndClearOnOpening, go test -tags clowder_browser ./internal/web -run TestUnreadCountsGoUpLive -v).
+Bob has 7 notifications waiting in the seeded data; alice posts a mention of him in general while he is on the search page.
+browser_unread_test.go:70: tab at the start: title "(7) Search · Clowder", favicon "/static/favicon-dot.svg"
+browser_unread_test.go:99: tab after the mention: title "(8) Search · Clowder", favicon "/static/favicon-dot.svg"
+browser_unread_test.go:111: tab after opening the room: title "(7) general · Clowder", favicon "/static/favicon-dot.svg"
+--- PASS: TestUnreadCountsGoUpLiveAndClearOnOpening (4.27s)
+ok  	github.com/rm4n0s/clowder/internal/web	4.283s

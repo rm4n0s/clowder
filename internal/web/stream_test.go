@@ -77,7 +77,14 @@ type streamClient struct {
 	// rings holds the patches that tell the page to ring (selector
 	// #notify-events), apart from the others: the tests of the counts and of
 	// the lists do not look at them, the tests of the rings do.
-	rings  chan patch
+	rings chan patch
+	// tab holds the patches of the title and the favicon of the page, apart
+	// from the others for the same reason: the tests of the counts and of the
+	// lists do not look at them, the tests of the tab do.
+	tab chan patch
+	// items holds the patches of one room's list item of the sidebar (the
+	// unread counts of a room), apart from the others for the same reason.
+	items  chan patch
 	cancel context.CancelFunc
 	// body is the whole body of an answer that is not a stream.
 	body string
@@ -119,7 +126,7 @@ func (ss *streamServer) open(user, path string, opts ...reqOpt) *streamClient {
 		cancel()
 		ss.e.t.Fatalf("GET %s: %v", path, err)
 	}
-	c := &streamClient{t: ss.e.t, status: resp.StatusCode, header: resp.Header, blocks: make(chan sseBlock, 256), rings: make(chan patch, 256), cancel: cancel}
+	c := &streamClient{t: ss.e.t, status: resp.StatusCode, header: resp.Header, blocks: make(chan sseBlock, 256), rings: make(chan patch, 256), tab: make(chan patch, 256), items: make(chan patch, 256), cancel: cancel}
 	ss.e.t.Cleanup(cancel)
 	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
 		defer cancel()
@@ -151,6 +158,10 @@ func (c *streamClient) read(resp *http.Response) {
 			if !empty {
 				if isRing(b) {
 					c.rings <- patchOf(c.t, b)
+				} else if isTab(b) {
+					c.tab <- patchOf(c.t, b)
+				} else if isRoomItem(b) {
+					c.items <- patchOf(c.t, b)
 				} else {
 					c.blocks <- b
 				}
@@ -176,6 +187,70 @@ func (c *streamClient) read(resp *http.Response) {
 // #notify-events.
 func isRing(b sseBlock) bool {
 	return b.event == "datastar-patch-elements" && slices.Contains(b.data, "selector "+notifyEventsSelector)
+}
+
+// isTab reports whether the block is the patch of the title or of the favicon
+// of the page.
+func isTab(b sseBlock) bool {
+	if b.event != "datastar-patch-elements" {
+		return false
+	}
+	for _, line := range b.data {
+		if strings.HasPrefix(line, `elements <title id="page-title"`) || strings.HasPrefix(line, `elements <link id="favicon"`) {
+			return true
+		}
+	}
+	return false
+}
+
+// isRoomItem reports whether the block is the patch of the list item of one
+// room in the sidebar.
+func isRoomItem(b sseBlock) bool {
+	if b.event != "datastar-patch-elements" {
+		return false
+	}
+	for _, line := range b.data {
+		if strings.HasPrefix(line, `elements <li id="sidebar-room-`) {
+			return true
+		}
+	}
+	return false
+}
+
+// itemsWithin returns the patches of room items that arrive within the time,
+// or as soon as n have come.
+func (c *streamClient) itemsWithin(n int, wait time.Duration) []patch {
+	c.t.Helper()
+	var out []patch
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for len(out) < n {
+		select {
+		case p := <-c.items:
+			out = append(out, p)
+		case <-timer.C:
+			return out
+		}
+	}
+	return out
+}
+
+// tabWithin returns the patches of the title and the favicon that arrive
+// within the time, or as soon as n have come.
+func (c *streamClient) tabWithin(n int, wait time.Duration) []patch {
+	c.t.Helper()
+	var out []patch
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for len(out) < n {
+		select {
+		case p := <-c.tab:
+			out = append(out, p)
+		case <-timer.C:
+			return out
+		}
+	}
+	return out
 }
 
 // ringsWithin returns the notices that arrive within the time, or as soon as n

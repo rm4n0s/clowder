@@ -59,7 +59,7 @@ func TestSessionsPage(t *testing.T) {
 	}
 	body := rec.Body.String()
 	requireBody(t, rec, []string{
-		"<title>Settings · Clowder</title>", "<h1>Settings</h1>", `<section id="sessions" class="settings-section">`, `<table class="sessions">`,
+		"<title id=\"page-title\">Settings · Clowder</title>", "<h1>Settings</h1>", `<section id="sessions" class="settings-section">`, `<table class="sessions">`,
 		// The app session first (the newest), with its name escaped.
 		`data-kind="api"`, `<td class="kind">App</td>`, "Clowder Desktop &lt;b&gt;on&lt;/b&gt; laptop",
 		`data-kind="browser"`, `<td class="kind">Browser</td>`,

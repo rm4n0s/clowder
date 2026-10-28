@@ -1143,6 +1143,34 @@ aside nav a.sidebar-messages { display: flex; gap: 0.5rem; align-items: center; 
 
 .count-badge:empty { display: none; }
 
+/* Unread posts and mentions per room (SPEC §7.17): a room with unread posts
+   is bold and shows their number; the mention badge is a second, separate
+   badge in the colour of warnings. */
+.sidebar-room-list > li { display: flex; gap: 0.375rem; align-items: center; justify-content: space-between; }
+
+.sidebar-room-list > li > a { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+.sidebar-room-list > li.unread > a { font-weight: 700; }
+
+.mention-badge { color: var(--bg); background: var(--danger); }
+
+.mention-badge::before { content: "@"; }
+
+/* The line in the feed that marks where the posts the person has not seen end
+   (the feed is newest first, so the new posts are above it). */
+.feed-new-line {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.feed-new-line::before, .feed-new-line::after { content: ""; flex: 1 1 0; border-top: 1px solid var(--danger); }
+
+.feed-new-line::before { flex: 0 0 1rem; }
+
 .mark-all-form { margin-bottom: 1rem; }
 
 .notification-list { margin: 0 0 1rem; padding: 0; list-style: none; }

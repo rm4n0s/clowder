@@ -413,7 +413,12 @@ func (g *largeGen) makeContent() error {
 		if err := store.BulkCreate(g.ctx, tx, rows.audits); err != nil {
 			return err
 		}
-		return tx.RebuildSearchIndex(g.ctx)
+		if err := tx.RebuildSearchIndex(g.ctx); err != nil {
+			return err
+		}
+		// The bulk posts have IDs above every mark the services made while the
+		// rooms were filled: everyone starts with nothing unread (SPEC §7.17).
+		return tx.ResetRoomReads(g.ctx)
 	})
 	if err != nil {
 		return err
@@ -877,6 +882,7 @@ func (g *largeGen) report(took time.Duration) error {
 		"unindexed posts": s.Unindexed, "stray index rows": s.StrayIndexRows, "bad comments": s.BadComments,
 		"authors outside their room": s.NonMemberAuthors, "bad board columns": s.BadColumns,
 		"tasks in a foreign column": s.TasksInForeignColumn, "bad task positions": s.BadTaskPositions,
+		"memberships without a mark": s.MembersWithoutMark, "marks without a membership": s.StrayMarks,
 	}
 	var problems []string
 	for name, n := range bad {

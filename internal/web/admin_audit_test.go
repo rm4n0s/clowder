@@ -90,7 +90,7 @@ func TestAdminAuditPage(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	requireBody(t, rec, []string{
-		"<title>Audit log · Clowder</title>", `<h1>Audit log</h1>`, `id="audit-panel"`, `<table class="audit">`,
+		"<title id=\"page-title\">Audit log · Clowder</title>", `<h1>Audit log</h1>`, `id="audit-panel"`, `<table class="audit">`,
 		`class="current" aria-current="page">Audit log</a>`, `href="/admin/users"`, `href="/admin/rooms"`,
 		`id="sidebar-user">Admin</p>`, `id="logout-form"`,
 		"Time (UTC)", "Actor", "Room", "Action", "Summary",

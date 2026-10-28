@@ -171,6 +171,7 @@ func TestTasksGoToTheEndOfTheFirstColumn(t *testing.T) {
 		{Topic: live.RoomTopic(e.lobby.ID), Kind: live.KindPostCreated, RoomID: e.lobby.ID, PostID: p1.ID},
 		{Topic: live.PostTopic(p1.ID), Kind: live.KindPostCreated, RoomID: e.lobby.ID, PostID: p1.ID},
 		{Topic: live.BoardTopic(e.lobby.ID), Kind: live.KindBoardChanged, RoomID: e.lobby.ID, PostID: p1.ID},
+		unreadEvt(e.uid("admin"), e.lobby.ID),
 	}
 	if got := norm(e.rec.Events()); !reflect.DeepEqual(got, wantLive) {
 		t.Errorf("published %+v, want %+v", got, wantLive)
@@ -561,6 +562,7 @@ func TestTasksDeleteWithThePost(t *testing.T) {
 	wantLive := []live.Event{
 		{Topic: live.RoomTopic(e.lobby.ID), Kind: live.KindPostDeleted, RoomID: e.lobby.ID, PostID: p.ID},
 		{Topic: live.PostTopic(p.ID), Kind: live.KindPostDeleted, RoomID: e.lobby.ID, PostID: p.ID},
+		unreadEvt(e.uid("admin"), e.lobby.ID),
 		{Topic: live.BoardTopic(e.lobby.ID), Kind: live.KindBoardChanged, RoomID: e.lobby.ID, PostID: p.ID},
 	}
 	if got := norm(e.rec.Events()); !reflect.DeepEqual(got, wantLive) {

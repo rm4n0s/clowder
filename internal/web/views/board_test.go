@@ -100,7 +100,7 @@ func TestBoardPageVariants(t *testing.T) {
 			name: "a member",
 			data: views.BoardData{Sidebar: sidebar, Board: testBoard(true)},
 			want: []string{
-				"<title>Board of general · Clowder</title>", `href="/rooms/4" class="current" data-room="general" aria-current="page"`,
+				"<title id=\"page-title\">Board of general · Clowder</title>", `href="/rooms/4" class="current" data-room="general" aria-current="page"`,
 				`<div id="live-stream" hidden data-init="@get(&#39;/rooms/4/board/stream?v=`,
 				`<header id="board-header" class="room-header board-header">`, "<h1>general</h1>", `<span class="badge badge-visible">Visible</span>`,
 				`<nav class="room-nav" aria-label="Room pages"><a href="/rooms/4">Posts</a> <a href="/rooms/4/board" aria-current="page">Board</a></nav>`,

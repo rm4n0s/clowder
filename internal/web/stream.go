@@ -4,9 +4,11 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
 	"github.com/a-h/templ"
 	"github.com/rm4n0s/clowder/internal/app"
@@ -45,16 +47,61 @@ type liveStream struct {
 	// reconnect is true when the client opened the stream again after it ended
 	// or failed, so that the page may be stale in any part.
 	reconnect bool
+	// title is the title of the page without the "(n) " of the count of unread
+	// things, as the page told the stream; empty when it did not, and then the
+	// stream leaves the title alone (SPEC §7.17).
+	title string
+	// tabLabel is the label of the count that the title and the favicon of the
+	// page show, as far as the stream knows ("" for none, "3", "99+"): the page
+	// told it with its title, and it keeps track of what it patched. The stream
+	// patches the title and the favicon only when the label changes. After a
+	// reconnection nothing is known (tabKnown is false), and the next counts
+	// patch both.
+	tabLabel string
+	tabKnown bool
+	// current is the room whose page the stream belongs to, which the sidebar
+	// highlights; 0 for a page of no room.
+	current uint64
+	// readRoom is the room whose feed the page shows and has marked as read:
+	// its entry in the sidebar shows nothing waiting for as long as the page is
+	// open (SPEC §7.17). 0 when the page marks no room.
+	readRoom uint64
 }
 
 // newStream makes the stream of a request. Nothing is written yet: the handler
 // reads what the page needs first (a failed read is still an ordinary error
 // answer), then opens the stream.
 func (s *Server) newStream(w http.ResponseWriter, r *http.Request, actor app.Actor, user app.User) *liveStream {
-	return &liveStream{
+	ls := &liveStream{
 		s: s, w: w, r: r, actor: actor, user: user,
 		reconnect: r.Header.Get(lastEventIDHeader) != "",
 	}
+	ls.tabLabel, ls.title = pageTitleOf(r)
+	ls.tabKnown = !ls.reconnect
+	return ls
+}
+
+// maxPageTitle is the longest title of a page that a stream accepts, in bytes.
+const maxPageTitle = 300
+
+// pageTitleHeader is the header in which the page tells its stream its title,
+// percent encoded (see views.streamAction).
+const pageTitleHeader = "X-Page-Title"
+
+// pageTitleOf reads the title that the page told its stream. It returns the
+// label of the count the title shows and the rest of the title. Both are empty
+// when there is no title, when it cannot be read, or when it is too long to be
+// a title of ours; the stream then leaves the title alone.
+func pageTitleOf(r *http.Request) (label, base string) {
+	raw := r.Header.Get(pageTitleHeader)
+	if raw == "" || len(raw) > 3*maxPageTitle {
+		return "", ""
+	}
+	title, err := url.PathUnescape(raw)
+	if err != nil || len(title) > maxPageTitle || !utf8.ValidString(title) {
+		return "", ""
+	}
+	return views.SplitTitle(title)
 }
 
 // open starts the SSE answer and writes the id of its first event. From then
@@ -137,18 +184,23 @@ func (ls *liveStream) ping() error {
 	return nil
 }
 
-// sidebarOp is the patch of the sidebar of the user, as it is on the page of
-// the room current (0 for no room).
-func (ls *liveStream) sidebarOp(ctx context.Context, current uint64) (patchOp, error) {
+// sidebarOps are the patches of the sidebar of the user, as it is on the page
+// of the room current (0 for no room), and of the title and favicon of the
+// page when what they show is not the count of the sidebar.
+func (ls *liveStream) sidebarOps(ctx context.Context, current uint64) ([]patchOp, error) {
 	ls.refreshUser(ctx)
 	sb, err := ls.s.sidebarData(ctx, ls.actor, ls.user, current)
 	if err != nil {
-		return patchOp{}, err
+		return nil, err
 	}
-	return patchOp{
+	if ls.readRoom != 0 {
+		sb = sb.WithRoomRead(ls.readRoom)
+	}
+	ops := []patchOp{{
 		component: views.Sidebar(sb),
 		options:   []datastar.PatchElementOption{datastar.WithSelector(sidebarSelector), datastar.WithModeInner()},
-	}, nil
+	}}
+	return append(ops, ls.tabOps(sb.UnreadTotal())...), nil
 }
 
 // refreshUser reads the user of the session again, so that the sidebar shows
@@ -170,35 +222,7 @@ func (ls *liveStream) refreshUser(ctx context.Context) {
 
 // sidebar sends the sidebar of the user.
 func (ls *liveStream) sidebar(ctx context.Context, current uint64) error {
-	op, err := ls.sidebarOp(ctx, current)
-	if err != nil {
-		return err
-	}
-	return ls.patch(op.component, op.options...)
-}
-
-// countOps are the patches of the counts that the sidebar shows next to its
-// links, as they are now for the user: the unread notifications and the
-// conversations with unread messages. A count that a later step adds is added
-// here, so that every stream and answer that keeps the counts live gets it.
-func (s *Server) countOps(ctx context.Context, actor app.Actor) ([]patchOp, error) {
-	unread, err := s.svc.Notifications.UnreadCount(ctx, actor)
-	if err != nil {
-		return nil, err
-	}
-	unreadMessages, err := s.svc.Messages.UnreadCount(ctx, actor)
-	if err != nil {
-		return nil, err
-	}
-	return []patchOp{
-		{component: views.NotificationCount(unread)},
-		{component: views.MessageCount(unreadMessages)},
-	}, nil
-}
-
-// counts sends the counts of the sidebar of the user.
-func (ls *liveStream) counts(ctx context.Context) error {
-	ops, err := ls.s.countOps(ctx, ls.actor)
+	ops, err := ls.sidebarOps(ctx, current)
 	if err != nil {
 		return err
 	}
@@ -210,9 +234,103 @@ func (ls *liveStream) counts(ctx context.Context) error {
 	return nil
 }
 
+// unreadCounts reads the two counts that the sidebar shows next to its links:
+// the unread notifications and the conversations with unread messages.
+func (s *Server) unreadCounts(ctx context.Context, actor app.Actor) (notifications, conversations int, err error) {
+	notifications, err = s.svc.Notifications.UnreadCount(ctx, actor)
+	if err != nil {
+		return 0, 0, err
+	}
+	conversations, err = s.svc.Messages.UnreadCount(ctx, actor)
+	if err != nil {
+		return 0, 0, err
+	}
+	return notifications, conversations, nil
+}
+
+// countOps are the patches of the counts that the sidebar shows next to its
+// links, as they are now for the user: the unread notifications and the
+// conversations with unread messages. A count that a later step adds is added
+// here, so that every answer that keeps the counts live gets it. The streams
+// use liveStream.countOps, which also patches the title and the favicon of the
+// page.
+func (s *Server) countOps(ctx context.Context, actor app.Actor) ([]patchOp, error) {
+	unread, unreadMessages, err := s.unreadCounts(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return []patchOp{
+		{component: views.NotificationCount(unread)},
+		{component: views.MessageCount(unreadMessages)},
+	}, nil
+}
+
+// countOps are the patches of the counts of the user for the page of the
+// stream: the counts of the sidebar, the favicon, which has a dot while
+// anything waits, and, when the page told the stream its title, the title with
+// "(n) " in front while anything waits (SPEC §7.17).
+func (ls *liveStream) countOps(ctx context.Context) ([]patchOp, error) {
+	unread, unreadMessages, err := ls.s.unreadCounts(ctx, ls.actor)
+	if err != nil {
+		return nil, err
+	}
+	ops := []patchOp{
+		{component: views.NotificationCount(unread)},
+		{component: views.MessageCount(unreadMessages)},
+	}
+	return append(ops, ls.tabOps(unread+unreadMessages)...), nil
+}
+
+// tabOps are the patches of the favicon and the title of the page for a total
+// of unread things, only for what changed since what the page shows: the
+// favicon when the dot appears or goes, the title when its count changes. The
+// title is patched only when the page told the stream its title.
+func (ls *liveStream) tabOps(total int) []patchOp {
+	label := views.CountLabel(total)
+	known, shown := ls.tabKnown, ls.tabLabel
+	ls.tabKnown, ls.tabLabel = true, label
+	var ops []patchOp
+	if !known || (label == "") != (shown == "") {
+		ops = append(ops, patchOp{component: views.Favicon(total)})
+	}
+	if ls.title != "" && (!known || label != shown) {
+		ops = append(ops, patchOp{component: views.PageTitle(total, ls.title)})
+	}
+	return ops
+}
+
+// counts sends the counts of the sidebar of the user.
+func (ls *liveStream) counts(ctx context.Context) error {
+	ops, err := ls.countOps(ctx)
+	if err != nil {
+		return err
+	}
+	for _, op := range ops {
+		if err := ls.patch(op.component, op.options...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// roomUnread sends the list item of the room in the sidebar with the counts
+// the user has in it now. It does nothing when the user is not a member of the
+// room (there is no item to patch). The room whose feed the page shows keeps
+// showing nothing.
+func (ls *liveStream) roomUnread(ctx context.Context, roomID uint64) error {
+	room, ok, err := ls.s.svc.Rooms.MineOne(ctx, ls.actor, roomID)
+	if err != nil || !ok {
+		return err
+	}
+	if room.ID == ls.readRoom {
+		room = views.WithRoomRead(room)
+	}
+	return ls.patch(views.SidebarRoom(room, ls.current))
+}
+
 // countsEvent handles an event of the user's topic that only changes a count
 // of the sidebar (a notification was made or read, a conversation changed or
-// was read). It returns true when ev was such an event, so that the stream has
+// was read, the unread counts of a room changed). It returns true when ev was such an event, so that the stream has
 // nothing more to do with it.
 func (ls *liveStream) countsEvent(ctx context.Context, ev live.Event) (handled bool, err error) {
 	switch ev.Kind {
@@ -227,6 +345,8 @@ func (ls *liveStream) countsEvent(ctx context.Context, ev live.Event) (handled b
 		return true, ls.ring(ctx, ev)
 	case live.KindNotificationRead, live.KindConversationChanged, live.KindConversationRead:
 		return true, ls.counts(ctx)
+	case live.KindRoomUnread:
+		return true, ls.roomUnread(ctx, ev.RoomID)
 	}
 	return false, nil
 }
@@ -384,6 +504,9 @@ type roomStream struct {
 	before uint64
 	// seen is the ID of the newest post the page showed, 0 for none.
 	seen uint64
+	// newSince is the ID of the post after which the page draws the line "New
+	// since your last visit", 0 for none; the feed the stream sends has it too.
+	newSince uint64
 }
 
 // roomStream answers GET /rooms/{id}/stream?seen=<id>&before=<id>: a stream
@@ -412,7 +535,10 @@ func (s *Server) roomStream(w http.ResponseWriter, r *http.Request) {
 	sub := s.svc.Hub.Subscribe(ctx, live.RoomTopic(id), live.BoardTopic(id), live.UserTopic(actor.UserID))
 	defer sub.Close()
 	ls := s.newStream(w, r, actor, user)
-	rs := &roomStream{liveStream: ls, id: id, before: beforeOf(r), seen: uintQuery(r, "seen")}
+	// The page of the feed marks the room as read: its entry in the sidebar
+	// shows nothing waiting, and a post that arrives moves the mark (SPEC §7.17).
+	ls.current, ls.readRoom = id, id
+	rs := &roomStream{liveStream: ls, id: id, before: beforeOf(r), seen: uintQuery(r, "seen"), newSince: uintQuery(r, "line")}
 	st, err := rs.connect(ctx)
 	if err != nil {
 		s.fail(w, r, err)
@@ -445,7 +571,7 @@ func (rs *roomStream) connect(ctx context.Context) (start, error) {
 	if err != nil {
 		return rs.lost(err)
 	}
-	d := views.FeedData{RoomID: rs.id, Page: page}
+	d := views.FeedData{RoomID: rs.id, Page: page, NewSince: rs.newSince}
 	if d.NewestID() == rs.seen {
 		return start{}, nil
 	}
@@ -469,16 +595,15 @@ func (rs *roomStream) refresh(ctx context.Context) (start, error) {
 	if err != nil {
 		return rs.lost(err)
 	}
-	sidebar, err := rs.sidebarOp(ctx, rs.id)
+	ops, err := rs.sidebarOps(ctx, rs.id)
 	if err != nil {
 		return start{}, err
 	}
-	ops := []patchOp{
-		sidebar,
-		{component: views.RoomHeader(d)},
-		{component: views.MembersPanel(d)},
-		{component: views.RoomComposer(d)},
-	}
+	ops = append(ops,
+		patchOp{component: views.RoomHeader(d)},
+		patchOp{component: views.MembersPanel(d)},
+		patchOp{component: views.RoomComposer(d)},
+	)
 	if rs.before != 0 {
 		return start{ops: ops}, nil
 	}
@@ -486,7 +611,7 @@ func (rs *roomStream) refresh(ctx context.Context) (start, error) {
 	if err != nil {
 		return rs.lost(err)
 	}
-	return start{ops: append(ops, feedOps(views.FeedData{RoomID: rs.id, Page: page})...)}, nil
+	return start{ops: append(ops, feedOps(views.FeedData{RoomID: rs.id, Page: page, NewSince: rs.newSince})...)}, nil
 }
 
 // feedOps replace the posts of the feed by its first page.
@@ -588,7 +713,10 @@ func (rs *roomStream) postEvent(ctx context.Context, ev live.Event) (end bool, e
 		if err := rs.patch(views.PostCard(card), datastar.WithSelector("#feed-posts"), datastar.WithModePrepend()); err != nil {
 			return false, err
 		}
-		return false, rs.remove(duplicateCardSelector(post.ID))
+		if err := rs.remove(duplicateCardSelector(post.ID)); err != nil {
+			return false, err
+		}
+		return false, rs.markRead(ctx, post)
 	case ev.Kind == live.KindPostUpdated && !post.Deleted:
 		// Only the content: an author who is editing the post has its editor
 		// in the article, and this finds nothing to replace.
@@ -597,6 +725,21 @@ func (rs *roomStream) postEvent(ctx context.Context, ev live.Event) (end bool, e
 		// A deleted post stays as a placeholder.
 		return false, rs.patch(views.PostCard(card))
 	}
+}
+
+// markRead moves the mark of the user to a post that the page has just put in
+// the feed, so that the count of a room the user is looking at does not go up
+// (SPEC §7.17). The user's own posts do not need it, and a person who has not
+// joined the room has no mark to move.
+func (rs *roomStream) markRead(ctx context.Context, post app.Post) error {
+	if post.Author.ID == rs.actor.UserID {
+		return nil
+	}
+	err := rs.s.svc.Rooms.MarkRead(ctx, rs.actor, rs.id, post.ID)
+	if err != nil && !isTag(err, app.TagForbidden) && !isTag(err, app.TagNotFound) {
+		return err
+	}
+	return nil
 }
 
 // reactionEvent handles a change to the reactions of a post. The post is read
@@ -745,6 +888,7 @@ func (s *Server) postStream(w http.ResponseWriter, r *http.Request) {
 		live.PostTopic(first.Post.ID), live.RoomTopic(first.Post.RoomID), live.BoardTopic(first.Post.RoomID), live.UserTopic(actor.UserID))
 	defer sub.Close()
 	ls := s.newStream(w, r, actor, user)
+	ls.current = first.Post.RoomID
 	ts := &threadStream{
 		liveStream: ls, rootID: first.Post.ID, roomID: first.Post.RoomID,
 		seen: uintQuery(r, "seen"), known: map[uint64]bool{},
@@ -817,11 +961,11 @@ func (ts *threadStream) connect(ctx context.Context) (start, error) {
 	}
 	ops := []patchOp{{component: views.Thread(d)}}
 	if ts.reconnect {
-		sidebar, err := ts.sidebarOp(ctx, ts.roomID)
+		sidebar, err := ts.sidebarOps(ctx, ts.roomID)
 		if err != nil {
 			return start{}, err
 		}
-		ops = append(ops, sidebar)
+		ops = append(ops, sidebar...)
 	}
 	return start{ops: ops}, nil
 }

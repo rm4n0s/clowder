@@ -59,7 +59,7 @@ func TestAdminResetLink(t *testing.T) {
 					t.Fatalf("status = %d, want 200; body:\n%s", rec.Code, rec.Body)
 				}
 				// The whole page, so a browser without JavaScript sees the link.
-				requireBody(t, rec, []string{"<title>Users · Clowder</title>", `id="invite-form"`})
+				requireBody(t, rec, []string{"<title id=\"page-title\">Users · Clowder</title>", `id="invite-form"`})
 			}
 			// The box: for whom, the link, the expiry (24 hours after the fake
 			// clock's start) and the copy button.
@@ -151,7 +151,7 @@ func TestAdminResetLinkFailures(t *testing.T) {
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("plain status = %d, want %d; body:\n%s", rec.Code, tt.wantStatus, rec.Body)
 			}
-			requireBody(t, rec, []string{"<title>Users · Clowder</title>", tt.wantText}, "reset-link-box")
+			requireBody(t, rec, []string{"<title id=\"page-title\">Users · Clowder</title>", tt.wantText}, "reset-link-box")
 			if n := len(e.resetEvents()); n != 0 {
 				t.Errorf("a refused call wrote %d audit events", n)
 			}
@@ -202,7 +202,7 @@ func TestResetPage(t *testing.T) {
 		{
 			name: "valid", token: valid, wantStatus: http.StatusOK,
 			wantBody: []string{
-				"<title>Set a new password · Clowder</title>", "<h1>Set a new password</h1>",
+				"<title id=\"page-title\">Set a new password · Clowder</title>", "<h1>Set a new password</h1>",
 				`<form id="reset-form" method="post" action="/reset/` + valid + `"`,
 				`data-on:submit="@post(&#39;/reset/` + valid + `&#39;, {contentType: &#39;form&#39;})"`,
 				`name="password"`, `name="passwordConfirm"`, `autocomplete="new-password"`, "At least 12 characters.",

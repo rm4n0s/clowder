@@ -14,6 +14,7 @@ func allModels() []any {
 		&Session{},
 		&Room{},
 		&RoomMember{},
+		&RoomRead{},
 		&Post{},
 		&Tag{},
 		&PostTag{},

@@ -132,22 +132,33 @@ func ringEvent(ev *live.Event, r Ring) bool {
 	return true
 }
 
-// postRingEvents are the events that ring the members of a room for a new
-// top-level post: one on the topic of each recipient (the members except the
-// author), except the users in skip (who have a notification of the same
-// action already), whose choice for the room is All and who are not muted
-// (SPEC §7.15). recipients carry the settings and the room preferences of the
-// members, read by one query. The event holds only the IDs; the pages read the
-// place's name and the author, never the body, when they render it.
-func postRingEvents(recipients []store.Recipient, roomID, postID uint64, skip map[uint64]bool) []live.Event {
+// postRingEvents are the events of a new top-level post for the members of
+// its room, made in one pass over the recipients (the members except the
+// author, read by one query; SPEC §7.15, §7.17):
+//
+//   - a ring event on the topic of each recipient whose choice for the room is
+//     All and who is not muted, except those who have a notification of the
+//     same action already (they are among the users of notified);
+//   - a room.unread event on the topic of each recipient for whom the post
+//     counts as unread: not muted, and not counting only mentions. A recipient
+//     who has a room.unread event among notified already (a mention) gets no
+//     second one.
+//
+// The events hold only the IDs; the pages read the place's name and the
+// author, never the body, when they render them.
+func postRingEvents(recipients []store.Recipient, roomID, postID uint64, notified []live.Event) []live.Event {
+	skip := usersOf(notified)
+	haveUnread := unreadUsers(notified)
 	var events []live.Event
 	for _, r := range recipients {
-		if skip[r.UserID] {
-			continue
+		if !skip[r.UserID] {
+			ev := live.Event{Topic: live.UserTopic(r.UserID), Kind: live.KindPostCreated, RoomID: roomID, PostID: postID, UserID: r.UserID}
+			if ringEvent(&ev, ringFor(r.Settings, r.Place, PlaceRoom, EventPost, false)) {
+				events = append(events, ev)
+			}
 		}
-		ev := live.Event{Topic: live.UserTopic(r.UserID), Kind: live.KindPostCreated, RoomID: roomID, PostID: postID, UserID: r.UserID}
-		if ringEvent(&ev, ringFor(r.Settings, r.Place, PlaceRoom, EventPost, false)) {
-			events = append(events, ev)
+		if !haveUnread[r.UserID] && !r.Place.Muted && r.Place.MarkUnread != store.MarkUnreadMentions {
+			events = append(events, unreadEvent(r.UserID, roomID))
 		}
 	}
 	return events

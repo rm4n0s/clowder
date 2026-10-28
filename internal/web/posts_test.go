@@ -688,7 +688,7 @@ func TestPostPage(t *testing.T) {
 				t.Fatalf("%s: status = %d", user, rec.Code)
 			}
 			requireBody(t, rec, []string{
-				"<title>Post by Alice in general · Clowder</title>", `id="sidebar-rooms"`,
+				"Post by Alice in general · Clowder</title>", `id="sidebar-rooms"`,
 				`<a href="/rooms/` + idText(e.general.ID) + `">general</a>`,
 				`id="post-` + idText(p.ID) + `"`, "<strong>body</strong>", `href="/search?q=%23page-tag"`, "@alice",
 				`id="comments"`, "<h2>Comments</h2>", "1 comment",
@@ -712,7 +712,7 @@ func TestPostPage(t *testing.T) {
 			t.Fatal(err)
 		}
 		rec := e.getAs("bob", postPathOf(q, ""), false)
-		requireBody(t, rec, []string{"This post was deleted.", "<title>Deleted post in general · Clowder</title>"}, "secretly gone", "Alice")
+		requireBody(t, rec, []string{"This post was deleted.", "<title id=\"page-title\">(1) Deleted post in general · Clowder</title>"}, "secretly gone", "Alice")
 	})
 	t.Run("not found", func(t *testing.T) {
 		gone := e.writePost("alice", "general", "going")

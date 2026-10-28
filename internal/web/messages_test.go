@@ -166,7 +166,7 @@ func TestMessagesPageListsTheConversations(t *testing.T) {
 			t.Fatalf("status = %d", rec.Code)
 		}
 		requireBody(t, rec, []string{
-			"<title>Messages · Clowder</title>", "<h1>Messages</h1>",
+			"<title id=\"page-title\">(2) Messages · Clowder</title>", "<h1>Messages</h1>",
 			`<div id="conversation-list" class="conversation-list">`,
 			`<li id="conversation-` + idText(direct) + `" class="conversation unread" data-conversation="` + idText(direct) + `" data-members="alice bob">`,
 			`<a class="conversation-link" href="/messages/` + idText(direct) + `">`,

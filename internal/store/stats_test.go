@@ -23,9 +23,9 @@ func newStatsWorld(t *testing.T) *statsWorld {
 	w := &statsWorld{f: f, alice: f.user(), bob: f.user()}
 	w.room, w.other = f.room(w.alice), f.room(w.alice)
 	for _, r := range []*Room{w.room, w.other} {
-		f.create(&RoomMember{RoomID: r.ID, UserID: w.alice.ID})
+		f.join(r, w.alice)
 	}
-	f.create(&RoomMember{RoomID: w.room.ID, UserID: w.bob.ID})
+	f.join(w.room, w.bob)
 	cols := func(r *Room) []BoardColumn {
 		rows := []BoardColumn{{RoomID: r.ID, Name: "To do", Position: 0}, {RoomID: r.ID, Name: "Done", Position: 1}}
 		if err := f.s.CreateBoardColumns(f.ctx, rows); err != nil {
@@ -102,6 +102,12 @@ func TestStats(t *testing.T) {
 		{"a task whose position starts at 1", func(w *statsWorld) {
 			w.f.exec("UPDATE tasks SET position = 1 WHERE id = ?", w.task.ID)
 		}, func(s Stats) int64 { return s.BadTaskPositions }},
+		{"a membership without a mark", func(w *statsWorld) {
+			w.f.exec("DELETE FROM room_reads WHERE room_id = ? AND user_id = ?", w.room.ID, w.bob.ID)
+		}, func(s Stats) int64 { return s.MembersWithoutMark }},
+		{"a mark without a membership", func(w *statsWorld) {
+			w.f.exec("DELETE FROM room_members WHERE room_id = ? AND user_id = ?", w.other.ID, w.alice.ID)
+		}, func(s Stats) int64 { return s.StrayMarks }},
 		{"two tasks at one position", func(w *statsWorld) {
 			w.f.create(&Task{RoomID: w.room.ID, PostID: w.post.ID, ColumnID: w.columns[0].ID, Position: 0, Title: "twin"})
 		}, func(s Stats) int64 { return s.BadTaskPositions }},

@@ -65,25 +65,7 @@ templ Sidebar(d SidebarData) {
 		<h2 class="sidebar-heading">Rooms</h2>
 		<ul class="sidebar-room-list">
 			for _, room := range d.Rooms {
-				<li class={ templ.KV("muted", room.Muted) }>
-					<a
-						href={ templ.SafeURL(RoomPath(room.ID)) }
-						class={ templ.KV("current", room.ID == d.CurrentRoomID) }
-						data-room={ room.Name }
-						if room.ID == d.CurrentRoomID {
-							aria-current="page"
-						}
-					>
-						if room.Visibility == app.VisibilityPrivate {
-							@lockIcon()
-						}
-						{ room.Name }
-						if room.Muted {
-							@mutedIcon()
-						}
-					</a>
-					// TODO(step 20.2): a muted room shows only a badge with its unread mentions.
-				</li>
+				@SidebarRoom(room, d.CurrentRoomID)
 			}
 		</ul>
 		<ul class="sidebar-room-links">
@@ -94,6 +76,40 @@ templ Sidebar(d SidebarData) {
 	<form id="logout-form" method="post" action="/logout" data-on:submit={ FormPost("/logout") }>
 		<button type="submit" class="secondary">Log out</button>
 	</form>
+}
+
+// SidebarRoom is the list item of one room in the sidebar: the link with the
+// name, then what is waiting in it (SPEC §7.17). A room with unread posts is
+// bold and shows their number ("99+" above 99); a room set to count only
+// mentions is not bold and shows only the badge of the mentions; a muted room
+// is dimmed and shows only the badge of the mentions. A mention badge appears
+// whenever the room has unread mentions. The item has an id so that the stream
+// can patch it alone when the counts of the room change.
+templ SidebarRoom(room app.Room, current uint64) {
+	<li id={ sidebarRoomID(room.ID) } class={ sidebarRoomClasses(room) }>
+		<a
+			href={ templ.SafeURL(RoomPath(room.ID)) }
+			class={ templ.KV("current", room.ID == current) }
+			data-room={ room.Name }
+			if room.ID == current {
+				aria-current="page"
+			}
+		>
+			if room.Visibility == app.VisibilityPrivate {
+				@lockIcon()
+			}
+			{ room.Name }
+			if room.Muted {
+				@mutedIcon()
+			}
+		</a>
+		if n := roomUnreadPosts(room); n > 0 {
+			<span class="count-badge room-unread" title={ unreadPostsTitle(n) }>{ unreadLabel(n) }</span>
+		}
+		if room.UnreadMentions > 0 {
+			<span class="count-badge mention-badge" title={ unreadMentionsTitle(room.UnreadMentions) }>{ unreadLabel(room.UnreadMentions) }</span>
+		}
+	</li>
 }
 
 // NotificationCount is the badge with the number of unread notifications, on
