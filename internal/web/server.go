@@ -50,6 +50,10 @@ const (
 	streamWriteTimeout = 30 * time.Second
 	// staticPrefix is the path of the embedded static files.
 	staticPrefix = "/static/"
+	// manifestPath is the path of the web app manifest.
+	manifestPath = "/manifest.webmanifest"
+	// serviceWorkerPath is the path of the service worker.
+	serviceWorkerPath = "/sw.js"
 )
 
 // Services are the services the handlers call. Later steps add a field for
@@ -163,6 +167,14 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 	if err != nil {
 		return nil, err
 	}
+	serviceWorker, err := newServiceWorkerHandler(static.ServiceWorker, staticFiles.version)
+	if err != nil {
+		return nil, err
+	}
+	manifest, err := newManifestHandler(static.Manifest, staticFiles.version)
+	if err != nil {
+		return nil, err
+	}
 	routes := []route{
 		{pattern: "GET /{$}", handler: http.HandlerFunc(s.home)},
 		{pattern: "GET /login", handler: http.HandlerFunc(s.loginPage), access: optionalSession},
@@ -262,6 +274,10 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "GET /editor/task-row", handler: http.HandlerFunc(s.taskRowForm)},
 		{pattern: healthPattern, handler: http.HandlerFunc(s.healthz), access: noSession},
 		{pattern: "GET " + staticPrefix, handler: staticFiles, access: noSession},
+		// The manifest and the service worker are at the root: the scope of both
+		// is the path they are served from (SPEC D58).
+		{pattern: "GET " + manifestPath, handler: manifest, access: noSession},
+		{pattern: "GET " + serviceWorkerPath, handler: serviceWorker, access: noSession},
 	}
 	mux := http.NewServeMux()
 	for _, rt := range routes {
@@ -286,6 +302,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 	h = s.recoverPanics(h)
 	h = s.bodyDeadline(h)
 	h = s.logRequests(h)
+	h = withStaticVersion(staticFiles.version, h)
 	h = s.secureHeaders(h)
 	s.handler = h
 	return s, nil

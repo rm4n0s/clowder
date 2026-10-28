@@ -308,6 +308,12 @@ func TestStaticFiles(t *testing.T) {
 		{"/static/favicon-dot.svg", "image/svg+xml"},
 		{"/static/favicon-32.png", "image/png"},
 		{"/static/apple-touch-icon.png", "image/png"},
+		{"/static/app.css?v=abc123", "text/css; charset=utf-8"},
+		{"/static/datastar.js?v=", "text/javascript; charset=utf-8"},
+		{"/static/icon-192.png", "image/png"},
+		{"/static/icon-512.png", "image/png"},
+		{"/static/icon-maskable-192.png", "image/png"},
+		{"/static/icon-maskable-512.png", "image/png"},
 		{"/static/fonts/bricolage-grotesque/latin.woff2", "font/woff2"},
 		{"/static/fonts/bricolage-grotesque/latin-ext.woff2", "font/woff2"},
 		{"/static/fonts/nunito/latin.woff2", "font/woff2"},
@@ -319,7 +325,10 @@ func TestStaticFiles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			s, _ := newTestServer(t)
-			want, err := static.FS.ReadFile(strings.TrimPrefix(tt.path, "/static/"))
+			// The query (the version a page adds, views.StaticURL) is ignored:
+			// the file, its ETag and the revalidation are the same.
+			name, _, _ := strings.Cut(strings.TrimPrefix(tt.path, "/static/"), "?")
+			want, err := static.FS.ReadFile(name)
 			if err != nil {
 				t.Fatal(err)
 			}

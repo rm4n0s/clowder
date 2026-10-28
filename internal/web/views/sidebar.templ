@@ -40,19 +40,39 @@ templ PageHeader(d SidebarData) {
 }
 
 // PageSidebar is the aside element of the pages of a logged-in user, with the
-// rooms (Sidebar).
+// rooms (Sidebar). It is a popover (SPEC D58): above 40 rem app.css draws it as
+// the column beside the page, at 40 rem and below as a drawer from the left that
+// the menu button of the header (Header) opens, with the close button in front
+// of the rooms (hidden in the column). The close button has autofocus, which is
+// what makes the browser move the focus into the drawer when it opens.
 templ PageSidebar(d SidebarData) {
-	<aside id="sidebar">
+	<aside id="sidebar" popover>
+		<div class="drawer-head">
+			<p class="drawer-title" aria-hidden="true">Rooms</p>
+			<button type="button" class="drawer-close" popovertarget="sidebar" popovertargetaction="hide" autofocus>
+				@IconClose()
+				<span class="visually-hidden">Close the room menu</span>
+			</button>
+		</div>
 		@Sidebar(d)
 	</aside>
 }
 
 // Header is the content of the header of the pages of a logged-in user: the
-// logo (a link to the home page), the search box (left out when HideSearch is
+// menu button that opens the drawer of rooms on a phone (hidden above 40 rem;
+// its dot, and the word "unread" in its name, show while a room has unread
+// posts or mentions, by CSS from the list of rooms itself, so that the patch of
+// a single room keeps them right), the logo (a link to the home page), the search box (left out when HideSearch is
 // set), the bell with the unread notifications, Messages with the conversations
 // that have unread messages (both links, with the counts that the streams patch
 // by their ids) and the user menu.
 templ Header(d SidebarData) {
+	<button type="button" id="menu-button" class="menu-button" popovertarget="sidebar" aria-controls="sidebar">
+		@IconMenu()
+		<span class="menu-dot" aria-hidden="true"></span>
+		<span class="visually-hidden">Rooms</span>
+		<span class="visually-hidden menu-unread-name">, with unread posts</span>
+	</button>
 	@Logo()
 	if !d.HideSearch {
 		@SearchBar()

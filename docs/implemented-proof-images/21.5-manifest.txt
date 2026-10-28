@@ -1,0 +1,95 @@
+$ curl -si http://127.0.0.1:PORT/manifest.webmanifest
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Cache-Control: no-cache
+Content-Length: 818
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' https: http:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+Content-Type: application/manifest+json
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Etag: "e02cc9629316e58057cbac46902fd139"
+Referrer-Policy: same-origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Date: Wed, 28 Oct 2026 14:03:48 GMT
+
+{
+  "name": "Clowder",
+  "short_name": "Clowder",
+  "description": "Rooms, posts, boards and private messages for a team.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fbf6ee",
+  "theme_color": "#c2410c",
+  "icons": [
+    {"src": "/static/icon-192.png?v=dad2f2fffac560f7c26be079964f7a2d", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/static/icon-512.png?v=dad2f2fffac560f7c26be079964f7a2d", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/static/icon-maskable-192.png?v=dad2f2fffac560f7c26be079964f7a2d", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "/static/icon-maskable-512.png?v=dad2f2fffac560f7c26be079964f7a2d", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
+
+$ curl -si http://127.0.0.1:PORT/sw.js | head -38
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Cache-Control: no-cache
+Content-Length: 2527
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' https: http:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+Content-Type: text/javascript; charset=utf-8
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Etag: "b4e90dc34aa75b556f7f9f6b465c48eb"
+Referrer-Policy: same-origin
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Date: Wed, 28 Oct 2026 14:03:48 GMT
+
+// The service worker of Clowder (SPEC D58). It caches the files of /static/
+// and nothing else: for every other request (a page, /api/, /files/,
+// /avatars/, a stream, anything that is not GET) the fetch handler returns
+// without calling respondWith, so the browser goes to the network as if no
+// worker were there.
+//
+// The server serves this file at /sw.js with the placeholder below replaced by
+// a hash of all the embedded static files. The cache name carries it, so a
+// release with other static files is another cache: the browser installs the
+// new worker (its bytes changed), which deletes the caches of other versions
+// when it activates. The pages name every static file with "?v=" and the same
+// hash, and the cache key is the whole address, query included, so a page of a
+// new release asks for addresses that an old worker never kept: they go to the
+// network, and a page of the old release keeps getting its own files.
+'use strict';
+
+const VERSION = 'dad2f2fffac560f7c26be079964f7a2d';
+const PREFIX = 'clowder-static-';
+const CACHE = PREFIX + VERSION;
+
+self.addEventListener('install', (event) => {
+  // Take over at once: the files of the old version are not wanted by the pages
+  // of the new one.
+  event.waitUntil(self.skipWaiting());
+
+$ curl -si "http://127.0.0.1:PORT/static/icon-192.png?v=VERSION" | head -9   (the query is ignored; the body is the PNG)
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Cache-Control: no-cache
+Content-Length: 3237
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'; st
+Content-Type: image/png
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Etag: "b0e67d8745a5c46192cc9c230f8d53d3"
+
+$ curl -s http://127.0.0.1:PORT/login | grep -oE "(href|src)=\"/static/[^\"]*\"|<meta name=\"(viewport|theme-color)\"[^>]*>|<link rel=\"manifest\"[^>]*>"
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbf6ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1512" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.webmanifest">
+href="/static/favicon.svg?v=dad2f2fffac560f7c26be079964f7a2d"
+href="/static/favicon-32.png?v=dad2f2fffac560f7c26be079964f7a2d"
+href="/static/apple-touch-icon.png?v=dad2f2fffac560f7c26be079964f7a2d"
+href="/static/app.css?v=dad2f2fffac560f7c26be079964f7a2d"
+href="/static/code.css?v=dad2f2fffac560f7c26be079964f7a2d"
+src="/static/datastar.js?v=dad2f2fffac560f7c26be079964f7a2d"
+src="/static/code.js?v=dad2f2fffac560f7c26be079964f7a2d"

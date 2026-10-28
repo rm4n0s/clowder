@@ -30,7 +30,7 @@ func TestPagesWithoutALoginHaveTheLogoAndACard(t *testing.T) {
 				t.Fatalf("status = %d, want %d", rec.Code, tt.status)
 			}
 			body := rec.Body.String()
-			for _, want := range append(tt.want, `<div class="plain-shell">`, `<p class="plain-logo">`, `<a class="logo" href="/">`, `<span class="logo-word">clowder</span>`, `href="/static/app.css"`) {
+			for _, want := range append(tt.want, `<div class="plain-shell">`, `<p class="plain-logo">`, `<a class="logo" href="/">`, `<span class="logo-word">clowder</span>`, `href="/static/app.css?v=`) {
 				if !strings.Contains(body, want) {
 					t.Errorf("body lacks %q:\n%s", want, body)
 				}

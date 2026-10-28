@@ -52,7 +52,7 @@ templ BoardPage(d BoardData) {
 				<a id="board-refresh" hidden href={ templ.SafeURL(BoardPath(d.Board.Room.ID)) } data-on:click__prevent={ boardRefreshAction(d.Board.Room.ID) }>Refresh</a>
 			</div>
 		</div>
-		<script src="/static/board.js" defer></script>
+		<script src={ StaticURL(ctx, "/static/board.js") } defer></script>
 	}
 }
 

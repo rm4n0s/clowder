@@ -1587,3 +1587,39 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - A session's address is not shown: Clowder does not store it. The SSH command has no Copy button, as before.
   - The admin's user actions stay inline buttons, not a "more" menu, so that keyboards and tests reach them directly. On a phone they stay on one line and the table scrolls (the manager's fix, which brought the rows from about 120 px down to 70 px).
   - "Change password" stays the accent save button of its card, although it ends the other sessions: it is the card's main action (the manager's decision).
+
+## 21.5 Phones and the installed app
+- **Date:** 2026-10-28
+- **Branch:** feat/step-21.5-phones-app
+- **Summary:**
+  - **The room drawer:** `#sidebar` is a `popover`, and the header starts with a 44 px menu button (`popovertarget="sidebar"`). No script of ours is involved.
+    - Above 40 rem the sidebar is the column it was. At 40 rem and below it is a drawer from the left over a scrim, with a close button that takes the focus.
+    - It closes with Escape, the scrim or that button, and stays open through the stream's patches.
+    - A dot on the button, and ", with unread posts" in its name, show when any room waits. Both are CSS on the list itself (`:has`), so they follow its live patches.
+  - **Phones:**
+    - every page fits 360 and 390 px, with the search box on its own row and the word "clowder" visually hidden under 24 rem;
+    - the safe-area insets pad the header, the drawer and the shell (`viewport-fit=cover`);
+    - every touch target is at least 44 px, small links in rows of pills with a 44 px hit area.
+  - **The installed app:**
+    - `/manifest.webmanifest` (`application/manifest+json`, standalone, scope `/`), linked from every page, with `icon-192.png`, `icon-512.png` and their maskable versions, rendered with `clowder-proof -render-icon` (`scripts/README.md`);
+    - two `theme-color` metas for System, or one for a chosen theme, swapped by the theme form.
+  - **The service worker:** `/sw.js` is served at the root (`text/javascript`, `no-cache`, an ETag, the D36 headers), with a hash of the embedded static files filled in. Registration is in `code.js`.
+    - It answers only GETs of `/static/` on this site, cache first from `clowder-static-<version>`, and deletes the other versions' caches on `activate`. Pages, `/api/`, `/files/`, `/avatars/`, streams and other methods never reach `respondWith`.
+    - The static URLs of the pages carry `?v=<version>`, so a new release's page never gets an old release's files from the cache.
+- **Main files:** `internal/web/views/{sidebar,layout}.templ`, `internal/web/views/theme.go`, `internal/web/static/{app.css,code.js,static.go,sw.js,manifest.webmanifest,icon-*.png,icon-maskable.svg}`, `internal/web/{static,server,settings}.go`, `docs/SPEC.md`, `docs/SECURITY.md`, `scripts/README.md`.
+- **Tests:**
+  - Go: `TestManifest` (the fields, the four icons decoded at their sizes, the headers), `TestServiceWorkerIsServed`, `TestStaticVersion`, `TestServiceWorkerVersionFollowsTheFiles`, `TestServiceWorkerRules`, the route test of `ServiceWorkerInvalid`, `TestThemeColor`, `TestMenuButtonAndDrawer`, the versioned static URLs;
+  - browser:
+    - `TestEveryPageFitsAPhone` walks 21 pages at 390×844 and 360×740, as a member, an admin and logged out, checking the width and the 44 px targets;
+    - `TestRoomDrawerOnAPhone`: closed on load, opened by the button, the focus in and back, open through a live patch, the dot, the three ways to close it, a room link, and a column at 1280 px;
+    - `TestServiceWorkerCachesOnlyStatic` and `TestServiceWorkerSourceRules`;
+    - `TestServiceWorkerOnTheLoginPage` and `TestLiveUpdatesUnderTheServiceWorker`.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [feed](implemented-proof-images/21.5-phone-feed.png) · [drawer](implemented-proof-images/21.5-phone-drawer.png) · [post](implemented-proof-images/21.5-phone-post.png) · [board](implemented-proof-images/21.5-phone-board.png) · [conversation](implemented-proof-images/21.5-phone-conversation.png) · [settings](implemented-proof-images/21.5-phone-settings.png) · [login](implemented-proof-images/21.5-phone-login.png) · [feed dark](implemented-proof-images/21.5-phone-feed-dark.png) · [360](implemented-proof-images/21.5-phone-360-feed.png) · [manifest](implemented-proof-images/21.5-manifest.txt)
+  - the main pages at 390 px, the drawer open with its dot lit, the feed at 360 px, and the manifest and headers as served.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - The worker first accepted that, just after an upgrade, the old worker could serve last release's files to the new release's first page. The manager sent it back to version the static URLs, which closes that.
+  - The search is a row under the header's buttons, not an icon that opens it, because an icon would need a script.
+  - A browser without popovers keeps the stacked layout of 21.1.

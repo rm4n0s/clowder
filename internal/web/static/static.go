@@ -14,8 +14,27 @@ import "embed"
 // apple-touch-icon.png (their PNG fallbacks, rendered from favicon.svg with
 // clowder-proof -render-icon, see scripts/README.md), the folder fonts (the
 // woff2 files of the three families with their licenses, SPEC D57 and §15) and
-// the files added to this folder later. Its paths are relative to the folder,
-// for example "app.css" or "fonts/nunito/latin.woff2".
+// icon-192.png, icon-512.png, icon-maskable-192.png and
+// icon-maskable-512.png (the icons of the installed app, rendered with
+// clowder-proof -render-icon, see scripts/README.md) and the files added to this
+// folder later. Its paths are relative to the folder, for example "app.css" or
+// "fonts/nunito/latin.woff2".
 //
-//go:embed datastar.js app.css code.css code.js board.js messages.js notify.js favicon.svg favicon-dot.svg favicon-32.png apple-touch-icon.png fonts
+//go:embed datastar.js app.css code.css code.js board.js messages.js notify.js favicon.svg favicon-dot.svg favicon-32.png apple-touch-icon.png icon-192.png icon-512.png icon-maskable-192.png icon-maskable-512.png fonts
 var FS embed.FS
+
+// ServiceWorker is the source of the service worker (sw.js). It is not in FS:
+// the server serves it at /sw.js, at the root, with the version of the files of
+// FS filled in (SPEC D58). icon-maskable.svg, the source of the maskable icons,
+// is in this folder and is not embedded either.
+//
+//go:embed sw.js
+var ServiceWorker []byte
+
+// Manifest is the source of the web app manifest (manifest.webmanifest). It is
+// not in FS either: the server serves it at /manifest.webmanifest, at the root
+// so that its scope is the whole site, with the version of the files of FS in
+// the addresses of its icons (SPEC D58).
+//
+//go:embed manifest.webmanifest
+var Manifest []byte

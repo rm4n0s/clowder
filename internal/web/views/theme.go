@@ -21,3 +21,13 @@ func themeOf(ctx context.Context) string {
 	}
 	return ""
 }
+
+// The two colours of the theme-color elements: the ground of the light and of
+// the dark palette (--c-ground in app.css; a test keeps them equal), which the
+// browser draws behind its own bars on a phone.
+const (
+	// ThemeColorLight is the ground of the light palette.
+	ThemeColorLight = "#fbf6ee"
+	// ThemeColorDark is the ground of the dark palette.
+	ThemeColorDark = "#1a1512"
+)

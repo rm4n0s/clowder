@@ -378,7 +378,7 @@ func TestPostPageView(t *testing.T) {
 			name: "the post in the layout with the room highlighted and a place for comments",
 			data: views.PostPageData{Sidebar: sidebar, Post: post},
 			want: []string{
-				"<title id=\"page-title\">Post by Alice in general &lt;x&gt; · Clowder</title>", `<aside id="sidebar">`, `aria-current="page"`,
+				"<title id=\"page-title\">Post by Alice in general &lt;x&gt; · Clowder</title>", `<aside id="sidebar" popover>`, `aria-current="page"`,
 				`<a href="/rooms/2">general &lt;x&gt;</a>`, `id="post-5"`, "<p>hello</p>",
 				`name="from" value="post"`, `<div id="thread" class="thread">`, `<section id="comments" class="comments">`, "No comments yet.",
 				// A person who has not joined the room is told to.
@@ -873,7 +873,7 @@ func TestPagesOpenTheirStream(t *testing.T) {
 			}),
 			want: []string{
 				`<div id="live-stream" hidden data-init="@get(&#39;/rooms/7/stream?seen=31&#39;, {headers: {&#39;X-Page-Title&#39;: encodeURIComponent(document.title)}, retry: &#39;always&#39;, retryMaxCount: 1000, openWhenHidden: true})"></div>`,
-				`id="post-composer"`, `id="room-members-count"`, `<aside id="sidebar">`,
+				`id="post-composer"`, `id="room-members-count"`, `<aside id="sidebar" popover>`,
 			},
 		},
 		{

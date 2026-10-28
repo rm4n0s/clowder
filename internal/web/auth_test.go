@@ -224,7 +224,7 @@ func TestHome(t *testing.T) {
 		{
 			name: "greets the user by display name", user: "alice",
 			wantBody: []string{
-				"Signed in as Alice", `<aside id="sidebar">`, `<form id="logout-form" class="user-menu-logout" method="post" action="/logout"`,
+				"Signed in as Alice", `<aside id="sidebar" popover>`, `<form id="logout-form" class="user-menu-logout" method="post" action="/logout"`,
 				`data-on:submit="@post(&#39;/logout&#39;, {contentType: &#39;form&#39;})"`, "Log out</button>",
 			},
 		},

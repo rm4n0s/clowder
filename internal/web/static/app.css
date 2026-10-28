@@ -551,12 +551,149 @@ main { flex: 999 1 32rem; min-width: 0; max-width: 60rem; }
 .error-card h1 { font-size: 3rem; }
 
 @media (max-width: 40rem) {
-  .site-header { gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+  .site-header {
+    gap: var(--sp-3);
+    padding: max(var(--sp-3), env(safe-area-inset-top)) max(var(--sp-4), env(safe-area-inset-right)) var(--sp-3) max(var(--sp-4), env(safe-area-inset-left));
+  }
   .site-header .sidebar-search { order: 3; flex: 1 1 100%; max-width: none; margin-left: 0; }
-  .shell { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--sp-4); padding: var(--sp-4); }
+  .shell {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: var(--sp-4);
+    padding: var(--sp-4) max(var(--sp-4), env(safe-area-inset-right)) max(var(--sp-4), env(safe-area-inset-bottom)) max(var(--sp-4), env(safe-area-inset-left));
+  }
   #sidebar { flex: 0 0 auto; max-width: none; }
   main { flex: 0 0 auto; max-width: none; }
-  .user-menu-panel { position: fixed; top: auto; right: var(--sp-4); }
+  .user-menu-panel { position: fixed; top: auto; right: max(var(--sp-4), env(safe-area-inset-right)); }
+  .plain-shell { padding-right: max(var(--sp-4), env(safe-area-inset-right)); padding-bottom: max(var(--sp-6), env(safe-area-inset-bottom)); padding-left: max(var(--sp-4), env(safe-area-inset-left)); }
+}
+
+/* Under 24 rem the word of the logo is only for a screen reader, so that the
+   menu button, the logo mark, the search and the three buttons of the header
+   fit 360 px; the mark keeps a 44 px hit area. */
+@media (max-width: 24rem) {
+  .site-header .logo { justify-content: center; min-width: var(--tap); min-height: var(--tap); }
+  .site-header .logo-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* The room menu (SPEC D58). The sidebar is a popover: a column beside the page
+   above 40 rem, and, at 40 rem and below, a drawer from the left that the menu
+   button of the header opens (popovertarget, no script of our own: the browser
+   opens and closes it with the button, the close button, Escape and a click on
+   the scrim, and gives the focus back to the button). A browser without
+   popovers (the @supports) keeps the rooms above the page, as before. */
+.menu-button,
+.drawer-head { display: none; }
+
+@media (width > 40rem) {
+  #sidebar[popover] {
+    display: block;
+    position: static;
+    inset: auto;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    color: inherit;
+    background: transparent;
+    border: 0;
+  }
+}
+
+@supports selector(:popover-open) {
+  @media (max-width: 40rem) {
+    .menu-button {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: var(--tap);
+      height: var(--tap);
+      padding: 0;
+      color: var(--c-text);
+      background: var(--c-surface-sunken);
+      border-radius: 50%;
+    }
+
+    .menu-button:hover { color: var(--c-text); }
+
+    /* The dot and the word "unread" in the name show while a room of the list
+       has unread posts or a mention. They follow the list itself, which the
+       stream patches room by room. */
+    .menu-dot {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      display: none;
+      width: 12px;
+      height: 12px;
+      background: var(--c-accent);
+      border: 2px solid var(--c-bar);
+      border-radius: 50%;
+    }
+
+    .menu-unread-name { display: none; }
+
+    body:has(#sidebar-rooms .sidebar-room-list > li.unread, #sidebar-rooms .mention-badge) .menu-dot { display: block; }
+
+    body:has(#sidebar-rooms .sidebar-room-list > li.unread, #sidebar-rooms .mention-badge) .menu-unread-name { display: inline; }
+
+    #sidebar[popover] {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: min(20rem, 88vw);
+      max-width: none;
+      height: 100dvh;
+      margin: 0;
+      padding: max(var(--sp-3), env(safe-area-inset-top)) var(--sp-4) max(var(--sp-4), env(safe-area-inset-bottom)) max(var(--sp-4), env(safe-area-inset-left));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      color: var(--c-text);
+      background: var(--c-bar);
+      border: 0;
+      border-radius: 0 var(--r-card) var(--r-card) 0;
+      box-shadow: var(--shadow-pop);
+      transform: translateX(-100%);
+      transition: transform 0.2s ease-out, overlay 0.2s allow-discrete, display 0.2s allow-discrete;
+    }
+
+    #sidebar[popover]:popover-open { transform: none; }
+
+    @starting-style {
+      #sidebar[popover]:popover-open { transform: translateX(-100%); }
+    }
+
+    #sidebar::backdrop { background: var(--c-scrim); }
+
+    .drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-2); }
+
+    .drawer-title { margin: 0; font-family: var(--font-heading); font-size: var(--fs-xl); font-weight: 800; }
+
+    .drawer-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: var(--tap);
+      height: var(--tap);
+      padding: 0;
+      color: var(--c-text);
+      background: var(--c-surface-sunken);
+      border-radius: 50%;
+    }
+
+    .drawer-close:hover { color: var(--c-text); }
+  }
 }
 
 /* The sidebar: the rooms of the user. */
@@ -1999,7 +2136,7 @@ button.reaction-submit { padding: 0.375rem 0.75rem; color: var(--c-text-soft); b
 
   .reaction-add summary { min-width: var(--tap); }
 
-  button.code-copy::after { content: ""; position: absolute; inset: -8px -6px; }
+  button.code-copy::after { content: ""; position: absolute; inset: -12px -6px; }
 }
 
 /* The board of a room: the room header of the feed with Board raised, then the
@@ -3137,4 +3274,53 @@ form.ssh-key-remove .field-error, form.ssh-key-remove .form-error { flex-basis: 
   .audit-details summary { display: inline-flex; align-items: center; }
 
   .notify-places a { display: inline-flex; align-items: center; min-height: var(--tap); }
+}
+
+/* Phones, the pass of step 21.5 over every page: a field, a choice of the user
+   menu and the logo are at least 44 px high (the text of a line and a link inside
+   a text excepted). */
+@media (max-width: 40rem) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select,
+  .user-menu .theme-option,
+  .site-header .logo,
+  .plain-logo .logo { min-height: var(--tap); }
+
+  .audit-details summary { min-width: var(--tap); justify-content: center; }
+
+  .admin-room button,
+  .conversation-members form button,
+  .conversation-members form button.secondary { min-height: var(--tap); }
+
+  /* Quiet text links in a row: a 44 px wide box each, so that two do not share
+     a hit area. */
+  .message-footer a,
+  .message-footer button.danger,
+  .post-footer a,
+  .card-links a { justify-content: center; min-width: var(--tap); }
+
+  /* A small link that sits in a line of text or in a row of pills keeps its
+     look and has a hit area of 44 px around its centre (the 21.2 way, for the
+     code Copy button and the remove cross of a chip). */
+  a.tag,
+  .search-room,
+  .task-link,
+  .post-time,
+  .message-time,
+  .attachment-files a { position: relative; }
+
+  a.tag::after,
+  .search-room::after,
+  .task-link::after,
+  .post-time::after,
+  .message-time::after,
+  .attachment-files a::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--tap));
+    height: var(--tap);
+    transform: translate(-50%, -50%);
+  }
 }

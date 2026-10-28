@@ -172,7 +172,7 @@ func TestFormPost(t *testing.T) {
 func TestLayoutShell(t *testing.T) {
 	sb := views.SidebarData{User: app.User{DisplayName: "Alice"}}
 	with := render(t, views.Layout("T", 0, &sb))
-	for _, want := range []string{`<header id="site-header" class="site-header">`, `<aside id="sidebar">`, `<nav aria-label="Rooms" id="sidebar-rooms">`, `<main>`, `src="/static/notify.js"`} {
+	for _, want := range []string{`<header id="site-header" class="site-header">`, `<aside id="sidebar" popover>`, `<nav aria-label="Rooms" id="sidebar-rooms">`, `<main>`, `src="/static/notify.js"`} {
 		if !strings.Contains(with, want) {
 			t.Errorf("a page with a sidebar lacks %q:\n%s", want, with)
 		}

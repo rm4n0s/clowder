@@ -124,7 +124,7 @@ func TestBoardPage(t *testing.T) {
 	requireBody(t, rec, []string{
 		"<title id=\"page-title\">Board of general · Clowder</title>",
 		// The sidebar, with the room highlighted.
-		`<aside id="sidebar">`, `href="/rooms/` + id + `" class="current" data-room="general" aria-current="page"`,
+		`<aside id="sidebar" popover>`, `href="/rooms/` + id + `" class="current" data-room="general" aria-current="page"`,
 		// The header, with the way back to the posts.
 		`id="board-header"`, "<h1>general</h1>", `<a href="/rooms/` + id + `">Posts</a>`, `<a href="/rooms/` + id + `/board" aria-current="page">Board</a>`,
 		// The columns in order with their counts and cards in order.
@@ -141,7 +141,7 @@ func TestBoardPage(t *testing.T) {
 		// The panel of the card form is outside the columns.
 		`id="board-editor"`,
 		// The live stream and the script.
-		`id="live-stream"`, `/rooms/` + id + `/board/stream?v=`, `<script src="/static/board.js" defer>`,
+		`id="live-stream"`, `/rooms/` + id + `/board/stream?v=`, `<script src="/static/board.js?v=`,
 		// The hidden form and link the script uses.
 		`id="board-drop"`, `id="board-refresh"`,
 	}, "Join this room to change the board")

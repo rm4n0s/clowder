@@ -192,6 +192,7 @@ S9 was reachable by every logged-in user and by nobody else; S10 needs a person 
 - **Mutable image tags** (above) and no scan of the image: the operator pins digests if they need to.
 - **`sslmode`.** The driver's default is `prefer`; the README says to use `verify-full` or `require` beyond a private network, and compose uses `disable` inside its own network.
 - **`/healthz` and `/api/v1/openapi.json` need no login.** The first says `ok` or `unavailable`; the second describes the API, which is open source.
+- **`/manifest.webmanifest` and `/sw.js` need no login** (step 21.5, D58): a browser fetches the manifest without cookies, and a service worker is fetched by the page that registers it. The manifest holds the name and the icons of Clowder and the source of the worker holds no secret; both are the same for everyone. The worker caches the files of `/static/` only and never answers a page, an API call, a file or an avatar (`TestServiceWorkerSourceRules`), so nothing private is kept by it. Both are sent with the headers of D36 (`TestManifest`, `TestServiceWorkerIsServed`).
 
 ## Out of scope (1.1)
 

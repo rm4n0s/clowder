@@ -56,7 +56,7 @@ func TestSettingsNotificationsSection(t *testing.T) {
 		`name="soundName" value="purr" checked`, `name="soundName" value="chirp"`, `name="soundName" value="bell"`, `name="soundName" value="meow"`,
 		`data-play-sound="purr"`, `data-play-sound="chirp"`, `data-play-sound="bell"`, `data-play-sound="meow"`,
 		`id="notify-browser"`, `name="replies" value="following" checked`, `name="replies" value="direct"`,
-		`id="notify-places-empty"`, `<div id="notify-events" hidden></div>`, `<script src="/static/notify.js" defer></script>`,
+		`id="notify-places-empty"`, `<div id="notify-events" hidden></div>`, `<script src="/static/notify.js?v=`,
 	}, `id="notify-places"`, "TODO")
 
 	// Rooms and conversations that have their own preferences are listed with a

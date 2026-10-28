@@ -23,4 +23,15 @@ go run -tags clowder_browser ./cmd/clowder-proof -render-icon internal/web/stati
 go run -tags clowder_browser ./cmd/clowder-proof -render-icon internal/web/static/favicon.svg -icon-size 180 -icon-bg '#fbf6ee' -icon-pad 20 -o internal/web/static/apple-touch-icon.png
 ```
 
-`-icon-size` is the width and the height in pixels (16 to 1024), `-icon-bg` is a `#rrggbb` ground (transparent when left out) and `-icon-pad` the space around the icon on each side, in percent (0 to 40). Step 21.5 renders the icons of the installed app (192 and 512 px, and the maskable ones) the same way.
+`-icon-size` is the width and the height in pixels (16 to 1024), `-icon-bg` is a `#rrggbb` ground (transparent when left out) and `-icon-pad` the space around the icon on each side, in percent (0 to 40). The icons of the installed app (step 21.5, `internal/web/static/manifest.webmanifest`) are rendered the same way. The "any" icons are the favicon on a transparent ground; the maskable ones are `icon-maskable.svg` (the cat head in the cream of the header, with the accent for the eyes and the nose) on the accent ground with 15% around it, so that the head stays inside the safe zone of a mask:
+
+```sh
+for size in 192 512; do
+  # purpose "any": the head in the accent, transparent ground
+  go run -tags clowder_browser ./cmd/clowder-proof -render-icon internal/web/static/favicon.svg -icon-size $size -o internal/web/static/icon-$size.png
+  # purpose "maskable": the cream head on the accent ground
+  go run -tags clowder_browser ./cmd/clowder-proof -render-icon internal/web/static/icon-maskable.svg -icon-size $size -icon-bg '#c2410c' -icon-pad 15 -o internal/web/static/icon-maskable-$size.png
+done
+```
+
+`icon-maskable.svg` is not embedded in the binary (it is only the source of the PNGs).

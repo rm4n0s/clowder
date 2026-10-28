@@ -42,7 +42,7 @@ func TestBoardTaskEditForm(t *testing.T) {
 			t.Fatalf("status = %d, want 200", rec.Code)
 		}
 		// Without JavaScript the whole page comes with the form open.
-		requireBody(t, rec, append(want, `<aside id="sidebar">`, `id="board-columns"`))
+		requireBody(t, rec, append(want, `<aside id="sidebar" popover>`, `id="board-columns"`))
 	})
 }
 
@@ -286,7 +286,7 @@ func TestBoardTaskUpdateMistakes(t *testing.T) {
 					if rec.Code != http.StatusUnprocessableEntity {
 						t.Fatalf("status = %d, want 422", rec.Code)
 					}
-					requireBody(t, rec, append(want, `<aside id="sidebar">`, `id="board-columns"`))
+					requireBody(t, rec, append(want, `<aside id="sidebar" popover>`, `id="board-columns"`))
 				}
 				if got := e.cardByID(s.plain.ID); got.Title != before.Title || len(got.Assignees) != 0 || got.DueDate != nil {
 					t.Errorf("card changed to %+v", got)

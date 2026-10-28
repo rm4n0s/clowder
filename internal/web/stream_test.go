@@ -436,7 +436,7 @@ func requirePatch(t *testing.T, p patch, selector, mode string, want, notWant []
 // header and the aside in the HTML, and that the HTML has and lacks the strings.
 func requireChromePatch(t *testing.T, p patch, want, notWant []string) {
 	t.Helper()
-	requirePatch(t, p, "", "outer", append([]string{`<header id="site-header"`, `<aside id="sidebar">`}, want...), notWant)
+	requirePatch(t, p, "", "outer", append([]string{`<header id="site-header"`, `<aside id="sidebar" popover>`}, want...), notWant)
 }
 
 // streamOfRoom is the path of the stream of the room, with the query.

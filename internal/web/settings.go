@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/a-h/templ"
@@ -311,12 +312,27 @@ func resetFormJS(id string) string {
 
 // themeJS is the JavaScript that sets the theme on the page: data-theme on the
 // html element for Light and Dark, and none for System, which leaves the
-// choice to the browser.
+// choice to the browser; and the theme-color elements of the head, as Layout
+// writes them (one for the chosen theme, or one for each palette for System).
 func themeJS(theme app.Theme) string {
-	if theme == app.ThemeLight || theme == app.ThemeDark {
-		return "document.documentElement.setAttribute('data-theme', " + jsString(string(theme)) + ")"
+	attr := "document.documentElement.removeAttribute('data-theme')"
+	colours := [][2]string{{views.ThemeColorLight, "(prefers-color-scheme: light)"}, {views.ThemeColorDark, "(prefers-color-scheme: dark)"}}
+	switch theme {
+	case app.ThemeLight:
+		attr = "document.documentElement.setAttribute('data-theme', " + jsString(string(theme)) + ")"
+		colours = [][2]string{{views.ThemeColorLight, ""}}
+	case app.ThemeDark:
+		attr = "document.documentElement.setAttribute('data-theme', " + jsString(string(theme)) + ")"
+		colours = [][2]string{{views.ThemeColorDark, ""}}
 	}
-	return "document.documentElement.removeAttribute('data-theme')"
+	var list []string
+	for _, c := range colours {
+		list = append(list, "["+jsString(c[0])+", "+jsString(c[1])+"]")
+	}
+	metas := "((list) => { document.querySelectorAll('meta[name=\"theme-color\"]').forEach((m) => m.remove()); " +
+		"list.forEach(([content, media]) => { const m = document.createElement('meta'); m.name = 'theme-color'; m.content = content; " +
+		"if (media) { m.media = media; } document.head.append(m); }); })([" + strings.Join(list, ", ") + "])"
+	return attr + ", " + metas
 }
 
 // themeRadioJS is the JavaScript that checks the radio button of the theme in

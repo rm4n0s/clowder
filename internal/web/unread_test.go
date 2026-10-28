@@ -130,7 +130,7 @@ func TestOpeningTheFeedMarksTheRoomRead(t *testing.T) {
 	if strings.Contains(item, "count-badge") || strings.Contains(item, `class="unread"`) {
 		t.Errorf("the open room shows something waiting: %s", item)
 	}
-	requireBody(t, rec, []string{badge(1), `<title id="page-title">(1) general · Clowder</title>`, `href="/static/favicon-dot.svg"`})
+	requireBody(t, rec, []string{badge(1), `<title id="page-title">(1) general · Clowder</title>`, `href="/static/favicon-dot.svg?v=`})
 	if got := e.unreadPosts("bob", "general"); got != 0 {
 		t.Errorf("after the feed bob has %d unread, want 0", got)
 	}
@@ -355,9 +355,9 @@ func TestTheTabShowsWhatIsWaiting(t *testing.T) {
 
 	// The server renders the count in the title and the dot in the favicon.
 	rec := e.getAs("bob", "/", false) // the addition to "secret"
-	requireBody(t, rec, []string{`<title id="page-title">(1) Home · Clowder</title>`, `<link id="favicon" rel="icon" type="image/svg+xml" href="/static/favicon-dot.svg">`})
+	requireBody(t, rec, []string{`<title id="page-title">(1) Home · Clowder</title>`, `<link id="favicon" rel="icon" type="image/svg+xml" href="/static/favicon-dot.svg?v=`})
 	rec = e.getAs("carol", "/", false)
-	requireBody(t, rec, []string{`<title id="page-title">Home · Clowder</title>`, `<link id="favicon" rel="icon" type="image/svg+xml" href="/static/favicon.svg">`}, "(0)")
+	requireBody(t, rec, []string{`<title id="page-title">Home · Clowder</title>`, `<link id="favicon" rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=`}, "(0)")
 	// The count is the notifications and the conversations, the numbers of the bell and of Messages.
 	e.mentionBob("general", "x")
 	if _, err := e.msgs.StartDirect(t.Context(), e.actor(e.alice), e.bob.ID); err != nil {
@@ -392,7 +392,7 @@ func TestTheTabShowsWhatIsWaiting(t *testing.T) {
 	var sawFavicon, sawTitle bool
 	for _, p := range got {
 		switch {
-		case strings.Contains(p.html, `href="/static/favicon-dot.svg"`):
+		case strings.Contains(p.html, `href="/static/favicon-dot.svg?v=`):
 			sawFavicon = true
 		case strings.Contains(p.html, `<title id="page-title">(1) Home · Clowder</title>`):
 			sawTitle = true
@@ -421,7 +421,7 @@ func TestTheTabShowsWhatIsWaiting(t *testing.T) {
 		t.Fatalf("%d tab patches after reading, want 2: %+v", len(got), got)
 	}
 	for _, p := range got {
-		if !strings.Contains(p.html, `href="/static/favicon.svg"`) && !strings.Contains(p.html, `<title id="page-title">Home · Clowder</title>`) {
+		if !strings.Contains(p.html, `href="/static/favicon.svg?v=`) && !strings.Contains(p.html, `<title id="page-title">Home · Clowder</title>`) {
 			t.Errorf("unexpected tab patch: %s", p.html)
 		}
 	}
@@ -439,7 +439,7 @@ func TestTheTabShowsWhatIsWaiting(t *testing.T) {
 	requireCounts(t, plain, 0)
 	e.writePost("bob", "secret", "Hi @alice")
 	got = plain.tabWithin(1, streamTimeout)
-	if len(got) != 1 || !strings.Contains(got[0].html, `href="/static/favicon-dot.svg"`) {
+	if len(got) != 1 || !strings.Contains(got[0].html, `href="/static/favicon-dot.svg?v=`) {
 		t.Errorf("without a title only the favicon is patched: %+v", got)
 	}
 	if more := plain.tabWithin(1, quietTime); len(more) != 0 {

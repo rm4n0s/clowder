@@ -78,6 +78,13 @@ func TestFeedAndPostFitAPhone(t *testing.T) {
 	if err := waitFor(ctx, `document.querySelector('.room-card') !== null && `+fits); err != nil {
 		t.Errorf("the room list is wider than the screen: %v", err)
 	}
+	// On a phone the rooms are in the drawer that the menu button opens (21.5).
+	if err := chromedp.Do(ctx, chromedp.Click("#menu-button")); err != nil {
+		t.Fatalf("open the room menu: %v", err)
+	}
+	if err := waitFor(ctx, drawerOpen); err != nil {
+		t.Fatalf("the room menu did not open: %v", err)
+	}
 	if err := chromedp.Do(ctx, chromedp.Click(`aside a[data-room="general"]`), chromedp.WaitVisible("#post-editor-new")); err != nil {
 		t.Fatalf("open general: %v", err)
 	}

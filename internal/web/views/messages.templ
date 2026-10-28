@@ -215,7 +215,7 @@ templ ConversationPage(d ConversationData) {
 				@ConversationMembers(d.Members)
 			}
 		</div>
-		<script src="/static/messages.js" defer></script>
+		<script src={ StaticURL(ctx, "/static/messages.js") } defer></script>
 	}
 }
 

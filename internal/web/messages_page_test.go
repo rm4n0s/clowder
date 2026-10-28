@@ -79,7 +79,7 @@ func TestConversationPageShowsTheMessages(t *testing.T) {
 		`href="/messages">All conversations</a>`,
 		`<div id="message-pane" class="message-pane"`, `<ol id="message-list" class="message-list">`,
 		`<div id="messages-older" class="messages-older"></div>`, `<p id="messages-empty" class="empty messages-empty">No messages yet.</p>`,
-		`<script src="/static/messages.js" defer></script>`,
+		`<script src="/static/messages.js?v=`,
 		`@get(&#39;/messages/` + idText(s.conv) + `/stream?seen=` + idText(s.m5.ID) + `&#39;`,
 	}, "?before=", `id="conversation-members"`)
 

@@ -112,3 +112,28 @@
     start();
   }
 })();
+
+// The service worker (SPEC D58). It is registered from here and not from a
+// script of its own because code.js is the one script every page loads, and
+// Clowder allows no inline script (D36). Only the pages of a logged-in person
+// and the login page register it, so that the files of /static/ are already
+// kept when the person has logged in. The worker caches /static/ and answers
+// nothing else (sw.js). A browser without service workers, or a page that is
+// not a secure context (plain http on another host than localhost), is left
+// alone.
+(function () {
+  'use strict';
+
+  if (!('serviceWorker' in navigator)) {
+    return;
+  }
+  var wanted = document.getElementById('site-header') !== null || window.location.pathname === '/login';
+  if (!wanted) {
+    return;
+  }
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {
+      // No worker: the pages work as they do without one.
+    });
+  });
+})();

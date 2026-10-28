@@ -22,17 +22,19 @@ templ Layout(title string, unread int, sb *SidebarData) {
 	>
 		<head>
 			<meta charset="utf-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+			@ThemeColor()
+			<link rel="manifest" href="/manifest.webmanifest"/>
 			@PageTitle(unread, PageBaseTitle(title))
 			@Favicon(unread)
-			<link rel="alternate icon" type="image/png" sizes="32x32" href="/static/favicon-32.png"/>
-			<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png"/>
-			<link rel="stylesheet" href="/static/app.css"/>
-			<link rel="stylesheet" href="/static/code.css"/>
-			<script type="module" src="/static/datastar.js"></script>
-			<script src="/static/code.js" defer></script>
+			<link rel="alternate icon" type="image/png" sizes="32x32" href={ templ.SafeURL(StaticURL(ctx, "/static/favicon-32.png")) }/>
+			<link rel="apple-touch-icon" sizes="180x180" href={ templ.SafeURL(StaticURL(ctx, "/static/apple-touch-icon.png")) }/>
+			<link rel="stylesheet" href={ templ.SafeURL(StaticURL(ctx, "/static/app.css")) }/>
+			<link rel="stylesheet" href={ templ.SafeURL(StaticURL(ctx, "/static/code.css")) }/>
+			<script type="module" src={ StaticURL(ctx, "/static/datastar.js") }></script>
+			<script src={ StaticURL(ctx, "/static/code.js") } defer></script>
 			if sb != nil {
-				<script src="/static/notify.js" defer></script>
+				<script src={ StaticURL(ctx, "/static/notify.js") } defer></script>
 			}
 		</head>
 		<body>
@@ -78,5 +80,21 @@ templ PageTitle(unread int, base string) {
 // dot while unread is above 0. It has an id so that the stream can patch it
 // when the count changes.
 templ Favicon(unread int) {
-	<link id="favicon" rel="icon" type="image/svg+xml" href={ templ.SafeURL(FaviconPath(unread)) }/>
+	<link id="favicon" rel="icon" type="image/svg+xml" href={ templ.SafeURL(StaticURL(ctx, FaviconPath(unread))) }/>
+}
+
+// ThemeColor writes the theme-color elements of the head: one with the colour
+// of the theme the person chose (Light or Dark), or, for System, one for each
+// palette, chosen by prefers-color-scheme. The theme form patches nothing here;
+// it replaces the elements through script (the answer of the theme form).
+templ ThemeColor() {
+	switch themeOf(ctx) {
+		case "light":
+			<meta name="theme-color" content={ ThemeColorLight }/>
+		case "dark":
+			<meta name="theme-color" content={ ThemeColorDark }/>
+		default:
+			<meta name="theme-color" content={ ThemeColorLight } media="(prefers-color-scheme: light)"/>
+			<meta name="theme-color" content={ ThemeColorDark } media="(prefers-color-scheme: dark)"/>
+	}
 }
