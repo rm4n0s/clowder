@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | 1.0 released as `v1.0.0` (2026-10-27); 1.1 (PostgreSQL, several processes, the API for desktop clients) released as `v1.1.0` (2026-10-27); 1.2 (settings, SSH sign-in codes, code highlighting, a new look, phones, operations) in progress |
+| Status | 1.0 released as `v1.0.0` (2026-10-27); 1.1 (PostgreSQL, several processes, the API for desktop clients) released as `v1.1.0` (2026-10-27); 1.2 (settings, SSH sign-in codes, code highlighting, unread counts, message search, a new look, phones, video calls in private messages, backups, metrics and per-user limits) released as `v1.2.0` (2026-10-29) |
 | Date | 2026-10-28 |
 | Owner | Manos Ragiadakos |
 | Module | `github.com/rm4n0s/clowder` |

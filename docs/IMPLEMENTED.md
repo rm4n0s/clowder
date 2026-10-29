@@ -1892,3 +1892,16 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - Left to the owner (SPEC D66): whether a reset link should ask for the SSH code, and whether to lower `AvatarMaxPixels`.
   - govulncheck still lists GO-2026-5932, in `golang.org/x/crypto/openpgp`. It has no fix, and nothing imports that package.
+
+## 24.2 Release 1.2
+- **Date:** 2026-10-29
+- **Branch:** feat/step-24.2-release-1.2
+- **Summary:** Clowder 1.2 is released as `v1.2.0`, and the SPEC's status says so. 1.2 brings settings, SSH sign-in codes, code highlighting, unread counts, message search, the new look for phones and desktops, one-to-one video calls in private messages, backups, metrics and per-user limits.
+- **Main files:** `docs/SPEC.md` (the status), `docs/IMPLEMENTED.md`
+- **Tests:** none new
+- **Checks:** run on `3df1c93`, the code of this release (this step changes only docs): gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · govulncheck ✅ · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · compose-smoke ✅ (both modes) · CGO_ENABLED=0 build ✅ · go generate clean ✅. The `internal/api` run that failed once is described in 24.1. The static checks were run again on this branch ✅.
+- **Proof:** the tag `v1.2.0` on `origin`
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Left to the owner (SPEC D66): whether a reset link should ask for the SSH code, and whether to lower `AvatarMaxPixels`.
+  - govulncheck still lists GO-2026-5932 in `golang.org/x/crypto/openpgp`, which has no fix and is not imported.
