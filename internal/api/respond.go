@@ -47,6 +47,8 @@ const (
 	messageInvalidInput      = "Some of what you sent is not valid."
 	messageConflict          = "That clashes with a change made just now."
 	messageRateLimited       = "Too many attempts. Try again later."
+	messageTooManyConnection = "Too many open connections. Close some and try again."
+	messageStagedFull        = "You have too many uploaded files waiting for a post. Post them, or wait for them to expire, and try again."
 	messageTooLarge          = "That is too large."
 	messageUnauthenticated   = "Log in to use this."
 	messageWrongCredentials  = "Wrong username or password."
@@ -93,8 +95,10 @@ type problem struct {
 //     "fields" it carries, if any; so do the tags of the SSH code switch:
 //     the server is off, no key fetched a code, the last key is needed),
 //     app.TagSSHCodeRequired 401 ssh_code_required,
-//     app.TagRateLimited 429 rate_limited with Retry-After, app.TagTooLarge
-//     413 too_large;
+//     app.TagRateLimited 429 rate_limited with Retry-After,
+//     app.TagConnectionsLimited 429 rate_limited with Retry-After 30 (too many
+//     live connections), app.TagTooLarge 413 too_large and so does
+//     app.TagStagedFull (too many staged uploads, with a message of its own);
 //   - app.TagUnauthenticated and a missing or malformed bearer header 401
 //     unauthenticated with WWW-Authenticate;
 //   - the tags of this package: a body over the limit 413 too_large, a body
@@ -155,6 +159,12 @@ func problemOf(err error) (problem, bool) {
 		return problem{status: http.StatusTooManyRequests,
 			object: errorObject{Code: codeRateLimited, Message: messageRateLimited},
 			header: map[string]string{"Retry-After": strconv.Itoa(int(app.LoginWindow / time.Second))}}, false
+	case app.TagConnectionsLimited:
+		return problem{status: http.StatusTooManyRequests,
+			object: errorObject{Code: codeRateLimited, Message: messageTooManyConnection},
+			header: map[string]string{"Retry-After": strconv.Itoa(app.ConnectionsRetryAfterSeconds)}}, false
+	case app.TagStagedFull:
+		return problem{status: http.StatusRequestEntityTooLarge, object: errorObject{Code: codeTooLarge, Message: messageStagedFull}}, false
 	case app.TagTooLarge, tagBodyTooLarge:
 		return problem{status: http.StatusRequestEntityTooLarge, object: errorObject{Code: codeTooLarge, Message: messageTooLarge}}, false
 	case app.TagUnauthenticated, tagBearerInvalid:

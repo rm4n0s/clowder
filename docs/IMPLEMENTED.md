@@ -1811,3 +1811,39 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Deviations and follow-ups:**
   - `clowder_calls_total` counts the calls whose media this process held: a call declined, cancelled, missed or busy before anyone joined it is not counted (written in the SPEC and the README).
   - `code` also has `1xx`, for WebSocket upgrades.
+
+## 23.3 Per-user limits and govulncheck
+- **Date:** 2026-10-29
+- **Branch:** feat/step-23.3-limits
+- **Summary:**
+  - **Live connections:** at most 30 per user per process, SSE streams and WebSockets together, counted by `app.Connections`, which `serve` makes once for the pages and the API.
+    - It covers the five page streams, the user's API WebSocket and both call sockets; the count is released whatever way a connection ends.
+    - The 31st gets `429` with `Retry-After: 30` before anything subscribes; the API answers `rate_limited` (`TooManyConnections` in `openapi.json`).
+    - Datastar retries a refused stream with a doubling wait, from 1 s up to 30 s, so a page never retries in a tight loop.
+  - **Staged bytes:** an upload that takes a user's staged files past 10 times the attachment limit is removed and refused with `413 too_large`. The count comes from the staging notes that already exist, and is made after the write, so parallel uploads cannot slip under it. Bytes come back when a post takes the files, when a refused post discards them, or when the hourly sweep expires them. Only the API stages files; the pages send theirs inside the post.
+  - **Sign-up:** an unknown, used or expired invitation token counts as a failed login of the address (the same counter, shared through Redis). A blocked address gets `429` before its token is read, and a valid token never counts.
+  - `clowder_limits_refused_total{limit}` (`connections`, `staged`, `signup`).
+  - **govulncheck:** `golang.org/x/vuln/cmd/govulncheck` v1.9.0 is a `tool` of `go.mod`, and `go tool govulncheck ./...` is in rule 8, CLAUDE.md's Definition of done and `scripts/README.md`.
+    - Its first run found four vulnerabilities in modules Clowder requires but does not call. Three are fixed by indirect upgrades (`golang.org/x/net` to v0.62.0, `github.com/klauspost/compress` to v1.18.7). The fourth, GO-2026-5932 in `golang.org/x/crypto/openpgp`, has no fixed version and is recorded: nothing imports that package.
+    - The final run: "Your code is affected by 0 vulnerabilities".
+  - `docs/SECURITY.md`: the accepted risks of D47 now say how each is handled, and that the connection limit is per process.
+- **Main files:** `internal/app/{connections,staged,accounts}.go`, `internal/web/{connections,server}.go`, `internal/api/{ws,handlers_calls,respond}.go`, `internal/api/openapi.json`, `internal/metrics/set.go`, `cmd/clowder/serve.go`, `go.mod`, `CLAUDE.md`, `docs/IMPLEMENTATION.md`, `docs/SPEC.md`, `docs/SECURITY.md`, `docs/API.md`, `README.md`, `scripts/README.md`.
+- **Tests:**
+  - connections:
+    - the 30th and 31st on each kind of stream, on the API WebSocket and on the call sockets;
+    - 20 streams and 10 sockets mixed, and another user unaffected;
+    - the count back to 0 after every test, also for clients that vanish without a close;
+    - `serve` end to end with its 429s and metrics;
+  - staged bytes: exactly 10 times accepted and one byte more refused, freed by posting, discarding and the sweep, parallel uploads;
+  - sign-up: each bad token counting, a valid one not, the 429 after the limit, and two services sharing the count through Redis;
+  - a route test for every new tag, the OpenAPI parity.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · govulncheck ✅ · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · CGO_ENABLED=0 build ✅ · go generate clean ✅
+- **Proof:**
+  [23.3 govulncheck](implemented-proof-images/23.3-govulncheck.txt)
+  - the first run with its four findings, what was done about each, and the final run with 0 vulnerabilities that affect the code.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - There is no route to remove a staged upload, so the 413 says to post the files or wait for them to expire.
+  - Opening an invitation link (`GET`) is not limited; only the sign-up is.
+  - `TestSignUpThenLoginFailsRedirectsToLogin` now blocks the username instead of the address, since a sign-up from a blocked address is refused by design.
+  - The cost of the staged check with very many tiny staged files is left to the review of 24.1.

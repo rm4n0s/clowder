@@ -62,7 +62,9 @@ func TestProblemOf(t *testing.T) {
 			header: map[string]string{"WWW-Authenticate": `Bearer realm="clowder"`},
 		},
 		{name: "rate limited", err: errors.New(app.TagRateLimited, "m"), status: 429, code: "rate_limited", header: map[string]string{"Retry-After": "900"}},
+		{name: "too many connections", err: errors.New(app.TagConnectionsLimited, "m"), status: 429, code: "rate_limited", header: map[string]string{"Retry-After": "30"}},
 		{name: "too large", err: errors.New(app.TagTooLarge, "m"), status: 413, code: "too_large"},
+		{name: "too many staged uploads", err: errors.New(app.TagStagedFull, "m"), status: 413, code: "too_large", wantMessage: messageStagedFull},
 		{name: "a body over the limit", err: errors.New(tagBodyTooLarge, "m"), status: 413, code: "too_large"},
 		{
 			name: "unauthenticated", err: errors.New(app.TagUnauthenticated, "m"), status: 401, code: "unauthenticated",

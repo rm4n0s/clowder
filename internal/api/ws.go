@@ -203,6 +203,15 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	// Counted among the live connections of the user before anything else is
+	// done, so that a user past the limit is refused with a plain 429 before
+	// the upgrade (SPEC D62).
+	release, err := s.svc.Connections.Acquire(c.user.ID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	defer release()
 	// Counted from here, so that Drain also waits for an upgrade that is under
 	// way.
 	s.socketOpened()

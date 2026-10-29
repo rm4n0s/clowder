@@ -188,6 +188,15 @@ Each setting is a flag of `clowder serve` or a `CLOWDER_*` environment variable.
 
 Durations are written the way Go reads them: `720h`, `90m`. `clowder invite` reads `-data`, `-database-url`, `-base-url` and `-invitation-lifetime` (and their variables); `clowder demo` reads `-data`, `-database-url` and `-size`; `clowder backup` reads `-o`, `-data` and `-database-url`, and `clowder restore` reads `-i` and `-data` (see "Backups"). `clowder healthcheck -addr host:port` asks `GET /healthz` of a running server and exits 0 when it answers 200 and 1 otherwise; the Docker image runs it as its health check.
 
+### Limits per user
+
+A few limits are fixed, not settings:
+
+- A user holds at most **30 live connections per process**: the live streams of the open pages (one for each page), the API's WebSocket and the signalling sockets of calls together. The 31st is refused with `429` and `Retry-After: 30`; the pages retry on their own with a growing wait. With several processes the limit is per process, so a user may hold 30 on each.
+- A user may have at most **ten times `-max-attachment-size`** uploaded through the API and not yet attached to a post or message (250 MiB by default); a further upload is `413`. The bytes are free again when the files are attached or expire after a day.
+- A sign-up with an invitation that is unknown, used or expired counts as a failed login of the client address, so after 5 in 15 minutes that address can neither sign up nor log in (`429`). Behind a reverse proxy this needs `-trust-proxy`, as the login limit does.
+- The metric `clowder_limits_refused_total{limit}` counts what these limits refused.
+
 The log has one entry per request (method, route pattern, status, duration, user ID). It never has passwords, tokens, post bodies or query strings.
 
 ## Metrics
@@ -220,6 +229,7 @@ scrape_configs:
 | `clowder_hub_dropped_total` | `reason` | Live subscriptions the server closed: `overflow` (the client was too slow) and `reconnect` (Redis came back after a break). The pages and clients reload when it happens. |
 | `clowder_logins_total` | `result` | Logins: `ok`, `wrong` (wrong username or password), `limited` (too many failures), `ssh_code_required` (the password was right, the SSH code is next) and `ssh_code_wrong`. |
 | `clowder_ssh_codes_issued_total` | | SSH sign-in codes issued. |
+| `clowder_limits_refused_total` | `limit` | Requests a per-user limit refused: `connections` (a user already had 30 open streams and sockets in this process), `staged` (a user already had staged ten times the attachment limit in uploads) and `signup` (an address that failed too often to log in or to sign up with an invitation that is not valid). |
 | `clowder_calls_active` | | Calls whose media this process holds. |
 | `clowder_calls_total` | `outcome` | Calls whose media this process held, counted when they end: `hangup`, `cancelled`, `declined`, `missed`, `busy`, `failed`, `disabled`, `session_ended`, `server_stopped` or `ended`. A call that ended while it rang, before anyone opened its media, is not counted. |
 | `clowder_db_connections` | `state` | Connections of the database pool: `open`, `in_use`, `idle`. |

@@ -106,7 +106,9 @@ func tokenOf(res app.LoginResult) tokenResponse {
 
 // signup answers POST /auth/signup: it does what the sign-up page does, makes
 // the user from the invitation, and then logs the new user in as login does.
-// A used, expired or unknown invitation is 404.
+// A used, expired or unknown invitation is 404 and counts as a failed login of
+// the address of the client; past the limit of the login (5 in 15 minutes) the
+// answer is 429 with Retry-After, before the invitation is looked at (SPEC D62).
 func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
 	var in signupRequest
 	if err := decodeJSON(w, r, &in); err != nil {
@@ -119,7 +121,8 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	if _, err := s.svc.Accounts.SignUp(r.Context(), in.InvitationToken, in.Username, in.DisplayName, in.Password); err != nil {
+	if _, err := s.svc.Accounts.SignUp(r.Context(), in.InvitationToken, in.Username, in.DisplayName, in.Password,
+		app.FromAddress(s.clientIP(r))); err != nil {
 		s.writeError(w, r, err)
 		return
 	}

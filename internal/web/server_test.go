@@ -106,6 +106,9 @@ type testEnv struct {
 	prefs    *app.Prefs
 	msgs     *app.Messages
 	hub      *live.Hub
+	// conns counts the live connections of each user, for the pages and the
+	// API alike (SPEC D62).
+	conns *app.Connections
 	// presence is the presence the services and the server share; a test
 	// connects users to it.
 	presence *live.MemoryPresence
@@ -142,12 +145,17 @@ func newTestEnvOn(t *testing.T, set *metrics.Set, mutate func(*config.Config), e
 		hubOpts    []live.Option
 		logins     *metrics.CounterVec
 		webSockets *metrics.Gauge
+		// refused is the counter of the sign-ups, the staged uploads and the
+		// connections that a limit refused.
+		refused *metrics.CounterVec
 	)
 	if set != nil {
 		hubOpts = append(hubOpts, live.WithDropCounter(set.HubDropped))
 		logins = set.Logins
 		webSockets = set.WebSockets.With(metrics.WebSocketKindAPI)
+		refused = set.LimitsRefused
 	}
+	conns := app.NewConnections(0, refused.With(metrics.LimitConnections))
 	hub := live.New(hubOpts...)
 	t.Cleanup(hub.Close)
 	presence := live.NewMemoryPresence()
@@ -162,6 +170,7 @@ func newTestEnvOn(t *testing.T, set *metrics.Set, mutate func(*config.Config), e
 		Avatars:            avatarStore,
 		SSHServer:          cfg.SSHAddr != "",
 		Logins:             logins,
+		SignUpsRefused:     refused.With(metrics.LimitSignUp),
 	})
 	filesDir := filepath.Join(t.TempDir(), "files")
 	fileStore, err := files.New(filesDir)
@@ -176,6 +185,7 @@ func newTestEnvOn(t *testing.T, set *metrics.Set, mutate func(*config.Config), e
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
 		Presence:          presence,
+		StagedRefused:     refused.With(metrics.LimitStaged),
 	}, hub)
 	search := app.NewSearch(st)
 	notifs := app.NewNotifications(st, hub)
@@ -195,7 +205,7 @@ func newTestEnvOn(t *testing.T, set *metrics.Set, mutate func(*config.Config), e
 	}
 	sshKeys := app.NewSSHKeys(st, clk, accounts, sshInfo)
 	apiServer, err := api.New(api.Options{
-		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: online, SSHKeys: sshKeys, Calls: callSvc, Hub: hub},
+		Services:      api.Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: online, SSHKeys: sshKeys, Calls: callSvc, Hub: hub, Connections: conns},
 		Logger:        logger,
 		NoteUser:      NoteUser,
 		ClientIP:      ClientIPFunc(cfg.TrustProxyHeaders),
@@ -205,11 +215,11 @@ func newTestEnvOn(t *testing.T, set *metrics.Set, mutate func(*config.Config), e
 	if err != nil {
 		t.Fatalf("api.New: %+v", err)
 	}
-	s, err := newServer(cfg, logger, Services{Metrics: set, API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Presence: online, SSHKeys: sshKeys, Health: app.NewHealth(st), Calls: callSvc, Hub: hub}, static.FS, extra...)
+	s, err := newServer(cfg, logger, Services{Metrics: set, API: apiServer, Accounts: accounts, Rooms: rooms, Audit: audit, Posts: posts, Board: board, Search: search, Notifications: notifs, Prefs: prefs, Messages: msgs, Presence: online, SSHKeys: sshKeys, Health: app.NewHealth(st), Calls: callSvc, Hub: hub, Connections: conns}, static.FS, extra...)
 	if err != nil {
 		t.Fatalf("newServer: %v", err)
 	}
-	return &testEnv{t: t, srv: s, log: buf, sshKeys: sshKeys, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, calls: callSvc, search: search, notifs: notifs, prefs: prefs, msgs: msgs, hub: hub, presence: presence, st: st, clk: clk, filesDir: filesDir}
+	return &testEnv{t: t, srv: s, log: buf, sshKeys: sshKeys, accounts: accounts, rooms: rooms, audit: audit, posts: posts, board: board, calls: callSvc, search: search, notifs: notifs, prefs: prefs, msgs: msgs, hub: hub, conns: conns, presence: presence, st: st, clk: clk, filesDir: filesDir}
 }
 
 // newTestServer makes a server whose logger writes JSON to the returned buffer.

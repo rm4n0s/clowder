@@ -25,7 +25,7 @@ Clowder (module `github.com/rm4n0s/clowder`, Go 1.27, BSD-3-Clause) is a self-ho
 - API smoke client: `go run ./cmd/clowder-apicheck -base-url http://localhost:8080 -username <u> -password <p>`
 
 ## Definition of done
-Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint run`, `go test -race ./...` and (from step 14.2) `scripts/test-docker.sh`, and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
+Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint run`, `go tool govulncheck ./...` (from step 23.3; it needs the network for its database, and when that is missing say so), `go test -race ./...` and (from step 14.2) `scripts/test-docker.sh`, and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
 - `CGO_ENABLED=0 go build ./...` passes
 - `go generate ./...` leaves no change in the tree (the committed `*_templ.go` files are up to date)
 - Every new exported identifier has a doc comment

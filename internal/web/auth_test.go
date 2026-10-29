@@ -982,17 +982,20 @@ func TestSignUpWithABadInvitation(t *testing.T) {
 	expired := e.invitation()
 	e.clk.Advance(e.srv.cfg.InvitationLifetime)
 
+	// Each case signs up from an address of its own: an invitation that is
+	// not valid counts as a failed login of the address (SPEC D62).
 	for name, token := range map[string]string{"unknown": "no-such-token", "used": used, "expired": expired} {
 		t.Run(name, func(t *testing.T) {
+			from := fromAddr("203.0.113." + strconv.Itoa(len(name)) + ":1000")
 			// Datastar goes to the invitation page, which says it is not valid.
-			rec := e.send(postForm("/invite/"+token, signUpForm("dana", "Dana", testPassword), asDatastar()))
+			rec := e.send(postForm("/invite/"+token, signUpForm("dana", "Dana", testPassword), asDatastar(), from))
 			requireSSE(t, rec)
 			requireBody(t, rec, []string{redirectScript("/invite/" + token)})
 			if sessionCookieOf(rec) != nil {
 				t.Error("a cookie was set")
 			}
 			// A plain post gets the 404 page.
-			rec = e.send(postForm("/invite/"+token, signUpForm("dana", "Dana", testPassword)))
+			rec = e.send(postForm("/invite/"+token, signUpForm("dana", "Dana", testPassword), from))
 			if rec.Code != http.StatusNotFound {
 				t.Fatalf("status = %d, want 404", rec.Code)
 			}
@@ -1005,9 +1008,10 @@ func TestSignUpThenLoginFailsRedirectsToLogin(t *testing.T) {
 	t.Parallel()
 	e := newTestEnv(t, nil)
 	token := e.invitation()
-	// The address has failed too often to log in now.
-	for range 5 {
-		e.send(postForm("/login", loginForm("someone", "not the password"), asDatastar(), fromAddr("192.0.2.5:1")))
+	// The username has failed too often to log in now, from other addresses (an
+	// address that is blocked cannot sign up either, SPEC D62).
+	for i := range 5 {
+		e.send(postForm("/login", loginForm("dana", "not the password"), asDatastar(), fromAddr("192.0.2."+strconv.Itoa(10+i)+":1")))
 	}
 	rec := e.send(postForm("/invite/"+token, signUpForm("dana", "Dana", testPassword), asDatastar(), fromAddr("192.0.2.5:1")))
 	requireSSE(t, rec)
@@ -1015,7 +1019,8 @@ func TestSignUpThenLoginFailsRedirectsToLogin(t *testing.T) {
 	if sessionCookieOf(rec) != nil {
 		t.Error("a cookie was set")
 	}
-	// The account exists, and a login from another address works.
+	// The account exists, and a login works when the window has passed.
+	e.clk.Advance(app.LoginWindow)
 	if _, err := e.accounts.Login(t.Context(), "dana", testPassword, "192.0.2.6"); err != nil {
 		t.Errorf("the account was not made: %+v", err)
 	}
@@ -1205,7 +1210,9 @@ func TestStatusOf(t *testing.T) {
 		{"ssh code needs a key", errors.New(app.TagSSHCodeNeedsKey, "x"), http.StatusConflict},
 		{"ssh code wrong", errors.New(app.TagSSHCodeWrong, "x"), http.StatusUnprocessableEntity},
 		{"rate limited", errors.New(app.TagRateLimited, "x"), http.StatusTooManyRequests},
+		{"connections limited", errors.New(app.TagConnectionsLimited, "x"), http.StatusTooManyRequests},
 		{"too large", errors.New(app.TagTooLarge, "x"), http.StatusRequestEntityTooLarge},
+		{"staged uploads full", errors.New(app.TagStagedFull, "x"), http.StatusRequestEntityTooLarge},
 		{"unauthenticated is a redirect", errors.New(app.TagUnauthenticated, "x"), http.StatusFound},
 		{"query failed", errors.New(store.TagQueryFailed, "x"), http.StatusInternalServerError},
 		{"unknown tag", errors.New("Whatever", "x"), http.StatusInternalServerError},

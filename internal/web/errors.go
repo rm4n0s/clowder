@@ -51,9 +51,9 @@ func statusOf(err error) int {
 		app.TagCallGroup, app.TagCallsOff, app.TagCallCalleeDisabled, app.TagCallCallerBusy, app.TagCallCalleeBusy,
 		app.TagCallServerFull, app.TagCallWrongState, app.TagCallNone:
 		return http.StatusConflict
-	case app.TagRateLimited:
+	case app.TagRateLimited, app.TagConnectionsLimited:
 		return http.StatusTooManyRequests
-	case app.TagTooLarge:
+	case app.TagTooLarge, app.TagStagedFull:
 		return http.StatusRequestEntityTooLarge
 	case app.TagUnauthenticated:
 		return http.StatusFound

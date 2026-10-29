@@ -13,6 +13,7 @@ import (
 	"github.com/rm4n0s/clowder/internal/config"
 	"github.com/rm4n0s/clowder/internal/files"
 	"github.com/rm4n0s/clowder/internal/live"
+	"github.com/rm4n0s/clowder/internal/metrics"
 	"github.com/rm4n0s/clowder/internal/store"
 	"github.com/rm4n0s/errors"
 )
@@ -90,6 +91,10 @@ type PostsConfig struct {
 	// Presence tells who is online, for @here (SPEC §7.15). Nil means that
 	// nobody is.
 	Presence live.Presence
+	// StagedRefused counts the uploads that StagedLimit refused (the metric
+	// "staged" of clowder_limits_refused_total, SPEC D62). Nil counts
+	// nothing.
+	StagedRefused *metrics.Counter
 }
 
 // fileCleaner removes files from disk when the database no longer refers to

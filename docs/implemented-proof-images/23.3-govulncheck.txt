@@ -1,0 +1,238 @@
+Step 23.3: govulncheck (SPEC D61)
+=================================
+
+Date:     2026-10-28 23:44 UTC (network available: the vulnerability database was fetched)
+Go:       go version go1.27.3 linux/amd64
+Tool:     golang.org/x/vuln v1.9.0, a `tool` of go.mod (go get -tool golang.org/x/vuln/cmd/govulncheck@latest)
+Command:  go tool govulncheck ./...
+
+1. First run, with the tool just added to go.mod (golang.org/x/net v0.61.0, github.com/klauspost/compress v1.18.0)
+   and -show verbose; the list of the 56 modules it scanned is left out (section 2 has it)
+------------------------------------------------------------------------------------------------------------
+
+Fetching vulnerabilities from the database...
+
+Checking the code against the vulnerabilities...
+
+The package pattern matched the following 23 root packages:
+  github.com/rm4n0s/clowder/internal/auth
+  github.com/rm4n0s/clowder/internal/clock
+  github.com/rm4n0s/clowder/internal/config
+  github.com/rm4n0s/clowder/internal/files
+  github.com/rm4n0s/clowder/internal/metrics
+  github.com/rm4n0s/clowder/internal/live
+  github.com/rm4n0s/clowder/internal/markdown
+  github.com/rm4n0s/clowder/internal/store
+  github.com/rm4n0s/clowder/internal/app
+  github.com/rm4n0s/clowder/internal/calls
+  github.com/rm4n0s/clowder/internal/api
+  github.com/rm4n0s/clowder/internal/cluster
+  github.com/rm4n0s/clowder/internal/sshcode
+  github.com/rm4n0s/clowder/internal/web/static
+  github.com/rm4n0s/clowder/internal/web/views
+  github.com/rm4n0s/clowder/internal/web
+  github.com/rm4n0s/clowder/cmd/clowder
+  github.com/rm4n0s/clowder/cmd/clowder-apicheck
+  github.com/rm4n0s/clowder/cmd/clowder-perf
+  github.com/rm4n0s/clowder/internal/calls/callstest
+  github.com/rm4n0s/clowder/internal/live/presencetest
+  github.com/rm4n0s/clowder/internal/markdown/cmd/gencodecss
+  github.com/rm4n0s/clowder/internal/store/storetest
+...
+
+=== Symbol Results ===
+
+No vulnerabilities found.
+
+=== Package Results ===
+
+No other vulnerabilities found.
+
+=== Module Results ===
+
+Vulnerability #1: GO-2026-6866
+    Check all ancestor namespace transitions when rendering raw text in html in
+    golang.org/x/net
+  More info: https://pkg.go.dev/vuln/GO-2026-6866
+  Module: golang.org/x/net
+    Found in: golang.org/x/net@v0.61.0
+    Fixed in: golang.org/x/net@v0.62.0
+
+Vulnerability #2: GO-2026-6860
+    Avoid quadratic complexity when coalescing text nodes in html in
+    golang.org/x/net
+  More info: https://pkg.go.dev/vuln/GO-2026-6860
+  Module: golang.org/x/net
+    Found in: golang.org/x/net@v0.61.0
+    Fixed in: golang.org/x/net@v0.62.0
+
+Vulnerability #3: GO-2026-5932
+    The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design,
+    and has known security issues
+  More info: https://pkg.go.dev/vuln/GO-2026-5932
+  Module: golang.org/x/crypto
+    Found in: golang.org/x/crypto@v0.58.0
+    Fixed in: N/A
+
+Vulnerability #4: GO-2026-5841
+    OOB read in github.com/klauspost/compress/s2
+  More info: https://pkg.go.dev/vuln/GO-2026-5841
+  Module: github.com/klauspost/compress
+    Found in: github.com/klauspost/compress@v1.18.0
+    Fixed in: github.com/klauspost/compress@v1.18.7
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 0 vulnerabilities in packages you import and 4
+vulnerabilities in modules you require, but your code doesn't appear to call
+these vulnerabilities.
+
+What was done about each finding:
+
+  GO-2026-6866  golang.org/x/net (html: raw text, ancestor namespace transitions), found in v0.61.0, fixed in v0.62.0
+  GO-2026-6860  golang.org/x/net (html: quadratic complexity when coalescing text nodes), found in v0.61.0, fixed in v0.62.0
+      -> fixed: `go get golang.org/x/net@v0.62.0`. An indirect module (nothing of Clowder imports it directly);
+         govulncheck found no call of the vulnerable functions ("your code doesn't appear to call").
+  GO-2026-5841  github.com/klauspost/compress (s2: out-of-bounds read), found in v1.18.0, fixed in v1.18.7
+      -> fixed: `go get github.com/klauspost/compress@v1.18.7`. An indirect module; no call of the vulnerable
+         function was found either.
+  GO-2026-5932  golang.org/x/crypto/openpgp (unmaintained, unsafe by design), found in golang.org/x/crypto v0.58.0,
+                fixed in: N/A
+      -> recorded, not fixable: there is no fixed version. `go list -deps -test ./...` lists no package
+         golang.org/x/crypto/openpgp, so nothing here or in the dependencies imports it, and govulncheck finds no
+         call of it. To be looked at again at every run, and when x/crypto removes the package or has a fix.
+
+Other changes that `go get -tool` made, all indirect and needed by the tool itself: golang.org/x/mod v0.41.0 ->
+v0.42.0, golang.org/x/net v0.60.0 -> v0.61.0 (then v0.62.0 above), golang.org/x/telemetry (added),
+golang.org/x/tools v0.51.0 -> v0.52.0, golang.org/x/vuln v1.9.0 (added). Every check was run again after the
+upgrades: gofmt, go vet with and without the browser tag, golangci-lint with and without it, go test -race of
+every package, scripts/test-docker.sh for the packages the step names, the browser suite, CGO_ENABLED=0 go
+build, go generate and go mod tidy with no change.
+
+2. Last run, on the final tree
+-------------------------------
+
+$ go tool govulncheck ./...
+=== Symbol Results ===
+
+No vulnerabilities found.
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 0 vulnerabilities in packages you import and 1
+vulnerability in modules you require, but your code doesn't appear to call these
+vulnerabilities.
+Use '-show verbose' for more details.
+(exit status 0)
+
+$ go tool govulncheck -show verbose ./...
+Fetching vulnerabilities from the database...
+
+Checking the code against the vulnerabilities...
+
+The package pattern matched the following 23 root packages:
+  github.com/rm4n0s/clowder/internal/auth
+  github.com/rm4n0s/clowder/internal/clock
+  github.com/rm4n0s/clowder/internal/config
+  github.com/rm4n0s/clowder/internal/files
+  github.com/rm4n0s/clowder/internal/metrics
+  github.com/rm4n0s/clowder/internal/live
+  github.com/rm4n0s/clowder/internal/markdown
+  github.com/rm4n0s/clowder/internal/store
+  github.com/rm4n0s/clowder/internal/app
+  github.com/rm4n0s/clowder/internal/calls
+  github.com/rm4n0s/clowder/internal/api
+  github.com/rm4n0s/clowder/internal/cluster
+  github.com/rm4n0s/clowder/internal/sshcode
+  github.com/rm4n0s/clowder/internal/web/static
+  github.com/rm4n0s/clowder/internal/web/views
+  github.com/rm4n0s/clowder/internal/web
+  github.com/rm4n0s/clowder/cmd/clowder
+  github.com/rm4n0s/clowder/cmd/clowder-apicheck
+  github.com/rm4n0s/clowder/cmd/clowder-perf
+  github.com/rm4n0s/clowder/internal/calls/callstest
+  github.com/rm4n0s/clowder/internal/live/presencetest
+  github.com/rm4n0s/clowder/internal/markdown/cmd/gencodecss
+  github.com/rm4n0s/clowder/internal/store/storetest
+Govulncheck scanned the following 56 modules and the go1.27.3 standard library:
+  github.com/rm4n0s/clowder
+  github.com/CAFxX/httpcompression@v0.0.9
+  github.com/a-h/templ@v0.3.1100
+  github.com/alecthomas/chroma/v2@v2.27.0
+  github.com/andybalholm/brotli@v1.2.7
+  github.com/cespare/xxhash/v2@v2.3.0
+  github.com/coder/websocket@v1.8.15
+  github.com/dlclark/regexp2/v2@v2.2.1
+  github.com/dustin/go-humanize@v1.0.1
+  github.com/glebarez/go-sqlite@v1.21.2
+  github.com/glebarez/sqlite@v1.11.0
+  github.com/google/uuid@v1.6.0
+  github.com/jackc/pgpassfile@v1.0.0
+  github.com/jackc/pgservicefile@v0.0.0-20240606120523-5a60cdf6a761
+  github.com/jackc/pgx/v5@v5.10.0
+  github.com/jackc/puddle/v2@v2.2.2
+  github.com/jinzhu/inflection@v1.0.0
+  github.com/jinzhu/now@v1.1.5
+  github.com/klauspost/compress@v1.18.7
+  github.com/mattn/go-isatty@v0.0.24
+  github.com/pion/datachannel@v1.6.3
+  github.com/pion/dtls/v3@v3.1.15
+  github.com/pion/ice/v4@v4.4.8
+  github.com/pion/interceptor@v0.1.49
+  github.com/pion/logging@v0.2.4
+  github.com/pion/mdns/v2@v2.2.2
+  github.com/pion/randutil@v0.1.0
+  github.com/pion/rtcp@v1.2.20
+  github.com/pion/rtp@v1.10.6
+  github.com/pion/sctp@v1.12.0
+  github.com/pion/sdp/v3@v3.0.20
+  github.com/pion/srtp/v3@v3.1.3
+  github.com/pion/stun/v4@v4.0.1
+  github.com/pion/transport/v5@v5.1.1
+  github.com/pion/turn/v5@v5.1.2
+  github.com/pion/webrtc/v4@v4.2.25
+  github.com/redis/go-redis/v9@v9.23.0
+  github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec
+  github.com/rm4n0s/errors@v0.2.0
+  github.com/starfederation/datastar-go@v1.2.2
+  github.com/valyala/bytebufferpool@v1.0.0
+  github.com/wlynxg/anet@v0.0.5
+  github.com/yuin/goldmark@v1.8.6
+  go.uber.org/atomic@v1.12.0
+  golang.org/x/crypto@v0.58.0
+  golang.org/x/net@v0.62.0
+  golang.org/x/sync@v0.24.0
+  golang.org/x/sys@v0.49.0
+  golang.org/x/text@v0.43.0
+  golang.org/x/time@v0.14.0
+  gorm.io/driver/postgres@v1.6.3
+  gorm.io/gorm@v1.31.2
+  modernc.org/libc@v1.22.5
+  modernc.org/mathutil@v1.5.0
+  modernc.org/memory@v1.5.0
+  modernc.org/sqlite@v1.23.1
+
+=== Symbol Results ===
+
+No vulnerabilities found.
+
+=== Package Results ===
+
+No other vulnerabilities found.
+
+=== Module Results ===
+
+Vulnerability #1: GO-2026-5932
+    The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design,
+    and has known security issues
+  More info: https://pkg.go.dev/vuln/GO-2026-5932
+  Module: golang.org/x/crypto
+    Found in: golang.org/x/crypto@v0.58.0
+    Fixed in: N/A
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 0 vulnerabilities in packages you import and 1
+vulnerability in modules you require, but your code doesn't appear to call these
+vulnerabilities.
+(exit status 0)
+
+Result: "Your code is affected by 0 vulnerabilities." One finding remains, in a module that is required and not
+called (GO-2026-5932, no fix upstream), recorded above.

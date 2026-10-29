@@ -123,6 +123,7 @@ func TestReportToNilIsEmpty(t *testing.T) {
 	m.WebSockets.With("api").Inc()
 	m.SSHCodes.Inc()
 	m.HubDropped.With("overflow").Inc()
+	m.LimitsRefused.With("connections").Inc()
 	set, err := metrics.NewSet(metrics.SetOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -268,6 +269,7 @@ func TestServeWithMetricsAddr(t *testing.T) {
 		`clowder_hub_dropped_total{reason="overflow"} 0`,
 		`clowder_logins_total{result="ok"} 0`,
 		"clowder_ssh_codes_issued_total 0",
+		`clowder_limits_refused_total{limit="connections"} 0`,
 		"clowder_calls_active 0",
 		`clowder_db_connections{state="open"} `,
 		"clowder_db_wait_total ",

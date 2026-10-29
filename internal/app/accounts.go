@@ -106,6 +106,9 @@ type Accounts struct {
 	sshServer bool
 	// logins counts the logins by result; nil counts nothing.
 	logins *metrics.CounterVec
+	// limitsRefused counts the sign-ups the limiter refused; nil counts
+	// nothing.
+	limitsRefused *metrics.Counter
 }
 
 // AccountsConfig holds the settings and the injected parts of Accounts.
@@ -141,6 +144,9 @@ type AccountsConfig struct {
 	// Logins counts the logins by result (metrics.Set.Logins, SPEC D60): the
 	// counter vec has the one label "result". Nil counts nothing.
 	Logins *metrics.CounterVec
+	// SignUpsRefused counts the sign-ups the limiter refused (the metric
+	// "signup" of clowder_limits_refused_total, SPEC D62). Nil counts nothing.
+	SignUpsRefused *metrics.Counter
 }
 
 // NewAccounts makes the service. Time is counted on clk; a nil clk is the real
@@ -173,6 +179,7 @@ func NewAccounts(st *store.Store, clk clock.Clock, hasher auth.Hasher, cfg Accou
 		cleaner:            newFileCleaner(cfg.Avatars, cfg.Logger),
 		sshServer:          cfg.SSHServer,
 		logins:             cfg.Logins,
+		limitsRefused:      cfg.SignUpsRefused,
 	}
 }
 
@@ -278,15 +285,51 @@ func (a *Accounts) usableInvitation(ctx context.Context, st *store.Store, token 
 	return inv, nil
 }
 
+// SignUpOption changes how SignUp treats a request.
+type SignUpOption func(*signUpSettings)
+
+// signUpSettings are the settings the options of SignUp change.
+type signUpSettings struct {
+	clientIP string
+}
+
+// FromAddress tells SignUp the client address of the request, which the login
+// limiter counts (SPEC D62; see SignUp). Without it nothing is limited or
+// counted: that is for the demo data and the tests; the pages and the API
+// always give it.
+func FromAddress(clientIP string) SignUpOption {
+	return func(o *signUpSettings) { o.clientIP = clientIP }
+}
+
 // SignUp makes a user from an invitation and uses the invitation up. The
 // username is lower-cased and trimmed, the display name trimmed (SPEC §7.1). It
 // fails with TagNotFound for a used, expired or unknown invitation, and with
 // TagInvalidInput for input that breaks a rule, with all the problems in the
 // metadata "fields" (a username that is taken is one of them). The new user
 // has the role of the invitation.
-func (a *Accounts) SignUp(ctx context.Context, token, username, displayName, password string) (User, error) {
+//
+// With FromAddress the sign-up is limited like a login (SPEC D62): an address
+// that already failed the maximum number of logins or sign-ups within the
+// window fails with TagRateLimited before the invitation is looked at, and a
+// sign-up whose invitation is used, expired or unknown (TagNotFound) counts as
+// one failed login of the address, the same count that a wrong password adds
+// to, so the limit holds across processes when the limiter is in Redis. A
+// valid invitation never counts, whatever else is wrong with the form.
+func (a *Accounts) SignUp(ctx context.Context, token, username, displayName, password string, opts ...SignUpOption) (User, error) {
+	var settings signUpSettings
+	for _, opt := range opts {
+		opt(&settings)
+	}
+	if !a.limiter.AllowAddr(ctx, settings.clientIP) {
+		a.limitsRefused.Inc()
+		return User{}, errors.New(TagRateLimited, "too many failed login attempts",
+			"ip", settings.clientIP, "reason", "signup")
+	}
 	// Ask before the costly hashing, and again inside the transaction.
 	if _, err := a.usableInvitation(ctx, a.st, token); err != nil {
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == TagNotFound {
+			a.limiter.FailAddr(ctx, settings.clientIP)
+		}
 		return User{}, err
 	}
 	username = normalizeUsername(username)

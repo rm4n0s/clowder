@@ -61,6 +61,12 @@ type Services struct {
 	// socket of a call. Nil when calls are off (no -media-addr): the socket
 	// is then 409 and the calls service refuses to start a call.
 	Media *calls.Server
+	// Connections counts the live connections of each user in this process
+	// (SPEC D62): the user's WebSocket and the signalling socket of a call
+	// are counted, and past app.MaxConnectionsPerUser the handshake is 429.
+	// It must be the one of the server of internal/web, which counts the
+	// streams of the pages in it. Nil limits nothing.
+	Connections *app.Connections
 	// Hub is the hub the services publish to; the WebSocket (SPEC §7.13)
 	// subscribes to it. It must be the hub of the server of internal/web,
 	// which closes it when the server stops. Nil makes a hub that nothing

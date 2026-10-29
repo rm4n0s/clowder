@@ -28,6 +28,16 @@ const stagedNoteFields = 9
 // removes the ones older (SPEC §7.12).
 const StagedLifetime = 24 * time.Hour
 
+// StagedLimitFactor is how many times the attachment limit a user may have
+// staged at once (SPEC D62): uploaded and not yet posted, in bytes.
+const StagedLimitFactor = 10
+
+// TagStagedFull is the tag of an upload refused because the user's staged
+// uploads would go past StagedLimit. The handlers answer 413 (too_large in
+// the API) with a message that says to post the staged files first; the
+// metadata holds the "limit" and the bytes "staged" before the upload.
+const TagStagedFull = "StagedUploadsFull"
+
 // StagedUpload is a file uploaded for a later request to attach: the way a
 // client of the API (SPEC §7.12) uploads, because its upload and its post are
 // two requests. The ID is the one value the client keeps.
@@ -46,6 +56,13 @@ type StagedUpload struct {
 // which the processes of a cluster share (SPEC §8.1). The permissions and the
 // errors are those of Upload. A file that is never attached stays on disk
 // with its note.
+//
+// A person may have staged at most StagedLimit bytes (ten times the attachment
+// limit, SPEC D62), counted from the notes that exist, the uploads of every
+// other process included. An upload that would go past it is removed again
+// and fails with TagStagedFull; one that reaches the limit exactly is kept.
+// The notes are counted after the new one is written, so that uploads running
+// at the same time cannot all slip under the limit.
 func (p *Posts) UploadStaged(ctx context.Context, actor Actor, name string, r io.Reader) (StagedUpload, error) {
 	up, err := p.Upload(ctx, actor, name, r)
 	if err != nil {
@@ -67,7 +84,83 @@ func (p *Posts) UploadStaged(ctx context.Context, actor Actor, name string, r io
 		p.cleaner.remove(context.WithoutCancel(ctx), []string{up.Key})
 		return StagedUpload{}, err
 	}
+	staged, err := p.stagedBytes(ctx, actor.UserID)
+	if err != nil {
+		p.dropStaged(ctx, up.Key)
+		return StagedUpload{}, err
+	}
+	if limit := p.StagedLimit(); staged > limit {
+		p.dropStaged(ctx, up.Key)
+		p.cfg.StagedRefused.Inc()
+		return StagedUpload{}, errors.New(TagStagedFull, "the user has too many staged uploads",
+			"limit", limit, "staged", staged-up.Size, "size", up.Size, "userID", actor.UserID)
+	}
 	return StagedUpload{ID: up.Key, Upload: up}, nil
+}
+
+// StagedLimit is the most bytes one person may have staged: StagedLimitFactor
+// times the attachment limit.
+func (p *Posts) StagedLimit() int64 {
+	return StagedLimitFactor * p.cfg.MaxAttachmentSize
+}
+
+// dropStaged takes an upload that was refused off the disk: the file and its
+// note. Failures are logged.
+func (p *Posts) dropStaged(ctx context.Context, key string) {
+	ctx = context.WithoutCancel(ctx)
+	p.cleaner.remove(ctx, []string{key})
+	if err := p.files.RemoveNote(key); err != nil {
+		p.cleaner.logger.ErrorContext(ctx, "removing the note of an upload failed", "err", err)
+	}
+}
+
+// stagedBytes adds up the sizes of the staged uploads of a person, from the
+// notes in the files directory: an upload is staged as long as its note
+// exists, and posting it, a refused post, the sweep and a refused upload all
+// end the note. A note that is damaged or removed while it is read is not
+// counted. It fails with StagedCountCanceled when ctx is done and with the
+// error of the store when the notes cannot be listed.
+func (p *Posts) stagedBytes(ctx context.Context, userID uint64) (int64, error) {
+	notes, err := p.files.Notes()
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, n := range notes {
+		if err := ctx.Err(); err != nil {
+			return 0, errors.NewErr(tagStagedCountCanceled, err)
+		}
+		data, err := p.files.Note(n.Key)
+		if err != nil {
+			if appErr, ok := errors.FromError(err); !ok || appErr.Tag != files.TagNotFound {
+				p.cleaner.logger.ErrorContext(ctx, "reading the note of a staged upload failed", "err", err)
+			}
+			continue
+		}
+		owner, size, ok := stagedOwnerSize(string(data))
+		if ok && owner == userID {
+			total += size
+		}
+	}
+	return total, nil
+}
+
+// stagedOwnerSize reads who uploaded a staged upload and how big it is from
+// its note, whatever its scope. ok is false when the note is damaged.
+func stagedOwnerSize(note string) (owner uint64, size int64, ok bool) {
+	lines := strings.SplitN(note, "\n", stagedNoteFields)
+	if len(lines) != stagedNoteFields || lines[0] != stagedNoteHeader {
+		return 0, 0, false
+	}
+	owner, err := strconv.ParseUint(lines[2], 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	size, err = strconv.ParseInt(lines[4], 10, 64)
+	if err != nil || size < 0 {
+		return 0, 0, false
+	}
+	return owner, size, true
 }
 
 // StagedUploads turns the IDs that UploadStaged returned into the uploads that
@@ -236,3 +329,7 @@ func parseStagedNote(note, key string, userID uint64) (Upload, bool) {
 // TagSweepCanceled is the tag of a sweep of the staged uploads that ctx ended;
 // the metadata "removed" is how many it had removed.
 const TagSweepCanceled = "StagedSweepCanceled"
+
+// tagStagedCountCanceled is the tag of the count of a person's staged bytes
+// that ctx ended.
+const tagStagedCountCanceled = "StagedCountCanceled"

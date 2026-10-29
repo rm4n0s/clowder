@@ -141,7 +141,7 @@
         ],
         "summary": "Sign up with an invitation",
         "operationId": "signup",
-        "description": "Does what the sign-up page does: makes the user from an invitation, uses the invitation up and logs the new user in with a session of the kind api.",
+        "description": "Does what the sign-up page does: makes the user from an invitation, uses the invitation up and logs the new user in with a session of the kind api. A used, expired or unknown invitation is 404 and counts as one failed login of the address of the client, the same count as a wrong password from that address: once the address has failed 5 times within 15 minutes, sign-ups and logins from it get 429 with Retry-After until the window has passed, and the sign-up is refused before the invitation is looked at. A valid invitation never counts.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -2172,7 +2172,7 @@
         ],
         "summary": "Upload a file",
         "operationId": "uploadFile",
-        "description": "Stores one file, to be attached to a post, a comment or a private message that is written or edited next: put the ID of the answer in its upload_ids. The body is multipart/form-data with exactly one file in the field file and nothing else (422 on file otherwise; 415 for another Content-Type). The file is at most the attachment limit of the installation, 25 MB by default (413 too_large), and the request body is cut early when it is much larger. Any logged-in user may upload. The upload is for the user who made it: nobody else can attach it. An upload that nothing takes is removed 24 hours later, so attach what you upload; an upload is used once, by a post, a comment or a message.",
+        "description": "Stores one file, to be attached to a post, a comment or a private message that is written or edited next: put the ID of the answer in its upload_ids. The body is multipart/form-data with exactly one file in the field file and nothing else (422 on file otherwise; 415 for another Content-Type). The file is at most the attachment limit of the installation, 25 MB by default (413 too_large), and the request body is cut early when it is much larger. Any logged-in user may upload. The upload is for the user who made it: nobody else can attach it. An upload that nothing takes is removed 24 hours later, so attach what you upload; an upload is used once, by a post, a comment or a message. A user may have staged at most ten times the attachment limit (250 MB by default) in files that no post, comment or message has taken yet, those of other processes included: an upload that would go past it is removed again and answers 413 too_large with a message that says to post the staged files first; the bytes come back when the files are attached or expire.",
         "requestBody": {
           "required": true,
           "description": "A form with the file.",
@@ -4380,7 +4380,7 @@
         ],
         "summary": "Open the WebSocket",
         "operationId": "openWebSocket",
-        "description": "Upgrades the connection to a WebSocket (RFC 6455, version 13) that pushes the live events the user would see in the pages. The bearer token is checked before the upgrade: a missing or wrong token is a plain 401 JSON answer. A browser on another site is refused (403) by the Origin check; a desktop client sends no Origin. After the upgrade every message is a JSON text message with a type. The client sends subscribe, unsubscribe and ping (WsClientMessage); the server sends ack, error, pong, event and resync (WsServerMessage). The topic user:<id> of the user is subscribed from the start and cannot be removed; at most 200 other topics per connection. subscribe is all or nothing: if any topic cannot be subscribed, one error message answers the request and nothing of it is subscribed (a room, thread, board or conversation the user may not read is not_found). Subscribe first, then load what is shown with the REST routes, so that no change falls in between. An event is sent only if the user may still see it, with data as the REST API returns the resource now; when the user loses a room or a conversation they subscribed to, one error message of not_found names the topic and the topic is dropped. A message over 16 KiB closes the connection with 1009, a text that is not JSON or a binary message with 1003. The server pings every 30 seconds and closes a connection that does not answer within 15. Close codes: 1001 the server stops; 4001 the session ended (a logout, a disabled user, an expired session); 4002 the role of the user changed (connect again); 1013 after a resync message, because the client was too slow or the server lost events from other processes (connect again and load again what is shown).",
+        "description": "Upgrades the connection to a WebSocket (RFC 6455, version 13) that pushes the live events the user would see in the pages. The bearer token is checked before the upgrade: a missing or wrong token is a plain 401 JSON answer. A user may hold 30 live connections at once in one server process, the pages' event streams, this socket and the signalling sockets of calls together; past that the handshake is refused with 429 rate_limited and Retry-After 30 (close one and connect again; the limit is per process, not per installation). A browser on another site is refused (403) by the Origin check; a desktop client sends no Origin. After the upgrade every message is a JSON text message with a type. The client sends subscribe, unsubscribe and ping (WsClientMessage); the server sends ack, error, pong, event and resync (WsServerMessage). The topic user:<id> of the user is subscribed from the start and cannot be removed; at most 200 other topics per connection. subscribe is all or nothing: if any topic cannot be subscribed, one error message answers the request and nothing of it is subscribed (a room, thread, board or conversation the user may not read is not_found). Subscribe first, then load what is shown with the REST routes, so that no change falls in between. An event is sent only if the user may still see it, with data as the REST API returns the resource now; when the user loses a room or a conversation they subscribed to, one error message of not_found names the topic and the topic is dropped. A message over 16 KiB closes the connection with 1009, a text that is not JSON or a binary message with 1003. The server pings every 30 seconds and closes a connection that does not answer within 15. Close codes: 1001 the server stops; 4001 the session ended (a logout, a disabled user, an expired session); 4002 the role of the user changed (connect again); 1013 after a resync message, because the client was too slow or the server lost events from other processes (connect again and load again what is shown).",
         "x-client-messages": {
           "$ref": "#/components/schemas/WsClientMessage"
         },
@@ -4423,6 +4423,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyConnections"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -5019,7 +5022,7 @@
         ],
         "summary": "Open the signalling socket of the call",
         "operationId": "openCallSocket",
-        "description": "Upgrades the connection to a WebSocket (RFC 6455) that carries the signalling of one participant of the call in progress of a direct conversation, with the bearer token checked before the upgrade like GET /ws. The caller may open it while the call rings or is active; the callee after answering (409 before that). Anyone else, admins included, gets 404; so does a conversation with no call in progress, and a group conversation or a server whose calls are off 409. All messages are JSON text messages with a type: the server sends offer, candidate, peer-state, ended and error (CallServerMessage), the client answer, candidate, state and hangup (CallClientMessage).\n\nHow a client takes part, with any WebRTC stack: (1) open the socket; (2) the server sends an offer at once: apply it, add your audio (Opus) and video (VP8) tracks to its two transceivers, create the answer and send it; (3) send your ICE candidates as candidate messages and apply those of the server (trickle ICE; the server's candidates point at its own media port, UDP or TCP, so the media goes straight to it); (4) the first answer starts a deadline of 10 seconds for ICE to connect, after which the call ends as failed; (5) send state when the microphone or the camera changes; (6) to share a screen replace the video track of the sender (replaceTrack) with no new offer; (7) send hangup, or call the REST route, to end the call. The server asks the sender for a key frame (PLI) when it is needed, limits video to 2.5 Mbit/s with REMB and the SDP bandwidth lines, and sends a new offer only to restart ICE after a failure. A second socket of the same participant replaces the first, with a new PeerConnection, so a client that lost its socket opens a new one and answers the new offer; an active call waits 15 seconds for that before it ends as failed. A transport that stays disconnected or failed for 15 seconds ends the call too. Close codes: 1000 the call ended (after an ended message); 1001 the server stops; 4001 the session ended; 4002 the role of the user changed; 4003 a newer socket of the same participant replaced this one; 1003 a binary message; 1009 a message over 64 KiB; 1011 the socket could not join the call. The server pings every 30 seconds. docs/API.md has an example.",
+        "description": "Upgrades the connection to a WebSocket (RFC 6455) that carries the signalling of one participant of the call in progress of a direct conversation, with the bearer token checked before the upgrade like GET /ws. The caller may open it while the call rings or is active; the callee after answering (409 before that). The socket counts among the 30 live connections a user may hold in one server process (see GET /ws): past that the handshake is 429 rate_limited with Retry-After 30. Anyone else, admins included, gets 404; so does a conversation with no call in progress, and a group conversation or a server whose calls are off 409. All messages are JSON text messages with a type: the server sends offer, candidate, peer-state, ended and error (CallServerMessage), the client answer, candidate, state and hangup (CallClientMessage).\n\nHow a client takes part, with any WebRTC stack: (1) open the socket; (2) the server sends an offer at once: apply it, add your audio (Opus) and video (VP8) tracks to its two transceivers, create the answer and send it; (3) send your ICE candidates as candidate messages and apply those of the server (trickle ICE; the server's candidates point at its own media port, UDP or TCP, so the media goes straight to it); (4) the first answer starts a deadline of 10 seconds for ICE to connect, after which the call ends as failed; (5) send state when the microphone or the camera changes; (6) to share a screen replace the video track of the sender (replaceTrack) with no new offer; (7) send hangup, or call the REST route, to end the call. The server asks the sender for a key frame (PLI) when it is needed, limits video to 2.5 Mbit/s with REMB and the SDP bandwidth lines, and sends a new offer only to restart ICE after a failure. A second socket of the same participant replaces the first, with a new PeerConnection, so a client that lost its socket opens a new one and answers the new offer; an active call waits 15 seconds for that before it ends as failed. A transport that stays disconnected or failed for 15 seconds ends the call too. Close codes: 1000 the call ended (after an ended message); 1001 the server stops; 4001 the session ended; 4002 the role of the user changed; 4003 a newer socket of the same participant replaced this one; 1003 a binary message; 1009 a message over 64 KiB; 1011 the socket could not join the call. The server pings every 30 seconds. docs/API.md has an example.",
         "parameters": [
           {
             "name": "id",
@@ -5080,6 +5083,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyConnections"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -8846,8 +8852,26 @@
           }
         }
       },
+      "TooManyConnections": {
+        "description": "The user already holds 30 live connections (page event streams and WebSockets) in this server process.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds to wait before connecting again.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        }
+      },
       "TooLarge": {
-        "description": "The JSON body is over 64 KiB, or the file of an upload is over the limit of the attachments.",
+        "description": "The JSON body is over 64 KiB, the file of an upload is over the limit of the attachments, or the user has too many uploaded files waiting for a post (ten times the limit of the attachments).",
         "content": {
           "application/json": {
             "schema": {

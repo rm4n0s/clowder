@@ -17,6 +17,7 @@ const (
 	NameHubDropped       = "clowder_hub_dropped_total"
 	NameLogins           = "clowder_logins_total"
 	NameSSHCodes         = "clowder_ssh_codes_issued_total"
+	NameLimitsRefused    = "clowder_limits_refused_total"
 	NameCallsActive      = "clowder_calls_active"
 	NameCallsTotal       = "clowder_calls_total"
 	NameDBConnections    = "clowder_db_connections"
@@ -51,6 +52,15 @@ const (
 	LoginSSHCodeRequired = "ssh_code_required"
 	// LoginSSHCodeWrong is a wrong SSH sign-in code.
 	LoginSSHCodeWrong = "ssh_code_wrong"
+	// LimitConnections is a stream or a WebSocket refused because the user
+	// had the most live connections of the process (SPEC D62).
+	LimitConnections = "connections"
+	// LimitStaged is an upload refused because the user had the most staged
+	// bytes (SPEC D62).
+	LimitStaged = "staged"
+	// LimitSignUp is a sign-up refused because the address had failed too
+	// often, with an invitation token or a password (SPEC D62).
+	LimitSignUp = "signup"
 	// DropOverflow is a subscription closed because its buffer was full.
 	DropOverflow = "overflow"
 	// DropReconnect is a subscription closed because the bridge to Redis came
@@ -91,6 +101,9 @@ type Set struct {
 	Logins *CounterVec
 	// SSHCodes counts the sign-in codes the SSH server issued.
 	SSHCodes *Counter
+	// LimitsRefused counts the requests a per-user limit of SPEC D62 refused,
+	// by limit: LimitConnections, LimitStaged or LimitSignUp.
+	LimitsRefused *CounterVec
 	// CallsTotal counts the calls whose media this process held, by how they
 	// ended.
 	CallsTotal *CounterVec
@@ -209,6 +222,8 @@ func NewSet(opts SetOptions) (*Set, error) {
 	s.Logins = b.counterVec(NameLogins, "Logins, by result.",
 		L("result", LoginOK, LoginWrong, LoginLimited, LoginSSHCodeRequired, LoginSSHCodeWrong))
 	s.SSHCodes = b.counter(NameSSHCodes, "SSH sign-in codes issued.")
+	s.LimitsRefused = b.counterVec(NameLimitsRefused, "Requests refused by a per-user limit, by limit.",
+		L("limit", LimitConnections, LimitStaged, LimitSignUp))
 	s.CallsTotal = b.counterVec(NameCallsTotal, "Calls whose media this process held, by how they ended.",
 		L("outcome", "ended", "hangup", "cancelled", "declined", "missed", "busy", "failed", "disabled",
 			"session_ended", "server_stopped"))
@@ -223,6 +238,7 @@ func NewSet(opts SetOptions) (*Set, error) {
 	s.WebSockets.Preload()
 	s.HubDropped.Preload()
 	s.Logins.Preload()
+	s.LimitsRefused.Preload()
 	s.CallsTotal.Preload()
 
 	b.gaugeFunc(NameGoroutines, "Number of goroutines.", func() float64 { return float64(runtime.NumGoroutine()) })

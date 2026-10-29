@@ -33,7 +33,8 @@ func (s *Server) signUpPage(w http.ResponseWriter, r *http.Request) {
 // credentials, sets the session cookie and redirects to the home page. On
 // failure it shows the problems next to the fields and keeps the username and
 // the display name. A used, expired or unknown invitation sends the browser to
-// the invitation page, which says so.
+// the invitation page, which says so, and counts as a failed login of the
+// address of the client (SPEC D62): after five the form answers 429.
 func (s *Server) signUpSubmit(w http.ResponseWriter, r *http.Request) {
 	if !s.parseForm(w, r) {
 		return
@@ -43,7 +44,8 @@ func (s *Server) signUpSubmit(w http.ResponseWriter, r *http.Request) {
 	displayName := r.PostFormValue("displayName")
 	password := r.PostFormValue("password")
 
-	_, err := s.svc.Accounts.SignUp(r.Context(), token, username, displayName, password)
+	_, err := s.svc.Accounts.SignUp(r.Context(), token, username, displayName, password,
+		app.FromAddress(clientIP(r, s.cfg.TrustProxyHeaders)))
 	if err != nil {
 		if isTag(err, app.TagNotFound) {
 			if isDatastar(r) {

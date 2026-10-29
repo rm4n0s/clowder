@@ -72,6 +72,8 @@ type testEnv struct {
 	// hub is the hub the services publish to, which the WebSocket listens to;
 	// rec records the same events.
 	hub *live.Hub
+	// conns counts the live connections of each user (SPEC D62).
+	conns *app.Connections
 	// presence is shared by the services and the server; a test connects users.
 	presence *live.MemoryPresence
 	log      *syncBuffer
@@ -143,8 +145,9 @@ func newTestEnvSSH(t *testing.T, mutate func(*Options), sshServer app.SSHServerI
 	board := app.NewBoard(st, clk, pub)
 	callSvc := app.NewCalls(st, clk, app.CallsConfig{ProcessID: "0123456789abcdef", Enabled: true, Logger: logger}, pub)
 	noted := &noteLog{}
+	conns := app.NewConnections(0, nil)
 	opts := Options{
-		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Prefs: app.NewPrefs(st, pub), Presence: app.NewPresence(st, presence), SSHKeys: app.NewSSHKeys(st, clk, accounts, sshServer), Calls: callSvc, Hub: hub},
+		Services:      Services{Accounts: accounts, Notifications: notifs, Messages: msgs, Rooms: rooms, Posts: posts, Board: board, Search: app.NewSearch(st), Audit: app.NewAudit(st), Prefs: app.NewPrefs(st, pub), Presence: app.NewPresence(st, presence), SSHKeys: app.NewSSHKeys(st, clk, accounts, sshServer), Calls: callSvc, Hub: hub, Connections: conns},
 		Logger:        logger,
 		NoteUser:      func(_ *http.Request, id uint64) { noted.add(id) },
 		MaxUploadSize: 1 << 20,
@@ -160,7 +163,7 @@ func newTestEnvSSH(t *testing.T, mutate func(*Options), sshServer app.SSHServerI
 	for _, rt := range srv.Routes() {
 		mux.Handle(rt.Pattern, rt.Handler)
 	}
-	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, board: board, calls: callSvc, opts: opts, filesDir: filesDir, st: st, clk: clk, rec: rec, hub: hub, presence: presence, log: buf, noted: noted}
+	return &testEnv{t: t, srv: srv, handler: mux, accounts: accounts, msgs: msgs, rooms: rooms, posts: posts, board: board, calls: callSvc, opts: opts, filesDir: filesDir, st: st, clk: clk, rec: rec, hub: hub, conns: conns, presence: presence, log: buf, noted: noted}
 }
 
 // remake makes the server again with the options that mutate changes, on the

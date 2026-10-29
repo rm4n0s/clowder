@@ -122,12 +122,16 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		// (SPEC §7.16).
 		SSHServer: cfg.SSHAddr != "",
 		Logins:    m.Logins,
+		// Sign-ups the limiter refused (SPEC D62).
+		SignUpsRefused: m.LimitsRefused.With(metrics.LimitSignUp),
 	})
 	postsConfig := app.PostsConfig{
 		MaxAttachmentSize: cfg.MaxAttachmentSize,
 		MaxAttachments:    cfg.MaxAttachmentsPerPost,
 		Logger:            logger,
 		Presence:          livePresence,
+		// Uploads refused for the staged bytes (SPEC D62).
+		StagedRefused: m.LimitsRefused.With(metrics.LimitStaged),
 	}
 	notifications := app.NewNotifications(st, pub)
 	prefs := app.NewPrefs(st, pub)
@@ -202,10 +206,14 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 	}
 	defer stopSSH()
 	sshKeys := app.NewSSHKeys(st, clock.Real(), accounts, sshInfo)
+	// The live connections of each user in this process, streams and sockets
+	// together (SPEC D62): one counter for the pages and the API.
+	connections := app.NewConnections(app.MaxConnectionsPerUser, m.LimitsRefused.With(metrics.LimitConnections))
 	apiServer, err := api.New(api.Options{
 		Services: api.Services{
 			Accounts: accounts, Notifications: notifications, Messages: messages, Rooms: rooms, Posts: posts,
 			Board: board, Search: search, Audit: audit, Prefs: prefs, Presence: presence, SSHKeys: sshKeys, Calls: callSvc, Media: media, Hub: hub,
+			Connections: connections,
 		},
 		Logger:        logger,
 		NoteUser:      web.NoteUser,
@@ -219,6 +227,7 @@ func runServe(ctx context.Context, args []string, env func(string) string, stder
 		return err
 	}
 	srv, err := web.New(cfg, logger, web.Services{
+		Connections:   connections,
 		Metrics:       metricsSet,
 		API:           apiServer,
 		Accounts:      accounts,

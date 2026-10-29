@@ -174,6 +174,14 @@ func (s *Server) callSocket(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
+	// Counted among the live connections of the user, like the user's socket
+	// (SPEC D62), before the call is joined.
+	release, err := s.svc.Connections.Acquire(c.user.ID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	defer release()
 	call, err := s.svc.Calls.Join(r.Context(), c.actor, id)
 	if err != nil {
 		s.writeError(w, r, err)

@@ -106,6 +106,10 @@ type Services struct {
 	// pages (SPEC §8). The services must publish to the same hub. Nil makes a
 	// hub that nothing publishes to.
 	Hub *live.Hub
+	// Connections counts the live connections of each user in this process,
+	// for the limit of SPEC D62; it must be the one of the API. Nil limits
+	// nothing.
+	Connections *app.Connections
 	// Metrics receives the requests that ended and the open streams (SPEC
 	// D60). Nil reports nothing.
 	Metrics *metrics.Set
@@ -235,10 +239,10 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /rooms/{id}/members", handler: http.HandlerFunc(s.memberAdd)},
 		{pattern: "POST /rooms/{id}/members/{userID}/remove", handler: http.HandlerFunc(s.memberRemove)},
 		{pattern: "GET /rooms/{id}/feed", handler: http.HandlerFunc(s.roomFeed)},
-		{pattern: "GET /rooms/{id}/stream", handler: http.HandlerFunc(s.roomStream)},
+		{pattern: "GET /rooms/{id}/stream", handler: s.limitConnections(s.roomStream)},
 		{pattern: "GET /rooms/{id}/board", handler: http.HandlerFunc(s.boardPage)},
 		{pattern: "GET /rooms/{id}/board/columns", handler: http.HandlerFunc(s.boardColumns)},
-		{pattern: "GET /rooms/{id}/board/stream", handler: http.HandlerFunc(s.boardStream)},
+		{pattern: "GET /rooms/{id}/board/stream", handler: s.limitConnections(s.boardStream)},
 		{pattern: "GET /rooms/{id}/board/tasks/{taskID}/edit", handler: http.HandlerFunc(s.boardTaskEdit)},
 		{pattern: "POST /rooms/{id}/board/tasks/{taskID}", handler: http.HandlerFunc(s.boardTaskUpdate)},
 		{pattern: "POST /rooms/{id}/board/tasks/{taskID}/move", handler: http.HandlerFunc(s.boardTaskMove)},
@@ -251,7 +255,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "GET /posts/{id}/edit", handler: http.HandlerFunc(s.postEditForm)},
 		{pattern: "POST /posts/{id}/edit", handler: http.HandlerFunc(s.postEditSave)},
 		{pattern: "GET /posts/{id}/view", handler: http.HandlerFunc(s.postView)},
-		{pattern: "GET /posts/{id}/stream", handler: http.HandlerFunc(s.postStream)},
+		{pattern: "GET /posts/{id}/stream", handler: s.limitConnections(s.postStream)},
 		{pattern: "POST /posts/{id}/delete", handler: http.HandlerFunc(s.postDelete)},
 		{pattern: "GET /posts/{id}/reply", handler: http.HandlerFunc(s.postReplyForm)},
 		{pattern: "POST /posts/{id}/replies", handler: http.HandlerFunc(s.postReply)},
@@ -264,7 +268,7 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST " + views.MessagesPath, handler: http.HandlerFunc(s.conversationStart)},
 		{pattern: "GET /messages/{id}", handler: http.HandlerFunc(s.conversationPage)},
 		{pattern: "GET /messages/{id}/older", handler: http.HandlerFunc(s.conversationOlder)},
-		{pattern: "GET /messages/{id}/stream", handler: http.HandlerFunc(s.conversationStream)},
+		{pattern: "GET /messages/{id}/stream", handler: s.limitConnections(s.conversationStream)},
 		{pattern: "POST /messages/{id}", handler: http.HandlerFunc(s.messageSend)},
 		{pattern: "POST /messages/{id}/members", handler: http.HandlerFunc(s.conversationAddMembers)},
 		{pattern: "POST /messages/{id}/rename", handler: http.HandlerFunc(s.conversationRename)},
@@ -282,11 +286,11 @@ func newServer(cfg config.Config, logger *slog.Logger, svc Services, staticFS fs
 		{pattern: "POST /messages/m/{msgID}/react", handler: http.HandlerFunc(s.messageReact)},
 		{pattern: "GET /messages/m/{msgID}/reply", handler: http.HandlerFunc(s.messageReplySlot)},
 		{pattern: "GET /messages/files/{id}/{name}", handler: http.HandlerFunc(s.messageFileDownload)},
-		{pattern: "GET " + CallSocketPath, handler: http.HandlerFunc(s.callSocket)},
+		{pattern: "GET " + CallSocketPath, handler: s.limitConnections(s.callSocket)},
 		{pattern: "GET /search", handler: http.HandlerFunc(s.search)},
 		{pattern: "GET /notifications", handler: http.HandlerFunc(s.notificationsPage)},
 		{pattern: "POST /notifications/read", handler: http.HandlerFunc(s.notificationsMarkRead)},
-		{pattern: "GET " + views.MeStreamPath, handler: http.HandlerFunc(s.meStream)},
+		{pattern: "GET " + views.MeStreamPath, handler: s.limitConnections(s.meStream)},
 		{pattern: "GET /tags/suggest", handler: http.HandlerFunc(s.tagSuggest)},
 		{pattern: "GET /editor/task-row", handler: http.HandlerFunc(s.taskRowForm)},
 		{pattern: healthPattern, handler: http.HandlerFunc(s.healthz), access: noSession},

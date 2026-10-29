@@ -65,3 +65,11 @@ var SnippetSegments = snippetSegments
 
 // RingFor gives the tests ringFor.
 var RingFor = ringFor
+
+// StagedBytes gives the tests (*Posts).stagedBytes. It is a method
+// expression, so that it adds no frame to the route of its errors.
+var StagedBytes = (*Posts).stagedBytes
+
+// TagStagedCountCanceled is the tag of the count of staged bytes that the
+// context ended.
+const TagStagedCountCanceled = tagStagedCountCanceled
