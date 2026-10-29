@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"candidate\":\"candidate:3 1 udp 1 ::1 1 typ srflx raddr :: rport 0\",\"sdpMLineIndex\":65535,\"type\":\"candidate\"}")

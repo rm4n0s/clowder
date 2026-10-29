@@ -8871,7 +8871,7 @@
         }
       },
       "TooLarge": {
-        "description": "The JSON body is over 64 KiB, the file of an upload is over the limit of the attachments, or the user has too many uploaded files waiting for a post (ten times the limit of the attachments).",
+        "description": "The JSON body is over 64 KiB, the file of an upload is over the limit of the attachments, or the user has too many uploaded files waiting for a post (ten times the limit of the attachments in bytes, and ten times the attachments of a post in files).",
         "content": {
           "application/json": {
             "schema": {

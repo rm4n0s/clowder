@@ -1,0 +1,215 @@
+== machine
+kernel:  Linux 7.3.0-363.vanilla.fc44.x86_64 #1 SMP PREEMPT_DYNAMIC Mon Oct 19 00:08:48 UTC 2026 x86_64
+cpu:     AMD RYZEN AI MAX+ 395 w/ Radeon 8060S (32 logical CPUs)
+memory:  31 GiB
+go:      go version go1.27.3 linux/amd64
+postgres: postgres (PostgreSQL) 18.6 (Debian 18.6-1.pgdg13+2)
+redis:   Redis server v=8.10.3 sha=00000000:1
+pg shared_buffers: 128MB
+pg work_mem: 4MB
+pg effective_cache_size: 4GB
+pg max_connections: 100
+pg fsync: on
+pg synchronous_commit: on
+
+== the large demo on PostgreSQL
+large demo users: 200
+large demo rooms: 100 (14 private), 4551 memberships, 300 board columns
+large demo posts and comments: 100000 (70250 posts, 29750 comments)
+large demo tags: 48 (68026 on posts), reactions: 29936, mentions: 8206, attachments: 356
+large demo tasks: 20000 (17537 assignments)
+large demo conversations: 13 with 448 messages
+large demo audit events: 124556, search index rows: 99999
+large demo made in 14.289s
+whole clowder demo -size large -database-url ... process: 15.6 s
+database size: 191 MB
+
+== benchmarks: the feed, a post, the Messages list, the sidebar and the search (handler through httptest, 3 runs of 200x)
+goos: linux
+goarch: amd64
+pkg: github.com/rm4n0s/clowder/internal/web
+cpu: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	   6729000 ns/op
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	   6802806 ns/op
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	   6890498 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	   8086965 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	   8119612 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	   8174937 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32     	     200	  16556779 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32     	     200	  15523344 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32     	     200	  15534254 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32         	     200	   7875141 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32         	     200	   7441921 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32         	     200	   7517867 ns/op
+BenchmarkLargeSearch/two_words-32                        	     200	  64182483 ns/op
+BenchmarkLargeSearch/two_words-32                        	     200	  65661539 ns/op
+BenchmarkLargeSearch/two_words-32                        	     200	  66201622 ns/op
+BenchmarkLargeSearch/one_tag-32                          	     200	   2332056 ns/op
+BenchmarkLargeSearch/one_tag-32                          	     200	   2253646 ns/op
+BenchmarkLargeSearch/one_tag-32                          	     200	   2318750 ns/op
+BenchmarkLargePostPage/busiest_room-32                   	     200	   1935499 ns/op
+BenchmarkLargePostPage/busiest_room-32                   	     200	   1861207 ns/op
+BenchmarkLargePostPage/busiest_room-32                   	     200	   1927222 ns/op
+BenchmarkLargePostPage/general-32                        	     200	   2049129 ns/op
+BenchmarkLargePostPage/general-32                        	     200	   5155286 ns/op
+BenchmarkLargePostPage/general-32                        	     200	   3609633 ns/op
+BenchmarkLargeMessages/messages_list-32                  	     200	   3227781 ns/op
+BenchmarkLargeMessages/messages_list-32                  	     200	   2292570 ns/op
+BenchmarkLargeMessages/messages_list-32                  	     200	   1529340 ns/op
+BenchmarkLargeMessages/rooms_list-32                     	     200	   4807330 ns/op
+BenchmarkLargeMessages/rooms_list-32                     	     200	   3076157 ns/op
+BenchmarkLargeMessages/rooms_list-32                     	     200	   2589914 ns/op
+BenchmarkLargeMessages/home-32                           	     200	   1158361 ns/op
+BenchmarkLargeMessages/home-32                           	     200	   1027091 ns/op
+BenchmarkLargeMessages/home-32                           	     200	   2304993 ns/op
+PASS
+ok  	github.com/rm4n0s/clowder/internal/web	72.986s
+goos: linux
+goarch: amd64
+pkg: github.com/rm4n0s/clowder/internal/app
+cpu: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+BenchmarkLargeSearch/words_and_two_tags-32         	     200	  13007473 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32         	     200	  13446250 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32         	     200	  15486605 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32   	     200	   6578995 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32   	     200	   6179300 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32   	     200	   6238883 ns/op
+BenchmarkLargeSearch/two_words-32                  	     200	  63284732 ns/op
+BenchmarkLargeSearch/two_words-32                  	     200	  64477799 ns/op
+BenchmarkLargeSearch/two_words-32                  	     200	  64722962 ns/op
+BenchmarkLargeSearch/one_tag-32                    	     200	   1078970 ns/op
+BenchmarkLargeSearch/one_tag-32                    	     200	   1039202 ns/op
+BenchmarkLargeSearch/one_tag-32                    	     200	   1153642 ns/op
+BenchmarkLargeSidebar/Rooms.Mine-32                	     200	    964112 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 0 unread posts in all
+BenchmarkLargeSidebar/Rooms.Mine-32                	     200	    756749 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 0 unread posts in all
+BenchmarkLargeSidebar/Rooms.Mine-32                	     200	    769580 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 0 unread posts in all
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32    	     200	    127093 ns/op
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32    	     200	     84976 ns/op
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32    	     200	     73041 ns/op
+PASS
+ok  	github.com/rm4n0s/clowder/internal/app	52.526s
+
+== benchmarks with every post unread for alice (her room_reads rows deleted)
+DELETE 24
+goos: linux
+goarch: amd64
+pkg: github.com/rm4n0s/clowder/internal/web
+cpu: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	  13532316 ns/op
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	  13069046 ns/op
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	  12105548 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	  15384409 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	  15518575 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	  15563204 ns/op
+BenchmarkLargePostPage/busiest_room-32         	     200	   5002616 ns/op
+BenchmarkLargePostPage/busiest_room-32         	     200	   4172852 ns/op
+BenchmarkLargePostPage/busiest_room-32         	     200	   3937906 ns/op
+BenchmarkLargePostPage/general-32              	     200	   4410582 ns/op
+BenchmarkLargePostPage/general-32              	     200	   4417770 ns/op
+BenchmarkLargePostPage/general-32              	     200	   4311734 ns/op
+BenchmarkLargeMessages/messages_list-32        	     200	   3687140 ns/op
+BenchmarkLargeMessages/messages_list-32        	     200	   3358487 ns/op
+BenchmarkLargeMessages/messages_list-32        	     200	   3210750 ns/op
+BenchmarkLargeMessages/rooms_list-32           	     200	   4056765 ns/op
+BenchmarkLargeMessages/rooms_list-32           	     200	   4249554 ns/op
+BenchmarkLargeMessages/rooms_list-32           	     200	   4181851 ns/op
+BenchmarkLargeMessages/home-32                 	     200	   2781410 ns/op
+BenchmarkLargeMessages/home-32                 	     200	   2749551 ns/op
+BenchmarkLargeMessages/home-32                 	     200	   2754989 ns/op
+PASS
+ok  	github.com/rm4n0s/clowder/internal/web	29.738s
+goos: linux
+goarch: amd64
+pkg: github.com/rm4n0s/clowder/internal/app
+cpu: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+BenchmarkLargeSidebar/Rooms.Mine-32         	     200	   2298170 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 2200 unread posts in all
+BenchmarkLargeSidebar/Rooms.Mine-32         	     200	   2176107 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 2200 unread posts in all
+BenchmarkLargeSidebar/Rooms.Mine-32         	     200	   2180995 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 2200 unread posts in all
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32         	     200	    178865 ns/op
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32         	     200	    172361 ns/op
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32         	     200	    153073 ns/op
+PASS
+ok  	github.com/rm4n0s/clowder/internal/app	1.640s
+
+== fan-out and memory, one process on PostgreSQL (streams rest 2s before the memory is read)
+building clowder and clowder-perf
+copying the large demo in /home/rmanos/ai-projects/github-projects/clowder/.tmp/clowder-perf-pg.U4Xof8/data
+starting the server on 127.0.0.1:40551
+measuring with 200 streams and 5 probe posts
+streams open: 200 of room 1
+round 1: post answered in 42ms, reached 200 streams: p50 42.5 ms p95 49.9 ms max 56.2 ms
+round 2: post answered in 26ms, reached 200 streams: p50 33.0 ms p95 43.7 ms max 47.4 ms
+round 3: post answered in 27ms, reached 200 streams: p50 30.0 ms p95 42.3 ms max 45.4 ms
+round 4: post answered in 23ms, reached 200 streams: p50 30.2 ms p95 38.7 ms max 40.4 ms
+round 5: post answered in 30ms, reached 200 streams: p50 27.8 ms p95 33.8 ms max 39.1 ms
+fan-out to 200 streams over 5 posts: p50 31.4 ms p95 46.4 ms max 56.2 ms (target: max under 200ms) OK
+server memory: 41.6 MiB before the streams, 92.5 MiB with 200 idle streams (target: under 150 MiB) OK
+server memory peak over the run: 102.7 MiB
+
+== the same, the streams resting 20s
+building clowder and clowder-perf
+copying the large demo in /home/rmanos/ai-projects/github-projects/clowder/.tmp/clowder-perf-pg.U4Xof8/data
+starting the server on 127.0.0.1:44987
+measuring with 200 streams and 5 probe posts
+streams open: 200 of room 1
+round 1: post answered in 28ms, reached 200 streams: p50 40.0 ms p95 51.9 ms max 54.3 ms
+round 2: post answered in 39ms, reached 200 streams: p50 33.2 ms p95 43.1 ms max 45.5 ms
+round 3: post answered in 17ms, reached 200 streams: p50 27.5 ms p95 36.1 ms max 40.0 ms
+round 4: post answered in 32ms, reached 200 streams: p50 26.6 ms p95 35.2 ms max 38.9 ms
+round 5: post answered in 19ms, reached 200 streams: p50 28.8 ms p95 38.8 ms max 41.0 ms
+fan-out to 200 streams over 5 posts: p50 30.5 ms p95 45.5 ms max 54.3 ms (target: max under 200ms) OK
+server memory: 41.3 MiB before the streams, 90.5 MiB with 200 idle streams (target: under 150 MiB) OK
+server memory peak over the run: 102.1 MiB
+
+== fan-out and memory, two processes on PostgreSQL and Redis (streams rest 2s)
+building clowder and clowder-perf
+copying the large demo in /home/rmanos/ai-projects/github-projects/clowder/.tmp/clowder-perf-pg.U4Xof8/data
+starting the server on 127.0.0.1:35745
+starting the second server on 127.0.0.1:45455 (same database, same data directory)
+measuring with 200 streams and 5 probe posts
+streams open: 200 of room 1 (100 on http://127.0.0.1:35745, where the posts are written, 100 on http://127.0.0.1:45455)
+round 1: post answered in 56ms, reached 200 streams: p50 52.9 ms p95 58.7 ms max 59.6 ms
+round 2: post answered in 32ms, reached 200 streams: p50 32.2 ms p95 37.5 ms max 40.0 ms
+round 3: post answered in 27ms, reached 200 streams: p50 28.6 ms p95 33.4 ms max 34.2 ms
+round 4: post answered in 50ms, reached 200 streams: p50 52.6 ms p95 55.7 ms max 56.7 ms
+round 5: post answered in 21ms, reached 200 streams: p50 26.6 ms p95 33.5 ms max 35.0 ms
+fan-out to 200 streams over 5 posts: p50 33.4 ms p95 56.1 ms max 59.6 ms (target: max under 200ms) OK
+  streams of the process that took the post: p50 33.6 ms p95 57.2 ms max 59.6 ms
+  streams of the other process, through Redis: p50 32.4 ms p95 54.8 ms max 57.5 ms
+server memory: 43.5 MiB before the streams, 81.6 MiB with 100 idle streams (target: under 150 MiB) OK
+server memory peak over the run: 104.4 MiB
+second server memory: 42.7 MiB before the streams, 77.2 MiB with 100 idle streams (target: under 150 MiB) OK
+second server memory peak over the run: 79.2 MiB
+
+== the same, the streams resting 20s
+building clowder and clowder-perf
+copying the large demo in /home/rmanos/ai-projects/github-projects/clowder/.tmp/clowder-perf-pg.U4Xof8/data
+starting the server on 127.0.0.1:42559
+starting the second server on 127.0.0.1:44919 (same database, same data directory)
+measuring with 200 streams and 5 probe posts
+streams open: 200 of room 1 (100 on http://127.0.0.1:42559, where the posts are written, 100 on http://127.0.0.1:44919)
+round 1: post answered in 57ms, reached 200 streams: p50 55.4 ms p95 59.1 ms max 60.5 ms
+round 2: post answered in 26ms, reached 200 streams: p50 32.7 ms p95 36.6 ms max 37.3 ms
+round 3: post answered in 28ms, reached 200 streams: p50 29.2 ms p95 33.3 ms max 35.2 ms
+round 4: post answered in 25ms, reached 200 streams: p50 25.4 ms p95 28.9 ms max 29.5 ms
+round 5: post answered in 25ms, reached 200 streams: p50 21.8 ms p95 26.5 ms max 27.3 ms
+fan-out to 200 streams over 5 posts: p50 28.6 ms p95 57.4 ms max 60.5 ms (target: max under 200ms) OK
+  streams of the process that took the post: p50 28.2 ms p95 57.7 ms max 60.5 ms
+  streams of the other process, through Redis: p50 29.4 ms p95 57.3 ms max 58.4 ms
+server memory: 43.6 MiB before the streams, 78.3 MiB with 100 idle streams (target: under 150 MiB) OK
+server memory peak over the run: 103.8 MiB
+second server memory: 44.0 MiB before the streams, 77.2 MiB with 100 idle streams (target: under 150 MiB) OK
+second server memory peak over the run: 78.9 MiB
+exit 0

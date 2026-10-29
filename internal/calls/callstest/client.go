@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
-	"testing"
 	"time"
 
 	"github.com/coder/websocket"
@@ -15,6 +14,23 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
+
+// TB is the part of testing.TB that the client uses. A *testing.T satisfies
+// it, and so does the small type of a program that is not a test, such as
+// clowder-perf -calls (step 24.1).
+type TB interface {
+	Helper()
+	Logf(format string, args ...any)
+	Errorf(format string, args ...any)
+	Fatal(args ...any)
+	Fatalf(format string, args ...any)
+	Cleanup(f func())
+	Context() context.Context
+}
+
+// videoPacketBytes is the most payload bytes of a video packet the client
+// writes.
+const videoPacketBytes = 1000
 
 // Message is a message of the signalling socket, as the server sends it. Only
 // the fields of its type are set.
@@ -43,13 +59,17 @@ type Options struct {
 	Header http.Header
 	// Origin, when set, is sent as the Origin header.
 	Origin string
+	// VideoBitrate, when not zero, is the bit rate in bits per second of the
+	// video the client sends (packets of 1,000 bytes, 25 frames a second); zero
+	// sends the small synthetic video of the tests (about 120 kbit/s).
+	VideoBitrate int
 	// Log, when set, receives the problems of the client instead of the test.
 	Log func(format string, args ...any)
 }
 
 // Client is a pion peer in a call.
 type Client struct {
-	t    testing.TB
+	t    TB
 	name string
 	pc   *webrtc.PeerConnection
 	ws   *websocket.Conn
@@ -90,7 +110,7 @@ type Client struct {
 
 // Dial connects a client to the signalling socket at url and starts the
 // exchange: it answers every offer. The client is closed when the test ends.
-func Dial(tb testing.TB, name, url string, opts Options) (*Client, *http.Response, error) {
+func Dial(tb TB, name, url string, opts Options) (*Client, *http.Response, error) {
 	tb.Helper()
 	ctx, cancel := context.WithCancel(tb.Context())
 	c := &Client{t: tb, name: name, ctx: ctx, stop: cancel, opts: opts, videoSSRCs: map[uint32]int{},
@@ -120,7 +140,7 @@ func Dial(tb testing.TB, name, url string, opts Options) (*Client, *http.Respons
 }
 
 // MustDial is Dial that fails the test when the handshake does not work.
-func MustDial(tb testing.TB, name, url string, opts Options) *Client {
+func MustDial(tb TB, name, url string, opts Options) *Client {
 	tb.Helper()
 	c, resp, err := Dial(tb, name, url, opts)
 	if err != nil {
@@ -373,7 +393,11 @@ func (c *Client) startSending() {
 			}
 			// A VP8 payload: the first byte is the payload descriptor with the
 			// start of a partition.
-			data := make([]byte, 600)
+			frame := 600
+			if c.opts.VideoBitrate > 0 {
+				frame = c.opts.VideoBitrate / 8 / 25
+			}
+			data := make([]byte, frame)
 			data[0] = 0x10
 			if sample := c.videoSample.Load(); sample != nil {
 				if err := sample.WriteSample(media.Sample{Data: data, Duration: 40 * time.Millisecond}); err != nil && c.ctx.Err() == nil {
@@ -382,14 +406,20 @@ func (c *Client) startSending() {
 				continue
 			}
 			if video := c.video.Load(); video != nil {
-				c.vseq++
 				c.vts += 3600
-				pkt := &rtp.Packet{
-					Header:  rtp.Header{Version: 2, Marker: true, SequenceNumber: c.vseq, Timestamp: c.vts},
-					Payload: data,
-				}
-				if err := video.WriteRTP(pkt); err != nil && c.ctx.Err() == nil {
-					c.logf("video packet: %v", err)
+				// A frame is cut into packets of 1,000 bytes at most, and the
+				// last one has the marker.
+				for len(data) > 0 {
+					n := min(len(data), videoPacketBytes)
+					c.vseq++
+					pkt := &rtp.Packet{
+						Header:  rtp.Header{Version: 2, Marker: n == len(data), SequenceNumber: c.vseq, Timestamp: c.vts},
+						Payload: data[:n],
+					}
+					data = data[n:]
+					if err := video.WriteRTP(pkt); err != nil && c.ctx.Err() == nil {
+						c.logf("video packet: %v", err)
+					}
 				}
 			}
 		}
@@ -522,7 +552,7 @@ func (c *Client) Candidates() []string {
 }
 
 // WaitFor polls cond until it is true or the deadline passes.
-func WaitFor(tb testing.TB, what string, d time.Duration, cond func() bool) {
+func WaitFor(tb TB, what string, d time.Duration, cond func() bool) {
 	tb.Helper()
 	deadline := time.Now().Add(d)
 	for !cond() {
@@ -535,7 +565,7 @@ func WaitFor(tb testing.TB, what string, d time.Duration, cond func() bool) {
 
 // Receiving waits until the client has received n more audio and n more video
 // packets than it had when the call was made.
-func (c *Client) Receiving(tb testing.TB, n int64, d time.Duration) {
+func (c *Client) Receiving(tb TB, n int64, d time.Duration) {
 	tb.Helper()
 	a0, v0 := c.AudioIn(), c.VideoIn()
 	WaitFor(tb, c.name+" to receive audio and video", d, func() bool {
@@ -544,7 +574,7 @@ func (c *Client) Receiving(tb testing.TB, n int64, d time.Duration) {
 }
 
 // ReceivingAudio waits until the client has received n more audio packets.
-func (c *Client) ReceivingAudio(tb testing.TB, n int64, d time.Duration) {
+func (c *Client) ReceivingAudio(tb TB, n int64, d time.Duration) {
 	tb.Helper()
 	a0 := c.AudioIn()
 	WaitFor(tb, c.name+" to receive audio", d, func() bool { return c.AudioIn()-a0 >= n })

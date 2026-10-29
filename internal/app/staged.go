@@ -32,10 +32,19 @@ const StagedLifetime = 24 * time.Hour
 // staged at once (SPEC D62): uploaded and not yet posted, in bytes.
 const StagedLimitFactor = 10
 
+// StagedFilesFactor is how many times the number of attachments of a post a
+// user may have staged at once (step 24.1): the count of files, whatever their
+// size. A user who stages thousands of tiny files would otherwise stay far
+// under the byte limit, fill the disk with files and notes, and make every
+// upload (which reads every note) slower.
+const StagedFilesFactor = 10
+
 // TagStagedFull is the tag of an upload refused because the user's staged
 // uploads would go past StagedLimit. The handlers answer 413 (too_large in
 // the API) with a message that says to post the staged files first; the
-// metadata holds the "limit" and the bytes "staged" before the upload.
+// metadata holds the "limit" and the bytes "staged" before the upload, and the
+// "fileLimit" and the number of "files" staged before it. It is the tag of a
+// user past the byte limit and of one past the limit of the number of files.
 const TagStagedFull = "StagedUploadsFull"
 
 // StagedUpload is a file uploaded for a later request to attach: the way a
@@ -84,16 +93,17 @@ func (p *Posts) UploadStaged(ctx context.Context, actor Actor, name string, r io
 		p.cleaner.remove(context.WithoutCancel(ctx), []string{up.Key})
 		return StagedUpload{}, err
 	}
-	staged, err := p.stagedBytes(ctx, actor.UserID)
+	staged, count, err := p.stagedBytes(ctx, actor.UserID)
 	if err != nil {
 		p.dropStaged(ctx, up.Key)
 		return StagedUpload{}, err
 	}
-	if limit := p.StagedLimit(); staged > limit {
+	if limit, fileLimit := p.StagedLimit(), p.StagedFileLimit(); staged > limit || count > fileLimit {
 		p.dropStaged(ctx, up.Key)
 		p.cfg.StagedRefused.Inc()
 		return StagedUpload{}, errors.New(TagStagedFull, "the user has too many staged uploads",
-			"limit", limit, "staged", staged-up.Size, "size", up.Size, "userID", actor.UserID)
+			"limit", limit, "staged", staged-up.Size, "size", up.Size, "fileLimit", fileLimit,
+			"files", count-1, "userID", actor.UserID)
 	}
 	return StagedUpload{ID: up.Key, Upload: up}, nil
 }
@@ -102,6 +112,12 @@ func (p *Posts) UploadStaged(ctx context.Context, actor Actor, name string, r io
 // times the attachment limit.
 func (p *Posts) StagedLimit() int64 {
 	return StagedLimitFactor * p.cfg.MaxAttachmentSize
+}
+
+// StagedFileLimit is the most files one person may have staged:
+// StagedFilesFactor times the number of attachments of a post.
+func (p *Posts) StagedFileLimit() int {
+	return StagedFilesFactor * p.cfg.MaxAttachments
 }
 
 // dropStaged takes an upload that was refused off the disk: the file and its
@@ -114,21 +130,20 @@ func (p *Posts) dropStaged(ctx context.Context, key string) {
 	}
 }
 
-// stagedBytes adds up the sizes of the staged uploads of a person, from the
-// notes in the files directory: an upload is staged as long as its note
+// stagedBytes adds up the sizes and counts the staged uploads of a person, from
+// the notes in the files directory: an upload is staged as long as its note
 // exists, and posting it, a refused post, the sweep and a refused upload all
 // end the note. A note that is damaged or removed while it is read is not
 // counted. It fails with StagedCountCanceled when ctx is done and with the
 // error of the store when the notes cannot be listed.
-func (p *Posts) stagedBytes(ctx context.Context, userID uint64) (int64, error) {
+func (p *Posts) stagedBytes(ctx context.Context, userID uint64) (total int64, count int, err error) {
 	notes, err := p.files.Notes()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	var total int64
 	for _, n := range notes {
 		if err := ctx.Err(); err != nil {
-			return 0, errors.NewErr(tagStagedCountCanceled, err)
+			return 0, 0, errors.NewErr(tagStagedCountCanceled, err)
 		}
 		data, err := p.files.Note(n.Key)
 		if err != nil {
@@ -140,9 +155,10 @@ func (p *Posts) stagedBytes(ctx context.Context, userID uint64) (int64, error) {
 		owner, size, ok := stagedOwnerSize(string(data))
 		if ok && owner == userID {
 			total += size
+			count++
 		}
 	}
-	return total, nil
+	return total, count, nil
 }
 
 // stagedOwnerSize reads who uploaded a staged upload and how big it is from

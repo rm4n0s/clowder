@@ -3,6 +3,7 @@ package calls
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/rm4n0s/errors"
@@ -98,7 +99,14 @@ func (s *Server) Serve(ctx context.Context, conn *websocket.Conn, j Join) {
 // from, which is only good until it returns. A message that is JSON but not a
 // message of the protocol is answered with an error message and the socket
 // stays; a message that is not text closes it with 1003.
+//
+// A client may send at most messageBurst messages at once and messageRate a
+// second after that (step 24.1): a real client sends a few dozen at the start
+// (the answer and its ICE candidates) and a few a minute after. One that sends
+// more is closed with 1008, so that it cannot make the server parse, answer,
+// write to the database and publish events as fast as it can write.
 func (s *Server) readLoop(ctx context.Context, sock *socket, callID uint64, handle func(msg clientMessage, raw []byte)) {
+	limit := newMessageBucket(time.Now())
 	for {
 		typ, data, err := sock.conn.Read(ctx)
 		if err != nil {
@@ -110,6 +118,11 @@ func (s *Server) readLoop(ctx context.Context, sock *socket, callID uint64, hand
 		}
 		if typ != websocket.MessageText {
 			sock.finish(websocket.StatusUnsupportedData, "text messages only")
+			return
+		}
+		if !limit.allow(time.Now()) {
+			s.logger.Debug("a signalling socket sent too many messages", "call_id", callID, "user_id", sock.userID)
+			sock.finish(websocket.StatusPolicyViolation, "too many messages")
 			return
 		}
 		msg, err := parseClientMessage(data)

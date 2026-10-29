@@ -1,0 +1,125 @@
+== machine
+Linux 7.3.0-363.vanilla.fc44.x86_64 #1 SMP PREEMPT_DYNAMIC Mon Oct 19 00:08:48 UTC 2026 x86_64
+model name	: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S
+32
+go version go1.27.3 linux/amd64
+ 02:38:52 up 2 days, 17:40,  1 user,  load average: 2.62, 4.13, 4.55
+
+== benchmarks, the large demo as it is made (nothing unread), 200x, 3 runs
+goos: linux
+goarch: amd64
+pkg: github.com/rm4n0s/clowder/internal/web
+cpu: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	   6728572 ns/op
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	   6550867 ns/op
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	   6407721 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	   7895688 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	   7070234 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	   7140304 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32     	     200	  29243392 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32     	     200	  29704121 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32     	     200	  29042011 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32         	     200	  65887486 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32         	     200	  65770145 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32         	     200	  67789870 ns/op
+BenchmarkLargeSearch/two_words-32                        	     200	  43498297 ns/op
+BenchmarkLargeSearch/two_words-32                        	     200	  42599382 ns/op
+BenchmarkLargeSearch/two_words-32                        	     200	  42657138 ns/op
+BenchmarkLargeSearch/one_tag-32                          	     200	   1539911 ns/op
+BenchmarkLargeSearch/one_tag-32                          	     200	   1654998 ns/op
+BenchmarkLargeSearch/one_tag-32                          	     200	   1517854 ns/op
+BenchmarkLargePostPage/busiest_room-32                   	     200	   1251479 ns/op
+BenchmarkLargePostPage/busiest_room-32                   	     200	   1187716 ns/op
+BenchmarkLargePostPage/busiest_room-32                   	     200	   1609121 ns/op
+BenchmarkLargePostPage/general-32                        	     200	   1244353 ns/op
+BenchmarkLargePostPage/general-32                        	     200	   1244219 ns/op
+BenchmarkLargePostPage/general-32                        	     200	   1337249 ns/op
+BenchmarkLargeMessages/messages_list-32                  	     200	    992586 ns/op
+BenchmarkLargeMessages/messages_list-32                  	     200	    987408 ns/op
+BenchmarkLargeMessages/messages_list-32                  	     200	    981322 ns/op
+BenchmarkLargeMessages/rooms_list-32                     	     200	   1726071 ns/op
+BenchmarkLargeMessages/rooms_list-32                     	     200	   1791016 ns/op
+BenchmarkLargeMessages/rooms_list-32                     	     200	   1734220 ns/op
+BenchmarkLargeMessages/home-32                           	     200	    725829 ns/op
+BenchmarkLargeMessages/home-32                           	     200	    726952 ns/op
+BenchmarkLargeMessages/home-32                           	     200	    740461 ns/op
+PASS
+ok  	github.com/rm4n0s/clowder/internal/web	97.389s
+goos: linux
+goarch: amd64
+pkg: github.com/rm4n0s/clowder/internal/app
+cpu: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+BenchmarkLargeSearch/words_and_two_tags-32         	     200	  27942200 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32         	     200	  27436382 ns/op
+BenchmarkLargeSearch/words_and_two_tags-32         	     200	  27692396 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32   	     200	  66282401 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32   	     200	  68743460 ns/op
+BenchmarkLargeSearch/common_word_and_two_tags-32   	     200	  79743573 ns/op
+BenchmarkLargeSearch/two_words-32                  	     200	  62604044 ns/op
+BenchmarkLargeSearch/two_words-32                  	     200	  46959607 ns/op
+BenchmarkLargeSearch/two_words-32                  	     200	  48255657 ns/op
+BenchmarkLargeSearch/one_tag-32                    	     200	    751057 ns/op
+BenchmarkLargeSearch/one_tag-32                    	     200	    702918 ns/op
+BenchmarkLargeSearch/one_tag-32                    	     200	    745863 ns/op
+BenchmarkLargeSidebar/Rooms.Mine-32                	     200	    606117 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 0 unread posts in all
+BenchmarkLargeSidebar/Rooms.Mine-32                	     200	    624471 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 0 unread posts in all
+BenchmarkLargeSidebar/Rooms.Mine-32                	     200	    627883 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 0 unread posts in all
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32    	     200	     44746 ns/op
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32    	     200	     46859 ns/op
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32    	     200	     45988 ns/op
+PASS
+ok  	github.com/rm4n0s/clowder/internal/app	92.548s
+
+== benchmarks, every post unread for alice (her room_reads rows deleted)
+goos: linux
+goarch: amd64
+pkg: github.com/rm4n0s/clowder/internal/web
+cpu: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	  10683273 ns/op
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	  10815261 ns/op
+BenchmarkLargeRoomFeed/busiest_room-32         	     200	  11301080 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	  14088574 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	  11072003 ns/op
+BenchmarkLargeRoomFeed/general-32              	     200	  11818901 ns/op
+BenchmarkLargePostPage/busiest_room-32         	     200	   4131227 ns/op
+BenchmarkLargePostPage/busiest_room-32         	     200	   4281455 ns/op
+BenchmarkLargePostPage/busiest_room-32         	     200	   4382160 ns/op
+BenchmarkLargePostPage/general-32              	     200	   4609666 ns/op
+BenchmarkLargePostPage/general-32              	     200	   4287900 ns/op
+BenchmarkLargePostPage/general-32              	     200	   4346196 ns/op
+BenchmarkLargeMessages/messages_list-32        	     200	   3968361 ns/op
+BenchmarkLargeMessages/messages_list-32        	     200	   4161271 ns/op
+BenchmarkLargeMessages/messages_list-32        	     200	   4018552 ns/op
+BenchmarkLargeMessages/rooms_list-32           	     200	   4765126 ns/op
+BenchmarkLargeMessages/rooms_list-32           	     200	   4957763 ns/op
+BenchmarkLargeMessages/rooms_list-32           	     200	   4790828 ns/op
+BenchmarkLargeMessages/home-32                 	     200	   3592545 ns/op
+BenchmarkLargeMessages/home-32                 	     200	   3373939 ns/op
+BenchmarkLargeMessages/home-32                 	     200	   3573690 ns/op
+PASS
+ok  	github.com/rm4n0s/clowder/internal/web	27.375s
+goos: linux
+goarch: amd64
+pkg: github.com/rm4n0s/clowder/internal/app
+cpu: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S          
+BenchmarkLargeSidebar/Rooms.Mine-32         	     200	   3250695 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 2400 unread posts in all
+BenchmarkLargeSidebar/Rooms.Mine-32         	     200	   3004592 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 2400 unread posts in all
+BenchmarkLargeSidebar/Rooms.Mine-32         	     200	   2928994 ns/op
+--- BENCH: BenchmarkLargeSidebar/Rooms.Mine-32
+    bench_test.go:68: 24 rooms, 2400 unread posts in all
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32         	     200	     84535 ns/op
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32         	     200	     84533 ns/op
+BenchmarkLargeSidebar/Rooms.Unread,_one_room-32         	     200	     77347 ns/op
+PASS
+ok  	github.com/rm4n0s/clowder/internal/app	1.982s
+ 02:42:35 up 2 days, 17:43,  1 user,  load average: 10.00, 6.28, 5.22

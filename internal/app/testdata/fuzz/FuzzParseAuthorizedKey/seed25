@@ -1,0 +1,2 @@
+go test fuzz v1
+string("ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29t")

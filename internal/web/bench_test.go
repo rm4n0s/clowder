@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"testing"
 
@@ -163,4 +164,54 @@ var searchBenchQueries = []struct{ name, query string }{
 	{"common word and two tags", "the #docs #backend"},
 	{"two words", "release plan"},
 	{"one tag", "#design"},
+}
+
+// postLink finds the first link to a post in the page at target.
+var postLink = regexp.MustCompile(`href="(/posts/\d+)"`)
+
+// BenchmarkLargePostPage measures the whole handler of GET /posts/{id}, a post
+// with its comments, for the first post of the feed of the busiest room and of
+// general (step 24.1: SPEC §10 measured again for 1.2).
+func BenchmarkLargePostPage(b *testing.B) {
+	s := newBenchServer(b)
+	for _, room := range []struct {
+		name string
+		id   uint64
+	}{{"busiest room", s.busiest}, {"general", s.general}} {
+		b.Run(room.name, func(b *testing.B) {
+			feed := httptest.NewRequest(http.MethodGet, "/rooms/"+strconv.FormatUint(room.id, 10), nil)
+			feed.AddCookie(s.cookie)
+			rec := httptest.NewRecorder()
+			s.handler.ServeHTTP(rec, feed)
+			m := postLink.FindStringSubmatch(rec.Body.String())
+			if m == nil {
+				b.Fatalf("no post in the feed of room %d", room.id)
+			}
+			s.get(b, m[1])
+			b.ResetTimer()
+			for b.Loop() {
+				s.get(b, m[1])
+			}
+		})
+	}
+}
+
+// BenchmarkLargeMessages measures the Messages list, GET /messages, and the
+// room list of GET /rooms, the pages whose sidebar carries the unread counts
+// (step 24.1).
+func BenchmarkLargeMessages(b *testing.B) {
+	s := newBenchServer(b)
+	for _, page := range []struct{ name, target string }{
+		{"messages list", "/messages"},
+		{"rooms list", "/rooms"},
+		{"home", "/"},
+	} {
+		b.Run(page.name, func(b *testing.B) {
+			s.get(b, page.target)
+			b.ResetTimer()
+			for b.Loop() {
+				s.get(b, page.target)
+			}
+		})
+	}
 }

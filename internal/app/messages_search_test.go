@@ -360,3 +360,43 @@ func TestPostsSearchNeverFindsAMessage(t *testing.T) {
 		t.Errorf("Search = %+v, %v; want only the message", page, err)
 	}
 }
+
+// TestMessagesSearchPagingAfterLeaving: a member who leaves a group between
+// the first page of a search and the second one, with the NextBefore of the
+// first, gets nothing of the group on the second page (step 24.1): the cursor
+// is only a bound on the IDs, and the membership is read again in the query.
+func TestMessagesSearchPagingAfterLeaving(t *testing.T) {
+	t.Parallel()
+	e := newMsgEnv(t)
+	crew := e.group("Crew", "alice", "bob", "carol")
+	direct := e.direct("carol", "dave")
+	var mine []uint64
+	for i := range 35 {
+		e.send("alice", crew, "pager line "+strconv.Itoa(i))
+		if i%5 == 0 {
+			mine = append(mine, e.send("dave", direct, "pager line direct "+strconv.Itoa(i)).ID)
+		}
+	}
+	first := e.searchMessages("carol", "pager", 0)
+	if len(first.Results) != 30 || !first.HasMore || first.NextBefore == 0 {
+		t.Fatalf("first page = %d results, more %v, next %d", len(first.Results), first.HasMore, first.NextBefore)
+	}
+	if err := e.msgs.Leave(t.Context(), e.as("carol"), crew); err != nil {
+		t.Fatal(err)
+	}
+	second := e.searchMessages("carol", "pager", first.NextBefore)
+	for _, r := range second.Results {
+		if r.ConversationID == crew {
+			t.Errorf("the second page shows message %d of the group carol left", r.MessageID)
+		}
+		if !slices.Contains(mine, r.MessageID) {
+			t.Errorf("the second page shows message %d that is not in a conversation of carol", r.MessageID)
+		}
+	}
+	// And a fresh search of the whole is the same.
+	for _, r := range e.searchMessages("carol", "pager", 0).Results {
+		if r.ConversationID == crew {
+			t.Errorf("a new search shows message %d of the group carol left", r.MessageID)
+		}
+	}
+}

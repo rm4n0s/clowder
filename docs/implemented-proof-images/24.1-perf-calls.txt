@@ -1,0 +1,19 @@
+building clowder and clowder-perf
+machine: Linux 7.3.0-363.vanilla.fc44.x86_64, 32 logical CPUs, 31 GiB
+
+== 1 simultaneous calls, 60s; load average before: 2.83 4.59 5.05
+calls: 1 at once (2 clients), 60 s, each client sends VP8 at about 1.0 Mbit/s and Opus
+server CPU: 1.74 s of CPU in 60.0 s = 2.9% of one core (2.9% for each call)
+server memory (VmRSS): 51.4 MiB when the window began, mean 60.9 MiB, max 63.1 MiB, peak of the process 104.4 MiB
+server heap: in use 11.3 MiB at the start, 18.5 MiB at the end, up to 17.6 MiB; from the system 78.2 MiB at the end; 82 goroutines at the end (up to 82); 1 calls active
+packets forwarded to the clients in the window: 6000 audio (100/s), 15000 video (250/s); per call 100 audio/s and 250 video/s
+load average after: 1.64 3.90 4.78
+
+== 10 simultaneous calls, 60s; load average before: 1.64 3.90 4.78
+calls: 10 at once (20 clients), 60 s, each client sends VP8 at about 1.0 Mbit/s and Opus
+server CPU: 5.13 s of CPU in 60.0 s = 8.5% of one core (0.9% for each call)
+server memory (VmRSS): 83.7 MiB when the window began, mean 138.9 MiB, max 146.4 MiB, peak of the process 146.4 MiB
+server heap: in use 27.1 MiB at the start, 68.0 MiB at the end, up to 70.8 MiB; from the system 110.0 MiB at the end; 703 goroutines at the end (up to 703); 10 calls active
+packets forwarded to the clients in the window: 60001 audio (1000/s), 150000 video (2500/s); per call 100 audio/s and 250 video/s
+load average after: 1.51 3.43 4.56
+exit 0

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMXQy5b4lUlyOsfd5Vtedy6kB4lkAhcZ22/jG+1XCcd9 laptop\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMXQy5b4lUlyOsfd5Vtedy6kB4lkAhcZ22/jG+1XCcd9 laptop")

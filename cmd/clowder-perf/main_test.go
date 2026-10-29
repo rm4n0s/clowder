@@ -420,3 +420,48 @@ func TestMeasureSecondProcessNotReady(t *testing.T) {
 		t.Errorf("err = %v, want measure->waitReady.PerfNotReady", err)
 	}
 }
+
+// TestUserOfStream: the streams are shared out so that no user holds more than
+// streamsPerUser of them on one process (the limit of SPEC D62 is 30), with
+// one process and with two.
+func TestUserOfStream(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name           string
+		streams, procs int
+	}{{"one process", 200, 1}, {"two processes", 200, 2}, {"few", 7, 1}, {"odd", 51, 2}} {
+		t.Run(tt.name, func(t *testing.T) {
+			perProcess := (tt.streams + tt.procs - 1) / tt.procs
+			users := (perProcess + streamsPerUser - 1) / streamsPerUser
+			held := map[[2]int]int{}
+			for i := range tt.streams {
+				held[[2]int{i % tt.procs, userOfStream(i, tt.procs, users)}]++
+			}
+			for key, n := range held {
+				if n > streamsPerUser {
+					t.Errorf("user %d holds %d streams on process %d, want at most %d", key[1], n, key[0], streamsPerUser)
+				}
+			}
+		})
+	}
+}
+
+func TestCPUTicksOfThisProcess(t *testing.T) {
+	t.Parallel()
+	n, err := cpuTicks(os.Getpid())
+	if err != nil || n < 0 {
+		t.Errorf("cpuTicks = %d, %v", n, err)
+	}
+	if _, err := cpuTicks(0); err == nil {
+		t.Error("cpuTicks of process 0 succeeded")
+	}
+}
+
+func TestCallsNeedAProcess(t *testing.T) {
+	t.Parallel()
+	err := run(t.Context(), []string{"-calls", "2", "-base", "http://127.0.0.1:1"}, io.Discard, io.Discard)
+	appErr, ok := errors.FromError(err)
+	if !ok || !appErr.HasRoute("run->measureCalls.PerfFlagsInvalid") {
+		t.Errorf("err = %v", err)
+	}
+}

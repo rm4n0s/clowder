@@ -43,3 +43,47 @@ func BenchmarkLargeSearch(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkLargeSidebar measures what the sidebar of every page reads for the
+// unread counts (SPEC §7.17, step 20.2): Rooms.Mine, the rooms of alice with
+// their counts, and the one small query Rooms.Unread that a stream reads when
+// a room's count changes (step 24.1). It skips like BenchmarkLargeSearch.
+func BenchmarkLargeSidebar(b *testing.B) {
+	st := storetest.OpenLarge(b, clock.Real())
+	alice, err := st.UserByUsername(b.Context(), "alice")
+	if err != nil {
+		b.Fatalf("UserByUsername: %+v", err)
+	}
+	actor := app.Actor{UserID: alice.ID, Username: alice.Username, Role: alice.Role}
+	rooms := app.NewRooms(st, nil, nil, nil)
+	b.Run("Rooms.Mine", func(b *testing.B) {
+		mine, err := rooms.Mine(b.Context(), actor)
+		if err != nil || len(mine) == 0 {
+			b.Fatalf("Mine = %d rooms, %v", len(mine), err)
+		}
+		unread := 0
+		for _, r := range mine {
+			unread += r.UnreadPosts
+		}
+		b.Logf("%d rooms, %d unread posts in all", len(mine), unread)
+		b.ResetTimer()
+		for b.Loop() {
+			if _, err := rooms.Mine(b.Context(), actor); err != nil {
+				b.Fatalf("Mine: %+v", err)
+			}
+		}
+	})
+	b.Run("Rooms.Unread, one room", func(b *testing.B) {
+		mine, err := rooms.Mine(b.Context(), actor)
+		if err != nil || len(mine) == 0 {
+			b.Fatalf("Mine = %d rooms, %v", len(mine), err)
+		}
+		id := mine[0].ID
+		b.ResetTimer()
+		for b.Loop() {
+			if _, _, err := rooms.Unread(b.Context(), actor, id); err != nil {
+				b.Fatalf("Unread: %+v", err)
+			}
+		}
+	})
+}

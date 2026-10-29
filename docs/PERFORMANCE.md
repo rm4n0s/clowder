@@ -164,3 +164,94 @@ Every target is met. Notes:
 - The default configuration of PostgreSQL was used. `shared_buffers` of 128 MB is below the 189 MB database; the operating system's cache holds the rest here. A deployment of this size would raise it.
 - The benchmarks of the feed and of the search call the handlers through `httptest`, without the network, as in 13.1.
 - The test suite on PostgreSQL (`scripts/test-docker.sh`) takes longer than the one on SQLite; its time is not part of the targets.
+
+---
+
+# 1.2 (step 24.1)
+
+SPEC §10 measured again on SQLite and PostgreSQL with the large demo, now with the pages and the sidebar of 1.2 (the unread counts of step 20.2, the new look, the read mark that the feed writes), and the CPU and the memory of the server during 1 and 10 simultaneous one-to-one calls. The raw output of the runs is in `docs/implemented-proof-images/`: `24.1-perf-sqlite.txt` (the benchmarks on SQLite), `24.1-perf-sqlite-streams.txt` (the streams on SQLite), `24.1-perf-postgres.txt` (everything on PostgreSQL and Redis) and `24.1-perf-calls.txt` (the calls). Numbers are from 2026-10-29.
+
+## Setup
+
+The machine is the one above (32 logical CPUs, 31 GiB, Go 1.27.3), shared with other projects: the load average was 2.6 to 9 during the benchmarks and 1.5 to 3.4 during the calls. PostgreSQL 18.6 and Redis 8.10 run in the official images with their default configuration, as in 17.1. The large demo of this step is the same generator with the same seed (200 users, 100,000 posts and comments; 14.3 s on PostgreSQL, 9.0 s on SQLite; the database is 191 MB on PostgreSQL). The sidebar of 1.2 shows a count of unread top-level posts for each room: the large demo starts with nothing unread (`ResetRoomReads`), so every benchmark ran **twice**, once on the demo as it is made and once for "every post unread": the `room_reads` rows of alice (the user of the benchmarks, 24 rooms) deleted, which is the most the count can cost (it counts at most 100 posts a room, so 2,400 in all). The pages are the whole handler through `httptest`, as in 13.1.
+
+## Commands to reproduce
+
+```sh
+# SQLite
+go run ./cmd/clowder demo -data /tmp/large -size large
+CLOWDER_BENCH_DB=/tmp/large/clowder.db go test ./internal/web ./internal/app -run '^$' -bench Large -benchtime 200x -count 3
+cp /tmp/large/clowder.db /tmp/unread.db && sqlite3 /tmp/unread.db "DELETE FROM room_reads WHERE user_id=(SELECT id FROM users WHERE username='alice')"
+CLOWDER_BENCH_DB=/tmp/unread.db go test ./internal/web ./internal/app -run '^$' -bench 'Large(Sidebar|Messages|RoomFeed|PostPage)' -benchtime 200x -count 3
+scripts/perf.sh /tmp/large                 # the streams and the memory
+
+# PostgreSQL and Redis (needs docker or podman; about 12 minutes): the benchmarks twice, then the streams
+scripts/perf-postgres.sh
+
+# The calls: 2N pion clients, each sending VP8 at about 1 Mbit/s and Opus; the CPU and the memory are those of the
+# server process alone (the clients run in clowder-perf)
+LARGE_DEMO=/tmp/large scripts/perf-calls.sh        # CALLS="1 10" DURATION=60s by default
+```
+
+The new benchmarks are `BenchmarkLargePostPage` and `BenchmarkLargeMessages` (`internal/web`: a post with its comments, `GET /messages`, `GET /rooms`, `GET /`) and `BenchmarkLargeSidebar` (`internal/app`: `Rooms.Mine`, which the sidebar reads, and `Rooms.Unread`, the one small query of a stream). `clowder-perf` opens its 200 streams as eight users now, 25 each, because a user may hold 30 live connections in a process since step 23.3 (D62): the old measurement, 200 streams of one user, is `429` after 30.
+
+## Results: the pages
+
+SQLite (ranges are the three runs; 13.1 is the number of the first part of this file) and PostgreSQL (17.1). "Unread" is the run with every post unread.
+
+| What | Target | SQLite 13.1 | SQLite 1.2 | SQLite 1.2, unread | PostgreSQL 17.1 | PostgreSQL 1.2 | PostgreSQL 1.2, unread |
+|---|---|---|---|---|---|---|---|
+| Feed, busiest room (12,283 posts) | under 50 ms | 2.8–3.4 ms | 6.4–6.7 ms | 10.7–11.3 ms | 3.2–4.0 ms | 6.7–6.9 ms | 12.1–13.5 ms |
+| Feed, `general` (200 members) | under 50 ms | 6.9–7.1 ms | 7.1–7.9 ms | 11.1–14.1 ms | 5.3–6.4 ms | 8.1–8.2 ms | 15.4–15.6 ms |
+| Search, words and two tags | under 100 ms | 31–32 ms | 29.0–29.7 ms | – | 10.6–11.0 ms | 15.5–16.6 ms | – |
+| Search, a very common word and two tags | under 100 ms | 66–72 ms | 65.8–67.8 ms | – | 4.9–5.1 ms | 7.4–7.9 ms | – |
+| Search, two words | (under 100 ms) | 41–47 ms | 42.6–43.5 ms | – | 54.6–60.4 ms | 64.2–66.2 ms | – |
+| Search, one tag | – | 0.7–1.6 ms | 1.5–1.7 ms | – | 1.7–2.5 ms | 2.3 ms | – |
+| A post page with its comments, busiest room / `general` | – (new) | – | 1.2–1.6 / 1.2–1.3 ms | 4.1–4.4 / 4.3–4.6 ms | – | 1.9 / 2.0–5.2 ms | 3.9–5.0 / 4.3–4.4 ms |
+| The Messages list, `GET /messages` | – (new) | – | 1.0 ms | 4.0–4.2 ms | – | 1.5–3.2 ms | 3.2–3.7 ms |
+| The room list, `GET /rooms` / home, `GET /` | – (new) | – | 1.7–1.8 / 0.7 ms | 4.8–5.0 / 3.4–3.6 ms | – | 2.6–4.8 / 1.0–2.3 ms | 4.1–4.2 / 2.8 ms |
+| The sidebar's counts, `Rooms.Mine` (24 rooms) | – (new) | – | 0.61–0.63 ms | 2.9–3.3 ms | – | 0.76–0.96 ms | 2.2–2.3 ms |
+| One room's count, `Rooms.Unread` | – (new) | – | 45–47 µs | 77–85 µs | – | 73–127 µs | 153–179 µs |
+
+Every target of SPEC §10 for a page is met with a wide margin (the slowest page, the feed with everything unread, is 15.6 ms against 50 ms). Notes:
+
+- **The feed is about twice as slow as in 1.0/1.1 on the busiest room** (3.4 → 6.4–6.7 ms on SQLite, 3.2–4.0 → 6.7–6.9 ms on PostgreSQL); `general`, whose page lists 200 members, 1.0 to 1.5 times. 1.2 meant to change this page: opening a feed now writes the read mark (`Rooms.Visit`, one transaction: 12% of the CPU of the handler in a CPU profile of `BenchmarkLargeRoomFeed` on SQLite), reads the people that can be mentioned (`Rooms.Candidates`, 17%) and the members, and the sidebar carries the counts. Not profiled further, and nothing was changed: it is 8% of the target. The rest of the profile is what 13.1 found: the queries of the database, the templates and the garbage collector.
+- **The count of unread posts costs 0.6 ms for the 24 rooms of a user when nothing is unread and up to 3.3 ms (SQLite) or 2.3 ms (PostgreSQL) when everything is** (the query counts at most 100 posts of a room with the index of the feed). Every page pays it once, in its sidebar; this is why every page of the "unread" columns is about 2.5 ms slower. A stream that learns that one room's count changed reads one small query: 45 to 180 µs.
+- **Search** is the same as in 13.1 and 17.1 on SQLite (the code did not change); on PostgreSQL it is 1.2 to 1.6 times slower in this run, with the load average at 5 to 9 while the benchmarks ran (the `Search.Query` numbers in the same run, 13.0–15.5 ms for the first search, are the 17.1 range of 10.2–13.9 ms plus the noise). The handler also renders the snippet and the sidebar of 1.2.
+- The PostgreSQL numbers of the small pages (post, Messages, rooms, home) vary by a factor of two between the three runs (for example 1.5, 2.3 and 3.2 ms for the Messages list) because the machine was busy; the SQLite ones, taken at a load average of 2.6, vary by 5%.
+
+## Results: the streams and the memory
+
+| What | Target | SQLite 13.1 | SQLite 1.2 | PostgreSQL 17.1 | PostgreSQL 1.2 |
+|---|---|---|---|---|---|
+| A new post reaching 200 open streams of its room | max under 200 ms | p50 20.0, p95 25.2, max 25.9 ms | p50 30.2, p95 49.6, max 58.9 ms | p50 26–27, max 130–155 ms | p50 31.4, p95 46.4, max 56.2 ms (30.5, 45.5, 54.3 ms after resting 20 s) |
+| The same, 100 streams on each of two processes with Redis | max under 200 ms | – | – | p50 20–24, max 31–37 ms | p50 33.4, p95 56.1, max 59.6 ms (28.6, 57.4, 60.5 ms); through Redis: p50 32.4, max 57.5 ms |
+| Memory of an idle server with 200 open streams, one process | under 150 MB | 105.7–110.2 MiB (26.6 MiB before) | 151.9 MiB with 32 connections (over the target); **112.2–121.7 MiB with the pool of 16 (43 MiB before)** | 80.2 MiB (78.6 after 20 s) | 92.5 MiB (90.5 after 20 s; 41.6 before) |
+| Memory of each of two processes with 100 open streams | under 150 MB | – | – | 70.7 and 70.1 MiB | 81.6 and 77.2 MiB (78.3 and 77.2 after 20 s) |
+
+- **Fan-out** is within the target everywhere. It is 1.5 times slower at p50 than in 13.1 on SQLite (the max is 2.3 times) and about the same as 17.1 on PostgreSQL, without the stalls of 17.1's outliers. The streams of 1.2 do more per post: eight different users hold the 200 streams (the old measurement used one), and a new post also patches the unread counts of the sidebars of the members who are not its author (`room.unread`, step 20.2).
+- **The memory of the SQLite server with 200 streams was 152 MiB in three runs (151.9, 151.1 after resting 20 s, 152.8), over the target of 150 MiB, 40% more than 13.1's 105.7–110.2 MiB.** The PostgreSQL server is at 92 MiB with the same streams. The manager measured where it goes (`/proc/<pid>/smaps` during the run, the metrics listener on): the Go heap in use was 18 MiB, about 50 MiB sat in the Go heap's mapping, about 68 MiB in 114 small anonymous mappings of the SQLite driver's allocator (its page caches and the parsed schema of each connection), and 29 MiB in the pages of the binary (larger with the highlighter, the fonts, the icons and the media server; the idle server is 43 MiB against 26.6 MiB in 13.1). With one stream the server is at 51 MiB; with all 200 streams held by one user (the per-user limit lifted for the test) at 140.5 MiB, so the eight logins of the new measurement add about 10 MiB. A page cache of 1 MiB per connection instead of SQLite's 2 MiB gave 146–150 MiB, only 2–5 MiB less. The pool size is what counts: with 8 connections 103.7 MiB (fan-out max 74 ms), with 16 114.6 MiB (max 52.5 ms), with 32 152 MiB (max 59 ms). **The manager capped the SQLite pool at 16 connections (D34, D66; PostgreSQL keeps 32)**: four runs then gave 112.2, 121.7, 121.1 and 121.4 MiB with a fan-out p50 of 24–32 ms and a max of 48–72 ms, as good as with 32 (the last run is at the end of `24.1-perf-sqlite-streams.txt`). Test: `TestPoolSize`.
+
+## Results: calls
+
+`scripts/perf-calls.sh` starts a fresh `clowder serve` on the large demo with calls on (`-media-addr 127.0.0.1:…`, `-media-public-ip 127.0.0.1`) and its metrics, and `clowder-perf -calls N` makes N pairs of users of the large demo, a direct conversation for each pair, starts and answers the calls through the API, and connects 2N pion clients (`internal/calls/callstest`) to the signalling sockets. Each client sends an Opus track (20 ms frames, 50 packets/s) and a synthetic VP8 track of 1 Mbit/s (25 frames/s of 5,000 bytes in packets of 1,000 bytes: 125 packets/s) and receives what the other sends. After the clients are connected and 3 s have passed, the CPU time of the server process (`utime + stime` from `/proc/<pid>/stat`), its resident memory (`VmRSS`, every second), its Go heap and goroutines (from `/metrics`, every 5 s) and the packets that reached the clients are measured over 60 s. The clients run in the `clowder-perf` process, so the numbers are the server's alone.
+
+| | 1 call | 10 calls |
+|---|---|---|
+| Clients / media goroutines | 2 / 82 goroutines | 20 / 703 goroutines |
+| Server CPU over 60 s | 1.74 s = 2.9% of one core | 5.13 s = 8.5% of one core (0.9% for each call) |
+| Server memory (`VmRSS`) when the window began / mean / max | 51.4 / 60.9 / 63.1 MiB | 83.7 / 138.9 / 146.4 MiB |
+| Peak of the process (`VmHWM`) | 104.4 MiB (the logins, before the window) | 146.4 MiB |
+| Go heap in use at the start / end / most | 11.3 / 18.5 / 17.6 MiB | 27.1 / 68.0 / 70.8 MiB (78.2 and 110.0 MiB from the system) |
+| Packets forwarded to the clients in 60 s | 6,000 audio (100/s), 15,000 video (250/s) | 60,001 audio (1,000/s), 150,000 video (2,500/s) |
+
+The packets are as they should be: each call carries 2 × 50 audio and 2 × 125 video packets a second, and none was lost on the loopback. A run of 150 s with 10 calls (`CALLS=10 DURATION=150s`, not kept as a proof file) gave 13.6 s of CPU (9.1% of a core), `VmRSS` mean 145.5 and max 149.1 MiB, heap in use up to 87.9 MiB and 75.7 at the end: the memory is flat after the first minute and is the garbage collector's headroom, not growth. About 1% of a core and 6 MiB for each call, so the limit of `-max-calls` (20 by default) is far from what one process can carry on this machine; the SPEC's idle target of 150 MB is for 200 streams and not for calls.
+
+## What could not be measured
+
+- **Real clients.** The pion clients send synthetic payloads that are not decodable video: they test the forwarding (the packets, the rewriting of the sequence numbers and timestamps, RTCP), not a codec, a camera or a browser's congestion control. A browser reacts to REMB and NACK; these clients do not, so the 1 Mbit/s stays 1 Mbit/s.
+- **The network.** The clients and the server are on one machine and the loopback address, so there is no loss, no jitter and no UDP blocking (the TCP candidates of D64 are tested in `internal/calls`, not measured).
+- **The CPU of the clients and the kernel.** The server's `utime + stime` includes the system time of its sockets; the clients' CPU is in another process and not counted.
+- **Other processes on the machine.** The machine is shared. The load average before and after each calls run is in the proof file (1.6 to 2.8 before, 1.5 to 3.4 after).
+- **Longer runs.** 60 s (150 s once) for the calls; the memory of days is not measured.
+- **The test suites** were not timed in this step.

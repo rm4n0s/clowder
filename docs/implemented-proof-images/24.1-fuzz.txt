@@ -1,0 +1,64 @@
+# 24.1 fuzz runs, 2026-10-29T00:33:12Z, Linux 7.3.0-363.vanilla.fc44.x86_64, 32 cores
+# go test ./internal/app -run '^$' -fuzz FuzzParseAuthorizedKey -fuzztime 75s -parallel 2
+fuzz: elapsed: 0s, gathering baseline coverage: 0/28 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 28/28 completed, now fuzzing with 2 workers
+fuzz: elapsed: 3s, execs: 33879 (11291/sec), new interesting: 3 (total: 31)
+fuzz: elapsed: 6s, execs: 85110 (17078/sec), new interesting: 15 (total: 43)
+fuzz: elapsed: 9s, execs: 130626 (15168/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 12s, execs: 130626 (0/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 15s, execs: 130626 (0/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 18s, execs: 130626 (0/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 21s, execs: 130626 (0/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 24s, execs: 130626 (0/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 27s, execs: 130626 (0/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 30s, execs: 130626 (0/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 33s, execs: 130626 (0/sec), new interesting: 17 (total: 45)
+fuzz: elapsed: 36s, execs: 234068 (34501/sec), new interesting: 18 (total: 46)
+fuzz: elapsed: 39s, execs: 250910 (5612/sec), new interesting: 24 (total: 52)
+fuzz: elapsed: 42s, execs: 290346 (13147/sec), new interesting: 38 (total: 66)
+fuzz: elapsed: 45s, execs: 323765 (11143/sec), new interesting: 54 (total: 82)
+fuzz: elapsed: 48s, execs: 427395 (34542/sec), new interesting: 56 (total: 84)
+fuzz: elapsed: 51s, execs: 455057 (9212/sec), new interesting: 62 (total: 90)
+fuzz: elapsed: 54s, execs: 455057 (0/sec), new interesting: 62 (total: 90)
+fuzz: elapsed: 57s, execs: 455057 (0/sec), new interesting: 62 (total: 90)
+fuzz: elapsed: 1m0s, execs: 670953 (72025/sec), new interesting: 78 (total: 106)
+fuzz: elapsed: 1m3s, execs: 727554 (18864/sec), new interesting: 92 (total: 120)
+fuzz: elapsed: 1m6s, execs: 764585 (12344/sec), new interesting: 105 (total: 133)
+fuzz: elapsed: 1m9s, execs: 785378 (6932/sec), new interesting: 111 (total: 139)
+fuzz: elapsed: 1m12s, execs: 864352 (26317/sec), new interesting: 113 (total: 141)
+fuzz: elapsed: 1m15s, execs: 918063 (17906/sec), new interesting: 121 (total: 149)
+fuzz: elapsed: 1m16s, execs: 918063 (0/sec), new interesting: 121 (total: 149)
+PASS
+ok  	github.com/rm4n0s/clowder/internal/app	76.254s
+
+# go test ./internal/calls -run '^$' -fuzz FuzzSignalMessage -fuzztime 75s -parallel 2
+fuzz: elapsed: 0s, gathering baseline coverage: 0/37 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 37/37 completed, now fuzzing with 2 workers
+fuzz: elapsed: 3s, execs: 29531 (9844/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 6s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 9s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 12s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 15s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 18s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 21s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 24s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 27s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 30s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 33s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 36s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 39s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 42s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 45s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 48s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 51s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 54s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 57s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 1m0s, execs: 29531 (0/sec), new interesting: 2 (total: 39)
+fuzz: elapsed: 1m3s, execs: 31286 (585/sec), new interesting: 7 (total: 44)
+fuzz: elapsed: 1m6s, execs: 32257 (324/sec), new interesting: 11 (total: 48)
+fuzz: elapsed: 1m9s, execs: 55848 (7867/sec), new interesting: 14 (total: 51)
+fuzz: elapsed: 1m12s, execs: 72490 (5548/sec), new interesting: 28 (total: 65)
+fuzz: elapsed: 1m15s, execs: 72490 (0/sec), new interesting: 28 (total: 65)
+fuzz: elapsed: 1m16s, execs: 72490 (0/sec), new interesting: 28 (total: 65)
+PASS
+ok  	github.com/rm4n0s/clowder/internal/calls	76.058s

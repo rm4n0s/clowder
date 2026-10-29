@@ -1,0 +1,2 @@
+go test fuzz v1
+string("sk-ecdsa-sha2-nistp256@openssh.com AAAAInNrLWVjZHNhLXNoYTItbmlzdHAyNTZAb3BlbnNzaC5jb20AAAAIbmlzdHAyNTYAAABBBEccm3SIVXNepOBIx76z/TTOnkGqBfuOLlaTaFvvqgEvoQ1fhhM0/0IGPZ5lqyvxIssPVZ/18jSjF9miS0Bqs8oAAAAEc3NoOg== yubikey")

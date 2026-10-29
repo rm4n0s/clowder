@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"candidate\":\"candidate:4 99999999999 udp x y z typ\",\"type\":\"candidate\"}")

@@ -73,3 +73,12 @@ var StagedBytes = (*Posts).stagedBytes
 // TagStagedCountCanceled is the tag of the count of staged bytes that the
 // context ended.
 const TagStagedCountCanceled = tagStagedCountCanceled
+
+// ParseKeyLine gives the tests parseKeyLine.
+var ParseKeyLine = parseKeyLine
+
+// RSABits gives the tests rsaBits.
+var RSABits = rsaBits
+
+// AcceptedKeyType reports whether the type of public key may be registered.
+func AcceptedKeyType(t string) bool { return acceptedKeyTypes[t] }

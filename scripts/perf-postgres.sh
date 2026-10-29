@@ -110,9 +110,19 @@ printf 'whole clowder demo -size large -database-url ... process: %.1f s\n' "$(e
 
 if [[ -z ${ONLY_CLUSTER:-} ]]; then
 	echo
-	echo "== benchmarks: the feed page and the search (handler through httptest, ${BENCHCOUNT:-3} runs of ${BENCHTIME:-200x})"
+	echo "== benchmarks: the feed, a post, the Messages list, the sidebar and the search (handler through httptest, ${BENCHCOUNT:-3} runs of ${BENCHTIME:-200x})"
 	CLOWDER_BENCH_DATABASE_URL="$database_url" go test ./internal/web ./internal/app -run '^$' -bench Large \
 		-benchtime "${BENCHTIME:-200x}" -count "${BENCHCOUNT:-3}"
+
+	# Step 24.1: the unread counts of 1.2. The large demo starts with nothing
+	# unread; take alice's marks away, so that every post of others in her rooms
+	# is unread, and measure the pages whose sidebar carries the counts again.
+	echo
+	echo "== benchmarks with every post unread for alice (her room_reads rows deleted)"
+	"$tool" exec "$pg_name" psql -U clowder -d clowder -Atc \
+		"DELETE FROM room_reads WHERE user_id = (SELECT id FROM users WHERE username = 'alice')"
+	CLOWDER_BENCH_DATABASE_URL="$database_url" go test ./internal/web ./internal/app -run '^$' \
+		-bench 'Large(Sidebar|Messages|RoomFeed|PostPage)' -benchtime "${BENCHTIME:-200x}" -count "${BENCHCOUNT:-3}"
 
 	echo
 	echo "== fan-out and memory, one process on PostgreSQL (streams rest ${SETTLE:-2s} before the memory is read)"

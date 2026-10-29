@@ -13,6 +13,10 @@ import (
 const (
 	// readLimit is the largest message a client may send.
 	readLimit = 64 << 10
+	// messageBurst is how many messages a client may send at once, and
+	// messageRate how many a second it may send after that.
+	messageBurst = 100
+	messageRate  = 25
 	// socketQueue is how many messages wait for the writer of a socket; a
 	// client that lets more pile up is dropped.
 	socketQueue = 64
@@ -203,4 +207,30 @@ func (k *socket) checkSession(ctx context.Context) {
 	if code, reason := k.session(ctx); code != 0 {
 		k.finish(code, reason)
 	}
+}
+
+// messageBucket is the token bucket that limits the messages a client sends:
+// it holds messageBurst tokens at most, gets messageRate a second, and a
+// message takes one. It is used by one goroutine.
+type messageBucket struct {
+	tokens float64
+	last   time.Time
+}
+
+// newMessageBucket makes a full bucket at now.
+func newMessageBucket(now time.Time) *messageBucket {
+	return &messageBucket{tokens: messageBurst, last: now}
+}
+
+// allow takes a token at now and reports whether there was one.
+func (b *messageBucket) allow(now time.Time) bool {
+	if elapsed := now.Sub(b.last).Seconds(); elapsed > 0 {
+		b.tokens = min(messageBurst, b.tokens+elapsed*messageRate)
+	}
+	b.last = now
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
 }

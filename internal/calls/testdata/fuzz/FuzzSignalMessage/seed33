@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"candidate\":\"candidate:3524125227 1 udp 2130706431 192.168.0.205 59029 typ host ufrag ZSmpBnyKmsyVUAZb generation 0\",\"sdpMLineIndex\":0,\"sdpMid\":\"0\",\"type\":\"candidate\"}")

@@ -1,0 +1,29 @@
+building clowder and clowder-perf
+copying the large demo in /home/rmanos/ai-projects/github-projects/clowder/.tmp/perf-sqlite/large
+starting the server on 127.0.0.1:34957
+measuring with 200 streams and 5 probe posts
+streams open: 200 of room 1
+round 1: post answered in 22ms, reached 200 streams: p50 34.2 ms p95 50.5 ms max 54.6 ms
+round 2: post answered in 32ms, reached 200 streams: p50 28.6 ms p95 47.5 ms max 52.3 ms
+round 3: post answered in 36ms, reached 200 streams: p50 38.9 ms p95 53.4 ms max 58.9 ms
+round 4: post answered in 18ms, reached 200 streams: p50 25.1 ms p95 43.9 ms max 47.9 ms
+round 5: post answered in 31ms, reached 200 streams: p50 24.2 ms p95 46.2 ms max 51.3 ms
+fan-out to 200 streams over 5 posts: p50 30.2 ms p95 49.6 ms max 58.9 ms (target: max under 200ms) OK
+server memory: 43.0 MiB before the streams, 151.9 MiB with 200 idle streams (target: under 150 MiB) MISSED
+server memory peak over the run: 148.2 MiB
+exit 0
+
+=== after the manager's change (SQLite pool at most 16 connections), 2026-10-29: scripts/perf.sh <large demo>
+building clowder and clowder-perf
+copying the large demo in .tmp/large
+starting the server on 127.0.0.1:43997
+measuring with 200 streams and 5 probe posts
+streams open: 200 of room 1
+round 1: post answered in 41ms, reached 200 streams: p50 28.8 ms p95 47.1 ms max 51.2 ms
+round 2: post answered in 15ms, reached 200 streams: p50 30.0 ms p95 46.8 ms max 50.7 ms
+round 3: post answered in 42ms, reached 200 streams: p50 35.5 ms p95 52.9 ms max 58.3 ms
+round 4: post answered in 26ms, reached 200 streams: p50 27.6 ms p95 44.9 ms max 48.9 ms
+round 5: post answered in 12ms, reached 200 streams: p50 38.9 ms p95 63.9 ms max 72.2 ms
+fan-out to 200 streams over 5 posts: p50 31.9 ms p95 51.4 ms max 72.2 ms (target: max under 200ms) OK
+server memory: 43.4 MiB before the streams, 121.4 MiB with 200 idle streams (target: under 150 MiB) OK
+server memory peak over the run: 119.7 MiB

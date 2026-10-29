@@ -74,6 +74,14 @@ type options struct {
 	ready    time.Duration
 	timeout  time.Duration
 	freePort bool
+	// calls is the number of calls at once for -calls (0: the streams are
+	// measured instead); callDuration is how long they run, metrics the
+	// address of the metrics of the server (optional) and bitrate the video
+	// of each client, in bits per second.
+	calls        int
+	callDuration time.Duration
+	metrics      string
+	bitrate      int
 }
 
 // run parses the flags and either prints a free TCP port (-free-port) or
@@ -90,6 +98,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		}
 		_, _ = fmt.Fprintln(stdout, port)
 		return nil
+	}
+	if opts.calls > 0 {
+		return measureCalls(ctx, opts, stdout)
 	}
 	return measure(ctx, opts, stdout)
 }
@@ -184,6 +195,10 @@ func measure(ctx context.Context, o options, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	cookies, err := streamCookies(ctx, client, o, cookie)
+	if err != nil {
+		return err
+	}
 	seen, err := newestSeen(ctx, client, o, cookie)
 	if err != nil {
 		return err
@@ -191,7 +206,7 @@ func measure(ctx context.Context, o options, stdout io.Writer) error {
 	streamCtx, cancel := context.WithCancel(ctx)
 	runID := strconv.FormatInt(time.Now().UnixNano(), 36)
 	hits := make(chan hit, o.streams*o.rounds)
-	s := &streams{client: client, o: o, cookie: cookie, seen: seen, prefix: "perf-probe-" + runID + "-", hits: hits, done: make(chan struct{}, o.streams)}
+	s := &streams{client: client, o: o, cookies: cookies, seen: seen, prefix: "perf-probe-" + runID + "-", hits: hits, done: make(chan struct{}, o.streams)}
 	defer func() {
 		cancel()
 		s.wait()
@@ -411,11 +426,60 @@ func newestSeen(ctx context.Context, client *http.Client, o options, cookie *htt
 	return string(m[1]), nil
 }
 
+// streamsPerUser is how many streams one user holds: under the 30 live
+// connections a user may hold in a process (SPEC D62), with room to spare.
+const streamsPerUser = 25
+
+// userOfStream is the index of the user that holds stream i, when the streams
+// are opened on procs processes (every procs-th stream on the same one) and
+// shared out in turn among users: no user holds more than its share on any
+// process.
+func userOfStream(i, procs, users int) int {
+	return (i / procs) % users
+}
+
+// streamCookies logs in as many other users of the large demo as the streams
+// need and returns the sessions, the first user's included. With a second
+// process the streams of each process are every other one, so a user holds
+// them on both, and the count is per process.
+func streamCookies(ctx context.Context, client *http.Client, o options, first *http.Cookie) ([]*http.Cookie, error) {
+	perProcess := o.streams
+	if o.base2 != "" {
+		perProcess = (o.streams + 1) / 2
+	}
+	users := (perProcess + streamsPerUser - 1) / streamsPerUser
+	cookies := []*http.Cookie{first}
+	if users <= 1 {
+		return cookies, nil
+	}
+	token, err := apiLogin(ctx, client, o, o.user)
+	if err != nil {
+		return nil, err
+	}
+	names, err := demoNames(ctx, client, o, token.token, users-1)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range names {
+		other := o
+		other.user = name
+		c, err := login(ctx, client, other)
+		if err != nil {
+			return nil, err
+		}
+		cookies = append(cookies, c)
+	}
+	return cookies, nil
+}
+
 // streams are the open streams of the measurement.
 type streams struct {
 	client *http.Client
 	o      options
-	cookie *http.Cookie
+	// cookies are the sessions of the users that hold the streams, one after
+	// the other: a user may hold only 30 live connections in a process (SPEC
+	// D62), so the streams are spread over several users.
+	cookies []*http.Cookie
 	// seen is the ID of the newest post of the page that opened the streams,
 	// which the page tells its stream so that it does not send the feed again.
 	seen string
@@ -435,12 +499,17 @@ func (s *streams) open(ctx context.Context) error {
 	for i := range s.o.streams {
 		s.readers++
 		// With a second process every other stream is opened on it.
-		base, peer := s.o.base, false
-		if s.o.base2 != "" && i%2 == 1 {
-			base, peer = s.o.base2, true
+		base, peer, procs := s.o.base, false, 1
+		if s.o.base2 != "" {
+			procs = 2
+			if i%2 == 1 {
+				base, peer = s.o.base2, true
+			}
 		}
+		// The streams of a process are shared out among the users in turn.
+		cookie := s.cookies[userOfStream(i, procs, len(s.cookies))]
 		go func() {
-			s.read(ctx, opened, base, peer)
+			s.read(ctx, opened, base, peer, cookie)
 			s.done <- struct{}{}
 		}()
 	}
@@ -469,14 +538,14 @@ func (s *streams) wait() {
 // reports on opened when its first line arrived (or
 // why it failed) and then reads it until the context ends, recording the
 // arrival of every probe post.
-func (s *streams) read(ctx context.Context, opened chan<- error, base string, peer bool) {
+func (s *streams) read(ctx context.Context, opened chan<- error, base string, peer bool, cookie *http.Cookie) {
 	target := base + "/rooms/" + strconv.FormatUint(s.o.roomID, 10) + "/stream?seen=" + s.seen
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		opened <- errors.NewErr(tagPerfRequestFailed, err).SetMetadata("url", target)
 		return
 	}
-	req.AddCookie(s.cookie)
+	req.AddCookie(cookie)
 	req.Header.Set("Accept", "text/event-stream")
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -543,7 +612,7 @@ func (s *streams) probe(ctx context.Context, round int) ([]sample, time.Duration
 		return nil, 0, errors.NewErr(tagPerfRequestFailed, err).SetMetadata("url", target)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(s.cookie)
+	req.AddCookie(s.cookies[0])
 	start := time.Now()
 	resp, err := s.client.Do(req)
 	if err != nil {

@@ -32,6 +32,13 @@ const hostKeyMode = 0o600
 func LoadHostKey(path string) (ssh.Signer, error) {
 	signer, err := readHostKey(path)
 	if err == nil {
+		// A key that was copied or restored with a looser mode is tightened:
+		// anybody who can read the host key can pose as the server (step
+		// 24.1). OpenSSH refuses such a key; Clowder repairs it, because the
+		// file is its own.
+		if err := tightenHostKey(path, os.Chmod); err != nil {
+			return nil, err
+		}
 		return signer, nil
 	}
 	if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagHostKeyMissing {
@@ -79,6 +86,24 @@ func LoadHostKey(path string) (ssh.Signer, error) {
 	return ssh.NewSignerFromKey(priv)
 }
 
+// tightenHostKey makes the mode of the host key file hostKeyMode when it gives
+// the group or others any right. It fails with tagHostKeyModeFailed when the
+// file cannot be examined or changed. chmod is os.Chmod; the tests give
+// another.
+func tightenHostKey(path string, chmod func(string, os.FileMode) error) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return errors.NewErr(tagHostKeyModeFailed, err).SetMetadata("path", path)
+	}
+	if info.Mode().Perm()&^hostKeyMode == 0 {
+		return nil
+	}
+	if err := chmod(path, hostKeyMode); err != nil {
+		return errors.NewErr(tagHostKeyModeFailed, err).SetMetadata("path", path)
+	}
+	return nil
+}
+
 // readHostKey reads and parses the host key at path. A file that does not
 // exist fails with tagHostKeyMissing, which LoadHostKey handles.
 func readHostKey(path string) (ssh.Signer, error) {
@@ -104,4 +129,5 @@ const (
 	tagHostKeyTempFailed     = "HostKeyTempFailed"
 	tagHostKeyWriteFailed    = "HostKeyWriteFailed"
 	tagHostKeyLinkFailed     = "HostKeyLinkFailed"
+	tagHostKeyModeFailed     = "HostKeyModeFailed"
 )

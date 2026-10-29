@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -609,7 +610,7 @@ func TestServerConnectionDeadline(t *testing.T) {
 
 func TestServerCapsTheConnections(t *testing.T) {
 	t.Parallel()
-	r := startRig(t, sshcode.Config{HandshakeTimeout: time.Minute, ConnTimeout: time.Minute})
+	r := startRig(t, sshcode.Config{HandshakeTimeout: time.Minute, ConnTimeout: time.Minute, MaxConnsPerAddr: 1000})
 	var held []net.Conn
 	defer func() {
 		for _, c := range held {
@@ -747,4 +748,120 @@ func asTagged(err error) (string, bool) {
 		return "", false
 	}
 	return appErr.Tag, true
+}
+
+// spySigner counts the signatures the client makes: a client signs only when
+// the server said that it would take the key.
+type spySigner struct {
+	ssh.Signer
+	signed atomic.Int32
+}
+
+func (s *spySigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
+	s.signed.Add(1)
+	return s.Signer.Sign(rand, data)
+}
+
+// TestServerDoesNotTellWhichKeysAreRegistered: the query "would you accept
+// this public key?" of a client that has not proved it holds the private key
+// gets the same answer for every key (step 24.1), so that nobody can use the
+// published public keys of people to find out which usernames have them
+// registered. The refusal comes after the signature, and counts as the failed
+// login it is.
+func TestServerDoesNotTellWhichKeysAreRegistered(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		user string
+		// key makes the signer the client offers.
+		key func(r *rig) ssh.Signer
+	}{
+		{"a key of the user", "alice", func(r *rig) ssh.Signer { return r.alice }},
+		{"a key of another user", "alice", func(r *rig) ssh.Signer { return r.bob }},
+		{"a key nobody registered", "alice", func(*rig) ssh.Signer { return newSigner(t) }},
+		{"a user that does not exist", "nobody", func(r *rig) ssh.Signer { return r.alice }},
+		{"the key of a disabled user", "dina", func(r *rig) ssh.Signer { return r.dina }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := startRig(t, sshcode.Config{})
+			spy := &spySigner{Signer: tt.key(r)}
+			c, err := r.dial(tt.user, spy)
+			if c != nil {
+				_ = c.Close()
+			}
+			if got := spy.signed.Load(); got != 1 {
+				t.Errorf("the client signed %d times, want 1: the server answered the query of the key differently", got)
+			}
+			// Only the one who holds the key and is allowed gets in.
+			allowed := tt.name == "a key of the user"
+			if allowed && err != nil {
+				t.Errorf("the right key was refused: %v", err)
+			}
+			if !allowed && err == nil {
+				t.Error("the connection was accepted")
+			}
+		})
+	}
+}
+
+// TestServerCapsTheConnectionsOfAnAddress: one address cannot hold every
+// place of the server (step 24.1); another address still gets in, and a place
+// is free again when a connection ends.
+func TestServerCapsTheConnectionsOfAnAddress(t *testing.T) {
+	t.Parallel()
+	const perAddr = 3
+	r := startRig(t, sshcode.Config{HandshakeTimeout: time.Minute, ConnTimeout: time.Minute, MaxConnsPerAddr: perAddr})
+	dialFrom := func(local string) (net.Conn, error) {
+		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP(local)}, Timeout: 2 * time.Second}
+		return d.Dial("tcp", r.addr)
+	}
+	banner := func(c net.Conn) bool {
+		_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+		_, err := io.ReadFull(c, make([]byte, 8))
+		return err == nil
+	}
+	var held []net.Conn
+	defer func() {
+		for _, c := range held {
+			_ = c.Close()
+		}
+	}()
+	for i := range perAddr {
+		c, err := dialFrom("127.0.0.1")
+		if err != nil {
+			t.Fatalf("connection %d: %v", i, err)
+		}
+		held = append(held, c)
+		if !banner(c) {
+			t.Fatalf("connection %d got no banner", i)
+		}
+	}
+	over, err := dialFrom("127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = over.Close() }()
+	if banner(over) {
+		t.Error("the connection past the limit of the address got a banner")
+	}
+	other, err := dialFrom("127.0.0.2")
+	if err != nil {
+		t.Skipf("the system has no 127.0.0.2: %v", err)
+	}
+	defer func() { _ = other.Close() }()
+	if !banner(other) {
+		t.Error("another address was refused")
+	}
+	_ = held[0].Close()
+	held = held[1:]
+	waitFor(t, func() bool {
+		c, err := dialFrom("127.0.0.1")
+		if err != nil {
+			return false
+		}
+		defer func() { _ = c.Close() }()
+		return banner(c)
+	}, "a free place for the address")
 }

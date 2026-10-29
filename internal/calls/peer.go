@@ -14,6 +14,13 @@ import (
 // same sender.
 const keyFrameGap = 300 * time.Millisecond
 
+// maxRemoteCandidates is the most ICE candidates of the client that one
+// PeerConnection takes (step 24.1). A browser sends a few dozen, an ICE restart
+// a few dozen more; the candidates that came before the answer are kept in
+// memory and every one that is taken makes pion test new pairs, so a client
+// that sends thousands gets nothing for them.
+const maxRemoteCandidates = 128
+
 // peer is one PeerConnection of a participant, made for one signalling
 // socket. The server is its offerer: the PeerConnection has an audio and a
 // video transceiver that send and receive, each sending the local track that
@@ -29,9 +36,11 @@ type peer struct {
 	answered  bool
 	remoteSet bool
 	pending   []webrtc.ICECandidateInit
-	restarted bool
-	iceTimer  *time.Timer
-	discTimer *time.Timer
+	// candidates counts the candidates of the client taken so far.
+	candidates int
+	restarted  bool
+	iceTimer   *time.Timer
+	discTimer  *time.Timer
 
 	// everConnected is true once the PeerConnection has been connected.
 	everConnected atomic.Bool
@@ -139,6 +148,15 @@ func (pe *peer) onAnswer(sdp string) {
 // onCandidate applies a candidate of the client, or keeps it until the answer
 // has been applied.
 func (pe *peer) onCandidate(msg clientMessage) {
+	if pe.candidates >= maxRemoteCandidates {
+		if pe.candidates == maxRemoteCandidates {
+			// Said once; the rest is dropped without a word.
+			pe.sock.send(serverMessage{Type: msgError, Code: CodeInvalidMessage, Message: "Too many candidates."})
+			pe.candidates++
+		}
+		return
+	}
+	pe.candidates++
 	init := webrtc.ICECandidateInit{Candidate: msg.Candidate, SDPMid: msg.SDPMid, SDPMLineIndex: msg.SDPMLineIndex}
 	if !pe.remoteSet {
 		pe.pending = append(pe.pending, init)
@@ -172,24 +190,40 @@ func (pe *peer) onState(state webrtc.PeerConnectionState) {
 		// need a key frame.
 		pe.c.requestKeyFrames()
 	case webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateFailed:
-		if pe.discTimer == nil {
-			pe.discTimer = time.AfterFunc(pe.c.s.cfg.DisconnectTimeout, func() {
-				pe.c.post(func() {
-					if pe.closed || pe.c.ended || pe.pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
-						return
-					}
-					pe.c.fail("the connection was lost", pe.p.userID)
-				})
-			})
-		}
+		pe.startDisconnectTimer()
 		if !pe.restarted && pe.answered {
 			pe.restarted = true
 			if err := pe.sendOffer(true); err != nil {
 				pe.c.logger.Debug("asking for new ICE credentials failed", "err", err, "user_id", pe.p.userID)
 			}
 		}
-	case webrtc.PeerConnectionStateNew, webrtc.PeerConnectionStateConnecting, webrtc.PeerConnectionStateClosed:
+	case webrtc.PeerConnectionStateClosed:
+		// This is not our own close (that sets pe.closed): the participant
+		// closed their end, and their transport is gone for good. A client
+		// that does that and keeps the signalling socket open must not hold
+		// the call, and one of the places of -max-calls, for as long as it
+		// likes (step 24.1): the same deadline as for a lost connection
+		// applies, and there is nothing to restart.
+		pe.startDisconnectTimer()
+	case webrtc.PeerConnectionStateNew, webrtc.PeerConnectionStateConnecting:
 	}
+}
+
+// startDisconnectTimer starts the deadline of D64 for a transport that is not
+// connected, unless it runs already: when it passes with the transport still
+// not connected the call ends as failed.
+func (pe *peer) startDisconnectTimer() {
+	if pe.discTimer != nil {
+		return
+	}
+	pe.discTimer = time.AfterFunc(pe.c.s.cfg.DisconnectTimeout, func() {
+		pe.c.post(func() {
+			if pe.closed || pe.c.ended || pe.pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
+				return
+			}
+			pe.c.fail("the connection was lost", pe.p.userID)
+		})
+	})
 }
 
 // close closes the PeerConnection and stops its timers.

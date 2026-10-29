@@ -18,6 +18,12 @@ import (
 const (
 	// DefaultMaxConns is the most connections one process serves at once.
 	DefaultMaxConns = 64
+	// DefaultMaxConnsPerAddr is the most connections one client address may
+	// hold at once (step 24.1): without it one address could keep every place
+	// of DefaultMaxConns for the length of the handshake deadline and lock
+	// everybody else out of the server. A person needs one connection at a
+	// time.
+	DefaultMaxConnsPerAddr = 8
 	// DefaultHandshakeTimeout is how long a client has for the handshake,
 	// the authentication included.
 	DefaultHandshakeTimeout = 10 * time.Second
@@ -67,6 +73,10 @@ type Config struct {
 	// MaxConns is the most connections at once; more are closed when they
 	// are accepted. Zero is DefaultMaxConns.
 	MaxConns int
+	// MaxConnsPerAddr is the most connections one client address may hold at
+	// once; more are closed when they are accepted. Zero is
+	// DefaultMaxConnsPerAddr.
+	MaxConnsPerAddr int
 	// HandshakeTimeout is the time for the handshake. Zero is
 	// DefaultHandshakeTimeout.
 	HandshakeTimeout time.Duration
@@ -85,12 +95,17 @@ type Server struct {
 
 	mu     sync.Mutex
 	active int
+	// byAddr counts the open connections of each client address.
+	byAddr map[string]int
 }
 
 // New makes a server. A nil logger discards the log.
 func New(cfg Config, signIn SignIn, limiter Limiter, logger *slog.Logger) *Server {
 	if cfg.MaxConns <= 0 {
 		cfg.MaxConns = DefaultMaxConns
+	}
+	if cfg.MaxConnsPerAddr <= 0 {
+		cfg.MaxConnsPerAddr = DefaultMaxConnsPerAddr
 	}
 	if cfg.HandshakeTimeout <= 0 {
 		cfg.HandshakeTimeout = DefaultHandshakeTimeout
@@ -101,7 +116,7 @@ func New(cfg Config, signIn SignIn, limiter Limiter, logger *slog.Logger) *Serve
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return &Server{cfg: cfg, signIn: signIn, limiter: limiter, logger: logger}
+	return &Server{cfg: cfg, signIn: signIn, limiter: limiter, logger: logger, byAddr: map[string]int{}}
 }
 
 // Serve accepts connections on ln until ctx is done. When ctx is done it
@@ -130,35 +145,69 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 			}
 			break
 		}
-		if !s.track() {
+		host := hostOf(nc)
+		switch s.track(host) {
+		case trackFull:
 			s.logger.Warn("an SSH connection was refused: too many connections", "max", s.cfg.MaxConns)
 			_ = nc.Close()
 			continue
+		case trackAddrFull:
+			s.logger.Info("an SSH connection was refused: the address holds too many", "addr", host,
+				"max", s.cfg.MaxConnsPerAddr)
+			_ = nc.Close()
+			continue
 		}
-		wg.Go(func() { s.handle(ctx, nc) })
+		wg.Go(func() { s.handle(ctx, nc, host) })
 	}
 	cancel()
 	wg.Wait()
 	return serveErr
 }
 
-// track counts a connection as open; it is false when the server has its
-// maximum already.
-func (s *Server) track() bool {
+// trackResult says whether track took a connection.
+type trackResult int
+
+const (
+	trackOK trackResult = iota
+	// trackFull is the answer when the server has its maximum already.
+	trackFull
+	// trackAddrFull is the answer when the address has its maximum already.
+	trackAddrFull
+)
+
+// hostOf returns the client address of the connection without its port.
+func hostOf(nc net.Conn) string {
+	host, _, err := net.SplitHostPort(nc.RemoteAddr().String())
+	if err != nil {
+		return nc.RemoteAddr().String()
+	}
+	return host
+}
+
+// track counts a connection of the address as open, unless the server or the
+// address has its maximum already.
+func (s *Server) track(host string) trackResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.active >= s.cfg.MaxConns {
-		return false
+		return trackFull
+	}
+	if s.byAddr[host] >= s.cfg.MaxConnsPerAddr {
+		return trackAddrFull
 	}
 	s.active++
-	return true
+	s.byAddr[host]++
+	return trackOK
 }
 
-// untrack counts a connection as closed.
-func (s *Server) untrack() {
+// untrack counts a connection of the address as closed.
+func (s *Server) untrack(host string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.active--
+	if s.byAddr[host]--; s.byAddr[host] <= 0 {
+		delete(s.byAddr, host)
+	}
 }
 
 // config makes the configuration of one connection: public-key
@@ -169,8 +218,20 @@ func (s *Server) config(ctx context.Context, offered *atomic.Bool) *ssh.ServerCo
 	cfg := &ssh.ServerConfig{
 		MaxAuthTries:  maxAuthTries,
 		ServerVersion: serverVersion,
+		// The library answers the query of a client that only asks whether a
+		// key would be accepted ("is this public key allowed for this user?")
+		// with this callback, before the client has proved that it holds the
+		// private key. Answering from the service there would tell anybody,
+		// who needs only a public key (they are published), which keys belong
+		// to which usernames. So this callback accepts every key, and the
+		// check of the service is made after the signature was verified
+		// (VerifiedPublicKeyCallback): a key is allowed or not only for the
+		// one who signs with it (step 24.1).
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			offered.Store(true)
+			return &ssh.Permissions{}, nil
+		},
+		VerifiedPublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey, _ *ssh.Permissions, _ string) (*ssh.Permissions, error) {
 			fingerprint := ssh.FingerprintSHA256(key)
 			if !s.signIn.KeyAllowed(ctx, conn.User(), fingerprint) {
 				// The same answer for every reason, and the client is not
@@ -194,18 +255,14 @@ const extFingerprint = "fingerprint"
 var errKeyNotAllowed = &errors.Error{Tag: tagKeyNotAllowed, Message: "key not allowed"}
 
 // handle serves one connection and closes it.
-func (s *Server) handle(ctx context.Context, nc net.Conn) {
-	defer s.untrack()
+func (s *Server) handle(ctx context.Context, nc net.Conn, host string) {
+	defer s.untrack(host)
 	defer func() { _ = nc.Close() }()
 	// Shutdown closes the connection, however far the handshake has come.
 	// AfterFunc runs at once when ctx is done already.
 	stopClosing := context.AfterFunc(ctx, func() { _ = nc.Close() })
 	defer stopClosing()
 	started := time.Now()
-	host, _, err := net.SplitHostPort(nc.RemoteAddr().String())
-	if err != nil {
-		host = nc.RemoteAddr().String()
-	}
 	// An address that failed too often is closed before the handshake.
 	if !s.limiter.AllowAddr(ctx, host) {
 		s.logger.Info("an SSH connection was refused: the address failed too often", "addr", host)

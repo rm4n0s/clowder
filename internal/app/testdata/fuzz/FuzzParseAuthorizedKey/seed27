@@ -1,0 +1,2 @@
+go test fuzz v1
+string("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH5pvqGW/eu0bmPl9E6Wlx6daTyICiTW/Hd/06O8Un3X comment \u202e with unicode")

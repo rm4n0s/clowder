@@ -7,17 +7,24 @@ import (
 
 func TestPoolSize(t *testing.T) {
 	tests := []struct {
-		cpus, want int
+		cpus int
+		d    dialect
+		want int
 	}{
-		{1, minOpenConns},
-		{4, minOpenConns},
-		{8, 16},
-		{16, maxOpenConns},
-		{64, maxOpenConns},
+		{1, dialectSQLite, minOpenConns},
+		{4, dialectSQLite, minOpenConns},
+		{6, dialectSQLite, 12},
+		{8, dialectSQLite, maxSQLiteOpenConns},
+		{64, dialectSQLite, maxSQLiteOpenConns},
+		{1, dialectPostgres, minOpenConns},
+		{4, dialectPostgres, minOpenConns},
+		{8, dialectPostgres, 16},
+		{16, dialectPostgres, maxOpenConns},
+		{64, dialectPostgres, maxOpenConns},
 	}
 	for _, tt := range tests {
-		if got := poolSize(tt.cpus); got != tt.want {
-			t.Errorf("poolSize(%d) = %d, want %d", tt.cpus, got, tt.want)
+		if got := poolSize(tt.cpus, tt.d); got != tt.want {
+			t.Errorf("poolSize(%d, %s) = %d, want %d", tt.cpus, tt.d, got, tt.want)
 		}
 	}
 }
@@ -28,7 +35,7 @@ func TestOpenBoundsThePoolOfAFileDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DB: %v", err)
 	}
-	if got, want := sqlDB.Stats().MaxOpenConnections, poolSize(runtime.NumCPU()); got != want {
+	if got, want := sqlDB.Stats().MaxOpenConnections, poolSize(runtime.NumCPU(), f.s.dialect); got != want {
 		t.Errorf("MaxOpenConnections = %d, want %d", got, want)
 	}
 	// A burst of queries uses no more connections than the pool allows and

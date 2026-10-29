@@ -53,7 +53,7 @@ func TestPostsStagedLimit(t *testing.T) {
 	if _, err := e.stagedTry("bob", testMaxUpload-1); err != nil {
 		t.Fatalf("the tenth file refused: %+v", err)
 	}
-	if got, err := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); err != nil || got != limit-1 {
+	if got, _, err := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); err != nil || got != limit-1 {
 		t.Fatalf("staged bytes = %d, %v, want %d", got, err, limit-1)
 	}
 
@@ -73,7 +73,7 @@ func TestPostsStagedLimit(t *testing.T) {
 	if got := len(e.onDisk()); got != onDisk {
 		t.Errorf("files on disk = %d, want %d: a refused upload stays", got, onDisk)
 	}
-	if got, _ := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); got != limit {
+	if got, _, _ := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); got != limit {
 		t.Errorf("staged bytes = %d after a refusal, want %d", got, limit)
 	}
 	if got := set.LimitsRefused.With(metrics.LimitStaged).Value(); got != 1 {
@@ -122,7 +122,7 @@ func TestPostsStagedLimit(t *testing.T) {
 	if n, err := e.posts.SweepStaged(t.Context(), day); err != nil || n == 0 {
 		t.Fatalf("SweepStaged = %d, %v", n, err)
 	}
-	if got, err := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); err != nil || got != 0 {
+	if got, _, err := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); err != nil || got != 0 {
 		t.Errorf("staged bytes after the sweep = %d, %v, want 0", got, err)
 	}
 	if _, err := e.stagedTry("bob", testMaxUpload); err != nil {
@@ -148,7 +148,7 @@ func TestPostsStagedBytesCounting(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The note of the messages names user 1, not bob.
-	got, err := app.StagedBytes(e.posts, t.Context(), bob)
+	got, _, err := app.StagedBytes(e.posts, t.Context(), bob)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestPostsStagedBytesCounting(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err = app.StagedBytes(e.posts, ctx, bob)
+	_, _, err = app.StagedBytes(e.posts, ctx, bob)
 	_ = requireTag(t, err, app.TagStagedCountCanceled, "Posts.stagedBytes.StagedCountCanceled")
 }
 
@@ -190,7 +190,59 @@ func TestPostsStagedLimitOfParallelUploads(t *testing.T) {
 	if accepted > app.StagedLimitFactor {
 		t.Errorf("%d uploads of %d bytes were accepted, the limit is %d bytes", accepted, testMaxUpload, limit)
 	}
-	if got, err := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); err != nil || got > limit {
+	if got, _, err := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); err != nil || got > limit {
 		t.Errorf("staged bytes = %d, %v, over the limit %d", got, err, limit)
+	}
+}
+
+// TestPostsStagedFileLimit is the cap on the number of staged files (step
+// 24.1): a user who stages many tiny files, each far under the byte limit,
+// stops at StagedFilesFactor times the attachments of a post; the refusal
+// leaves nothing on the disk, another user is not affected, and posting frees
+// places.
+func TestPostsStagedFileLimit(t *testing.T) {
+	t.Parallel()
+	e := newPostsEnv(t)
+	limit := e.posts.StagedFileLimit()
+	if limit != app.StagedFilesFactor*testMaxAttachments {
+		t.Fatalf("StagedFileLimit = %d, want %d", limit, app.StagedFilesFactor*testMaxAttachments)
+	}
+	var first app.StagedUpload
+	for i := range limit {
+		s, err := e.stagedTry("bob", 1)
+		if err != nil {
+			t.Fatalf("file %d of %d refused: %+v", i+1, limit, err)
+		}
+		if i == 0 {
+			first = s
+		}
+	}
+	onDisk := len(e.onDisk())
+	_, err := e.stagedTry("bob", 1)
+	appErr := requireTag(t, err, app.TagStagedFull, "Posts.UploadStaged.StagedUploadsFull")
+	if appErr.Metadata["fileLimit"] != limit || appErr.Metadata["files"] != limit {
+		t.Errorf("metadata = %v, want fileLimit and files %d", appErr.Metadata, limit)
+	}
+	if got := len(e.onDisk()); got != onDisk {
+		t.Errorf("files on disk = %d, want %d: a refused upload stays", got, onDisk)
+	}
+	if _, count, _ := app.StagedBytes(e.posts, t.Context(), e.users["bob"].ID); count != limit {
+		t.Errorf("staged files = %d after a refusal, want %d", count, limit)
+	}
+	if _, err := e.stagedTry("alice", 1); err != nil {
+		t.Errorf("another user refused: %+v", err)
+	}
+	// Posting one frees one place, and only one.
+	uploads, err := e.posts.StagedUploads(t.Context(), e.as("bob"), []string{first.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.writeWith("bob", "lobby", "with a file", uploads...)
+	e.posts.ForgetStaged(t.Context(), e.as("bob"), uploads)
+	if _, err := e.stagedTry("bob", 1); err != nil {
+		t.Errorf("refused after a post took a file: %+v", err)
+	}
+	if _, err := e.stagedTry("bob", 1); err == nil {
+		t.Error("the limit moved after a post")
 	}
 }

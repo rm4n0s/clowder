@@ -1847,3 +1847,48 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
   - Opening an invitation link (`GET`) is not limited; only the sign-up is.
   - `TestSignUpThenLoginFailsRedirectsToLogin` now blocks the username instead of the address, since a sign-up from a blocked address is refused by design.
   - The cost of the staged check with very many tiny staged files is left to the review of 24.1.
+
+## 24.1 Security review and documentation
+- **Date:** 2026-10-29
+- **Branch:** feat/step-24.1-review
+- **Summary:**
+  - **Review:** everything 1.2 added, recorded in the "Clowder 1.2" part of `docs/SECURITY.md`. Six findings were fixed, each with a test:
+    - **S12:** the SSH server answered the "would you take this key?" query differently for registered keys, so anyone with a public key could learn whose it is. It now accepts every key there, and checks the key against its user after the signature (`VerifiedPublicKeyCallback`).
+    - **S13:** at most 8 SSH connections at once per address (`MaxConnsPerAddr`), so one address can no longer hold all 64.
+    - **S14:** a host key file with group or world rights is made 0600 at start (`HostKeyModeFailed`).
+    - **S15:** at most 100 staged files per user (10 × the attachments of a post), besides the byte limit; past it the upload is `413`.
+    - **S16:** a signalling socket may send 100 messages at once, then 25 a second, and is closed with 1008 past that. A PeerConnection takes at most 128 candidates from the client.
+    - **S17:** a participant who closes their PeerConnection but keeps the socket open no longer holds the call and a `-max-calls` place: the 15 s deadline of a lost connection applies.
+  - **Fuzz tests:** `FuzzParseAuthorizedKey` and `FuzzSignalMessage`, each run for 75 s. The media port test shows that strangers get no answer over UDP or TCP. More hostile archives are tested on restore.
+  - **SQLite pool:** the manager capped it at 16 connections instead of 32 (D34, D66; PostgreSQL keeps 32). With 200 streams the SQLite server was at 152 MiB, over the 150 MB target of §10, and is now at 112–122 MiB with the same fan-out. Each SQLite connection holds more than 2 MiB in the process. A smaller page cache saved only 2–5 MiB.
+  - **Docs:** the README (settings, SSH codes with the port and firewall advice, the reset, unread counts, message search, calls and their ports, backups, metrics, the PWA, every `serve` flag) and `docs/API.md` (settings and preferences, the missing WebSocket events, the code-block CSS, the call limits and close codes). The SPEC line on `-max-calls` now says what `serve` does: a value below 1 is refused. The manager brought the README's Redis ACL list up to date: it now has the commands, keys and channels of presence and the call relay, read from `internal/cluster`, though no test checks the list.
+  - **Measurements** (`docs/PERFORMANCE.md`, "1.2"):
+    - Every SPEC §10 target is met on SQLite and PostgreSQL, also with every post unread. `BenchmarkLargePostPage`, `BenchmarkLargeMessages` and `BenchmarkLargeSidebar` are new.
+    - The busiest room's feed takes about twice as long as in 1.1 (about 6.5 ms), because of the read mark and the mention candidates. It is still far under 50 ms, and the manager accepted it.
+    - `clowder-perf -calls N` (`scripts/perf-calls.sh`): 1 call took 2.9% of one core and 51–63 MiB; 10 calls took 8.5% and 84–146 MiB, with every packet forwarded.
+    - `clowder-perf` now opens its streams as 8 users, since one user may hold only 30 live connections.
+  - **Accepted, recorded in `docs/SECURITY.md`:** a reset link logs in without the SSH code (as §7.16 decides), and decoding a 4096² avatar takes up to 132 MB.
+- **Main files:** `internal/sshcode/{server,hostkey}.go`, `internal/calls/{peer,serve,socket}.go`, `internal/calls/callstest/`, `internal/app/staged.go`, `internal/store/store.go`, `cmd/clowder-perf/{main,calls,flags}.go`, `scripts/{perf-calls,perf-postgres}.sh`, `internal/api/openapi.json`, `README.md`, `docs/{API,SECURITY,PERFORMANCE,SPEC}.md`.
+- **Tests:**
+  - `TestServerDoesNotTellWhichKeysAreRegistered` and `TestServerCapsTheConnectionsOfAnAddress`;
+  - `TestLoadHostKeyTightensALooseKey` and `TestTightenHostKeyFailures`;
+  - `TestPostsStagedFileLimit`;
+  - `TestMessageBucket`, `TestAFloodOfMessagesClosesTheSocket`, `TestAHonestStartIsNotLimited` and `TestCandidatesAreCapped`;
+  - `TestATransportThatFailsEndsTheCallAfterTheDeadline` and `TestTheMediaPortAnswersNothingToStrangers`;
+  - `TestRestoreMoreHostileArchives`, `TestCheckManifestOfManyEntries` and `TestMessagesSearchPagingAfterLeaving`;
+  - `TestPoolSize` for both dialects;
+  - the two fuzz targets, whose seeds are in `testdata/fuzz`.
+- **Checks:** gofmt ✅ · go vet ✅ (also `-tags clowder_browser`) · golangci-lint ✅ (both tag sets) · govulncheck ✅ · go test -race ✅ · scripts/test-docker.sh ✅ · browser tests ✅ · compose-smoke ✅ (both modes) · CGO_ENABLED=0 build ✅ · go generate clean ✅. In the manager's full run, `internal/api` on SQLite failed once: 16 tests failed, most in 0.00 s, and the run took 91 s against the usual 55, at a load average near 8. Only the summary lines were kept, so the cause is unknown; most likely a shared setup failed while the machine was busy. The package passed three times when run again alone (54–57 s). Every other package passed on SQLite and PostgreSQL.
+- **Proof:**
+  [24.1 fuzz](implemented-proof-images/24.1-fuzz.txt) ·
+  [24.1 govulncheck](implemented-proof-images/24.1-govulncheck.txt) ·
+  [24.1 perf SQLite](implemented-proof-images/24.1-perf-sqlite.txt) ·
+  [24.1 perf SQLite streams](implemented-proof-images/24.1-perf-sqlite-streams.txt) ·
+  [24.1 perf PostgreSQL](implemented-proof-images/24.1-perf-postgres.txt) ·
+  [24.1 perf calls](implemented-proof-images/24.1-perf-calls.txt)
+  - The "Clowder 1.2" part of `docs/SECURITY.md` and the "1.2" part of `docs/PERFORMANCE.md` are the main proof.
+  - The streams file ends with the run after the pool change: 121.4 MiB, fan-out max 72 ms.
+- **Manual checks:** none
+- **Deviations and follow-ups:**
+  - Left to the owner (SPEC D66): whether a reset link should ask for the SSH code, and whether to lower `AvatarMaxPixels`.
+  - govulncheck still lists GO-2026-5932, in `golang.org/x/crypto/openpgp`. It has no fix, and nothing imports that package.

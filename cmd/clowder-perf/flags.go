@@ -21,6 +21,10 @@ func newFlagSet(o *options, stderr io.Writer) *flag.FlagSet {
 	fs.DurationVar(&o.settle, "settle", defaultSettle, "how long the streams rest before the memory is read")
 	fs.DurationVar(&o.ready, "ready-timeout", defaultReadyTimeout, "how long to wait for the server to answer")
 	fs.DurationVar(&o.timeout, "timeout", defaultRoundTimeout, "how long a probe post has to reach every stream")
+	fs.IntVar(&o.calls, "calls", 0, "measure N calls at once instead of the streams: N pairs of users of the large demo, each with a direct conversation and a call, and pion clients that send VP8 and Opus (needs the server started with -media-addr and -media-public-ip 127.0.0.1)")
+	fs.DurationVar(&o.callDuration, "call-duration", defaultCallDuration, "how long the calls run while the server is measured")
+	fs.StringVar(&o.metrics, "metrics-url", "", "with -calls: the metrics of the server, such as http://127.0.0.1:9090/metrics, for its heap (optional)")
+	fs.IntVar(&o.bitrate, "video-bitrate", defaultVideoBitrate, "with -calls: the video each client sends, in bits per second")
 	fs.BoolVar(&o.freePort, "free-port", false, "print a free TCP port and exit")
 	return fs
 }
