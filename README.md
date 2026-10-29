@@ -86,7 +86,7 @@ Back up the data directory first (see "Backups"), stop the old process, start th
 
 ## Running with Docker
 
-`compose.yaml` runs Clowder and PostgreSQL 18. The image is built from the `Dockerfile` (a static binary on a distroless base, running as a user that is not root); PostgreSQL is the official image. You need Docker with the Compose plugin.
+[`docs/TUTORIAL.md`](docs/TUTORIAL.md) walks through this setup from an empty server to HTTPS, the first members, backups and a tested restore. `compose.yaml` runs Clowder and PostgreSQL 18. The image is built from the `Dockerfile` (a static binary on a distroless base, running as a user that is not root); PostgreSQL is the official image. You need Docker with the Compose plugin.
 
 ```sh
 cp .env.example .env
@@ -112,7 +112,7 @@ The second command prints the link of the first admin (see "The first admin"); i
   docker compose run --rm -T clowder backup -o - > clowder-backup.tar.gz
   ```
 
-  To restore into a new, empty installation (the volume `clowderdata` is empty): `docker compose up -d postgres`, then
+  To restore into a new, empty installation (the volume `clowderdata` is empty): `docker compose up -d --wait postgres` (`--wait` returns once PostgreSQL is healthy; without it `pg_restore` can start before the server accepts connections), then
 
   ```sh
   docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' < clowder.dump
@@ -121,7 +121,7 @@ The second command prints the link of the first admin (see "The first admin"); i
   ```
 
   `clowder backup` reports the `pg_dump` command for the URL inside the container (`postgres://clowder@postgres:5432/clowder`), which is the one that `docker compose exec` above runs for you. Both files hold private data (password hashes, messages, attachments): keep them private.
-- **Who can reach it:** compose publishes `CLOWDER_PORT` on every interface of the machine. Behind a reverse proxy on the same machine, publish it on the loopback address only, with a `compose.override.yaml` next to `compose.yaml`: `services: {clowder: {ports: !override ["127.0.0.1:8080:8080"]}}`. It also publishes the SSH port `CLOWDER_SSH_PORT` (2222, TCP) and the media port `CLOWDER_MEDIA_PORT` (7882, UDP and TCP); see "Ports and the firewall" for which of them you need. PostgreSQL (and, in the cluster, Redis and the Clowder processes) are never published; they are reachable only inside the compose network. The database password is in the environment of the Clowder container, so anyone who may use Docker on the machine can read it: that is already root-equivalent.
+- **Who can reach it:** compose publishes `CLOWDER_PORT` on every interface of the machine. Behind a reverse proxy on the same machine, publish it on the loopback address only, with a `compose.override.yaml` next to `compose.yaml`: `services: {clowder: {ports: !override ["127.0.0.1:${CLOWDER_PORT:-8080}:8080", "${CLOWDER_SSH_PORT:-2222}:2222", "${CLOWDER_MEDIA_PORT:-7882}:7882/udp", "${CLOWDER_MEDIA_PORT:-7882}:7882/tcp"]}}`. `!override` replaces the whole list, so it names the SSH and media ports again; leave out the ones you do not use ([`docs/TUTORIAL.md`](docs/TUTORIAL.md) walks through this setup). It also publishes the SSH port `CLOWDER_SSH_PORT` (2222, TCP) and the media port `CLOWDER_MEDIA_PORT` (7882, UDP and TCP); see "Ports and the firewall" for which of them you need. PostgreSQL (and, in the cluster, Redis and the Clowder processes) are never published; they are reachable only inside the compose network. The database password is in the environment of the Clowder container, so anyone who may use Docker on the machine can read it: that is already root-equivalent.
 - **TLS and a reverse proxy:** the container speaks plain HTTP, so put a reverse proxy with TLS in front of it, as "Running behind a TLS reverse proxy" says: proxy to the published port, set `CLOWDER_BASE_URL` to the public `https://` address and, only when every request comes through the proxy, `CLOWDER_TRUST_PROXY=true`.
 
 `scripts/compose-smoke.sh` checks the whole composition on a throw-away project: it builds the image, starts both services, makes an admin invitation, signs up through the form, opens a page and removes everything.
